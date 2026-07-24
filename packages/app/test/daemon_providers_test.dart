@@ -139,9 +139,9 @@ void main() {
       fake.onRequest = (type, payload) => {
             'providers': [
               const ProviderInfo(
-                id: ProviderId.claude,
-                displayName: 'Claude',
-                available: true,
+                id: ProviderId.openai,
+                displayName: 'Codex',
+                configured: true,
               ).toJson(),
             ],
           };
@@ -169,9 +169,9 @@ void main() {
         return {
           'providers': [
             const ProviderInfo(
-              id: ProviderId.claude,
-              displayName: 'Claude',
-              available: true,
+              id: ProviderId.openai,
+              displayName: 'Codex',
+              configured: true,
             ).toJson(),
           ],
         };
@@ -190,7 +190,97 @@ void main() {
 
       final providers = sub.read().value;
       expect(providers, isNotNull);
-      expect(providers!.single.displayName, 'Claude');
+      expect(providers!.single.displayName, 'Codex');
+    });
+  });
+
+  group('ProviderCredentialActions', () {
+    test('setKey sends providerId/apiKey and invalidates the provider list',
+        () async {
+      final fake = FakeDaemonClient();
+      final calls = <(String, Map<String, Object?>)>[];
+      fake.onRequest = (type, payload) {
+        calls.add((type, payload));
+        return const {};
+      };
+      final container = ProviderContainer(
+        overrides: [daemonClientProvider.overrideWithValue(fake)],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(providerCredentialActionsProvider)
+          .setKey(ProviderId.deepseek, 'sk-test');
+
+      final call = calls.singleWhere(
+        (c) => c.$1 == MessageTypes.providerCredentialSetRequest,
+      );
+      expect(call.$2['providerId'], 'deepseek');
+      expect(call.$2['apiKey'], 'sk-test');
+    });
+
+    test('clearKey sends providerId only', () async {
+      final fake = FakeDaemonClient();
+      final calls = <(String, Map<String, Object?>)>[];
+      fake.onRequest = (type, payload) {
+        calls.add((type, payload));
+        return const {};
+      };
+      final container = ProviderContainer(
+        overrides: [daemonClientProvider.overrideWithValue(fake)],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(providerCredentialActionsProvider)
+          .clearKey(ProviderId.openrouter);
+
+      final call = calls.singleWhere(
+        (c) => c.$1 == MessageTypes.providerCredentialClearRequest,
+      );
+      expect(call.$2['providerId'], 'openrouter');
+    });
+
+    test('testKey returns the parsed result and omits apiKey when not given',
+        () async {
+      final fake = FakeDaemonClient();
+      Map<String, Object?>? capturedPayload;
+      fake.onRequest = (type, payload) {
+        capturedPayload = payload;
+        return {'ok': true};
+      };
+      final container = ProviderContainer(
+        overrides: [daemonClientProvider.overrideWithValue(fake)],
+      );
+      addTearDown(container.dispose);
+
+      final result = await container
+          .read(providerCredentialActionsProvider)
+          .testKey(ProviderId.openai);
+
+      expect(result.ok, isTrue);
+      expect(capturedPayload!.containsKey('apiKey'), isFalse);
+    });
+
+    test('testKey includes apiKey when explicitly given', () async {
+      final fake = FakeDaemonClient();
+      Map<String, Object?>? capturedPayload;
+      fake.onRequest = (type, payload) {
+        capturedPayload = payload;
+        return {'ok': false, 'error': 'bad key'};
+      };
+      final container = ProviderContainer(
+        overrides: [daemonClientProvider.overrideWithValue(fake)],
+      );
+      addTearDown(container.dispose);
+
+      final result = await container
+          .read(providerCredentialActionsProvider)
+          .testKey(ProviderId.openai, apiKey: 'sk-try-me');
+
+      expect(result.ok, isFalse);
+      expect(result.error, 'bad key');
+      expect(capturedPayload!['apiKey'], 'sk-try-me');
     });
   });
 }

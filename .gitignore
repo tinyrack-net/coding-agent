@@ -37,3 +37,6 @@ packages/daemon/build/
 # Test coverage output
 coverage/
 packages/*/coverage/
+
+# Local secrets (API keys etc.)
+.env

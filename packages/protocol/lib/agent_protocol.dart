@@ -12,4 +12,4 @@ export 'src/timeline/timeline_item.dart';
 export 'src/timeline/tool_call_detail.dart';
 
 /// Bumped on breaking wire changes; clients refuse to talk across versions.
-const int protocolVersion = 1;
+const int protocolVersion = 2;

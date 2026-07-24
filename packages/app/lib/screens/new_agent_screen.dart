@@ -248,11 +248,11 @@ class _NewAgentFormState extends ConsumerState<NewAgentForm> {
         ),
         error: (e, _) => Text('Failed to load providers: $e'),
         data: (all) {
-          final providers = all.where((p) => p.available).toList();
+          final providers = all.where((p) => p.configured).toList();
           if (providers.isEmpty) {
             return const Text(
-              'No providers are available on this machine. '
-              'Install the Claude CLI and restart the daemon.',
+              'No providers are configured yet. '
+              'Add an API key in Settings and try again.',
             );
           }
           final selectedProvider = providers.firstWhere(

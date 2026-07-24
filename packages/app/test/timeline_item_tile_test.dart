@@ -57,7 +57,7 @@ void main() {
     // Assistant markdown rendered (bold stripped of asterisks).
     expect(find.textContaining('green'), findsOneWidget);
     // Permission card with actions.
-    expect(find.text('Claude wants to use Edit'), findsOneWidget);
+    expect(find.text('The agent wants to use Edit'), findsOneWidget);
     expect(find.text('Allow'), findsOneWidget);
     expect(find.text('Always allow'), findsOneWidget);
     expect(find.text('Deny'), findsOneWidget);

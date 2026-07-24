@@ -40,3 +40,44 @@ final providerListProvider = FutureProvider<List<ProviderInfo>>((ref) async {
       await client.request(MessageTypes.providerListRequest, const {});
   return ProviderListResponse.fromJson(payload).providers;
 });
+
+/// Imperative actions for managing per-provider API keys.
+class ProviderCredentialActions {
+  ProviderCredentialActions(this._ref);
+
+  final Ref _ref;
+
+  DaemonClient get _client => _ref.read(daemonClientProvider);
+
+  Future<void> setKey(ProviderId providerId, String apiKey) async {
+    await _client.request(MessageTypes.providerCredentialSetRequest, {
+      'providerId': providerId.name,
+      'apiKey': apiKey,
+    });
+    _ref.invalidate(providerListProvider);
+  }
+
+  Future<void> clearKey(ProviderId providerId) async {
+    await _client.request(MessageTypes.providerCredentialClearRequest, {
+      'providerId': providerId.name,
+    });
+    _ref.invalidate(providerListProvider);
+  }
+
+  Future<ProviderCredentialTestResult> testKey(
+    ProviderId providerId, {
+    String? apiKey,
+  }) async {
+    final payload = await _client.request(
+      MessageTypes.providerCredentialTestRequest,
+      {
+        'providerId': providerId.name,
+        if (apiKey != null && apiKey.isNotEmpty) 'apiKey': apiKey,
+      },
+    );
+    return ProviderCredentialTestResult.fromJson(payload);
+  }
+}
+
+final providerCredentialActionsProvider =
+    Provider<ProviderCredentialActions>(ProviderCredentialActions.new);

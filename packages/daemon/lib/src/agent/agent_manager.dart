@@ -152,6 +152,7 @@ class AgentManager {
       model: runtime.summary.model,
       mode: runtime.summary.mode,
       sessionId: runtime.summary.sessionId,
+      initialHistory: runtime.timeline.snapshot(),
     );
     runtime.session = session;
     runtime.sessionSub = session.events.listen(

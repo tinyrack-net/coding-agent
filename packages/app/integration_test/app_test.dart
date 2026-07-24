@@ -11,10 +11,10 @@
 // Run locally: `flutter test integration_test -d windows` from
 // packages/app (after building the daemon executable).
 //
-// Agent creation/chat/terminal flows depend on a Claude/Codex CLI being
-// installed on the machine (providerListProvider only reports providers it
-// can actually find), so this suite doesn't assume one is present — it
-// asserts on whichever real state the daemon reports.
+// Agent creation/chat/terminal flows depend on a native provider (Codex/
+// DeepSeek/OpenRouter) having a stored API key (providerListProvider only
+// reports providers with `configured: true`), so this suite doesn't assume
+// one is present — it asserts on whichever real state the daemon reports.
 //
 // This also doesn't assume an empty agent list: DaemonSupervisor reuses an
 // already-running same-version daemon rather than spawning a fresh one (see
@@ -46,7 +46,7 @@ void main() {
       await tester.tap(find.text('New Agent'));
       await tester.pumpAndSettle(const Duration(seconds: 10));
       final noProvidersMessage = find.textContaining(
-        'No providers are available on this machine',
+        'No providers are configured yet',
       );
       // The provider dropdown's InputDecoration renders its labelText as a
       // findable Text once the field has content (avoid depending on the

@@ -65,6 +65,7 @@ class MockAgentClient implements AgentClient {
     required String model,
     required AgentMode mode,
     String? sessionId,
+    List<TimelineItem> initialHistory = const [],
   }) async {
     createCalls.add(
       (cwd: cwd, model: model, mode: mode, sessionId: sessionId),

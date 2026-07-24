@@ -73,16 +73,15 @@ void main() {
       return {
         'providers': [
           const ProviderInfo(
-            id: ProviderId.claude,
-            displayName: 'Claude',
-            available: true,
-            version: '1.0.0',
-            executablePath: '/usr/bin/claude',
+            id: ProviderId.openai,
+            displayName: 'Codex',
+            configured: true,
+            models: [ProviderModel(id: 'gpt-5.4-codex', displayName: 'GPT-5.4 Codex')],
           ).toJson(),
           const ProviderInfo(
-            id: ProviderId.codex,
-            displayName: 'Codex',
-            available: false,
+            id: ProviderId.deepseek,
+            displayName: 'DeepSeek',
+            configured: false,
             unavailableReason: 'not installed',
           ).toJson(),
         ],
@@ -91,9 +90,9 @@ void main() {
     await pumpStatusScreen(tester, client);
 
     expect(find.text('Daemon connected'), findsOneWidget);
-    expect(find.text('Claude'), findsOneWidget);
-    expect(find.textContaining('1.0.0'), findsOneWidget);
     expect(find.text('Codex'), findsOneWidget);
+    expect(find.textContaining('1 models available'), findsOneWidget);
+    expect(find.text('DeepSeek'), findsOneWidget);
     expect(find.text('not installed'), findsOneWidget);
   });
 

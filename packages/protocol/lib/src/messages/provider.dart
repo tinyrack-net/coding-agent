@@ -1,9 +1,11 @@
-/// Provider discovery messages (`provider.list`).
+/// Provider discovery + credential messages (`provider.list`,
+/// `provider.credential.*`).
 library;
 
 enum ProviderId {
-  claude,
-  codex;
+  openai,
+  deepseek,
+  openrouter;
 
   static ProviderId fromWire(String value) =>
       ProviderId.values.firstWhere((p) => p.name == value);
@@ -13,9 +15,7 @@ final class ProviderInfo {
   const ProviderInfo({
     required this.id,
     required this.displayName,
-    required this.available,
-    this.executablePath,
-    this.version,
+    required this.configured,
     this.models = const [],
     this.unavailableReason,
   });
@@ -23,19 +23,15 @@ final class ProviderInfo {
   final ProviderId id;
   final String displayName;
 
-  /// Whether the provider CLI was found and responds on this machine.
-  final bool available;
-  final String? executablePath;
-  final String? version;
+  /// Whether a valid API key is stored for this provider.
+  final bool configured;
   final List<ProviderModel> models;
   final String? unavailableReason;
 
   static ProviderInfo fromJson(Map<String, Object?> json) => ProviderInfo(
         id: ProviderId.fromWire(json['id'] as String),
         displayName: (json['displayName'] as String?) ?? '',
-        available: (json['available'] as bool?) ?? false,
-        executablePath: json['executablePath'] as String?,
-        version: json['version'] as String?,
+        configured: (json['configured'] as bool?) ?? false,
         models: ((json['models'] as List?) ?? const [])
             .cast<Map<String, Object?>>()
             .map(ProviderModel.fromJson)
@@ -46,9 +42,7 @@ final class ProviderInfo {
   Map<String, Object?> toJson() => {
         'id': id.name,
         'displayName': displayName,
-        'available': available,
-        if (executablePath != null) 'executablePath': executablePath,
-        if (version != null) 'version': version,
+        'configured': configured,
         'models': models.map((m) => m.toJson()).toList(),
         if (unavailableReason != null) 'unavailableReason': unavailableReason,
       };
@@ -84,4 +78,22 @@ final class ProviderListResponse {
   Map<String, Object?> toJson() => {
         'providers': providers.map((p) => p.toJson()).toList(),
       };
+}
+
+/// Result of `provider.credential.test.request` — attempts a lightweight call
+/// against the provider's API to confirm the stored (or given) key works.
+final class ProviderCredentialTestResult {
+  const ProviderCredentialTestResult({required this.ok, this.error});
+
+  final bool ok;
+  final String? error;
+
+  static ProviderCredentialTestResult fromJson(Map<String, Object?> json) =>
+      ProviderCredentialTestResult(
+        ok: (json['ok'] as bool?) ?? false,
+        error: json['error'] as String?,
+      );
+
+  Map<String, Object?> toJson() =>
+      {'ok': ok, if (error != null) 'error': error};
 }
