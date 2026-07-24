@@ -175,4 +175,106 @@ void main() {
     );
     expect(find.text('No changes'), findsOneWidget);
   });
+
+  testWidgets('a renamed file shows "old -> new" and the renamed style',
+      (tester) async {
+    const renamed = DiffResponse(
+      files: [
+        DiffFile(
+          path: 'lib/new_name.dart',
+          oldPath: 'lib/old_name.dart',
+          status: DiffFileStatus.renamed,
+          additions: 0,
+          deletions: 0,
+        ),
+      ],
+    );
+    await tester.pumpWidget(_wrap(const DiffView(diff: renamed)));
+
+    expect(
+      find.text('lib/old_name.dart → lib/new_name.dart'),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.drive_file_move_outlined), findsOneWidget);
+  });
+
+  testWidgets('a non-binary file with no hunks shows "No textual changes"',
+      (tester) async {
+    const noHunks = DiffResponse(
+      files: [
+        DiffFile(
+          path: 'lib/mode_only.dart',
+          status: DiffFileStatus.modified,
+          additions: 0,
+          deletions: 0,
+        ),
+      ],
+    );
+    await tester.pumpWidget(_wrap(const DiffView(diff: noHunks)));
+
+    expect(find.text('No textual changes'), findsOneWidget);
+  });
+
+  testWidgets(
+      'didUpdateWidget resets the selected file index when the file list '
+      'shrinks below it', (tester) async {
+    const twoFiles = DiffResponse(
+      files: [
+        DiffFile(
+          path: 'lib/a.dart',
+          status: DiffFileStatus.modified,
+          additions: 1,
+          deletions: 0,
+        ),
+        DiffFile(
+          path: 'lib/b.dart',
+          status: DiffFileStatus.modified,
+          additions: 1,
+          deletions: 0,
+          hunks: [
+            DiffHunk(
+              header: '@@ -1 +1 @@',
+              lines: [
+                DiffLine(type: DiffLineType.add, text: 'b changed', newLineNo: 1),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    const oneFile = DiffResponse(
+      files: [
+        DiffFile(
+          path: 'lib/a.dart',
+          status: DiffFileStatus.modified,
+          additions: 1,
+          deletions: 0,
+          hunks: [
+            DiffHunk(
+              header: '@@ -1 +1 @@',
+              lines: [
+                DiffLine(type: DiffLineType.add, text: 'a changed', newLineNo: 1),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(_wrap(const DiffView(diff: twoFiles)));
+
+    // Select the second file (index 1).
+    await tester.tap(find.text('lib/b.dart'));
+    await tester.pumpAndSettle();
+    expect(find.text('b changed'), findsOneWidget);
+
+    // Shrink the file list to one entry: didUpdateWidget must clamp the
+    // selected index back to 0 instead of throwing a range error.
+    await tester.pumpWidget(_wrap(const DiffView(diff: oneFile)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('a changed'), findsOneWidget);
+  });
 }

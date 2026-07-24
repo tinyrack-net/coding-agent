@@ -16,11 +16,21 @@ class MockAgentSession implements AgentSession {
   bool interrupted = false;
   bool disposed = false;
 
+  /// When set, the next call to [prompt] throws this instead of recording.
+  Object? promptError;
+
   @override
   Stream<ProviderEvent> get events => _controller.stream;
 
   @override
-  Future<void> prompt(String text) async => prompts.add(text);
+  Future<void> prompt(String text) async {
+    final error = promptError;
+    if (error != null) {
+      promptError = null;
+      throw error;
+    }
+    prompts.add(text);
+  }
 
   @override
   Future<void> interrupt() async => interrupted = true;
@@ -45,6 +55,10 @@ class MockAgentClient implements AgentClient {
   final List<({String cwd, String model, AgentMode mode, String? sessionId})>
       createCalls = [];
 
+  /// When set, the next call to [createSession] throws this instead of
+  /// creating a session.
+  Object? createSessionError;
+
   @override
   Future<AgentSession> createSession({
     required String cwd,
@@ -55,6 +69,11 @@ class MockAgentClient implements AgentClient {
     createCalls.add(
       (cwd: cwd, model: model, mode: mode, sessionId: sessionId),
     );
+    final error = createSessionError;
+    if (error != null) {
+      createSessionError = null;
+      throw error;
+    }
     final session = MockAgentSession();
     sessions.add(session);
     return session;
@@ -375,5 +394,115 @@ void main() {
     await manager2.prompt(agent.agentId, 'welcome back');
     expect(client.createCalls.last.sessionId, 'sess-1');
     await manager2.dispose();
+  });
+
+  test('createAgent propagates a session-start failure as RpcException',
+      () async {
+    client.createSessionError = StateError('spawn failed');
+    await expectLater(
+      manager.createAgent(
+        cwd: tempDir.path,
+        provider: 'claude',
+        model: 'claude-sonnet-5',
+        mode: AgentMode.normal,
+      ),
+      throwsA(isA<RpcException>()),
+    );
+    expect(manager.list(), isEmpty);
+  });
+
+  test('prompt after session death marks the agent as error when restart '
+      'also fails', () async {
+    final agent = await createAgent();
+    final first = client.sessions.single;
+    first.emit(const SessionStarted(sessionId: 'sess-1'));
+    await pumpEventQueue();
+    await first.exit();
+
+    client.createSessionError = StateError('restart failed');
+    await manager.prompt(agent.agentId, 'still there?');
+
+    expect(states.last.agent.runState, AgentRunState.error);
+    final error = streamed.map((s) => s.item).whereType<ErrorItem>().last;
+    expect(error.message, contains('failed to restart session'));
+  });
+
+  test('session.prompt() throwing marks the turn failed and state error',
+      () async {
+    final agent = await createAgent();
+    final session = client.sessions.single;
+    session.emit(const SessionStarted(sessionId: 'sess-1'));
+    await pumpEventQueue();
+
+    session.promptError = StateError('provider rejected the prompt');
+    await manager.prompt(agent.agentId, 'do a thing');
+
+    expect(states.last.agent.runState, AgentRunState.error);
+    final turn = streamed.map((s) => s.item).whereType<TurnItem>().last;
+    expect(turn.phase, TurnPhase.failed);
+    final error = streamed.map((s) => s.item).whereType<ErrorItem>().last;
+    expect(error.message, contains('prompt failed'));
+  });
+
+  test('SessionStarted while already running just persists (no state '
+      'transition)', () async {
+    final agent = await createAgent();
+    final first = client.sessions.single;
+    first.emit(const SessionStarted(sessionId: 'sess-1'));
+    await pumpEventQueue();
+    await first.exit();
+
+    await manager.prompt(agent.agentId, 'still there?');
+    expect(states.last.agent.runState, AgentRunState.running);
+
+    // The recreated session's own SessionStarted arrives while the agent is
+    // already running (not initializing): should just update sessionId.
+    client.sessions.last.emit(const SessionStarted(sessionId: 'sess-2'));
+    await pumpEventQueue();
+    expect(states.last.agent.runState, AgentRunState.running);
+    expect(states.last.agent.sessionId, 'sess-2');
+  });
+
+  test('reasoning deltas and completion map to reasoning timeline items',
+      () async {
+    final agent = await createAgent();
+    final session = client.sessions.single;
+    session.emit(const SessionStarted(sessionId: 'sess-1'));
+    await pumpEventQueue();
+    await manager.prompt(agent.agentId, 'think about it');
+
+    session.emit(const ReasoningDelta(itemId: 'r1', text: 'pon'));
+    session.emit(const ReasoningDelta(itemId: 'r1', text: 'dering'));
+    await pumpEventQueue();
+    final partial = streamed
+        .map((s) => s.item)
+        .whereType<ReasoningItem>()
+        .first;
+    expect(partial.text, 'pon');
+    expect(partial.complete, isFalse);
+
+    session.emit(const ReasoningComplete(itemId: 'r1', fullText: 'pondering'));
+    await pumpEventQueue();
+    final complete =
+        streamed.map((s) => s.item).whereType<ReasoningItem>().last;
+    expect(complete.text, 'pondering');
+    expect(complete.complete, isTrue);
+  });
+
+  test('SessionExited while interrupted and a turn is open cancels the turn',
+      () async {
+    final agent = await createAgent();
+    final session = client.sessions.single;
+    session.emit(const SessionStarted(sessionId: 'sess-1'));
+    await pumpEventQueue();
+
+    await manager.prompt(agent.agentId, 'long task');
+    await manager.interrupt(agent.agentId);
+    await session.exit();
+    await pumpEventQueue();
+
+    expect(states.last.agent.runState, AgentRunState.idle);
+    final turn = streamed.map((s) => s.item).whereType<TurnItem>().last;
+    expect(turn.phase, TurnPhase.canceled);
   });
 }

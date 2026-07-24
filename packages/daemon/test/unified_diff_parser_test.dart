@@ -217,4 +217,111 @@ index 5626abf..f719efd 100644
     expect(file.hunks[0].lines[0].oldLineNo, 1);
     expect(file.hunks[0].lines[1].newLineNo, 1);
   });
+
+  test('malformed hunk header line is skipped without crashing', () {
+    const diff = '''
+diff --git a/one.txt b/one.txt
+index 5626abf..f719efd 100644
+--- a/one.txt
++++ b/one.txt
+@@ not a real header @@
+@@ -1 +1 @@
+-one
++two
+''';
+    final files = parseUnifiedDiff(diff);
+    expect(files, hasLength(1));
+    // Only the valid hunk header produced a hunk.
+    expect(files[0].hunks, hasLength(1));
+    expect(files[0].additions, 1);
+    expect(files[0].deletions, 1);
+  });
+
+  test('a genuinely empty context line mid-hunk is preserved, not treated as '
+      'end-of-hunk', () {
+    const diff = '''
+diff --git a/one.txt b/one.txt
+index 5626abf..f719efd 100644
+--- a/one.txt
++++ b/one.txt
+@@ -1,3 +1,3 @@
+ a
+
+ c
+''';
+    final files = parseUnifiedDiff(diff);
+    final hunk = files.single.hunks.single;
+    expect(hunk.lines, hasLength(3));
+    expect(hunk.lines.every((l) => l.type == DiffLineType.context), isTrue);
+    expect(hunk.lines[1].text, '');
+    expect(hunk.lines[1].oldLineNo, 2);
+    expect(hunk.lines[1].newLineNo, 2);
+    expect(hunk.lines[2].text, 'c');
+    expect(hunk.lines[2].oldLineNo, 3);
+  });
+
+  test('copy from/to headers are treated like a rename', () {
+    const diff = '''
+diff --git a/orig.txt b/copy.txt
+similarity index 100%
+copy from orig.txt
+copy to copy.txt
+''';
+    final files = parseUnifiedDiff(diff);
+    final file = files.single;
+    expect(file.status, DiffFileStatus.renamed);
+    expect(file.path, 'copy.txt');
+    expect(file.oldPath, 'orig.txt');
+    expect(file.hunks, isEmpty);
+  });
+
+  test('GIT binary patch marks the file as binary', () {
+    const diff = '''
+diff --git a/bin.dat b/bin.dat
+index 0000000..1111111 100644
+GIT binary patch
+literal 10
+xKcmZQzU|;`c00Icy
+
+''';
+    final files = parseUnifiedDiff(diff);
+    final file = files.single;
+    expect(file.binary, isTrue);
+    expect(file.hunks, isEmpty);
+  });
+
+  test('quoted diff --git paths (no ---/+++) are decoded via the fallback '
+      'parser', () {
+    const diff = '''
+diff --git "a/foo bar.txt" "b/foo bar.txt"
+Binary files a/foo bar.txt and b/foo bar.txt differ
+''';
+    final files = parseUnifiedDiff(diff);
+    final file = files.single;
+    expect(file.path, 'foo bar.txt');
+    expect(file.binary, isTrue);
+  });
+
+  test('unquotes complex escape sequences (control chars, quote, backslash, '
+      'octal, and unknown escapes) in --- / +++ paths', () {
+    const bs = r'\';
+    // Raw (still-quoted) path content, matching git's C-style quoting:
+    // w<TAB>x<LF>y<CR>z<QUOTE>q<BACKSLASH>w<A-from-octal-101><z-from-unknown>end.txt
+    final rawPath = 'a/w${bs}tx${bs}ny${bs}rz$bs"q$bs${bs}w${bs}101${bs}zend.txt';
+    final diff = '''
+diff --git a/simple.txt b/simple.txt
+index abc..def 100644
+--- "$rawPath"
++++ "$rawPath"
+@@ -1 +1 @@
+-old
++new
+''';
+    final files = parseUnifiedDiff(diff);
+    final file = files.single;
+    expect(
+      file.path,
+      'w\tx\ny\rz"q${bs}wAzend.txt',
+    );
+  });
 }

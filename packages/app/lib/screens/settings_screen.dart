@@ -87,9 +87,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   children: [
                     Icon(Icons.circle, size: 12, color: color),
                     const SizedBox(width: 8),
-                    Text(
-                      '$label — ${settings.uri}',
-                      style: Theme.of(context).textTheme.titleSmall,
+                    Expanded(
+                      child: Text(
+                        '$label — ${settings.uri}',
+                        style: Theme.of(context).textTheme.titleSmall,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),

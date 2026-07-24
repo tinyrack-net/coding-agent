@@ -1,9 +1,12 @@
 import 'package:agent_protocol/agent_protocol.dart';
+import 'package:coding_agent_app/core/desktop/tray_controller.dart';
 import 'package:coding_agent_app/state/connection_settings_provider.dart';
 import 'package:coding_agent_app/state/daemon_lifecycle_provider.dart';
+import 'package:coding_agent_app/state/desktop_settings_provider.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeSupervisor extends DaemonSupervisor {
   FakeSupervisor({this.spawnError, DaemonStatus? initial})
@@ -63,6 +66,12 @@ ProviderContainer makeContainer({
 }
 
 void main() {
+  // Guards against a persisted host/port leaking across tests: real/mocked
+  // SharedPreferences is a process-wide store, and connectionSettingsProvider
+  // reloads it asynchronously on every build(), so a prior test's .save()
+  // could otherwise be picked up by a later test's fresh container.
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   test('desktop + loopback: ensures the daemon and exposes its status',
       () async {
     final supervisor = FakeSupervisor();
@@ -90,7 +99,7 @@ void main() {
   test('remote host: state is null and no supervisor call is made', () async {
     final supervisor = FakeSupervisor();
     final container = makeContainer(desktop: true, supervisor: supervisor);
-    container.read(connectionSettingsProvider.notifier).save(
+    await container.read(connectionSettingsProvider.notifier).save(
           host: '192.168.0.10',
           port: 6868,
         );
@@ -138,5 +147,54 @@ void main() {
 
     expect(supervisor.stopCalls, 1);
     expect(container.read(daemonLifecycleProvider).value?.isRunning, isFalse);
+  });
+
+  test('restart() and stopDaemon() are no-ops when there is no supervisor '
+      '(non-desktop shell)', () async {
+    final supervisor = FakeSupervisor();
+    final container = makeContainer(desktop: false, supervisor: supervisor);
+    await container.read(daemonLifecycleProvider.future);
+
+    await container.read(daemonLifecycleProvider.notifier).restart();
+    await container.read(daemonLifecycleProvider.notifier).stopDaemon();
+
+    expect(supervisor.restartCalls, 0);
+    expect(supervisor.stopCalls, 0);
+  });
+
+  test('the default supervisor factory builds a real DaemonSupervisor from '
+      'the connection settings (without invoking it)', () async {
+    // Exercises the real (non-overridden) daemonSupervisorFactoryProvider
+    // default, which every other test in this file overrides with a fake.
+    // Constructing the supervisor is safe (no I/O); we deliberately never
+    // call ensureRunning()/status() so this stays hermetic.
+    final container = ProviderContainer(
+      overrides: [desktopShellProvider.overrideWithValue(true)],
+    );
+    addTearDown(container.dispose);
+
+    final settings = container.read(connectionSettingsProvider);
+    final factory = container.read(daemonSupervisorFactoryProvider);
+    final supervisor = factory(settings);
+
+    expect(supervisor.host, settings.host);
+    expect(supervisor.port, settings.port);
+  });
+
+  test('the tray quit callback stops the daemon unless '
+      'keepRunningAfterQuit is set', () async {
+    final supervisor = FakeSupervisor();
+    final container = makeContainer(desktop: true, supervisor: supervisor);
+    await container.read(daemonLifecycleProvider.future);
+
+    // keepRunningAfterQuit defaults to true: quitting must not stop it.
+    await TrayController.instance.onQuit?.call();
+    expect(supervisor.stopCalls, 0);
+
+    await container
+        .read(desktopSettingsProvider.notifier)
+        .setKeepRunningAfterQuit(false);
+    await TrayController.instance.onQuit?.call();
+    expect(supervisor.stopCalls, 1);
   });
 }

@@ -231,4 +231,70 @@ void main() {
     expect(() => manager.subscribe('conn', 'nope'), throwsStateError);
     expect(() => manager.unsubscribe('conn', 'nope'), throwsStateError);
   });
+
+  test('handleFrame ignores malformed resize and daemon-only opcodes',
+      () async {
+    final id = create();
+    final slot = manager.subscribe('conn', id);
+    final pty = spawned.single;
+
+    // Malformed resize payload (< 4 bytes): guarded and ignored.
+    manager.handleFrame(
+      'conn',
+      TerminalFrame(
+        opcode: TerminalOpcode.resize,
+        slotId: slot,
+        payload: Uint8List(2),
+      ),
+    );
+    expect(pty.resizes, isEmpty);
+
+    // Daemon->client-only opcodes arriving from a client are no-ops.
+    manager.handleFrame(
+      'conn',
+      TerminalFrame(
+        opcode: TerminalOpcode.output,
+        slotId: slot,
+        payload: Uint8List(0),
+      ),
+    );
+    manager.handleFrame(
+      'conn',
+      TerminalFrame(
+        opcode: TerminalOpcode.snapshot,
+        slotId: slot,
+        payload: Uint8List(0),
+      ),
+    );
+    expect(pty.written, isEmpty);
+    expect(pty.resizes, isEmpty);
+  });
+
+  test('ring buffer replaces entirely when a single chunk exceeds the limit',
+      () async {
+    final id = create();
+    final pty = spawned.single;
+    pty.emit('a' * 2000); // exceeds the 1024-byte limit in one shot.
+    await pump();
+
+    manager.subscribe('conn', id);
+    final snapshot = received['conn']!.single.payload;
+    expect(snapshot.length, 1024);
+    expect(utf8.decode(snapshot), 'a' * 1024);
+  });
+
+  test('ring buffer drops whole oldest chunks that fit entirely within the '
+      'trim excess', () async {
+    final id = create();
+    final pty = spawned.single;
+    pty.emit('a' * 512);
+    pty.emit('b' * 512);
+    pty.emit('c' * 512); // total 1536 > 1024: the whole 'a' chunk is dropped.
+    await pump();
+
+    manager.subscribe('conn', id);
+    final snapshot = received['conn']!.single.payload;
+    expect(snapshot.length, 1024);
+    expect(utf8.decode(snapshot), 'b' * 512 + 'c' * 512);
+  });
 }

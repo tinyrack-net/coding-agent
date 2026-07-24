@@ -13,8 +13,13 @@ class DaemonPaths {
 
   static String defaultDataDir() {
     final home = Platform.environment['USERPROFILE'] ??
+        // coverage:ignore-start
+        // USERPROFILE is always set on Windows, the only supported/tested
+        // platform; Platform.environment can't be mutated in-process to
+        // reach this fallback under `dart test`.
         Platform.environment['HOME'] ??
         Directory.current.path;
+        // coverage:ignore-end
     return p.join(home, '.tinyrack-agent');
   }
 }

@@ -20,18 +20,28 @@ import '../agent_session.dart';
 import '../provider_event.dart';
 
 class ClaudeSession implements AgentSession {
-  ClaudeSession._(this._process) {
-    _stdoutSub = _process.stdout
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())
-        .listen(_onLine, onDone: () {});
-    _process.stderr
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())
-        .listen((_) {}); // stderr stays empty in normal operation.
-    _process.exitCode.then(_onExit);
+  ClaudeSession._({
+    required Stream<String> lines,
+    required void Function(String line) sendLine,
+    Process? process,
+  })  : _sendLine = sendLine,
+        _process = process {
+    _stdoutSub = lines.listen(_onLine, onDone: () {
+      // With a real process, exitCode drives SessionExited; for the
+      // fake-transport case (tests) stream closure is the exit signal.
+      if (_process == null) _onExit(null);
+    });
+    _process?.exitCode.then(_onExit);
     _sendInitialize();
   }
+
+  /// Test seam: drive the session with a scripted transport instead of a
+  /// real `claude` process.
+  factory ClaudeSession.forTransport({
+    required Stream<String> lines,
+    required void Function(String line) sendLine,
+  }) =>
+      ClaudeSession._(lines: lines, sendLine: sendLine);
 
   static Future<ClaudeSession> spawn({
     required String exePath,
@@ -66,10 +76,27 @@ class ClaudeSession implements AgentSession {
         'CLAUDE_CODE_ENTRYPOINT': 'sdk-ts',
       },
     );
-    return ClaudeSession._(process);
+    process.stderr
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen((_) {}); // stderr stays empty in normal operation.
+    return ClaudeSession._(
+      lines: process.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter()),
+      sendLine: (line) {
+        try {
+          process.stdin.add(utf8.encode('$line\n'));
+        } catch (_) {
+          // Process already gone; SessionExited will follow via exitCode.
+        }
+      },
+      process: process,
+    );
   }
 
-  final Process _process;
+  final void Function(String line) _sendLine;
+  final Process? _process;
   final _events = StreamController<ProviderEvent>.broadcast();
   late final StreamSubscription<String> _stdoutSub;
 
@@ -120,22 +147,27 @@ class ClaudeSession implements AgentSession {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    final process = _process;
+    if (process == null) {
+      _onExit(null);
+      return;
+    }
     try {
-      await _process.stdin.close();
+      await process.stdin.close();
     } catch (_) {}
     // Kill the whole process tree; the CLI spawns helpers.
     if (Platform.isWindows) {
       try {
         await Process.run(
           'taskkill',
-          ['/T', '/F', '/PID', '${_process.pid}'],
+          ['/T', '/F', '/PID', '${process.pid}'],
         );
       } catch (_) {}
     } else {
-      _process.kill(ProcessSignal.sigkill);
+      process.kill(ProcessSignal.sigkill);
     }
     try {
-      await _process.exitCode.timeout(const Duration(seconds: 5));
+      await process.exitCode.timeout(const Duration(seconds: 5));
     } catch (_) {}
   }
 
@@ -154,11 +186,7 @@ class ClaudeSession implements AgentSession {
 
   void _sendJson(Map<String, Object?> obj) {
     if (_disposed) return;
-    try {
-      _process.stdin.add(utf8.encode('${jsonEncode(obj)}\n'));
-    } catch (_) {
-      // Process already gone; SessionExited will follow via exitCode.
-    }
+    _sendLine(jsonEncode(obj));
   }
 
   // -- stdout ---------------------------------------------------------------
@@ -353,7 +381,7 @@ class ClaudeSession implements AgentSession {
     });
   }
 
-  void _onExit(int code) {
+  void _onExit(int? code) {
     _emit(SessionExited(exitCode: code));
     _stdoutSub.cancel();
     _events.close();

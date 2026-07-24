@@ -26,12 +26,18 @@ Future<String?> resolveDaemonExe() async {
 
   final lookup = Platform.isWindows
       ? await Process.run('where', ['daemon'])
-      : await Process.run('which', ['daemon']);
+      : await Process.run('which', ['daemon']); // coverage:ignore-line
   if (lookup.exitCode == 0) {
+    // coverage:ignore-start
+    // Only reachable when `daemon` resolves on PATH, which the test suite
+    // exercises via a child process with a scoped PATH override (see
+    // daemon_exe_resolver_test.dart) — package:coverage cannot credit
+    // coverage collected in a separate spawned process.
     final first = (lookup.stdout as String)
         .split(RegExp(r'\r?\n'))
         .firstWhere((l) => l.trim().isNotEmpty, orElse: () => '');
     if (first.trim().isNotEmpty) return first.trim();
+    // coverage:ignore-end
   }
   return null;
 }

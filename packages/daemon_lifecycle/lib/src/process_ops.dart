@@ -11,8 +11,11 @@ Future<bool> isPidAlive(int pid) async {
     return result.exitCode == 0 &&
         (result.stdout as String).contains('"$pid"');
   }
+  // coverage:ignore-start
+  // Unix-only path; this repo's test/CI environment is Windows-only.
   final result = await Process.run('kill', ['-0', '$pid']);
   return result.exitCode == 0;
+  // coverage:ignore-end
 }
 
 /// Kills the process tree rooted at [pid]. Windows: taskkill /T /F.
@@ -23,6 +26,8 @@ Future<void> killTree(int pid, {Duration grace = const Duration(seconds: 3)}) as
     await Process.run('taskkill', ['/T', '/F', '/PID', '$pid']);
     return;
   }
+  // coverage:ignore-start
+  // Unix-only path; this repo's test/CI environment is Windows-only.
   await Process.run('kill', ['-TERM', '$pid']);
   final deadline = DateTime.now().add(grace);
   while (DateTime.now().isBefore(deadline)) {
@@ -30,4 +35,5 @@ Future<void> killTree(int pid, {Duration grace = const Duration(seconds: 3)}) as
     await Future<void>.delayed(const Duration(milliseconds: 200));
   }
   await Process.run('kill', ['-KILL', '$pid']);
+  // coverage:ignore-end
 }

@@ -136,5 +136,51 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 250));
       expect(emitted, hasLength(2));
     });
+
+    test('rebuild cancels any pending coalesce timer', () async {
+      final store = TimelineStore(
+        agentId: 'a1',
+        coalesceWindow: const Duration(milliseconds: 200),
+      );
+      store.upsertCoalesced(
+        const AssistantMessageItem(id: 'm1', text: 'a', complete: false),
+      );
+      store.upsertCoalesced(
+        const AssistantMessageItem(id: 'm1', text: 'ab', complete: false),
+      );
+
+      store.rebuild(const [UserMessageItem(id: 'u2', text: 'again')]);
+      expect(store.epoch, 2);
+      expect(store.snapshot().single.id, 'u2');
+
+      // The buffered 'ab' delta must not resurrect after rebuild.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(store.snapshot(), hasLength(1));
+      expect(store.snapshot().single.id, 'u2');
+    });
+
+    test('flushAll commits buffered coalesced updates and cancels timers',
+        () async {
+      final emitted = <TimelineItem>[];
+      final store = TimelineStore(
+        agentId: 'a1',
+        coalesceWindow: const Duration(milliseconds: 200),
+        onItem: (_, __, ___, item) => emitted.add(item),
+      );
+      store.upsertCoalesced(
+        const AssistantMessageItem(id: 'm1', text: 'a', complete: false),
+      );
+      store.upsertCoalesced(
+        const AssistantMessageItem(id: 'm1', text: 'ab', complete: false),
+      );
+      store.flushAll();
+
+      expect(emitted, hasLength(2));
+      expect((emitted.last as AssistantMessageItem).text, 'ab');
+
+      // The cancelled timer must not fire a stale flush afterwards.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(emitted, hasLength(2));
+    });
   });
 }
