@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/provider_display.dart';
 import '../state/agents_provider.dart';
 import '../state/timeline_provider.dart';
 import '../state/workspace_providers.dart';
@@ -249,9 +250,11 @@ class _TimelineRow extends ConsumerWidget {
       ).select((s) => index < s.items.length ? s.items[index] : null),
     );
     if (item == null) return const SizedBox.shrink();
+    final agent = ref.watch(agentSummaryProvider(agentId));
     return TimelineItemTile(
       key: ValueKey(item.id),
       item: item,
+      providerLabel: providerDisplayName(agent?.provider),
       onPermissionDecision: (permissionId, decision) async {
         try {
           await ref

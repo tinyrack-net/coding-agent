@@ -10,11 +10,16 @@ class TimelineItemTile extends StatelessWidget {
     super.key,
     required this.item,
     this.onPermissionDecision,
+    this.providerLabel,
   });
 
   final TimelineItem item;
   final void Function(String permissionId, String decision)?
       onPermissionDecision;
+
+  /// Friendly provider name shown on permission cards (e.g. "Codex wants to
+  /// use bash"); defaults to "The agent" when not supplied.
+  final String? providerLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +32,7 @@ class TimelineItemTile extends StatelessWidget {
       final PermissionItem permission => _PermissionCard(
           item: permission,
           onDecision: onPermissionDecision,
+          providerLabel: providerLabel,
         ),
       TurnItem(:final phase, :final errorMessage) =>
         _TurnDivider(phase: phase, errorMessage: errorMessage),
@@ -351,10 +357,11 @@ class _DiffView extends StatelessWidget {
 }
 
 class _PermissionCard extends StatelessWidget {
-  const _PermissionCard({required this.item, this.onDecision});
+  const _PermissionCard({required this.item, this.onDecision, this.providerLabel});
 
   final PermissionItem item;
   final void Function(String permissionId, String decision)? onDecision;
+  final String? providerLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -381,7 +388,7 @@ class _PermissionCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Claude wants to use ${item.toolName}',
+                    '${providerLabel ?? 'The agent'} wants to use ${item.toolName}',
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),

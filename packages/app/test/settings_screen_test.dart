@@ -18,6 +18,10 @@ class FakeDaemonClient extends DaemonClient {
   final DaemonConnectionState _state;
   final ServerHello? rejectedHelloOverride;
 
+  /// Per-request-type scriptable response; defaults to an empty payload.
+  Map<String, Object?> Function(String type, Map<String, Object?> payload)?
+      onRequest;
+
   @override
   ServerHello? get rejectedHello => rejectedHelloOverride;
 
@@ -33,7 +37,7 @@ class FakeDaemonClient extends DaemonClient {
     Map<String, Object?> payload, {
     Duration timeout = const Duration(seconds: 30),
   }) async =>
-      const {};
+      onRequest?.call(type, payload) ?? const {};
 }
 
 Future<ProviderContainer> pumpSettingsScreen(
@@ -45,7 +49,9 @@ Future<ProviderContainer> pumpSettingsScreen(
     overrides: [daemonClientProvider.overrideWithValue(client)],
   );
   addTearDown(container.dispose);
-  await tester.binding.setSurfaceSize(const Size(800, 1000));
+  // Tall enough that the AI Providers cards + Desktop section both land
+  // within the ListView's viewport/cache extent without needing a scroll.
+  await tester.binding.setSurfaceSize(const Size(800, 2200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   await tester.pumpWidget(
@@ -152,5 +158,122 @@ void main() {
 
     final after = tester.widget<SwitchListTile>(keepRunningSwitch).value;
     expect(after, isFalse);
+  });
+
+  group('AI Providers section', () {
+    testWidgets('shows all three providers with a configured indicator',
+        (tester) async {
+      final client = FakeDaemonClient()
+        ..onRequest = (type, payload) {
+          if (type == MessageTypes.providerListRequest) {
+            return {
+              'providers': [
+                const ProviderInfo(
+                  id: ProviderId.openai,
+                  displayName: 'Codex',
+                  configured: true,
+                ).toJson(),
+              ],
+            };
+          }
+          return const {};
+        };
+      await pumpSettingsScreen(tester, client);
+
+      expect(find.text('AI Providers'), findsOneWidget);
+      expect(find.text('Codex'), findsOneWidget);
+      expect(find.text('DeepSeek'), findsOneWidget);
+      expect(find.text('OpenRouter'), findsOneWidget);
+      // Only the configured provider (Codex) shows a Remove button.
+      expect(find.text('Remove'), findsOneWidget);
+    });
+
+    testWidgets('saving an API key sends provider.credential.set.request',
+        (tester) async {
+      final calls = <(String, Map<String, Object?>)>[];
+      final client = FakeDaemonClient()
+        ..onRequest = (type, payload) {
+          calls.add((type, payload));
+          return const {};
+        };
+      await pumpSettingsScreen(tester, client);
+
+      final deepseekKeyField = find.ancestor(
+        of: find.text('DeepSeek'),
+        matching: find.byType(Card),
+      );
+      await tester.enterText(
+        find.descendant(of: deepseekKeyField, matching: find.byType(TextField)),
+        'sk-deepseek-test',
+      );
+      await tester.tap(
+        find.descendant(of: deepseekKeyField, matching: find.text('Save')),
+      );
+      await tester.pumpAndSettle();
+
+      final saveCall = calls.singleWhere(
+        (c) => c.$1 == MessageTypes.providerCredentialSetRequest,
+      );
+      expect(saveCall.$2['providerId'], 'deepseek');
+      expect(saveCall.$2['apiKey'], 'sk-deepseek-test');
+    });
+
+    testWidgets('testing a connection shows the result', (tester) async {
+      final client = FakeDaemonClient()
+        ..onRequest = (type, payload) {
+          if (type == MessageTypes.providerCredentialTestRequest) {
+            return {'ok': false, 'error': 'invalid key'};
+          }
+          return const {};
+        };
+      await pumpSettingsScreen(tester, client);
+
+      final openaiCard = find.ancestor(
+        of: find.text('Codex'),
+        matching: find.byType(Card),
+      );
+      await tester.tap(
+        find.descendant(of: openaiCard, matching: find.text('Test Connection')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('invalid key'), findsOneWidget);
+    });
+
+    testWidgets('removing a configured key sends provider.credential.clear',
+        (tester) async {
+      final calls = <(String, Map<String, Object?>)>[];
+      final client = FakeDaemonClient()
+        ..onRequest = (type, payload) {
+          calls.add((type, payload));
+          if (type == MessageTypes.providerListRequest) {
+            return {
+              'providers': [
+                const ProviderInfo(
+                  id: ProviderId.openrouter,
+                  displayName: 'OpenRouter',
+                  configured: true,
+                ).toJson(),
+              ],
+            };
+          }
+          return const {};
+        };
+      await pumpSettingsScreen(tester, client);
+
+      final openrouterCard = find.ancestor(
+        of: find.text('OpenRouter'),
+        matching: find.byType(Card),
+      );
+      await tester.tap(
+        find.descendant(of: openrouterCard, matching: find.text('Remove')),
+      );
+      await tester.pumpAndSettle();
+
+      final clearCall = calls.singleWhere(
+        (c) => c.$1 == MessageTypes.providerCredentialClearRequest,
+      );
+      expect(clearCall.$2['providerId'], 'openrouter');
+    });
   });
 }

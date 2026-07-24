@@ -86,21 +86,20 @@ class StatusScreen extends ConsumerWidget {
                             Card(
                               child: ListTile(
                                 leading: Icon(
-                                  provider.available
+                                  provider.configured
                                       ? Icons.check_circle
                                       : Icons.cancel,
-                                  color: provider.available
+                                  color: provider.configured
                                       ? Colors.greenAccent
                                       : Colors.redAccent,
                                 ),
                                 title: Text(provider.displayName),
                                 subtitle: Text(
-                                  provider.available
-                                      ? '${provider.version}\n${provider.executablePath}'
+                                  provider.configured
+                                      ? '${provider.models.length} models available'
                                       : provider.unavailableReason ??
-                                          'unavailable',
+                                          'not configured',
                                 ),
-                                isThreeLine: provider.available,
                               ),
                             ),
                         ],

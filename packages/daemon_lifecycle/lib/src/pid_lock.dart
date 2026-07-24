@@ -73,6 +73,7 @@ class PidLock {
 
   Timer? _heartbeat;
   PidLockData? _held;
+  Future<void> _lastHeartbeatWrite = Future<void>.value();
 
   /// Acquires the lock exclusively. A stale lock (old heartbeat AND dead pid)
   /// is reclaimed. Throws [LockHeldException] when a live daemon holds it.
@@ -111,20 +112,28 @@ class PidLock {
   /// Rewrites the file periodically so mtime doubles as a liveness heartbeat.
   void startHeartbeat({Duration interval = const Duration(seconds: 30)}) {
     _heartbeat?.cancel();
-    _heartbeat = Timer.periodic(interval, (_) async {
-      final held = _held;
-      if (held == null) return;
-      try {
-        await File(path).writeAsString(jsonEncode(held.toJson()), flush: true);
-      } catch (_) {
-        // Best effort; staleness only kicks in after [staleAfter].
-      }
+    _heartbeat = Timer.periodic(interval, (_) {
+      _lastHeartbeatWrite = _writeHeartbeat();
     });
+  }
+
+  Future<void> _writeHeartbeat() async {
+    final held = _held;
+    if (held == null) return;
+    try {
+      await File(path).writeAsString(jsonEncode(held.toJson()), flush: true);
+    } catch (_) {
+      // Best effort; staleness only kicks in after [staleAfter].
+    }
   }
 
   Future<void> release() async {
     _heartbeat?.cancel();
     _heartbeat = null;
+    // Cancelling the timer only stops future ticks; wait out any write that
+    // was already in flight so it can't recreate the file after we delete it
+    // (or still hold it open when a caller removes the containing dir).
+    await _lastHeartbeatWrite;
     if (_held != null) {
       _held = null;
       await _deleteQuietly(File(path));

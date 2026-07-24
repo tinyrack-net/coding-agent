@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:agent_daemon/src/providers/exe_resolver.dart';
+import 'package:agent_daemon/src/providers/native/credential_store.dart';
 import 'package:agent_daemon/src/providers/provider_registry.dart';
 import 'package:agent_daemon/src/server/connection.dart';
 import 'package:agent_daemon/src/server/rpc_router.dart';
@@ -13,9 +14,11 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 void main() {
   late WsServer server;
+  late Directory tempDir;
 
   setUp(() async {
-    final registry = ProviderRegistry(ExeResolver());
+    tempDir = Directory.systemTemp.createTempSync('ws_server_test_');
+    final registry = ProviderRegistry(CredentialStore(dataDir: tempDir.path));
     final router = RpcRouter()
       ..on(MessageTypes.providerListRequest, (_, __) async {
         final providers = await registry.list();
@@ -25,7 +28,12 @@ void main() {
     await server.start(host: '127.0.0.1', port: 0);
   });
 
-  tearDown(() => server.stop());
+  tearDown(() async {
+    await server.stop();
+    try {
+      tempDir.deleteSync(recursive: true);
+    } catch (_) {}
+  });
 
   Future<(WebSocketChannel, Stream<Map<String, Object?>>)> connect() async {
     final channel =
@@ -59,7 +67,7 @@ void main() {
         .firstWhere((f) => f['type'] == 'provider.list.response');
     final list = ProviderListResponse.fromJson(
         response['payload'] as Map<String, Object?>);
-    expect(list.providers, hasLength(2));
+    expect(list.providers, hasLength(3));
 
     await channel.sink.close();
   });

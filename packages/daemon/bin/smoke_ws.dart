@@ -1,8 +1,10 @@
-/// Manual end-to-end smoke over the real WebSocket API + real claude CLI.
+/// Manual end-to-end smoke over the real WebSocket API + a real native
+/// provider (Codex/OpenAI by default). Requires `OPENAI_API_KEY`.
 ///
 /// Starts the daemon on an ephemeral port, connects like the app would,
-/// creates a fullAccess agent in a temp dir, prompts it, and prints the
-/// timeline events as they stream. Exits 0 when the turn completes.
+/// registers the API key over RPC, creates a normal-mode agent in a temp
+/// dir, prompts it, and prints the timeline events as they stream. Exits 0
+/// when the turn completes.
 library;
 
 import 'dart:async';
@@ -13,6 +15,12 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 Future<void> main() async {
+  final apiKey = Platform.environment['OPENAI_API_KEY'];
+  if (apiKey == null || apiKey.isEmpty) {
+    stderr.writeln('OPENAI_API_KEY is not set; skipping smoke_ws');
+    exit(1);
+  }
+
   final tempDir = Directory.systemTemp.createTempSync('smoke-ws-');
   final dataDir = Directory.systemTemp.createTempSync('smoke-data-');
   const port = 6899;
@@ -82,10 +90,16 @@ Future<void> main() async {
       const ClientHello(clientName: 'smoke', clientVersion: '0').toJson());
   stdout.writeln('[smoke] hello ok');
 
+  await request(MessageTypes.providerCredentialSetRequest, {
+    'providerId': 'openai',
+    'apiKey': apiKey,
+  });
+  stdout.writeln('[smoke] registered openai API key');
+
   final created = await request(MessageTypes.agentCreateRequest, {
     'cwd': tempDir.path,
-    'provider': 'claude',
-    'model': '',
+    'provider': 'openai',
+    'model': 'gpt-5.4-codex',
     'mode': 'normal',
     'title': 'ws-smoke',
   });

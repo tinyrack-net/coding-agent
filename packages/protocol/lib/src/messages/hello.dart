@@ -6,6 +6,12 @@ abstract final class MessageTypes {
   static const clientHelloRequest = 'client.hello.request';
   // providers
   static const providerListRequest = 'provider.list.request';
+  static const providerCredentialSetRequest =
+      'provider.credential.set.request';
+  static const providerCredentialClearRequest =
+      'provider.credential.clear.request';
+  static const providerCredentialTestRequest =
+      'provider.credential.test.request';
   // agents (M1+)
   static const agentCreateRequest = 'agent.create.request';
   static const agentListRequest = 'agent.list.request';

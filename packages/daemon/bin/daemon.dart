@@ -6,9 +6,10 @@ import 'package:agent_daemon/src/agent/agent_store.dart';
 import 'package:agent_daemon/src/git/git_service.dart';
 import 'package:agent_daemon/src/git/workspace_rpc.dart';
 import 'package:agent_daemon/src/store/project_store.dart';
-import 'package:agent_daemon/src/providers/claude/claude_client.dart';
-import 'package:agent_daemon/src/providers/codex/codex_client.dart';
-import 'package:agent_daemon/src/providers/exe_resolver.dart';
+import 'package:agent_daemon/src/providers/native/credential_store.dart';
+import 'package:agent_daemon/src/providers/native/native_client.dart';
+import 'package:agent_daemon/src/providers/native/openai_compatible_backend.dart';
+import 'package:agent_daemon/src/providers/native/provider_catalog.dart';
 import 'package:agent_daemon/src/providers/provider_registry.dart';
 import 'package:agent_daemon/src/server/rpc_router.dart';
 import 'package:agent_daemon/src/server/ws_server.dart';
@@ -78,14 +79,22 @@ Future<void> _run(
     exit(11);
   }
 
-  final resolver = ExeResolver();
-  final registry = ProviderRegistry(resolver);
+  final credentials = CredentialStore(dataDir: dataDir);
+  final registry = ProviderRegistry(credentials);
+  final nativeBackends = {
+    for (final entry in ProviderCatalog.all)
+      entry.id: OpenAiCompatibleBackend(catalogEntry: entry),
+  };
 
   late final WsServer server;
   final manager = AgentManager(
     clients: {
-      'claude': ClaudeClient(resolver: resolver),
-      'codex': CodexClient(resolver: resolver),
+      for (final entry in ProviderCatalog.all)
+        entry.id.name: NativeClient(
+          providerId: entry.id,
+          backend: nativeBackends[entry.id]!,
+          credentials: credentials,
+        ),
     },
     store: AgentStore(dataDir: dataDir),
     onStream: (payload) => server.broadcast(
@@ -117,6 +126,31 @@ Future<void> _run(
       final providers = await registry.list();
       return ProviderListResponse(providers: providers).toJson();
     })
+    ..on(MessageTypes.providerCredentialSetRequest, (_, payload) async {
+      final providerId = _parseProviderId(payload['providerId']);
+      final apiKey = _requireString(payload, 'apiKey');
+      await credentials.set(providerId.name, apiKey);
+      return const <String, Object?>{};
+    })
+    ..on(MessageTypes.providerCredentialClearRequest, (_, payload) async {
+      final providerId = _parseProviderId(payload['providerId']);
+      await credentials.clear(providerId.name);
+      return const <String, Object?>{};
+    })
+    ..on(MessageTypes.providerCredentialTestRequest, (_, payload) async {
+      final providerId = _parseProviderId(payload['providerId']);
+      final apiKey =
+          (payload['apiKey'] as String?) ?? await credentials.get(providerId.name);
+      if (apiKey == null || apiKey.isEmpty) {
+        return const ProviderCredentialTestResult(ok: false, error: 'no API key given')
+            .toJson();
+      }
+      final ok = await nativeBackends[providerId]!.testCredential(apiKey);
+      return ProviderCredentialTestResult(
+        ok: ok,
+        error: ok ? null : 'API key rejected by provider',
+      ).toJson();
+    })
     ..on(MessageTypes.agentCreateRequest, (_, payload) async {
       final cwd = payload['cwd'] as String?;
       if (cwd == null || cwd.isEmpty) {
@@ -124,7 +158,7 @@ Future<void> _run(
       }
       final agent = await manager.createAgent(
         cwd: cwd,
-        provider: (payload['provider'] as String?) ?? 'claude',
+        provider: (payload['provider'] as String?) ?? ProviderId.openai.name,
         model: (payload['model'] as String?) ?? '',
         mode: _parseMode(payload['mode']),
         title: payload['title'] as String?,
@@ -265,6 +299,19 @@ AgentMode _parseMode(Object? raw) {
     return AgentMode.values.byName(name);
   } catch (_) {
     throw RpcException(RpcErrorCodes.invalidPayload, 'unknown mode "$name"');
+  }
+}
+
+ProviderId _parseProviderId(Object? raw) {
+  final name = raw as String?;
+  if (name == null || name.isEmpty) {
+    throw RpcException(RpcErrorCodes.invalidPayload, 'providerId is required');
+  }
+  try {
+    return ProviderId.fromWire(name);
+  } catch (_) {
+    throw RpcException(
+        RpcErrorCodes.invalidPayload, 'unknown providerId "$name"');
   }
 }
 

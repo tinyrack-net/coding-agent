@@ -7,10 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const _claude = ProviderInfo(
-  id: ProviderId.claude,
-  displayName: 'Claude',
-  available: true,
+const _codex = ProviderInfo(
+  id: ProviderId.openai,
+  displayName: 'Codex',
+  configured: true,
   models: [
     ProviderModel(id: 'sonnet', displayName: 'Sonnet'),
     ProviderModel(id: 'opus', displayName: 'Opus'),
@@ -28,10 +28,10 @@ const _createdAgent = AgentSummary(
   createdAtMs: 1,
 );
 
-const _codex = ProviderInfo(
-  id: ProviderId.codex,
-  displayName: 'Codex',
-  available: true,
+const _deepseek = ProviderInfo(
+  id: ProviderId.deepseek,
+  displayName: 'DeepSeek',
+  configured: true,
   models: [ProviderModel(id: 'codex-model', displayName: 'Codex Model')],
 );
 
@@ -132,7 +132,7 @@ void main() {
     await pumpNewAgentDialog(tester, client);
 
     expect(
-      find.textContaining('No providers are available on this machine'),
+      find.textContaining('No providers are configured yet'),
       findsOneWidget,
     );
     expect(find.text('Create'), findsNothing);
@@ -144,7 +144,7 @@ void main() {
       ..onRequest = (type, payload) {
         if (type == MessageTypes.providerListRequest) {
           return {
-            'providers': [_claude.toJson()],
+            'providers': [_codex.toJson()],
           };
         }
         if (type == MessageTypes.projectListRequest) {
@@ -165,7 +165,7 @@ void main() {
       ..onRequest = (type, payload) {
         if (type == MessageTypes.providerListRequest) {
           return {
-            'providers': [_claude.toJson()],
+            'providers': [_codex.toJson()],
           };
         }
         return const {'projects': []};
@@ -191,7 +191,7 @@ void main() {
       ..onRequest = (type, payload) {
         if (type == MessageTypes.providerListRequest) {
           return {
-            'providers': [_claude.toJson()],
+            'providers': [_codex.toJson()],
           };
         }
         if (type == MessageTypes.projectListRequest) {
@@ -218,7 +218,7 @@ void main() {
     final created = client.requests
         .singleWhere((r) => r.$1 == MessageTypes.agentCreateRequest);
     expect(created.$2['cwd'], '/repo');
-    expect(created.$2['provider'], 'claude');
+    expect(created.$2['provider'], 'openai');
     expect(created.$2['model'], 'sonnet');
     expect(created.$2['mode'], 'normal');
     expect(created.$2['title'], 'My agent');
@@ -236,7 +236,7 @@ void main() {
       ..onRequest = (type, payload) {
         if (type == MessageTypes.providerListRequest) {
           return {
-            'providers': [_claude.toJson()],
+            'providers': [_codex.toJson()],
           };
         }
         return const {'projects': []};
@@ -266,7 +266,7 @@ void main() {
       ..onRequest = (type, payload) {
         if (type == MessageTypes.providerListRequest) {
           return {
-            'providers': [_claude.toJson()],
+            'providers': [_codex.toJson()],
           };
         }
         if (type == MessageTypes.projectListRequest) {
@@ -296,7 +296,7 @@ void main() {
       ..onRequest = (type, payload) {
         if (type == MessageTypes.providerListRequest) {
           return {
-            'providers': [_claude.toJson()],
+            'providers': [_codex.toJson()],
           };
         }
         if (type == MessageTypes.projectListRequest) {
@@ -349,7 +349,7 @@ void main() {
       ..onRequest = (type, payload) {
         if (type == MessageTypes.providerListRequest) {
           return {
-            'providers': [_claude.toJson(), _codex.toJson()],
+            'providers': [_codex.toJson(), _deepseek.toJson()],
           };
         }
         if (type == MessageTypes.projectListRequest) {
@@ -368,10 +368,10 @@ void main() {
     );
 
     await tester.tap(
-      find.widgetWithText(DropdownButtonFormField<ProviderId>, 'Claude'),
+      find.widgetWithText(DropdownButtonFormField<ProviderId>, 'Codex'),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Codex').last);
+    await tester.tap(find.text('DeepSeek').last);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Create'));
@@ -379,7 +379,7 @@ void main() {
 
     final created = client.requests
         .singleWhere((r) => r.$1 == MessageTypes.agentCreateRequest);
-    expect(created.$2['provider'], 'codex');
+    expect(created.$2['provider'], 'deepseek');
     expect(created.$2['model'], 'codex-model');
   });
 
@@ -389,7 +389,7 @@ void main() {
       ..onRequest = (type, payload) {
         if (type == MessageTypes.providerListRequest) {
           return {
-            'providers': [_claude.toJson()],
+            'providers': [_codex.toJson()],
           };
         }
         if (type == MessageTypes.projectListRequest) {
@@ -424,7 +424,7 @@ void main() {
       ..onRequest = (type, payload) {
         if (type == MessageTypes.providerListRequest) {
           return {
-            'providers': [_claude.toJson()],
+            'providers': [_codex.toJson()],
           };
         }
         if (type == MessageTypes.projectListRequest) {
@@ -498,7 +498,7 @@ void main() {
       ..onRequest = (type, payload) {
         if (type == MessageTypes.providerListRequest) {
           return {
-            'providers': [_claude.toJson()],
+            'providers': [_codex.toJson()],
           };
         }
         return const {'projects': []};
@@ -543,7 +543,7 @@ void main() {
       ..onRequest = (type, payload) {
         if (type == MessageTypes.providerListRequest) {
           return {
-            'providers': [_claude.toJson()],
+            'providers': [_codex.toJson()],
           };
         }
         if (type == MessageTypes.projectListRequest) {
@@ -585,7 +585,7 @@ void main() {
       ..onRequest = (type, payload) {
         if (type == MessageTypes.providerListRequest) {
           return {
-            'providers': [_claude.toJson()],
+            'providers': [_codex.toJson()],
           };
         }
         if (type == MessageTypes.projectListRequest) {
@@ -623,7 +623,7 @@ void main() {
       ..onRequest = (type, payload) {
         if (type == MessageTypes.providerListRequest) {
           return {
-            'providers': [_claude.toJson()],
+            'providers': [_codex.toJson()],
           };
         }
         if (type == MessageTypes.projectListRequest) {
@@ -666,7 +666,7 @@ void main() {
       ..onRequest = (type, payload) {
         if (type == MessageTypes.providerListRequest) {
           return {
-            'providers': [_claude.toJson()],
+            'providers': [_codex.toJson()],
           };
         }
         return const {'projects': []};

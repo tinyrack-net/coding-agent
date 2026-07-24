@@ -32,6 +32,7 @@ class FakeClient implements AgentClient {
     required String model,
     required AgentMode mode,
     String? sessionId,
+    List<TimelineItem> initialHistory = const [],
   }) async {
     calls.add((cwd: cwd, model: model, mode: mode, sessionId: sessionId));
     return FakeSession();
