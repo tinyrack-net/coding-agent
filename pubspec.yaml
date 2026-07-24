@@ -1,0 +1,11 @@
+name: coding_agent_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.12.0
+
+workspace:
+  - packages/protocol
+  - packages/daemon_lifecycle
+  - packages/daemon
+  - packages/app

@@ -1,0 +1,35 @@
+# Dart / Flutter
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+*.g.dart
+
+# pub workspace lockfiles are per-machine here (no published packages)
+pubspec.lock
+
+# Flutter/Dart tool state
+**/android/gradle-wrapper.jar
+**/ios/Flutter/.last_build_id
+
+# Claude Code local session state
+.claude/
+
+# IDE
+.vscode/
+*.iml
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs / scratch
+*.log
+daemon-out.log
+
+# Compiled daemon executables (rebuilt via tool/build_daemon.ps1)
+packages/daemon/build/
