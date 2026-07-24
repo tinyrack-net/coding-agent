@@ -40,3 +40,4 @@ packages/*/coverage/
 
 # Local secrets (API keys etc.)
 .env
+paseo.json
