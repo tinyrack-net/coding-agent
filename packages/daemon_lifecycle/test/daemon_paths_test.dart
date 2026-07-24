@@ -16,7 +16,9 @@ import 'package:test/test.dart';
 // in daemon_exe_resolver_test.dart. That process-level env is real and
 // controllable; only Platform.environment's in-process caching defeats
 // in-process mutation.
-final _packageRoot = Directory.current.path;
+final _packageRoot = Directory.current.path.endsWith('daemon_lifecycle')
+    ? Directory.current.path
+    : p.join(Directory.current.path, 'packages', 'daemon_lifecycle');
 final _probeScript =
     p.join(_packageRoot, 'test', 'support', 'default_data_dir_probe.dart');
 

@@ -163,7 +163,10 @@ class PidLock {
   Future<bool> _isStale(File file, PidLockData data) async {
     try {
       final age = _now().difference(file.lastModifiedSync());
-      if (age < staleAfter) return false;
+      if (age < staleAfter) {
+        if (!await _isPidAlive(data.pid)) return true;
+        return false;
+      }
     } catch (_) {
       return true;
     }

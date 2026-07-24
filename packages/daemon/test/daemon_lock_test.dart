@@ -50,8 +50,8 @@ void main() {
     );
     spawnedPids.add(process.pid);
     // Drain stdio so the child never blocks on full pipes.
-    process.stdout.transform(utf8.decoder).listen((_) {});
-    process.stderr.transform(utf8.decoder).listen((_) {});
+    process.stdout.transform(utf8.decoder).listen((data) => print('[daemon stdout] $data'));
+    process.stderr.transform(utf8.decoder).listen((data) => print('[daemon stderr] $data'));
     return process;
   }
 

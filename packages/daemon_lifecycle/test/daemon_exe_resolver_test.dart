@@ -13,7 +13,9 @@ import 'package:test/test.dart';
 // support/resolve_daemon_exe_probe.dart) with `workingDirectory` set on that
 // child process only.
 
-final _packageRoot = Directory.current.path;
+final _packageRoot = Directory.current.path.endsWith('daemon_lifecycle')
+    ? Directory.current.path
+    : p.join(Directory.current.path, 'packages', 'daemon_lifecycle');
 final _probeScript =
     p.join(_packageRoot, 'test', 'support', 'resolve_daemon_exe_probe.dart');
 
