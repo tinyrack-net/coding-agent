@@ -33,3 +33,7 @@ daemon-out.log
 
 # Compiled daemon executables (rebuilt via tool/build_daemon.ps1)
 packages/daemon/build/
+
+# Test coverage output
+coverage/
+packages/*/coverage/

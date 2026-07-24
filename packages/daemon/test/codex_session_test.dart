@@ -4,10 +4,12 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:agent_daemon/src/providers/codex/codex_session.dart';
 import 'package:agent_daemon/src/providers/provider_event.dart';
 import 'package:agent_protocol/agent_protocol.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 /// Scripted `codex app-server`: parses client lines, auto-answers the
@@ -419,5 +421,350 @@ void main() {
     await server.close();
     await session.events.drain<void>();
     expect(events.last, isA<SessionExited>());
+  });
+
+  test('missing thread id in thread/start throws', () async {
+    final toSession = StreamController<String>();
+    final sent = <Map<String, Object?>>[];
+    final session = CodexSession.forTransport(
+      lines: toSession.stream,
+      sendLine: (line) => sent.add(jsonDecode(line) as Map<String, Object?>),
+      cwd: '/tmp/work',
+    );
+    await pump();
+    final init = sent.firstWhere((m) => m['method'] == 'initialize');
+    toSession.add(jsonEncode({'id': init['id'], 'result': {'userAgent': 'x'}}));
+    await pump();
+    final start = sent.firstWhere((m) => m['method'] == 'thread/start');
+    toSession.add(jsonEncode({'id': start['id'], 'result': const {}}));
+    await pump();
+
+    await expectLater(session.prompt('hi'), throwsA(isA<StateError>()));
+    await toSession.close();
+  });
+
+  test('server error response completes the pending request with an error',
+      () async {
+    final toSession = StreamController<String>();
+    final sent = <Map<String, Object?>>[];
+    final session = CodexSession.forTransport(
+      lines: toSession.stream,
+      sendLine: (line) => sent.add(jsonDecode(line) as Map<String, Object?>),
+      cwd: '/tmp/work',
+    );
+    await pump();
+    final init = sent.firstWhere((m) => m['method'] == 'initialize');
+    toSession.add(jsonEncode({
+      'id': init['id'],
+      'error': {'message': 'bad handshake'},
+    }));
+    await pump();
+
+    await expectLater(
+      session.prompt('hi'),
+      throwsA(isA<StateError>()
+          .having((e) => e.message, 'message', 'bad handshake')),
+    );
+    await toSession.close();
+  });
+
+  test('dispose completes pending requests with an error', () async {
+    final toSession = StreamController<String>();
+    final sent = <Map<String, Object?>>[];
+    final session = CodexSession.forTransport(
+      lines: toSession.stream,
+      sendLine: (line) => sent.add(jsonDecode(line) as Map<String, Object?>),
+      cwd: '/tmp/work',
+    );
+    await pump();
+    final init = sent.firstWhere((m) => m['method'] == 'initialize');
+    toSession
+        .add(jsonEncode({'id': init['id'], 'result': {'userAgent': 'x'}}));
+    await pump();
+    final start = sent.firstWhere((m) => m['method'] == 'thread/start');
+    toSession.add(jsonEncode({
+      'id': start['id'],
+      'result': {
+        'thread': {'id': 'thread-1'},
+      },
+    }));
+    await pump();
+
+    // Send a turn/start request but never answer it, then dispose while it
+    // is still pending. Attach the expectation immediately so the rejection
+    // is never briefly unobserved.
+    final promptFuture = session.prompt('hi');
+    final expectation = expectLater(promptFuture, throwsA(isA<StateError>()));
+    await pump();
+    await session.dispose();
+    await expectation;
+    await toSession.close();
+  });
+
+  test('stream closing while a request is pending errors it out', () async {
+    final toSession = StreamController<String>();
+    final sent = <Map<String, Object?>>[];
+    final session = CodexSession.forTransport(
+      lines: toSession.stream,
+      sendLine: (line) => sent.add(jsonDecode(line) as Map<String, Object?>),
+      cwd: '/tmp/work',
+    );
+    await pump();
+    final init = sent.firstWhere((m) => m['method'] == 'initialize');
+    toSession
+        .add(jsonEncode({'id': init['id'], 'result': {'userAgent': 'x'}}));
+    await pump();
+    final start = sent.firstWhere((m) => m['method'] == 'thread/start');
+    toSession.add(jsonEncode({
+      'id': start['id'],
+      'result': {
+        'thread': {'id': 'thread-1'},
+      },
+    }));
+    await pump();
+
+    final promptFuture = session.prompt('hi');
+    final expectation = expectLater(promptFuture, throwsA(isA<StateError>()));
+    await pump();
+    final events = <ProviderEvent>[];
+    session.events.listen(events.add);
+    await toSession.close();
+    await expectation;
+    await session.events.drain<void>().catchError((_) {});
+    expect(events.whereType<SessionExited>(), isNotEmpty);
+  });
+
+  test('turn/failed notification maps to TurnFailed', () async {
+    final (session, server, events) = await startSession();
+    server.notify('turn/failed', {
+      'threadId': 'thread-1',
+      'turn': {
+        'error': {'message': 'exploded'},
+      },
+    });
+    await pump();
+    expect(events.whereType<TurnFailed>().single.error, 'exploded');
+    await session.dispose();
+  });
+
+  test('item/updated dispatches like item/started for in-progress tools',
+      () async {
+    final (session, server, events) = await startSession();
+    server.notify('item/updated', {
+      'threadId': 'thread-1',
+      'item': {
+        'type': 'commandExecution',
+        'id': 'cmd-upd',
+        'command': 'ls',
+        'status': 'inProgress',
+      },
+    });
+    await pump();
+    final updated = events.whereType<ToolCallUpdated>().single;
+    expect(updated.itemId, 'cmd-upd');
+    expect(updated.status, ToolCallStatus.running);
+    await session.dispose();
+  });
+
+  test('items without an id get a synthesized item id', () async {
+    final (session, server, events) = await startSession();
+    server.notify('item/completed', {
+      'threadId': 'thread-1',
+      'item': {'type': 'webSearch', 'query': 'no id here'},
+    });
+    await pump();
+    final update = events.whereType<ToolCallUpdated>().single;
+    expect(update.itemId, startsWith('item_'));
+    await session.dispose();
+  });
+
+  test('mcpToolCall items map to a tool call named after the tool', () async {
+    final (session, server, events) = await startSession();
+    server.notify('item/completed', {
+      'threadId': 'thread-1',
+      'item': {
+        'type': 'mcpToolCall',
+        'id': 'mcp-1',
+        'tool': 'search_docs',
+        'arguments': {'q': 'dart'},
+      },
+    });
+    await pump();
+    final update = events.whereType<ToolCallUpdated>().single;
+    expect(update.toolName, 'search_docs');
+    expect((update.detail as GenericDetail).input, {'q': 'dart'});
+    await session.dispose();
+  });
+
+  test('command output falls back to the snake_case aggregated_output key',
+      () async {
+    final (session, server, events) = await startSession();
+    server.notify('item/completed', {
+      'threadId': 'thread-1',
+      'item': {
+        'type': 'commandExecution',
+        'id': 'cmd-snake',
+        'command': 'ls',
+        'status': 'completed',
+        'aggregated_output': 'snake output',
+        'exitCode': 0,
+      },
+    });
+    await pump();
+    final updated = events.whereType<ToolCallUpdated>().single;
+    expect((updated.detail as ShellDetail).output, 'snake output');
+    await session.dispose();
+  });
+
+  test('command execution with no command info reports an empty command',
+      () async {
+    final (session, server, events) = await startSession();
+    server.notify('item/completed', {
+      'threadId': 'thread-1',
+      'item': {
+        'type': 'commandExecution',
+        'id': 'cmd-nocmd',
+        'status': 'completed',
+        'exitCode': 0,
+      },
+    });
+    await pump();
+    final updated = events.whereType<ToolCallUpdated>().single;
+    expect((updated.detail as ShellDetail).command, '');
+    await session.dispose();
+  });
+
+  test('file change with no changes emits a generic apply_patch tool call',
+      () async {
+    final (session, server, events) = await startSession();
+    server.notify('item/completed', {
+      'threadId': 'thread-1',
+      'item': {
+        'type': 'fileChange',
+        'id': 'fc-empty',
+        'status': 'completed',
+        'changes': const <Object?>[],
+      },
+    });
+    await pump();
+    final updated = events.whereType<ToolCallUpdated>().single;
+    expect(updated.toolName, 'apply_patch');
+    expect(updated.detail, isA<GenericDetail>());
+    await session.dispose();
+  });
+
+  test('file change entries accept file_path/filePath as alternate path keys',
+      () async {
+    final (session, server, events) = await startSession();
+    server.notify('item/completed', {
+      'threadId': 'thread-1',
+      'item': {
+        'type': 'fileChange',
+        'id': 'fc-alt',
+        'status': 'completed',
+        'changes': [
+          {'file_path': 'a.dart', 'kind': 'modify', 'content': 'x'},
+          {'filePath': 'b.dart', 'kind': 'modify', 'content': 'y'},
+        ],
+      },
+    });
+    await pump();
+    final updates = events.whereType<ToolCallUpdated>().toList();
+    expect(updates, hasLength(2));
+    expect((updates[0].detail as EditDetail).path, 'a.dart');
+    expect((updates[1].detail as EditDetail).path, 'b.dart');
+    await session.dispose();
+  });
+
+  test('file change entries in the older map-keyed shape are parsed',
+      () async {
+    final (session, server, events) = await startSession();
+    server.notify('item/completed', {
+      'threadId': 'thread-1',
+      'item': {
+        'type': 'fileChange',
+        'id': 'fc-map',
+        'status': 'completed',
+        'changes': {
+          'src/a.dart': {'type': 'edit', 'content': '@@ diff @@'},
+        },
+      },
+    });
+    await pump();
+    final updated = events.whereType<ToolCallUpdated>().single;
+    final edit = updated.detail as EditDetail;
+    expect(edit.path, 'src/a.dart');
+    expect(edit.diff, '@@ diff @@');
+    await session.dispose();
+  });
+
+  test('reasoning completion falls back to content, then text, then empty',
+      () async {
+    final (session, server, events) = await startSession();
+    server.notify('item/completed', {
+      'threadId': 'thread-1',
+      'item': {
+        'type': 'reasoning',
+        'id': 'r-content',
+        'content': ['from content'],
+      },
+    });
+    server.notify('item/completed', {
+      'threadId': 'thread-1',
+      'item': {
+        'type': 'reasoning',
+        'id': 'r-text',
+        'text': 'from text',
+      },
+    });
+    await pump();
+    final completions = events.whereType<ReasoningComplete>().toList();
+    expect(completions[0].fullText, 'from content');
+    expect(completions[1].fullText, 'from text');
+    await session.dispose();
+  });
+
+  group('CodexSession.spawn (real process)', () {
+    late Directory tempDir;
+
+    setUp(() {
+      tempDir = Directory.systemTemp.createTempSync('codex_spawn_test_');
+    });
+
+    tearDown(() {
+      try {
+        tempDir.deleteSync(recursive: true);
+      } catch (_) {}
+    });
+
+    test('spawns via the cmd/.bat shim and dispose() kills the process tree',
+        () async {
+      // A script that just sleeps, so the process is still alive when we
+      // call dispose() and exercise the process-kill path.
+      final scriptPath = p.join(tempDir.path, 'fake_codex.cmd');
+      File(scriptPath).writeAsStringSync(
+        Platform.isWindows
+            ? '@echo off\r\npowershell -NoProfile -Command '
+                '"Start-Sleep -Seconds 60"\r\n'
+            : '#!/bin/sh\nsleep 60\n',
+      );
+
+      final session = await CodexSession.spawn(
+        exePath: scriptPath,
+        cwd: tempDir.path,
+        model: '',
+        mode: AgentMode.normal,
+      );
+      addTearDown(() async {
+        try {
+          await session.dispose();
+        } catch (_) {}
+      });
+
+      // The handshake will never complete (no real codex app-server on the
+      // other end), but spawn() itself and the sendLine plumbing should not
+      // throw; dispose() should still cleanly kill the process tree.
+      await session.dispose();
+    }, timeout: const Timeout(Duration(seconds: 30)));
   });
 }

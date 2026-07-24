@@ -114,6 +114,63 @@ void main() {
       expect(p.equals(listed.first.path, repo), isTrue);
       expect(listed.first.isMain, isTrue);
     });
+
+    test('collides with an existing directory at the target path and picks '
+        'a numbered suffix', () async {
+      // Pre-create the directory createWorktree would normally pick first.
+      Directory(p.join(dataDir, 'worktrees', 'myproject-collide'))
+          .createSync(recursive: true);
+      final created = await service.createWorktree(repo, 'collide');
+      expect(p.basename(created.path), 'myproject-collide-2');
+    });
+
+    test('falls back to a synthesized WorktreeInfo when the newly created '
+        'worktree cannot be found by `git worktree list`', () async {
+      final svc = GitService(dataDir: dataDir, runner: const _NoListRunner());
+      final created = await svc.createWorktree(repo, 'ghost');
+      expect(created.branch, 'ghost');
+      expect(created.isMain, isFalse);
+      expect(p.equals(created.projectPath, repo), isTrue);
+      expect(p.basename(created.path), startsWith('myproject-ghost'));
+    });
+
+    test('archiving a plain directory that is not a registered worktree '
+        'fails with "not a worktree"', () async {
+      final plain = Directory(p.join(repo, 'just_a_folder'))
+        ..createSync(recursive: true);
+      await expectLater(
+        service.archiveWorktree(plain.path),
+        throwsA(isA<GitException>().having(
+          (e) => e.message,
+          'message',
+          contains('not a worktree'),
+        )),
+      );
+    });
+
+    test('tolerates worktree directories that were deleted without '
+        '`git worktree remove` when canonicalizing paths', () async {
+      final ghost = await service.createWorktree(repo, 'ghost-del');
+      final keep = await service.createWorktree(repo, 'keep-me');
+      // Remove ghost's directory by hand; git still lists its path even
+      // though it no longer exists on disk.
+      await Directory(ghost.path).delete(recursive: true);
+
+      await service.archiveWorktree(keep.path);
+      expect(Directory(keep.path).existsSync(), isFalse);
+    });
+
+    test('detached-HEAD worktrees are reported with a synthesized branch '
+        'label', () async {
+      final head = (await _git(['rev-parse', 'HEAD'], repo)).trim();
+      final target = p.join(dataDir, 'worktrees', 'detached-one');
+      await Directory(p.dirname(target)).create(recursive: true);
+      await _git(['worktree', 'add', '--detach', target, head], repo);
+
+      final listed = await service.listWorktrees(repo);
+      final detached = listed.singleWhere((w) => p.equals(w.path, target));
+      expect(detached.branch, '(detached)');
+    });
   });
 
   group('diff', () {
@@ -186,6 +243,30 @@ void main() {
         throwsA(isA<GitException>()),
       );
     });
+
+    test('untracked files larger than the cap are synthesized as binary',
+        () async {
+      File(p.join(repo, 'huge.bin'))
+          .writeAsStringSync('a' * (1024 * 1024 + 10));
+      final response = await service.diff(repo);
+      final huge = response.files.singleWhere((f) => f.path == 'huge.bin');
+      expect(huge.status, DiffFileStatus.added);
+      expect(huge.binary, isTrue);
+      expect(huge.hunks, isEmpty);
+    });
+
+    test('untracked files with CRLF line endings have the trailing \\r '
+        'stripped from each line', () async {
+      File(p.join(repo, 'crlf.txt'))
+          .writeAsBytesSync(utf8.encode('one\r\ntwo\r\n'));
+      final response = await service.diff(repo);
+      final file = response.files.singleWhere((f) => f.path == 'crlf.txt');
+      expect(
+        file.hunks[0].lines.map((l) => l.text).toList(),
+        ['one', 'two'],
+      );
+      expect(file.hunks[0].lines.every((l) => !l.text.contains('\r')), isTrue);
+    });
   });
 
   group('ProjectStore', () {
@@ -207,5 +288,30 @@ void main() {
       expect(p.equals(projects.single.path, repo), isTrue);
       expect(File(p.join(dataDir, 'projects.json')).existsSync(), isTrue);
     });
+
+    test('defaultDataDir resolves under the user home directory', () {
+      final dir = ProjectStore.defaultDataDir();
+      expect(dir, endsWith('.tinyrack-agent'));
+    });
   });
+}
+
+/// A [GitRunner] that runs every command for real except `worktree list`,
+/// which it fakes as empty — used to force [GitService.createWorktree]'s
+/// "not found by listWorktrees" fallback path.
+class _NoListRunner extends GitRunner {
+  const _NoListRunner();
+
+  @override
+  Future<GitResult> run(
+    List<String> args, {
+    required String cwd,
+    bool check = true,
+  }) async {
+    final result = await super.run(args, cwd: cwd, check: check);
+    if (args.isNotEmpty && args[0] == 'worktree' && args.length > 1 && args[1] == 'list') {
+      return const GitResult(exitCode: 0, stdout: '', stderr: '');
+    }
+    return result;
+  }
 }

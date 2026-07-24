@@ -113,5 +113,15 @@ void main() {
         isNot(AgentStore.sanitizeCwd(r'C:\proj two')),
       );
     });
+
+    test('defaultDataDir resolves under the user home directory', () {
+      final dir = AgentStore.defaultDataDir();
+      expect(dir, endsWith('.tinyrack-agent'));
+
+      // Constructing without an explicit dataDir goes through the same
+      // default-resolution path.
+      final store = AgentStore();
+      expect(store.dataDir, dir);
+    });
   });
 }

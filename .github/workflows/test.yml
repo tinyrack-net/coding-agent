@@ -1,0 +1,46 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  unit-tests:
+    name: Unit tests + coverage gate
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install workspace dependencies
+        run: flutter pub get
+
+      - name: Run tests with coverage gate (>= 95%)
+        run: pwsh tool/coverage.ps1
+
+  e2e-tests:
+    name: Integration (E2E) tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install workspace dependencies
+        run: flutter pub get
+
+      - name: Build daemon executable
+        run: pwsh tool/build_daemon.ps1
+
+      - name: Enable Windows desktop support
+        run: flutter config --enable-windows-desktop
+
+      - name: Run integration tests
+        working-directory: packages/app
+        run: flutter test integration_test -d windows

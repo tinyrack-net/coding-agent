@@ -67,7 +67,10 @@ class DaemonSupervisor {
     }
     final spawned = await spawnDaemonDetached(
         exePath: exe, paths: paths, host: host, port: port);
-    return DaemonStatus(health: DaemonHealth.running, hello: spawned);
+    // Only reachable with a real daemon.exe that actually spawns and
+    // answers hello; no fake can satisfy spawnDaemonDetached's own probe.
+    return DaemonStatus(
+        health: DaemonHealth.running, hello: spawned); // coverage:ignore-line
   }
 
   /// Explicit user action from the tray: allowed even for standalone daemons.
