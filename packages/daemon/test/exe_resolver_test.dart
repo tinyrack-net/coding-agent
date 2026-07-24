@@ -34,12 +34,15 @@ void main() {
     });
 
     test('falls back to the first match when no .exe candidate exists '
-        '(e.g. the "dart" launcher, which resolves to a shell script and a '
-        '.bat shim on Windows)', () async {
+        '(e.g. the "flutter" launcher, which the Flutter SDK ships only as '
+        'a shell script and a .bat shim on Windows, never a .exe)',
+        () async {
       final resolver = ExeResolver();
-      final path = await resolver.resolve('dart');
+      final path = await resolver.resolve('flutter');
       expect(path, isNotNull);
-      // Neither candidate for `dart` ends in `.exe`, so the resolver must
+      // Neither candidate for `flutter` ends in `.exe` on any Flutter SDK
+      // install (unlike `dart`, which does ship a real dart.exe and would
+      // make this assertion environment-dependent), so the resolver must
       // exercise its "no .exe match" fallback (orElse: lines.first).
       expect(path!.toLowerCase(), isNot(endsWith('.exe')));
     });

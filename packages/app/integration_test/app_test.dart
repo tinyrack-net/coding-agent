@@ -52,14 +52,21 @@ void main() {
       // findable Text once the field has content (avoid depending on the
       // dropdown's generic type parameter, which is ProviderId not String).
       final providerForm = find.text('Provider');
+      final hasNoProviders = noProvidersMessage.evaluate().isNotEmpty;
       expect(
-        noProvidersMessage.evaluate().isNotEmpty ||
-            providerForm.evaluate().isNotEmpty,
+        hasNoProviders || providerForm.evaluate().isNotEmpty,
         isTrue,
         reason: 'expected either the no-providers message or the '
             'provider/model form to render',
       );
-      await tester.tap(find.text('Cancel'));
+      // When no CLI provider is installed (e.g. a fresh CI runner), the form
+      // returns early with just the message and renders no Cancel button —
+      // dismiss via the dialog's barrier instead in that case.
+      if (hasNoProviders) {
+        await tester.tapAt(const Offset(10, 10));
+      } else {
+        await tester.tap(find.text('Cancel'));
+      }
       await tester.pumpAndSettle();
 
       // Status screen: same live connection, same provider RPC.
