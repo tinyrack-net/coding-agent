@@ -31,6 +31,9 @@ class ScriptedLlmBackend implements LlmBackend {
 
   @override
   Future<bool> testCredential(String apiKey) async => true;
+
+  @override
+  Future<List<ProviderModel>> fetchModels(String apiKey) async => const [];
 }
 
 Stream<LlmStreamEvent> _fixed(List<LlmStreamEvent> events) =>

@@ -6,6 +6,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:agent_protocol/agent_protocol.dart';
 import 'package:http/http.dart' as http;
 
 import 'llm_backend.dart';
@@ -121,6 +122,41 @@ class OpenAiCompatibleBackend implements LlmBackend {
       return response.statusCode == 200;
     } catch (_) {
       return false;
+    }
+  }
+
+  @override
+  Future<List<ProviderModel>> fetchModels(String apiKey) async {
+    try {
+      final response = await _http
+          .get(
+            Uri.parse('${catalogEntry.baseUrl}/models'),
+            headers: {
+              'Authorization': 'Bearer $apiKey',
+              ...catalogEntry.extraHeaders,
+            },
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode != 200) return catalogEntry.models;
+
+      final body = jsonDecode(response.body) as Map<String, Object?>;
+      final data = body['data'] as List?;
+      if (data == null || data.isEmpty) return catalogEntry.models;
+
+      final models = <ProviderModel>[];
+      for (final item in data) {
+        if (item is Map<String, Object?>) {
+          final id = item['id'] as String?;
+          final name = (item['name'] as String?) ?? id;
+          if (id != null && id.isNotEmpty) {
+            models.add(ProviderModel(id: id, displayName: name ?? id));
+          }
+        }
+      }
+      return models.isNotEmpty ? models : catalogEntry.models;
+    } catch (_) {
+      return catalogEntry.models;
     }
   }
 

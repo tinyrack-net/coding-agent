@@ -4,6 +4,8 @@
 /// tool-call loop never needs to know which backend it's talking to.
 library;
 
+import 'package:agent_protocol/agent_protocol.dart';
+
 sealed class LlmMessage {
   const LlmMessage();
 }
@@ -111,4 +113,7 @@ abstract interface class LlmBackend {
 
   /// Lightweight call to confirm [apiKey] is valid for this provider.
   Future<bool> testCredential(String apiKey);
+
+  /// Fetches available models dynamically from the provider API.
+  Future<List<ProviderModel>> fetchModels(String apiKey);
 }

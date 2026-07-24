@@ -83,7 +83,14 @@ class CredentialStore {
         await file.delete();
       } catch (_) {}
     }
-    await tmp.rename(file.path);
+    try {
+      await tmp.rename(file.path);
+    } catch (_) {
+      await tmp.copy(file.path);
+      try {
+        await tmp.delete();
+      } catch (_) {}
+    }
   }
 
   // --- DPAPI (current-user scoped) ---
