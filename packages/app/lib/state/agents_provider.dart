@@ -144,6 +144,23 @@ class AgentActions {
         'permissionId': permissionId,
         'decision': decision,
       });
+
+  /// Wipe every agent's conversation state on the daemon (timeline,
+  /// provider session id, in-memory session). Used by the "Reset all data"
+  /// settings action. Returns the number of agents the daemon reported
+  /// as affected.
+  Future<int> clearConversations() async {
+    final res = await _client.request(
+      MessageTypes.agentConversationClearRequest,
+      const {},
+    );
+    final cleared = AgentConversationClearResponse.fromJson(res).cleared;
+    // The daemon's session-id-bump + timeline-clear may take a moment to
+    // round-trip through the broadcast state event; the most reliable local
+    // signal is to re-list, so the sidebar shows the wiped summaries.
+    await _ref.read(agentsProvider.notifier).refresh();
+    return cleared;
+  }
 }
 
 final agentActionsProvider = Provider<AgentActions>(AgentActions.new);

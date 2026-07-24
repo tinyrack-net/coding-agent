@@ -176,4 +176,18 @@ void main() {
       expect(decoded.items, isEmpty);
     });
   });
+
+  group('AgentConversationClearResponse', () {
+    test('round-trips the cleared count', () {
+      const response = AgentConversationClearResponse(cleared: 3);
+      final decoded =
+          AgentConversationClearResponse.fromJson(roundTrip(response.toJson()));
+      expect(decoded.cleared, 3);
+    });
+
+    test('fromJson defaults to 0 when cleared is missing', () {
+      final decoded = AgentConversationClearResponse.fromJson(const {});
+      expect(decoded.cleared, 0);
+    });
+  });
 }

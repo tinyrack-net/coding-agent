@@ -238,6 +238,66 @@ class AgentManager {
   Future<void> respondPermission(String permissionId, String decision) =>
       broker.respond(permissionId, decision);
 
+  /// Wipe the in-memory and persisted conversation state for one or every
+  /// agent. Returns the number of agents actually affected.
+  ///
+  /// For each affected agent this: tears down its live session, cancels any
+  /// pending permission prompts, drops the timeline (bumping the epoch so
+  /// stale clients refetch an empty list), nulls the provider session id so
+  /// the next prompt starts a fresh provider-side conversation, and writes
+  /// the wiped state to disk.
+  Future<int> clearConversations({String? agentId}) async {
+    final targets = <AgentRuntime>[];
+    for (final r in _runtimes.values) {
+      if (agentId == null || r.summary.agentId == agentId) {
+        targets.add(r);
+      }
+    }
+    for (final runtime in targets) {
+      // Tear down the live session, if any.
+      await runtime.sessionSub?.cancel();
+      runtime.sessionSub = null;
+      final session = runtime.session;
+      runtime.session = null;
+      // Drop any pending permission prompts for this agent.
+      await broker.autoDenyForAgent(runtime.summary.agentId);
+      await session?.dispose();
+
+      // Drop accumulated streaming text and turn state.
+      runtime.textBuffers.clear();
+      runtime.currentTurnId = null;
+      runtime.interruptRequested = false;
+
+      // Wipe the timeline (bumps epoch, clears items).
+      runtime.timeline.clear();
+
+      // Null the session id so the next prompt starts a fresh provider
+      // session, and force run state back to idle. We can't go through
+      // `copyWith` here because its `String? sessionId ?? this.sessionId`
+      // pattern can't represent "clear the field" — build the summary
+      // directly with all the original fields swapped.
+      final s = runtime.summary;
+      runtime.summary = AgentSummary(
+        agentId: s.agentId,
+        title: s.title,
+        cwd: s.cwd,
+        provider: s.provider,
+        model: s.model,
+        mode: s.mode,
+        runState: AgentRunState.idle,
+        createdAtMs: s.createdAtMs,
+        sessionId: null,
+      );
+
+      _persist(runtime);
+      _broadcastState(runtime);
+    }
+    // Flush debounced writes immediately so a quit right after the reset
+    // doesn't lose the wiped state to disk.
+    await _store.flush();
+    return targets.length;
+  }
+
   Future<void> dispose() async {
     for (final runtime in _runtimes.values) {
       await runtime.sessionSub?.cancel();

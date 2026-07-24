@@ -156,3 +156,18 @@ final class TimelineFetchResponse {
         'items': items.map((i) => i.toJson()).toList(),
       };
 }
+
+/// Response of `agent.conversation.clear.request`. [cleared] is the number
+/// of agents whose timeline + session was wiped (0 if no agent matched).
+final class AgentConversationClearResponse {
+  const AgentConversationClearResponse({required this.cleared});
+
+  final int cleared;
+
+  static AgentConversationClearResponse fromJson(Map<String, Object?> json) =>
+      AgentConversationClearResponse(
+        cleared: (json['cleared'] as num?)?.toInt() ?? 0,
+      );
+
+  Map<String, Object?> toJson() => {'cleared': cleared};
+}

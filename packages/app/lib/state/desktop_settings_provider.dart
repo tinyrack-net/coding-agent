@@ -79,6 +79,39 @@ class DesktopSettingsNotifier extends Notifier<DesktopSettings> {
       // Applies for this session even if persistence fails.
     }
   }
+
+  /// Restores defaults: turns off OS-level auto-start (if applicable) and
+  /// forgets the persisted `keepRunningAfterQuit` choice. Use from a
+  /// destructive flow that has already confirmed with the user.
+  Future<void> reset() async {
+    if (isDesktopShell) {
+      try {
+        if (await launchAtStartup.isEnabled()) {
+          await launchAtStartup.disable();
+        }
+      } catch (_) {
+        // Fall through: we'll still reset the in-memory state and prefs.
+      }
+    }
+    // Reflect whatever the OS actually reports for auto-start (could differ
+    // from the requested value if the platform call failed silently).
+    var autoStart = state.autoStartAtLogin;
+    if (isDesktopShell) {
+      try {
+        autoStart = await launchAtStartup.isEnabled();
+      } catch (_) {}
+    }
+    state = DesktopSettings(
+      autoStartAtLogin: autoStart,
+      keepRunningAfterQuit: true,
+    );
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_keepRunningKey);
+    } catch (_) {
+      // State is already reset for this session even if persistence fails.
+    }
+  }
 }
 
 final desktopSettingsProvider =

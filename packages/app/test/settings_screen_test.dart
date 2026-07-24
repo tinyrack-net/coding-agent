@@ -276,4 +276,237 @@ void main() {
       expect(clearCall.$2['providerId'], 'openrouter');
     });
   });
+
+  group('Reset all data section', () {
+    // The section's button and the confirmation dialog share the same
+    // "Reset all data" label, so locate the section button via the
+    // description text that's unique to the reset card.
+    Finder sectionResetButton() => find.descendant(
+          of: find.ancestor(
+            of: find.textContaining('agent timelines'),
+            matching: find.byType(Card),
+          ),
+          matching: find.byType(FilledButton),
+        );
+
+    testWidgets('shows the destructive card with a confirmation dialog',
+        (tester) async {
+      await pumpSettingsScreen(tester, FakeDaemonClient());
+
+      // The reset card describes the action and offers a button.
+      expect(find.textContaining('Reset all data'), findsWidgets);
+      expect(find.textContaining('agent timelines'), findsOneWidget);
+    });
+
+    testWidgets('cancel leaves app state untouched', (tester) async {
+      // pumpSettingsScreen wipes mock prefs, so seed non-default values
+      // through the notifier instead.
+      final calls = <(String, Map<String, Object?>)>[];
+      final client = FakeDaemonClient()
+        ..onRequest = (type, payload) {
+          calls.add((type, payload));
+          if (type == MessageTypes.providerListRequest) {
+            return {
+              'providers': [
+                const ProviderInfo(
+                  id: ProviderId.openai,
+                  displayName: 'Codex',
+                  configured: true,
+                ).toJson(),
+              ],
+            };
+          }
+          return const {};
+        };
+      final container = await pumpSettingsScreen(tester, client);
+      await container.read(connectionSettingsProvider.notifier).save(
+            host: '10.9.9.9',
+            port: 7777,
+            token: 'keep-me',
+          );
+
+      await tester.tap(sectionResetButton());
+      await tester.pumpAndSettle();
+
+      // Dialog is showing.
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('Reset all data?'), findsOneWidget);
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // No clear RPC was sent, settings still point at the seeded host.
+      expect(
+        calls.where(
+          (c) => c.$1 == MessageTypes.providerCredentialClearRequest,
+        ),
+        isEmpty,
+      );
+      expect(container.read(connectionSettingsProvider).host, '10.9.9.9');
+      expect(container.read(connectionSettingsProvider).port, 7777);
+      expect(container.read(connectionSettingsProvider).token, 'keep-me');
+    });
+
+    testWidgets(
+        'confirming resets local settings and clears every configured key',
+        (tester) async {
+      final calls = <(String, Map<String, Object?>)>[];
+      final client = FakeDaemonClient()
+        ..onRequest = (type, payload) {
+          calls.add((type, payload));
+          if (type == MessageTypes.providerListRequest) {
+            return {
+              'providers': [
+                const ProviderInfo(
+                  id: ProviderId.openai,
+                  displayName: 'Codex',
+                  configured: true,
+                ).toJson(),
+                const ProviderInfo(
+                  id: ProviderId.deepseek,
+                  displayName: 'DeepSeek',
+                  configured: false,
+                ).toJson(),
+                const ProviderInfo(
+                  id: ProviderId.openrouter,
+                  displayName: 'OpenRouter',
+                  configured: true,
+                ).toJson(),
+              ],
+            };
+          }
+          if (type == MessageTypes.agentConversationClearRequest) {
+            return {'cleared': 2};
+          }
+          if (type == MessageTypes.agentListRequest) {
+            // Return two agents so the snackbar count matches the response.
+            return {
+              'agents': [
+                const AgentSummary(
+                  agentId: 'a1',
+                  title: 'A',
+                  cwd: 'C:/r',
+                  provider: 'openai',
+                  model: 'm',
+                  mode: AgentMode.normal,
+                  runState: AgentRunState.idle,
+                  createdAtMs: 1,
+                ).toJson(),
+                const AgentSummary(
+                  agentId: 'a2',
+                  title: 'B',
+                  cwd: 'C:/r',
+                  provider: 'openai',
+                  model: 'm',
+                  mode: AgentMode.normal,
+                  runState: AgentRunState.idle,
+                  createdAtMs: 2,
+                ).toJson(),
+              ],
+            };
+          }
+          return const {};
+        };
+      final container = await pumpSettingsScreen(tester, client);
+      await container.read(connectionSettingsProvider.notifier).save(
+            host: '10.9.9.9',
+            port: 7777,
+            token: 'keep-me',
+          );
+
+      await tester.tap(sectionResetButton());
+      await tester.pumpAndSettle();
+
+      // Confirm inside the dialog (the only FilledButton there).
+      final confirmButton = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(FilledButton),
+      );
+      expect(confirmButton, findsOneWidget);
+      await tester.tap(confirmButton);
+      await tester.pumpAndSettle();
+
+      // Local settings snap back to defaults.
+      expect(container.read(connectionSettingsProvider),
+          const ConnectionSettings());
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.containsKey('daemon.host'), isFalse);
+      expect(prefs.containsKey('daemon.port'), isFalse);
+      expect(prefs.containsKey('daemon.token'), isFalse);
+
+      // A clear RPC was sent for each CONFIGURED provider, not for the
+      // unconfigured DeepSeek entry.
+      final clearCalls = calls
+          .where((c) => c.$1 == MessageTypes.providerCredentialClearRequest)
+          .toList();
+      final clearedIds = clearCalls
+          .map((c) => c.$2['providerId'])
+          .toSet();
+      expect(clearedIds, {'openai', 'openrouter'});
+
+      // The agent.conversation.clear RPC was sent with an empty payload
+      // (means "wipe every agent").
+      final convCalls = calls
+          .where((c) => c.$1 == MessageTypes.agentConversationClearRequest)
+          .toList();
+      expect(convCalls, hasLength(1));
+      expect(convCalls.single.$2, isEmpty);
+
+      // The success snackbar reports the cleared conversation count.
+      expect(
+        find.text('All data has been reset (2 conversations wiped).'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        'conversation-clear failure surfaces in the snackbar but the local '
+        'reset still completes', (tester) async {
+      final calls = <(String, Map<String, Object?>)>[];
+      final client = FakeDaemonClient()
+        ..onRequest = (type, payload) {
+          calls.add((type, payload));
+          if (type == MessageTypes.providerListRequest) {
+            return const {'providers': []};
+          }
+          if (type == MessageTypes.agentConversationClearRequest) {
+            throw StateError('daemon offline');
+          }
+          return const {};
+        };
+      final container = await pumpSettingsScreen(tester, client);
+      await container.read(connectionSettingsProvider.notifier).save(
+            host: '10.9.9.9',
+            port: 7777,
+          );
+
+      await tester.tap(sectionResetButton());
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(FilledButton),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Local settings still reset.
+      expect(
+          container.read(connectionSettingsProvider), const ConnectionSettings());
+      // The snackbar mentions the conversation failure.
+      expect(
+        find.textContaining('Some daemon-side items could not be cleared'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('conversations: Bad state: daemon offline'),
+          findsOneWidget);
+      // The RPC was attempted.
+      expect(
+        calls.where(
+          (c) => c.$1 == MessageTypes.agentConversationClearRequest,
+        ),
+        hasLength(1),
+      );
+    });
+  });
 }

@@ -97,4 +97,35 @@ void main() {
       isFalse,
     );
   });
+
+  test('reset() restores defaults and clears the persisted keepRunning key',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'desktop.keepRunningAfterQuit': false,
+    });
+    final container = makeContainer();
+    container.read(desktopSettingsProvider);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    // Sanity: persisted false loaded into state.
+    expect(
+      container.read(desktopSettingsProvider).keepRunningAfterQuit,
+      isFalse,
+    );
+
+    await container.read(desktopSettingsProvider.notifier).reset();
+
+    // Defaults restored.
+    expect(
+      container.read(desktopSettingsProvider).keepRunningAfterQuit,
+      isTrue,
+    );
+    expect(
+      container.read(desktopSettingsProvider).autoStartAtLogin,
+      isFalse,
+    );
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.containsKey('desktop.keepRunningAfterQuit'), isFalse);
+  });
 }

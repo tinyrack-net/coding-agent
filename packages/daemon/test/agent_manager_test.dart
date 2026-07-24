@@ -506,4 +506,99 @@ void main() {
     final turn = streamed.map((s) => s.item).whereType<TurnItem>().last;
     expect(turn.phase, TurnPhase.canceled);
   });
+
+  test('clearConversations() wipes every agent, nulls sessionId, persists',
+      () async {
+    final a = await createAgent();
+    final b = await createAgent();
+    final sa = client.sessions.first;
+    final sb = client.sessions.last;
+    sa.emit(const SessionStarted(sessionId: 'sess-a'));
+    sb.emit(const SessionStarted(sessionId: 'sess-b'));
+    await pumpEventQueue();
+    await manager.prompt(a.agentId, 'hi A');
+    await manager.prompt(b.agentId, 'hi B');
+    sa.emit(const AssistantMessageComplete(itemId: 'x', fullText: 'reply A'));
+    sb.emit(const AssistantMessageComplete(itemId: 'y', fullText: 'reply B'));
+    await pumpEventQueue();
+
+    // Pre-condition: both agents have populated timelines and session ids.
+    expect(manager.fetchTimeline(a.agentId).items, isNotEmpty);
+    expect(manager.fetchTimeline(b.agentId).items, isNotEmpty);
+    expect(
+      manager.list().map((s) => s.sessionId).toSet(),
+      {'sess-a', 'sess-b'},
+    );
+    final stateCountBefore = states.length;
+
+    final cleared = await manager.clearConversations();
+    expect(cleared, 2);
+
+    // Sessions are torn down.
+    expect(sa.disposed, isTrue);
+    expect(sb.disposed, isTrue);
+
+    // Each agent's timeline is empty under a fresh epoch.
+    for (final id in [a.agentId, b.agentId]) {
+      final snapshot = manager.fetchTimeline(id);
+      expect(snapshot.items, isEmpty);
+      expect(snapshot.epoch, greaterThan(1));
+      expect(snapshot.lastSeq, 0);
+    }
+
+    // Summary session ids are nulled and run state is idle.
+    final after = {for (final s in manager.list()) s.agentId: s};
+    expect(after[a.agentId]!.sessionId, isNull);
+    expect(after[b.agentId]!.sessionId, isNull);
+    expect(after[a.agentId]!.runState, AgentRunState.idle);
+    expect(after[b.agentId]!.runState, AgentRunState.idle);
+
+    // A state broadcast was emitted for each agent.
+    final newStates = states.sublist(stateCountBefore);
+    expect(newStates.map((s) => s.agent.agentId).toSet(), {a.agentId, b.agentId});
+
+    // A fresh manager reading from the same dataDir sees the wiped state:
+    // both agents still exist (createdAtMs preserved) but timelines are empty
+    // and session ids are gone.
+    final manager2 = AgentManager(
+      clients: {'claude': client},
+      store: AgentStore(dataDir: tempDir.path),
+    );
+    await manager2.load();
+    expect(manager2.list(), hasLength(2));
+    for (final s in manager2.list()) {
+      expect(s.sessionId, isNull);
+      expect(manager2.fetchTimeline(s.agentId).items, isEmpty);
+    }
+    await manager2.dispose();
+  });
+
+  test('clearConversations(agentId:) only wipes the matching agent', () async {
+    final a = await createAgent();
+    final b = await createAgent();
+    final sa = client.sessions.first;
+    final sb = client.sessions.last;
+    sa.emit(const SessionStarted(sessionId: 'sess-a'));
+    sb.emit(const SessionStarted(sessionId: 'sess-b'));
+    await pumpEventQueue();
+    await manager.prompt(a.agentId, 'hi A');
+    await manager.prompt(b.agentId, 'hi B');
+    await pumpEventQueue();
+    expect(manager.fetchTimeline(a.agentId).items, isNotEmpty);
+    expect(manager.fetchTimeline(b.agentId).items, isNotEmpty);
+
+    final cleared = await manager.clearConversations(agentId: a.agentId);
+    expect(cleared, 1);
+    expect(sa.disposed, isTrue);
+    expect(sb.disposed, isFalse);
+    expect(manager.fetchTimeline(a.agentId).items, isEmpty);
+    expect(manager.fetchTimeline(b.agentId).items, isNotEmpty);
+  });
+
+  test('clearConversations() with no agents returns 0 and is a no-op',
+      () async {
+    expect(await manager.clearConversations(), 0);
+    expect(states, isEmpty);
+    expect(streamed, isEmpty);
+  });
 }

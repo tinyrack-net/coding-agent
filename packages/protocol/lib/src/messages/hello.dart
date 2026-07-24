@@ -20,6 +20,11 @@ abstract final class MessageTypes {
   static const agentSetModeRequest = 'agent.set_mode.request';
   static const agentArchiveRequest = 'agent.archive.request';
   static const agentTimelineFetchRequest = 'agent.timeline.fetch.request';
+  // Wipe persisted + in-memory conversation state. Request payload is
+  // empty (clear every agent) or `{agentId}` (clear one). Response is
+  // [AgentConversationClearResponse] with the number of affected agents.
+  static const agentConversationClearRequest =
+      'agent.conversation.clear.request';
   // broadcast events
   static const agentStreamEvent = 'agent.stream';
   static const agentStateEvent = 'agent.state';

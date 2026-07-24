@@ -75,6 +75,22 @@ class ConnectionSettingsNotifier extends Notifier<ConnectionSettings> {
       // Settings still apply for this session even if persistence fails.
     }
   }
+
+  /// Restores defaults and clears any persisted host/port/token. The
+  /// `daemonClientProvider` rebuilds from the new state, which kicks a
+  /// reconnect — call from a destructive flow that has already confirmed
+  /// with the user.
+  Future<void> reset() async {
+    state = const ConnectionSettings();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_hostKey);
+      await prefs.remove(_portKey);
+      await prefs.remove(_tokenKey);
+    } catch (_) {
+      // State is already reset for this session even if persistence fails.
+    }
+  }
 }
 
 final connectionSettingsProvider =

@@ -125,4 +125,28 @@ void main() {
     expect(loaded.host, 'saved-host');
     expect(loaded.port, 4321);
   });
+
+  test('reset() restores defaults and clears persisted keys', () async {
+    SharedPreferences.setMockInitialValues({
+      'daemon.host': '10.0.0.99',
+      'daemon.port': 1234,
+      'daemon.token': 'secret',
+    });
+    final container = makeContainer();
+    container.read(connectionSettingsProvider);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    // Sanity: persisted values loaded into state.
+    expect(container.read(connectionSettingsProvider).host, '10.0.0.99');
+
+    await container.read(connectionSettingsProvider.notifier).reset();
+
+    expect(container.read(connectionSettingsProvider),
+        const ConnectionSettings());
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.containsKey('daemon.host'), isFalse);
+    expect(prefs.containsKey('daemon.port'), isFalse);
+    expect(prefs.containsKey('daemon.token'), isFalse);
+  });
 }

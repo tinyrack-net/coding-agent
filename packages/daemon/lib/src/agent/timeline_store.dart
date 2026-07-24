@@ -101,6 +101,21 @@ class TimelineStore {
     }
   }
 
+  /// Wipe every item and bump the epoch so stale-epoch clients refetch and
+  /// see an empty timeline. Used by `AgentManager.clearConversations` to
+  /// implement the user-facing "reset conversation" action.
+  void clear() {
+    for (final t in _timers.values) {
+      t.cancel();
+    }
+    _timers.clear();
+    _pending.clear();
+    _entries.clear();
+    _byId.clear();
+    _epoch += 1;
+    _lastSeq = 0;
+  }
+
   /// Flush any buffered coalesced updates and cancel timers.
   void flushAll() {
     for (final t in _timers.values) {
