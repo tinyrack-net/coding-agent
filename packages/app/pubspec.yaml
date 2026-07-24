@@ -14,6 +14,8 @@ dependencies:
     path: ../protocol
   daemon_lifecycle:
     path: ../daemon_lifecycle
+  agent_daemon:
+    path: ../daemon
   flutter_riverpod: ^3.0.3
   go_router: ^17.0.0
   web_socket_channel: ^3.0.0

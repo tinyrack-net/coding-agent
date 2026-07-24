@@ -21,6 +21,12 @@ final class DaemonStatus {
   bool get isRunning => health == DaemonHealth.running;
 }
 
+typedef DaemonFallbackSpawner = Future<ServerHello> Function({
+  required DaemonPaths paths,
+  required String host,
+  required int port,
+});
+
 /// App-side façade over probe/spawn/stop with the version-replacement policy.
 class DaemonSupervisor {
   DaemonSupervisor({
@@ -28,12 +34,14 @@ class DaemonSupervisor {
     this.host = '127.0.0.1',
     this.port = 6868,
     this.bundledVersion = versions.daemonVersion,
+    this.fallbackSpawner,
   }) : paths = paths ?? DaemonPaths();
 
   final DaemonPaths paths;
   final String host;
   final int port;
   final String bundledVersion;
+  final DaemonFallbackSpawner? fallbackSpawner;
 
   Future<DaemonStatus> status() async {
     final hello = await probeDaemon(host, port);
@@ -51,7 +59,7 @@ class DaemonSupervisor {
   /// - healthy + same version → reuse
   /// - healthy + desktop-managed + different version → stop, spawn bundled
   /// - healthy + standalone (any version) → reuse untouched
-  /// - not running → spawn bundled
+  /// - not running → spawn bundled (or fallback spawner if exe not found)
   Future<DaemonStatus> ensureRunning() async {
     final hello = await probeDaemon(host, port);
     if (hello != null) {
@@ -61,14 +69,18 @@ class DaemonSupervisor {
       await stopDaemon(paths: paths, host: host, port: port);
     }
     final exe = await resolveDaemonExe();
-    if (exe == null) {
+    final ServerHello spawned;
+    if (exe != null) {
+      spawned = await spawnDaemonDetached(
+          exePath: exe, paths: paths, host: host, port: port);
+    } else if (fallbackSpawner != null) {
+      spawned = await fallbackSpawner!(
+          paths: paths, host: host, port: port);
+    } else {
       throw DaemonSpawnException(
           'daemon executable not found (bundled, dev build, or PATH)');
     }
-    final spawned = await spawnDaemonDetached(
-        exePath: exe, paths: paths, host: host, port: port);
-    // Only reachable with a real daemon.exe that actually spawns and
-    // answers hello; no fake can satisfy spawnDaemonDetached's own probe.
+    // Only reachable with a real daemon or fallback spawner that satisfies hello probe.
     return DaemonStatus(
         health: DaemonHealth.running, hello: spawned); // coverage:ignore-line
   }

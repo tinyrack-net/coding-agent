@@ -1,3 +1,4 @@
+import 'package:agent_daemon/agent_daemon.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -16,6 +17,7 @@ final daemonSupervisorFactoryProvider =
   (_) => (settings) => DaemonSupervisor(
         host: settings.host,
         port: settings.port,
+        fallbackSpawner: spawnEmbeddedDaemon,
       ),
 );
 

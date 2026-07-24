@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:agent_daemon/agent_daemon.dart';
 import 'package:agent_daemon/src/agent/agent_manager.dart';
 import 'package:agent_daemon/src/agent/agent_store.dart';
 import 'package:agent_daemon/src/git/git_service.dart';
@@ -54,7 +55,6 @@ Future<void> _run(
   final token = _argValue(args, '--token');
   final dataDir = _argValue(args, '--data-dir');
   final desktopManaged = Platform.environment[desktopManagedEnvVar] == '1';
-  final startedAt = DateTime.now();
 
   Future<void> flushLog() async {
     try {
@@ -63,233 +63,40 @@ Future<void> _run(
     } catch (_) {}
   }
 
-  final lock = PidLock(paths.lockFile);
+  DaemonServerHandle handle;
   try {
-    await lock.acquire(PidLockData(
-      pid: pid,
-      startedAtMs: startedAt.millisecondsSinceEpoch,
+    handle = await startDaemonServer(
+      paths: paths,
       host: host,
       port: port,
-      version: daemonVersion,
+      token: token,
+      dataDir: dataDir,
       desktopManaged: desktopManaged,
-    ));
-  } on LockHeldException catch (e) {
-    log('already running (pid ${e.existing.pid} port ${e.existing.port})');
+      log: log,
+      onShutdownRequested: () async {
+        await flushLog();
+        exit(0);
+      },
+    );
+  } on LockHeldException {
     await flushLog();
     exit(11);
-  }
-
-  final credentials = CredentialStore(dataDir: dataDir);
-  final registry = ProviderRegistry(credentials);
-  final nativeBackends = {
-    for (final entry in ProviderCatalog.all)
-      entry.id: OpenAiCompatibleBackend(catalogEntry: entry),
-  };
-
-  late final WsServer server;
-  final manager = AgentManager(
-    clients: {
-      for (final entry in ProviderCatalog.all)
-        entry.id.name: NativeClient(
-          providerId: entry.id,
-          backend: nativeBackends[entry.id]!,
-          credentials: credentials,
-        ),
-    },
-    store: AgentStore(dataDir: dataDir),
-    onStream: (payload) => server.broadcast(
-      RpcEvent(type: MessageTypes.agentStreamEvent, payload: payload.toJson()),
-    ),
-    onState: (payload) => server.broadcast(
-      RpcEvent(type: MessageTypes.agentStateEvent, payload: payload.toJson()),
-    ),
-    onPermissionRequested: (agentId, permissionId, toolName, detail) =>
-        server.broadcast(RpcEvent(
-      type: MessageTypes.permissionRequestedEvent,
-      payload: {
-        'agentId': agentId,
-        'permissionId': permissionId,
-        'toolName': toolName,
-        'detail': detail.toJson(),
-      },
-    )),
-    onPermissionResolved: (permissionId, decision) =>
-        server.broadcast(RpcEvent(
-      type: MessageTypes.permissionResolvedEvent,
-      payload: {'permissionId': permissionId, 'decision': decision.name},
-    )),
-  );
-  await manager.load();
-
-  final router = RpcRouter()
-    ..on(MessageTypes.providerListRequest, (_, __) async {
-      final providers = await registry.list();
-      return ProviderListResponse(providers: providers).toJson();
-    })
-    ..on(MessageTypes.providerCredentialSetRequest, (_, payload) async {
-      final providerId = _parseProviderId(payload['providerId']);
-      final apiKey = _requireString(payload, 'apiKey');
-      await credentials.set(providerId.name, apiKey);
-      return const <String, Object?>{};
-    })
-    ..on(MessageTypes.providerCredentialClearRequest, (_, payload) async {
-      final providerId = _parseProviderId(payload['providerId']);
-      await credentials.clear(providerId.name);
-      return const <String, Object?>{};
-    })
-    ..on(MessageTypes.providerCredentialTestRequest, (_, payload) async {
-      final providerId = _parseProviderId(payload['providerId']);
-      final apiKey =
-          (payload['apiKey'] as String?) ?? await credentials.get(providerId.name);
-      if (apiKey == null || apiKey.isEmpty) {
-        return const ProviderCredentialTestResult(ok: false, error: 'no API key given')
-            .toJson();
-      }
-      final ok = await nativeBackends[providerId]!.testCredential(apiKey);
-      return ProviderCredentialTestResult(
-        ok: ok,
-        error: ok ? null : 'API key rejected by provider',
-      ).toJson();
-    })
-    ..on(MessageTypes.agentCreateRequest, (_, payload) async {
-      final cwd = payload['cwd'] as String?;
-      if (cwd == null || cwd.isEmpty) {
-        throw RpcException(RpcErrorCodes.invalidPayload, 'cwd is required');
-      }
-      final agent = await manager.createAgent(
-        cwd: cwd,
-        provider: (payload['provider'] as String?) ?? ProviderId.openai.name,
-        model: (payload['model'] as String?) ?? '',
-        mode: _parseMode(payload['mode']),
-        title: payload['title'] as String?,
-      );
-      return {'agent': agent.toJson()};
-    })
-    ..on(MessageTypes.agentListRequest, (_, __) {
-      return {'agents': manager.list().map((a) => a.toJson()).toList()};
-    })
-    ..on(MessageTypes.agentPromptRequest, (_, payload) {
-      final agentId = _requireString(payload, 'agentId');
-      final text = _requireString(payload, 'text');
-      // Fire and forget: turn errors surface as timeline ErrorItems.
-      unawaited(manager.prompt(agentId, text));
-      return const <String, Object?>{};
-    })
-    ..on(MessageTypes.agentInterruptRequest, (_, payload) async {
-      await manager.interrupt(_requireString(payload, 'agentId'));
-      return const <String, Object?>{};
-    })
-    ..on(MessageTypes.agentSetModeRequest, (_, payload) async {
-      final agent = await manager.setMode(
-        _requireString(payload, 'agentId'),
-        _parseMode(payload['mode']),
-      );
-      return {'agent': agent.toJson()};
-    })
-    ..on(MessageTypes.agentArchiveRequest, (_, payload) async {
-      await manager.archive(_requireString(payload, 'agentId'));
-      return const <String, Object?>{};
-    })
-    ..on(MessageTypes.agentTimelineFetchRequest, (_, payload) {
-      return manager
-          .fetchTimeline(
-            _requireString(payload, 'agentId'),
-            epoch: (payload['epoch'] as num?)?.toInt(),
-            afterSeq: (payload['afterSeq'] as num?)?.toInt(),
-          )
-          .toJson();
-    })
-    ..on(MessageTypes.permissionRespondRequest, (_, payload) async {
-      await manager.respondPermission(
-        _requireString(payload, 'permissionId'),
-        _requireString(payload, 'decision'),
-      );
-      return const <String, Object?>{};
-    });
-
-  final projectStore = ProjectStore(dataDir: dataDir);
-  registerWorkspaceHandlers(
-    router,
-    projects: projectStore,
-    git: GitService(dataDir: projectStore.dataDir),
-  );
-
-  final terminals = TerminalManager(
-    sendBinary: (connectionId, bytes) {
-      server.connectionById(connectionId)?.sendBinary(bytes);
-    },
-    onExited: (terminalId, exitCode) => server.broadcast(RpcEvent(
-      type: MessageTypes.terminalExitedEvent,
-      payload: {'terminalId': terminalId, 'exitCode': exitCode},
-    )),
-  );
-  registerTerminalHandlers(router, terminals: terminals);
-
-  server = WsServer(router: router, token: token, desktopManaged: desktopManaged);
-  server.onBinaryFrame =
-      (connection, frame) => terminals.handleFrame(connection.id, frame);
-  server.onConnectionClosed =
-      (connection) => terminals.onConnectionClosed(connection.id);
-
-  var shuttingDown = false;
-  Future<void> shutdown(String reason) async {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    log('shutting down ($reason)');
-    await manager.dispose();
-    await terminals.dispose();
-    await server.stop();
-    await lock.release();
-    await flushLog();
-    exit(0);
-  }
-
-  router
-    ..on(MessageTypes.daemonStatusRequest, (_, __) {
-      return {
-        'pid': pid,
-        'version': daemonVersion,
-        'uptimeMs': DateTime.now().difference(startedAt).inMilliseconds,
-        'desktopManaged': desktopManaged,
-      };
-    })
-    ..on(MessageTypes.daemonShutdownRequest, (connection, __) {
-      if (!connection.isLoopback) {
-        throw RpcException(RpcErrorCodes.unauthorized,
-            'shutdown is only allowed from loopback connections');
-      }
-      // Respond first, then shut down.
-      Timer(const Duration(milliseconds: 200), () {
-        unawaited(shutdown('shutdown request'));
-      });
-      return const <String, Object?>{};
-    });
-
-  try {
-    await server.start(host: host, port: port);
   } catch (e) {
-    log('failed to bind ws://$host:$port: $e');
-    await lock.release();
     await flushLog();
     exit(1);
   }
 
-  await lock.update(PidLockData(
-    pid: pid,
-    startedAtMs: startedAt.millisecondsSinceEpoch,
-    host: host,
-    port: server.port,
-    version: daemonVersion,
-    desktopManaged: desktopManaged,
-  ));
-  lock.startHeartbeat();
-
-  log('daemon listening on ws://$host:${server.port}');
-
-  ProcessSignal.sigint.watch().listen((_) => unawaited(shutdown('SIGINT')));
+  ProcessSignal.sigint.watch().listen((_) async {
+    await handle.stop();
+    await flushLog();
+    exit(0);
+  });
   if (!Platform.isWindows) {
-    // SIGTERM cannot be watched on Windows (throws).
-    ProcessSignal.sigterm.watch().listen((_) => unawaited(shutdown('SIGTERM')));
+    ProcessSignal.sigterm.watch().listen((_) async {
+      await handle.stop();
+      await flushLog();
+      exit(0);
+    });
   }
 }
 

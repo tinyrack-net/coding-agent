@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:agent_protocol/agent_protocol.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -25,8 +26,10 @@ Future<int> _freePort() async {
 // itself doesn't succeed.
 File _devBuildExePath() {
   final exeName = Platform.isWindows ? 'daemon.exe' : 'daemon';
-  return File(p.join(
-      Directory.current.path, '..', 'daemon', 'build', exeName));
+  final daemonDir = Directory.current.path.endsWith('daemon_lifecycle')
+      ? p.join(Directory.current.path, '..', 'daemon')
+      : p.join(Directory.current.path, 'packages', 'daemon');
+  return File(p.join(daemonDir, 'build', exeName));
 }
 
 void main() {
@@ -46,7 +49,11 @@ void main() {
     paths = DaemonPaths(dataDir: temp.path);
   });
 
-  tearDown(() => temp.deleteSync(recursive: true));
+  tearDown(() {
+    try {
+      temp.deleteSync(recursive: true);
+    } catch (_) {}
+  });
 
   group('status()', () {
     test('reports stopped when nothing is reachable', () async {
@@ -194,7 +201,7 @@ void main() {
       }
     });
 
-    test('not running: throws DaemonSpawnException when no exe can be found',
+    test('not running: throws DaemonSpawnException when no exe can be found and fallbackSpawner is null',
         () async {
       final port = await _freePort();
       final supervisor =
@@ -204,6 +211,32 @@ void main() {
         supervisor.ensureRunning(),
         throwsA(isA<DaemonSpawnException>()),
       );
+    });
+
+    test('not running: invokes fallbackSpawner when no exe can be found',
+        () async {
+      final port = await _freePort();
+      var fallbackCalled = false;
+      final supervisor = DaemonSupervisor(
+        paths: paths,
+        port: port,
+        bundledVersion: '0.2.0',
+        fallbackSpawner: ({required paths, required host, required port}) async {
+          fallbackCalled = true;
+          return const ServerHello(
+            daemonVersion: '0.2.0',
+            protocolVersion: 1,
+            pid: 4242,
+            desktopManaged: true,
+          );
+        },
+      );
+
+      final status = await supervisor.ensureRunning();
+
+      expect(fallbackCalled, isTrue);
+      expect(status.isRunning, isTrue);
+      expect(status.hello!.daemonVersion, '0.2.0');
     });
 
     test(

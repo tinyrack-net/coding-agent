@@ -179,6 +179,7 @@ void main() {
 
     expect(supervisor.host, settings.host);
     expect(supervisor.port, settings.port);
+    expect(supervisor.fallbackSpawner, isNotNull);
   });
 
   test('the tray quit callback stops the daemon unless '
