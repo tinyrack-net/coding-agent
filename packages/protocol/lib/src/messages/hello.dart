@@ -38,6 +38,7 @@ abstract final class MessageTypes {
   static const worktreeCreateRequest = 'worktree.create.request';
   static const worktreeListRequest = 'worktree.list.request';
   static const worktreeArchiveRequest = 'worktree.archive.request';
+  static const branchListRequest = 'branch.list.request';
   // diff (M4)
   static const diffGetRequest = 'diff.get.request';
   // terminals (M5)

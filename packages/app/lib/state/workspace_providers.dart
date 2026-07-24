@@ -63,11 +63,12 @@ class WorktreesNotifier extends AsyncNotifier<List<WorktreeInfo>> {
         .toList();
   }
 
-  Future<WorktreeInfo> create(String branch) async {
+  Future<WorktreeInfo> create(String branch, {String? baseRef}) async {
     final client = ref.read(daemonClientProvider);
     final res = await client.request(MessageTypes.worktreeCreateRequest, {
       'projectPath': projectPath,
       'branch': branch,
+      if (baseRef != null) 'baseRef': baseRef,
     });
     final worktree = WorktreeInfo.fromJson(
       res['worktree'] as Map<String, Object?>? ?? const {},
@@ -80,9 +81,16 @@ class WorktreesNotifier extends AsyncNotifier<List<WorktreeInfo>> {
     return worktree;
   }
 
-  Future<void> archive(String path) async {
+  /// Archives the worktree at [path]. Throws [DaemonRpcException] with
+  /// `error.code == RpcErrorCodes.conflict` if it has uncommitted changes
+  /// and [force] is false; callers should confirm with the user and retry
+  /// with `force: true` to discard those changes.
+  Future<void> archive(String path, {bool force = false}) async {
     final client = ref.read(daemonClientProvider);
-    await client.request(MessageTypes.worktreeArchiveRequest, {'path': path});
+    await client.request(MessageTypes.worktreeArchiveRequest, {
+      'path': path,
+      if (force) 'force': force,
+    });
     final current = state.value ?? const <WorktreeInfo>[];
     state = AsyncData(current.where((w) => w.path != path).toList());
   }
@@ -93,6 +101,35 @@ class WorktreesNotifier extends AsyncNotifier<List<WorktreeInfo>> {
 final worktreesProvider =
     AsyncNotifierProvider.family<WorktreesNotifier, List<WorktreeInfo>, String>(
       WorktreesNotifier.new,
+    );
+
+/// Local branches of one project (family arg: the project's path), most
+/// recently committed first, plus the currently checked-out branch. Used by
+/// the "Start from" ref picker when creating a workspace in a new worktree.
+class BranchesNotifier extends AsyncNotifier<BranchListResponse> {
+  BranchesNotifier(this.projectPath);
+
+  final String projectPath;
+
+  @override
+  Future<BranchListResponse> build() async {
+    final client = ref.watch(daemonClientProvider);
+    final connection = ref.watch(connectionStateProvider).value;
+    if (connection != DaemonConnectionState.connected) {
+      return const BranchListResponse(branches: [], currentBranch: '');
+    }
+    final res = await client.request(MessageTypes.branchListRequest, {
+      'projectPath': projectPath,
+    });
+    return BranchListResponse.fromJson(res);
+  }
+
+  Future<void> refresh() async => ref.invalidateSelf();
+}
+
+final branchesProvider =
+    AsyncNotifierProvider.family<BranchesNotifier, BranchListResponse, String>(
+      BranchesNotifier.new,
     );
 
 /// Working-tree diff for a directory (family arg: cwd). Fetched on demand;

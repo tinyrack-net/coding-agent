@@ -53,3 +53,22 @@ final class WorktreeInfo {
         'isMain': isMain,
       };
 }
+
+/// Response of `branch.list.request`: local branches of a project, most
+/// recently committed first, plus the branch currently checked out.
+final class BranchListResponse {
+  const BranchListResponse({required this.branches, required this.currentBranch});
+
+  final List<String> branches;
+  final String currentBranch;
+
+  static BranchListResponse fromJson(Map<String, Object?> json) =>
+      BranchListResponse(
+        branches:
+            ((json['branches'] as List?) ?? const []).cast<String>(),
+        currentBranch: (json['currentBranch'] as String?) ?? '',
+      );
+
+  Map<String, Object?> toJson() =>
+      {'branches': branches, 'currentBranch': currentBranch};
+}

@@ -42,9 +42,44 @@ class GitService {
     return _parseWorktreePorcelain(result.stdout);
   }
 
+  /// Local branches of [projectPath], most recently committed first.
+  Future<List<String>> listBranches(String projectPath) async {
+    final result = await runner.run(
+      [
+        'for-each-ref',
+        '--sort=-committerdate',
+        '--format=%(refname:short)',
+        'refs/heads/',
+      ],
+      cwd: projectPath,
+    );
+    return result.stdout
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+  }
+
+  /// The branch currently checked out at [projectPath], or `'main'` if HEAD
+  /// is detached or the repo has no commits yet.
+  Future<String> currentBranch(String projectPath) async {
+    final result = await runner.run(
+      ['rev-parse', '--abbrev-ref', 'HEAD'],
+      cwd: projectPath,
+      check: false,
+    );
+    final name = result.stdout.trim();
+    return (!result.ok || name.isEmpty || name == 'HEAD') ? 'main' : name;
+  }
+
   /// Creates a worktree for [branch] under `<dataDir>/worktrees/`. If the
-  /// branch already exists it is checked out; otherwise it is created.
-  Future<WorktreeInfo> createWorktree(String projectPath, String branch) async {
+  /// branch already exists it is checked out; otherwise it is created,
+  /// branching off [baseRef] (defaults to the project's current HEAD).
+  Future<WorktreeInfo> createWorktree(
+    String projectPath,
+    String branch, {
+    String? baseRef,
+  }) async {
     final projectName = p.basename(p.normalize(projectPath));
     final sanitized = sanitizeBranch(branch);
     final worktreesDir = Directory(p.join(dataDir, 'worktrees'));
@@ -68,7 +103,10 @@ class GitService {
       await runner.run(['worktree', 'add', target, branch], cwd: projectPath);
     } else {
       await runner.run(
-        ['worktree', 'add', target, '-b', branch],
+        [
+          'worktree', 'add', target, '-b', branch,
+          if (baseRef != null) baseRef,
+        ],
         cwd: projectPath,
       );
     }

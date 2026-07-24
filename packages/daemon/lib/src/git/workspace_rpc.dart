@@ -61,9 +61,28 @@ void registerWorkspaceHandlers(
         'directory does not exist: $projectPath',
       );
     }
-    final worktree =
-        await _git(() => git.createWorktree(projectPath, branch));
+    final baseRef = payload['baseRef'];
+    if (baseRef != null && baseRef is! String) {
+      throw RpcException(RpcErrorCodes.invalidPayload, 'baseRef must be a string');
+    }
+    final worktree = await _git(
+      () => git.createWorktree(projectPath, branch, baseRef: baseRef as String?),
+    );
     return {'worktree': worktree.toJson()};
+  });
+
+  router.on(MessageTypes.branchListRequest, (connection, payload) async {
+    final projectPath = _requireString(payload, 'projectPath');
+    if (!Directory(projectPath).existsSync()) {
+      throw RpcException(
+        RpcErrorCodes.notFound,
+        'directory does not exist: $projectPath',
+      );
+    }
+    final branches = await _git(() => git.listBranches(projectPath));
+    final current = await _git(() => git.currentBranch(projectPath));
+    return BranchListResponse(branches: branches, currentBranch: current)
+        .toJson();
   });
 
   router.on(MessageTypes.worktreeArchiveRequest, (connection, payload) async {

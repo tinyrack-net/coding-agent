@@ -99,6 +99,62 @@ void main() {
       expect(branches.trim(), isNotEmpty);
     });
 
+    test('create with baseRef branches off that ref instead of HEAD',
+        () async {
+      await _git(['branch', 'base-branch'], repo);
+      File(p.join(repo, 'readme.md')).writeAsStringSync('hello\nworld\nmore\n');
+      await _git(['add', '-A'], repo);
+      await _commit(repo, 'advance main past base-branch');
+
+      final created = await service.createWorktree(
+        repo,
+        'off-base',
+        baseRef: 'base-branch',
+      );
+      final head = (await _git(['rev-parse', 'HEAD'], created.path)).trim();
+      final baseHead = (await _git(['rev-parse', 'base-branch'], repo)).trim();
+      expect(head, baseHead);
+    });
+
+    test('listBranches returns local branches, most recently committed '
+        'first', () async {
+      await _git(['branch', 'older'], repo);
+      await _git(['checkout', '-b', 'newer'], repo);
+      File(p.join(repo, 'readme.md')).writeAsStringSync('hello\nnewer\n');
+      await _git(['add', '-A'], repo);
+      // Force a committer date strictly after the initial commit: same-second
+      // wall-clock commits would otherwise tie under `--sort=-committerdate`.
+      final result = await Process.run(
+        'git',
+        [
+          '-c', 'user.email=test@example.com',
+          '-c', 'user.name=Test',
+          '-c', 'commit.gpgsign=false',
+          'commit', '-m', 'advance newer',
+        ],
+        workingDirectory: repo,
+        environment: {
+          'GIT_COMMITTER_DATE': '2030-01-01T00:00:00',
+          'GIT_AUTHOR_DATE': '2030-01-01T00:00:00',
+        },
+      );
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      await _git(['checkout', 'main'], repo);
+
+      final branches = await service.listBranches(repo);
+      expect(branches.first, 'newer');
+      expect(branches, containsAll(['main', 'older', 'newer']));
+    });
+
+    test('currentBranch reports the checked-out branch, and "main" when '
+        'HEAD is detached', () async {
+      expect(await service.currentBranch(repo), 'main');
+
+      final head = (await _git(['rev-parse', 'HEAD'], repo)).trim();
+      await _git(['checkout', '--detach', head], repo);
+      expect(await service.currentBranch(repo), 'main');
+    });
+
     test('archiving the main worktree is rejected', () async {
       await expectLater(
         service.archiveWorktree(repo),

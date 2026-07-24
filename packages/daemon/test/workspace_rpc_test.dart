@@ -227,6 +227,60 @@ void main() {
     expect(Directory(created.path).existsSync(), isFalse);
   });
 
+  test('branch.list returns local branches and the current branch',
+      () async {
+    await _git(['branch', 'feature/y'], repo);
+    final response =
+        await request(MessageTypes.branchListRequest, {'projectPath': repo});
+    expect(response['error'], isNull);
+    final parsed = BranchListResponse.fromJson(
+        response['payload'] as Map<String, Object?>);
+    expect(parsed.currentBranch, 'main');
+    expect(parsed.branches, containsAll(['main', 'feature/y']));
+  });
+
+  test('branch.list rejects a missing projectPath directory', () async {
+    final response = await request(
+      MessageTypes.branchListRequest,
+      {'projectPath': p.join(tempDir.path, 'missing')},
+    );
+    expect((response['error'] as Map)['code'], RpcErrorCodes.notFound);
+  });
+
+  test('worktree.create with baseRef branches off that ref', () async {
+    await _git(['branch', 'base-branch'], repo);
+    File(p.join(repo, 'readme.md')).writeAsStringSync('advance main\n');
+    await _git(
+      [
+        '-c', 'user.email=test@example.com',
+        '-c', 'user.name=Test',
+        '-c', 'commit.gpgsign=false',
+        'commit', '-am', 'advance main',
+      ],
+      repo,
+    );
+
+    final response = await request(MessageTypes.worktreeCreateRequest, {
+      'projectPath': repo,
+      'branch': 'off-base',
+      'baseRef': 'base-branch',
+    });
+    expect(response['error'], isNull);
+    final created = WorktreeInfo.fromJson(
+        (response['payload'] as Map)['worktree'] as Map<String, Object?>);
+    final headResult = await Process.run(
+      'git',
+      ['rev-parse', 'HEAD'],
+      workingDirectory: created.path,
+    );
+    final baseResult = await Process.run(
+      'git',
+      ['rev-parse', 'base-branch'],
+      workingDirectory: repo,
+    );
+    expect((headResult.stdout as String).trim(), (baseResult.stdout as String).trim());
+  });
+
   test('diff.get without baseRef diffs the working tree', () async {
     File(p.join(repo, 'readme.md')).writeAsStringSync('hello\nchanged\n');
     final response = await request(MessageTypes.diffGetRequest, {'cwd': repo});

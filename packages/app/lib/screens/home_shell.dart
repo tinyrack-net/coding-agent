@@ -6,7 +6,8 @@ import '../core/daemon_client.dart';
 import '../state/agents_provider.dart';
 import '../state/daemon_providers.dart';
 import 'agent_chat_screen.dart';
-import 'new_agent_screen.dart';
+import 'new_workspace_screen.dart';
+import 'projects_screen.dart';
 import 'settings_screen.dart';
 import 'status_screen.dart';
 
@@ -76,6 +77,15 @@ class _Sidebar extends ConsumerWidget {
               Text('Agents', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               IconButton(
+                tooltip: 'Projects & worktrees',
+                icon: const Icon(Icons.call_split, size: 20),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ProjectsScreen(),
+                  ),
+                ),
+              ),
+              IconButton(
                 tooltip: 'Daemon status',
                 icon: const Icon(Icons.monitor_heart_outlined, size: 20),
                 onPressed: () => Navigator.of(context).push(
@@ -101,9 +111,13 @@ class _Sidebar extends ConsumerWidget {
           child: SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: () => showNewAgentDialog(context),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const NewWorkspaceScreen(),
+                ),
+              ),
               icon: const Icon(Icons.add),
-              label: const Text('New Agent'),
+              label: const Text('New workspace'),
             ),
           ),
         ),

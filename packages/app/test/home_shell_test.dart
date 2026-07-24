@@ -2,7 +2,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/screens/agent_chat_screen.dart';
 import 'package:coding_agent_app/screens/home_shell.dart';
-import 'package:coding_agent_app/screens/new_agent_screen.dart';
+import 'package:coding_agent_app/screens/new_workspace_screen.dart';
 import 'package:coding_agent_app/screens/settings_screen.dart';
 import 'package:coding_agent_app/screens/status_screen.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
@@ -134,13 +134,14 @@ void main() {
     expect(find.text('First agent'), findsWidgets);
   });
 
-  testWidgets('New Agent opens the creation dialog', (tester) async {
+  testWidgets('New workspace navigates to the New Workspace screen',
+      (tester) async {
     await pumpHomeShell(tester);
 
-    await tester.tap(find.text('New Agent'));
+    await tester.tap(find.text('New workspace'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(NewAgentForm), findsOneWidget);
+    expect(find.byType(NewWorkspaceScreen), findsOneWidget);
   });
 
   testWidgets('the status icon navigates to StatusScreen', (tester) async {

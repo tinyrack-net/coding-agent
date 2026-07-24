@@ -200,6 +200,7 @@ void main() {
         expect(type, MessageTypes.worktreeCreateRequest);
         expect(payload['projectPath'], '/repo');
         expect(payload['branch'], 'feature/y');
+        expect(payload.containsKey('baseRef'), isFalse);
         return {
           'worktree': const WorktreeInfo(
             path: '/repo-y',
@@ -223,6 +224,31 @@ void main() {
       );
     });
 
+    test('create() forwards baseRef when given', () async {
+      final client = FakeDaemonClient();
+      client.onRequest = (type, payload) {
+        if (type == MessageTypes.worktreeListRequest) {
+          return const {'worktrees': []};
+        }
+        expect(payload['baseRef'], 'main');
+        return {
+          'worktree': const WorktreeInfo(
+            path: '/repo-y',
+            branch: 'lucky-otter',
+            projectPath: '/repo',
+          ).toJson(),
+        };
+      };
+      final container = makeContainer(client);
+      keepAlive(container, container.listen(worktreesProvider('/repo'), (_, __) {}));
+      await pump();
+      await container.read(worktreesProvider('/repo').future);
+
+      await container
+          .read(worktreesProvider('/repo').notifier)
+          .create('lucky-otter', baseRef: 'main');
+    });
+
     test('archive() requests worktree.archive and removes it from state',
         () async {
       final client = FakeDaemonClient();
@@ -244,6 +270,95 @@ void main() {
       await container.read(worktreesProvider('/repo').notifier).archive('/repo-wt');
 
       expect(container.read(worktreesProvider('/repo')).value, isEmpty);
+    });
+
+    test('archive() propagates a conflict error for a dirty worktree without '
+        'removing it from state', () async {
+      final client = FakeDaemonClient();
+      client.onRequest = (type, payload) {
+        if (type == MessageTypes.worktreeListRequest) {
+          return {
+            'worktrees': [_wt.toJson()],
+          };
+        }
+        expect(type, MessageTypes.worktreeArchiveRequest);
+        expect(payload.containsKey('force'), isFalse);
+        throw DaemonRpcException(
+          const RpcError(code: RpcErrorCodes.conflict, message: 'uncommitted changes'),
+        );
+      };
+      final container = makeContainer(client);
+      keepAlive(container, container.listen(worktreesProvider('/repo'), (_, __) {}));
+      await pump();
+      await container.read(worktreesProvider('/repo').future);
+
+      await expectLater(
+        container.read(worktreesProvider('/repo').notifier).archive('/repo-wt'),
+        throwsA(isA<DaemonRpcException>().having(
+          (e) => e.error.code,
+          'code',
+          RpcErrorCodes.conflict,
+        )),
+      );
+      expect(
+        container.read(worktreesProvider('/repo')).value!.map((w) => w.path),
+        contains('/repo-wt'),
+      );
+    });
+
+    test('archive(force: true) forwards force and removes it from state',
+        () async {
+      final client = FakeDaemonClient();
+      client.onRequest = (type, payload) {
+        if (type == MessageTypes.worktreeListRequest) {
+          return {
+            'worktrees': [_wt.toJson()],
+          };
+        }
+        expect(type, MessageTypes.worktreeArchiveRequest);
+        expect(payload['force'], isTrue);
+        return const {};
+      };
+      final container = makeContainer(client);
+      keepAlive(container, container.listen(worktreesProvider('/repo'), (_, __) {}));
+      await pump();
+      await container.read(worktreesProvider('/repo').future);
+
+      await container
+          .read(worktreesProvider('/repo').notifier)
+          .archive('/repo-wt', force: true);
+
+      expect(container.read(worktreesProvider('/repo')).value, isEmpty);
+    });
+  });
+
+  group('BranchesNotifier', () {
+    test('build() returns empty while disconnected', () async {
+      final client = FakeDaemonClient(initial: DaemonConnectionState.disconnected);
+      final container = makeContainer(client);
+
+      final branches = await container.read(branchesProvider('/repo').future);
+      expect(branches.branches, isEmpty);
+      expect(branches.currentBranch, isEmpty);
+    });
+
+    test('build() fetches branch.list scoped to the project path', () async {
+      final client = FakeDaemonClient();
+      client.onRequest = (type, payload) {
+        expect(type, MessageTypes.branchListRequest);
+        expect(payload['projectPath'], '/repo');
+        return const BranchListResponse(
+          branches: ['main', 'feature/x'],
+          currentBranch: 'main',
+        ).toJson();
+      };
+      final container = makeContainer(client);
+      keepAlive(container, container.listen(branchesProvider('/repo'), (_, __) {}));
+      await pump();
+
+      final branches = await container.read(branchesProvider('/repo').future);
+      expect(branches.branches, ['main', 'feature/x']);
+      expect(branches.currentBranch, 'main');
     });
   });
 
