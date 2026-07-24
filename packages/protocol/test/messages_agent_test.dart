@@ -60,6 +60,36 @@ void main() {
       expect(decoded.runState, AgentRunState.idle);
       expect(decoded.createdAtMs, 0);
       expect(decoded.sessionId, isNull);
+      expect(decoded.projectPath, isNull);
+      expect(decoded.branch, isNull);
+      expect(decoded.isWorktree, isFalse);
+    });
+
+    test('round-trips worktree fields and omits isWorktree when false', () {
+      const worktreeAgent = AgentSummary(
+        agentId: 'a4',
+        title: 'Worktree agent',
+        cwd: 'C:/worktrees/repo-feature-x',
+        provider: 'claude',
+        model: 'sonnet',
+        mode: AgentMode.normal,
+        runState: AgentRunState.idle,
+        createdAtMs: 0,
+        projectPath: 'C:/repo',
+        branch: 'feature/x',
+        isWorktree: true,
+      );
+      final json = worktreeAgent.toJson();
+      expect(json['projectPath'], 'C:/repo');
+      expect(json['branch'], 'feature/x');
+      expect(json['isWorktree'], isTrue);
+
+      final decoded = AgentSummary.fromJson(roundTrip(json));
+      expect(decoded.projectPath, 'C:/repo');
+      expect(decoded.branch, 'feature/x');
+      expect(decoded.isWorktree, isTrue);
+
+      expect(full.toJson().containsKey('isWorktree'), isFalse);
     });
 
     test('fromJson throws when agentId missing', () {

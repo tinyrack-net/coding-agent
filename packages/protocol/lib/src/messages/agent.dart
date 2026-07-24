@@ -18,6 +18,9 @@ final class AgentSummary {
     required this.runState,
     required this.createdAtMs,
     this.sessionId,
+    this.projectPath,
+    this.branch,
+    this.isWorktree = false,
   });
 
   final String agentId;
@@ -31,6 +34,17 @@ final class AgentSummary {
 
   /// Provider-native session id, once known (used for resume).
   final String? sessionId;
+
+  /// Main checkout path of the project this agent's `cwd` belongs to, if
+  /// known. Set when the agent was created against a registered project.
+  final String? projectPath;
+
+  /// Branch checked out at [cwd], if known.
+  final String? branch;
+
+  /// True when [cwd] is an isolated git worktree (rather than the project's
+  /// main checkout).
+  final bool isWorktree;
 
   AgentSummary copyWith({
     String? title,
@@ -48,6 +62,9 @@ final class AgentSummary {
         runState: runState ?? this.runState,
         createdAtMs: createdAtMs,
         sessionId: sessionId ?? this.sessionId,
+        projectPath: projectPath,
+        branch: branch,
+        isWorktree: isWorktree,
       );
 
   static AgentSummary fromJson(Map<String, Object?> json) => AgentSummary(
@@ -61,6 +78,9 @@ final class AgentSummary {
             .byName((json['runState'] as String?) ?? 'idle'),
         createdAtMs: (json['createdAtMs'] as num?)?.toInt() ?? 0,
         sessionId: json['sessionId'] as String?,
+        projectPath: json['projectPath'] as String?,
+        branch: json['branch'] as String?,
+        isWorktree: (json['isWorktree'] as bool?) ?? false,
       );
 
   Map<String, Object?> toJson() => {
@@ -73,6 +93,9 @@ final class AgentSummary {
         'runState': runState.name,
         'createdAtMs': createdAtMs,
         if (sessionId != null) 'sessionId': sessionId,
+        if (projectPath != null) 'projectPath': projectPath,
+        if (branch != null) 'branch': branch,
+        if (isWorktree) 'isWorktree': isWorktree,
       };
 }
 

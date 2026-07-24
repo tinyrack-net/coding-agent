@@ -110,6 +110,9 @@ class AgentManager {
     required String model,
     required AgentMode mode,
     String? title,
+    String? projectPath,
+    String? branch,
+    bool isWorktree = false,
   }) async {
     final client = _clients[provider];
     if (client == null) {
@@ -129,6 +132,9 @@ class AgentManager {
         mode: mode,
         runState: AgentRunState.initializing,
         createdAtMs: DateTime.now().millisecondsSinceEpoch,
+        projectPath: projectPath,
+        branch: branch,
+        isWorktree: isWorktree,
       ),
       timeline: TimelineStore(agentId: agentId),
     );

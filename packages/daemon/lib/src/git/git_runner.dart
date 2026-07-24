@@ -28,6 +28,24 @@ class GitException implements Exception {
       'GitException(git ${args.join(' ')} -> $exitCode): $message';
 }
 
+/// Raised by [GitService.archiveWorktree] when the worktree has uncommitted
+/// changes and the caller did not pass `force: true`.
+class GitDirtyWorktreeException implements Exception {
+  GitDirtyWorktreeException({
+    required this.path,
+    required this.uncommittedPaths,
+  });
+
+  final String path;
+  final List<String> uncommittedPaths;
+
+  String get message =>
+      'worktree has uncommitted changes: ${uncommittedPaths.join(', ')}';
+
+  @override
+  String toString() => 'GitDirtyWorktreeException($path): $message';
+}
+
 final class GitResult {
   const GitResult({
     required this.exitCode,

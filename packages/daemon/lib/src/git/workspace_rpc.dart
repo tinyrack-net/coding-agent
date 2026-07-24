@@ -68,10 +68,13 @@ void registerWorkspaceHandlers(
 
   router.on(MessageTypes.worktreeArchiveRequest, (connection, payload) async {
     final path = _requireString(payload, 'path');
+    final force = payload['force'] == true;
     try {
-      await git.archiveWorktree(path);
+      await git.archiveWorktree(path, force: force);
     } on StateError catch (e) {
       throw RpcException(RpcErrorCodes.invalidPayload, e.message);
+    } on GitDirtyWorktreeException catch (e) {
+      throw RpcException(RpcErrorCodes.conflict, e.message);
     } on GitException catch (e) {
       throw RpcException(RpcErrorCodes.notFound, e.message);
     }

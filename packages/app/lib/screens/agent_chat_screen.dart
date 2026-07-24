@@ -1,7 +1,9 @@
+import 'package:agent_protocol/agent_protocol.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/provider_display.dart';
+import '../core/worktree_actions.dart';
 import '../state/agents_provider.dart';
 import '../state/timeline_provider.dart';
 import '../state/workspace_providers.dart';
@@ -85,26 +87,18 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
             subtitle: agent == null
                 ? null
                 : Text(
-                    '${agent.provider} · ${agent.model} · ${agent.mode.name} · ${agent.cwd}',
+                    agent.isWorktree
+                        ? '${agent.provider} · ${agent.model} · ${agent.mode.name} · ${agent.branch} · ${agent.cwd}'
+                        : '${agent.provider} · ${agent.model} · ${agent.mode.name} · ${agent.cwd}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
             trailing: IconButton(
               tooltip: 'Archive agent',
               icon: const Icon(Icons.archive_outlined),
-              onPressed: () async {
-                final actions = ref.read(agentActionsProvider);
-                final selected = ref.read(selectedAgentProvider.notifier);
-                try {
-                  await actions.archive(widget.agentId);
-                  selected.select(null);
-                } catch (e) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to archive: $e')),
-                  );
-                }
-              },
+              onPressed: agent == null
+                  ? null
+                  : () => _archiveAgent(context, ref, agent),
             ),
           ),
         ),
@@ -188,6 +182,54 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
       Composer(agentId: widget.agentId),
     ];
   }
+}
+
+/// Archives [agent], then — if it runs in an isolated worktree — asks
+/// whether to also delete the worktree/branch (mirrors Paseo's
+/// keep/remove-on-exit worktree flow).
+Future<void> _archiveAgent(
+  BuildContext context,
+  WidgetRef ref,
+  AgentSummary agent,
+) async {
+  final actions = ref.read(agentActionsProvider);
+  final selected = ref.read(selectedAgentProvider.notifier);
+  try {
+    await actions.archive(agent.agentId);
+    selected.select(null);
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Failed to archive: $e')));
+    return;
+  }
+
+  if (!agent.isWorktree || agent.projectPath == null) return;
+  if (!context.mounted) return;
+  final remove = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Delete worktree?'),
+      content: Text(
+        'This agent ran on branch "${agent.branch}" in an isolated '
+        'worktree. Keep it to resume later, or remove it now.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Keep'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Remove'),
+        ),
+      ],
+    ),
+  );
+  if (remove != true) return;
+  if (!context.mounted) return;
+  await archiveWorktreeWithConfirm(context, ref, agent.projectPath!, agent.cwd);
 }
 
 /// Diff of the agent's working directory with a manual refresh action.

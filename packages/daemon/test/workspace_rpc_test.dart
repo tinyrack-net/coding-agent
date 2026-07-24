@@ -202,6 +202,31 @@ void main() {
     expect((response['error'] as Map)['code'], RpcErrorCodes.notFound);
   });
 
+  test('worktree.archive without force fails with conflict when dirty, '
+      'succeeds with force: true', () async {
+    final createResponse = await request(
+      MessageTypes.worktreeCreateRequest,
+      {'projectPath': repo, 'branch': 'dirty'},
+    );
+    final created = WorktreeInfo.fromJson(
+        (createResponse['payload'] as Map)['worktree'] as Map<String, Object?>);
+    File(p.join(created.path, 'readme.md')).writeAsStringSync('changed\n');
+
+    final blocked = await request(
+      MessageTypes.worktreeArchiveRequest,
+      {'path': created.path},
+    );
+    expect((blocked['error'] as Map)['code'], RpcErrorCodes.conflict);
+    expect(Directory(created.path).existsSync(), isTrue);
+
+    final forced = await request(
+      MessageTypes.worktreeArchiveRequest,
+      {'path': created.path, 'force': true},
+    );
+    expect(forced['error'], isNull);
+    expect(Directory(created.path).existsSync(), isFalse);
+  });
+
   test('diff.get without baseRef diffs the working tree', () async {
     File(p.join(repo, 'readme.md')).writeAsStringSync('hello\nchanged\n');
     final response = await request(MessageTypes.diffGetRequest, {'cwd': repo});

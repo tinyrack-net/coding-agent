@@ -171,6 +171,45 @@ void main() {
       final detached = listed.singleWhere((w) => p.equals(w.path, target));
       expect(detached.branch, '(detached)');
     });
+
+    test('uncommittedPaths is empty for a clean worktree', () async {
+      final created = await service.createWorktree(repo, 'clean');
+      expect(await service.uncommittedPaths(created.path), isEmpty);
+    });
+
+    test('uncommittedPaths reports tracked and untracked changes', () async {
+      final created = await service.createWorktree(repo, 'dirty');
+      File(p.join(created.path, 'readme.md')).writeAsStringSync('changed\n');
+      File(p.join(created.path, 'new.txt')).writeAsStringSync('new\n');
+
+      final dirty = await service.uncommittedPaths(created.path);
+      expect(dirty, containsAll(['readme.md', 'new.txt']));
+    });
+
+    test('archiveWorktree refuses to remove a dirty worktree without force',
+        () async {
+      final created = await service.createWorktree(repo, 'guarded');
+      File(p.join(created.path, 'readme.md')).writeAsStringSync('changed\n');
+
+      await expectLater(
+        service.archiveWorktree(created.path),
+        throwsA(isA<GitDirtyWorktreeException>().having(
+          (e) => e.uncommittedPaths,
+          'uncommittedPaths',
+          contains('readme.md'),
+        )),
+      );
+      expect(Directory(created.path).existsSync(), isTrue);
+    });
+
+    test('archiveWorktree removes a dirty worktree when force is true',
+        () async {
+      final created = await service.createWorktree(repo, 'forced');
+      File(p.join(created.path, 'readme.md')).writeAsStringSync('changed\n');
+
+      await service.archiveWorktree(created.path, force: true);
+      expect(Directory(created.path).existsSync(), isFalse);
+    });
   });
 
   group('diff', () {

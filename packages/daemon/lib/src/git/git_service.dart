@@ -85,9 +85,25 @@ class GitService {
     return created;
   }
 
+  /// Paths (relative to [worktreePath]) with uncommitted working-tree
+  /// changes, tracked or untracked. Empty means the worktree is clean.
+  Future<List<String>> uncommittedPaths(String worktreePath) async {
+    final result = await runner.run(
+      ['status', '--porcelain', '--untracked-files=all'],
+      cwd: worktreePath,
+    );
+    final paths = <String>[];
+    for (final rawLine in result.stdout.split('\n')) {
+      if (rawLine.length < 4) continue;
+      paths.add(rawLine.substring(3));
+    }
+    return paths;
+  }
+
   /// Removes the worktree at [path] (`git worktree remove --force`). The main
-  /// checkout cannot be archived.
-  Future<void> archiveWorktree(String path) async {
+  /// checkout cannot be archived. Unless [force] is true, refuses to remove a
+  /// worktree with uncommitted changes (throws [GitDirtyWorktreeException]).
+  Future<void> archiveWorktree(String path, {bool force = false}) async {
     if (!Directory(path).existsSync()) {
       throw GitException(
         args: ['worktree', 'remove', '--force', path],
@@ -109,6 +125,12 @@ class GitService {
     final info = match.first;
     if (info.isMain) {
       throw StateError('cannot archive the main worktree: $path');
+    }
+    if (!force) {
+      final dirty = await uncommittedPaths(path);
+      if (dirty.isNotEmpty) {
+        throw GitDirtyWorktreeException(path: path, uncommittedPaths: dirty);
+      }
     }
     // Run from the main checkout so we are not deleting our own cwd.
     await runner.run(

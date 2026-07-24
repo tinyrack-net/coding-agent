@@ -105,6 +105,9 @@ class AgentActions {
     required String model,
     required AgentMode mode,
     String? title,
+    String? projectPath,
+    String? branch,
+    bool isWorktree = false,
   }) async {
     final res = await _client.request(MessageTypes.agentCreateRequest, {
       'cwd': cwd,
@@ -112,6 +115,9 @@ class AgentActions {
       'model': model,
       'mode': mode.name,
       if (title != null && title.isNotEmpty) 'title': title,
+      if (projectPath != null) 'projectPath': projectPath,
+      if (branch != null) 'branch': branch,
+      if (isWorktree) 'isWorktree': isWorktree,
     });
     final agent =
         AgentSummary.fromJson(res['agent'] as Map<String, Object?>? ?? const {});

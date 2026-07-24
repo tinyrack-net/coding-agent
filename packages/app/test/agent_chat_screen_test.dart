@@ -20,6 +20,20 @@ const _agent = AgentSummary(
   createdAtMs: 0,
 );
 
+const _worktreeAgent = AgentSummary(
+  agentId: 'a2',
+  title: 'Worktree agent',
+  cwd: '/work/repo-wt',
+  provider: 'claude',
+  model: 'sonnet',
+  mode: AgentMode.normal,
+  runState: AgentRunState.idle,
+  createdAtMs: 0,
+  projectPath: '/work/repo',
+  branch: 'feature/x',
+  isWorktree: true,
+);
+
 /// Scriptable fake covering everything AgentChatScreen's three tabs touch:
 /// agent list (for the header), the timeline fetch, the diff fetch, and the
 /// terminal create/subscribe handshake (so the Terminal tab doesn't hang).
@@ -62,7 +76,7 @@ class FakeDaemonClient extends DaemonClient {
     }
     return switch (type) {
       MessageTypes.agentListRequest => {
-          'agents': [_agent.toJson()],
+          'agents': [_agent.toJson(), _worktreeAgent.toJson()],
         },
       MessageTypes.agentTimelineFetchRequest => const TimelineFetchResponse(
           epoch: 0,
@@ -82,6 +96,7 @@ class FakeDaemonClient extends DaemonClient {
 Future<ProviderContainer> pumpChatScreen(
   WidgetTester tester, {
   FakeDaemonClient? client,
+  String agentId = 'a1',
 }) async {
   client ??= FakeDaemonClient();
   final container = ProviderContainer(
@@ -89,12 +104,13 @@ Future<ProviderContainer> pumpChatScreen(
   );
   addTearDown(container.dispose);
   container.read(agentsProvider.notifier).upsert(_agent);
+  container.read(agentsProvider.notifier).upsert(_worktreeAgent);
 
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: const MaterialApp(
-        home: Scaffold(body: AgentChatScreen(agentId: 'a1')),
+      child: MaterialApp(
+        home: Scaffold(body: AgentChatScreen(agentId: agentId)),
       ),
     ),
   );
@@ -194,6 +210,66 @@ void main() {
     expect(find.textContaining('Failed to archive'), findsOneWidget);
     expect(container.read(selectedAgentProvider), 'a1');
     expect(container.read(agentsProvider).containsKey('a1'), isTrue);
+  });
+
+  testWidgets('a worktree agent shows its branch in the header subtitle',
+      (tester) async {
+    await pumpChatScreen(tester, agentId: 'a2');
+
+    expect(find.text('Worktree agent'), findsOneWidget);
+    expect(
+      find.textContaining('claude · sonnet · normal · feature/x · /work/repo-wt'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+      'archiving a worktree agent offers to remove the worktree; choosing '
+      'Remove requests worktree.archive', (tester) async {
+    final container = await pumpChatScreen(tester, agentId: 'a2');
+    final client = container.read(daemonClientProvider) as FakeDaemonClient;
+    container.read(selectedAgentProvider.notifier).select('a2');
+
+    await tester.tap(find.byTooltip('Archive agent'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      client.requests.any((r) => r.$1 == MessageTypes.agentArchiveRequest),
+      isTrue,
+    );
+    expect(find.text('Delete worktree?'), findsOneWidget);
+
+    await tester.tap(find.text('Remove'));
+    await tester.pumpAndSettle();
+
+    expect(
+      client.requests.any((r) => r.$1 == MessageTypes.worktreeArchiveRequest),
+      isTrue,
+    );
+    final archived = client.requests
+        .singleWhere((r) => r.$1 == MessageTypes.worktreeArchiveRequest);
+    expect(archived.$2['path'], '/work/repo-wt');
+  });
+
+  testWidgets(
+      'archiving a worktree agent and choosing Keep does not remove the '
+      'worktree', (tester) async {
+    final container = await pumpChatScreen(tester, agentId: 'a2');
+    final client = container.read(daemonClientProvider) as FakeDaemonClient;
+    container.read(selectedAgentProvider.notifier).select('a2');
+
+    await tester.tap(find.byTooltip('Archive agent'));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('Keep'));
+    await tester.pumpAndSettle();
+
+    expect(
+      client.requests.any((r) => r.$1 == MessageTypes.worktreeArchiveRequest),
+      isFalse,
+    );
   });
 
   testWidgets(

@@ -122,4 +122,9 @@ abstract final class RpcErrorCodes {
   static const notFound = 'not_found';
   static const internal = 'internal';
   static const unauthorized = 'unauthorized';
+
+  /// The request conflicts with current state and needs explicit
+  /// confirmation to proceed (e.g. archiving a worktree with uncommitted
+  /// changes without `force`).
+  static const conflict = 'conflict';
 }

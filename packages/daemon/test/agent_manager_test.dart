@@ -136,6 +136,28 @@ void main() {
     );
   });
 
+  test('createAgent stores and round-trips projectPath/branch/isWorktree',
+      () async {
+    final agent = await manager.createAgent(
+      cwd: tempDir.path,
+      provider: 'claude',
+      model: 'claude-sonnet-5',
+      mode: AgentMode.normal,
+      title: 'Worktree agent',
+      projectPath: '/repo/main',
+      branch: 'feature/x',
+      isWorktree: true,
+    );
+    expect(agent.projectPath, '/repo/main');
+    expect(agent.branch, 'feature/x');
+    expect(agent.isWorktree, isTrue);
+
+    final listed = manager.list().singleWhere((a) => a.agentId == agent.agentId);
+    expect(listed.projectPath, '/repo/main');
+    expect(listed.branch, 'feature/x');
+    expect(listed.isWorktree, isTrue);
+  });
+
   test('full flow: create -> prompt -> stream -> permission -> complete',
       () async {
     final agent = await createAgent();
