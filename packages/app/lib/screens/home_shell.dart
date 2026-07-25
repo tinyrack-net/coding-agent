@@ -8,7 +8,7 @@ import '../state/daemon_providers.dart';
 import 'agent_chat_screen.dart';
 import 'new_workspace_screen.dart';
 import 'projects_screen.dart';
-import 'settings_screen.dart';
+import 'settings/settings_screen.dart';
 import 'status_screen.dart';
 
 /// Desktop-style shell: agent sidebar on the left, chat on the right.

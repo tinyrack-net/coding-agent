@@ -3,7 +3,7 @@ import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/screens/agent_chat_screen.dart';
 import 'package:coding_agent_app/screens/home_shell.dart';
 import 'package:coding_agent_app/screens/new_workspace_screen.dart';
-import 'package:coding_agent_app/screens/settings_screen.dart';
+import 'package:coding_agent_app/screens/settings/settings_screen.dart';
 import 'package:coding_agent_app/screens/status_screen.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/daemon_lifecycle_provider.dart';

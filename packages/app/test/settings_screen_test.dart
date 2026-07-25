@@ -1,6 +1,6 @@
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
-import 'package:coding_agent_app/screens/settings_screen.dart';
+import 'package:coding_agent_app/screens/settings/settings_screen.dart';
 import 'package:coding_agent_app/state/connection_settings_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:flutter/material.dart';
@@ -49,9 +49,9 @@ Future<ProviderContainer> pumpSettingsScreen(
     overrides: [daemonClientProvider.overrideWithValue(client)],
   );
   addTearDown(container.dispose);
-  // Tall enough that the AI Providers cards + Desktop section both land
-  // within the ListView's viewport/cache extent without needing a scroll.
-  await tester.binding.setSurfaceSize(const Size(800, 2200));
+  // Tall enough that a section's content lands within the ListView's
+  // viewport/cache extent without needing a scroll.
+  await tester.binding.setSurfaceSize(const Size(800, 1200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   await tester.pumpWidget(
@@ -62,6 +62,12 @@ Future<ProviderContainer> pumpSettingsScreen(
   );
   await tester.pumpAndSettle();
   return container;
+}
+
+/// Taps the given section in the Settings sidebar and settles.
+Future<void> selectSection(WidgetTester tester, String label) async {
+  await tester.tap(find.widgetWithText(ListTile, label));
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -145,6 +151,7 @@ void main() {
     await pumpSettingsScreen(tester, FakeDaemonClient());
 
     // This test host is Windows, so the desktop settings section renders.
+    await selectSection(tester, 'Desktop');
     expect(find.text('Keep daemon running after quit'), findsOneWidget);
     final keepRunningSwitch = find.widgetWithText(
       SwitchListTile,
@@ -179,6 +186,7 @@ void main() {
           return const {};
         };
       await pumpSettingsScreen(tester, client);
+      await selectSection(tester, 'AI Providers');
 
       expect(find.text('AI Providers'), findsOneWidget);
       expect(find.text('Codex'), findsOneWidget);
@@ -197,6 +205,7 @@ void main() {
           return const {};
         };
       await pumpSettingsScreen(tester, client);
+      await selectSection(tester, 'AI Providers');
 
       final deepseekKeyField = find.ancestor(
         of: find.text('DeepSeek'),
@@ -227,6 +236,7 @@ void main() {
           return const {};
         };
       await pumpSettingsScreen(tester, client);
+      await selectSection(tester, 'AI Providers');
 
       final openaiCard = find.ancestor(
         of: find.text('Codex'),
@@ -260,6 +270,7 @@ void main() {
           return const {};
         };
       await pumpSettingsScreen(tester, client);
+      await selectSection(tester, 'AI Providers');
 
       final openrouterCard = find.ancestor(
         of: find.text('OpenRouter'),
@@ -292,6 +303,7 @@ void main() {
     testWidgets('shows the destructive card with a confirmation dialog',
         (tester) async {
       await pumpSettingsScreen(tester, FakeDaemonClient());
+      await selectSection(tester, 'Data');
 
       // The reset card describes the action and offers a button.
       expect(find.textContaining('Reset all data'), findsWidgets);
@@ -324,6 +336,7 @@ void main() {
             port: 7777,
             token: 'keep-me',
           );
+      await selectSection(tester, 'Data');
 
       await tester.tap(sectionResetButton());
       await tester.pumpAndSettle();
@@ -413,6 +426,7 @@ void main() {
             port: 7777,
             token: 'keep-me',
           );
+      await selectSection(tester, 'Data');
 
       await tester.tap(sectionResetButton());
       await tester.pumpAndSettle();
@@ -479,6 +493,7 @@ void main() {
             host: '10.9.9.9',
             port: 7777,
           );
+      await selectSection(tester, 'Data');
 
       await tester.tap(sectionResetButton());
       await tester.pumpAndSettle();
