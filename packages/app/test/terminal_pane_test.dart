@@ -7,21 +7,35 @@ import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/terminal_providers.dart';
+import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
 import 'package:coding_agent_app/widgets/terminal_pane.dart';
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+const _worktreePath = '/work/demo';
 
 const _agent = AgentSummary(
   agentId: 'a1',
   title: 'Demo agent',
-  cwd: '/work/demo',
+  cwd: _worktreePath,
   provider: 'claude',
   model: 'sonnet',
   mode: AgentMode.normal,
   runState: AgentRunState.idle,
   createdAtMs: 0,
 );
+
+const _tabId = 'tab-1';
+const _key = (worktreePath: _worktreePath, tabId: _tabId);
+
+List<String> _terminalTabIds(ProviderContainer container) => container
+    .read(worktreeTabsProvider(_worktreePath))
+    .layout
+    .tabs
+    .where((t) => t.kind == WorktreeTabKind.terminal)
+    .map((t) => t.tabId)
+    .toList();
 
 /// Scriptable in-memory daemon: answers terminal RPCs and records frames
 /// the client would have sent over the socket.
@@ -48,6 +62,7 @@ class FakeDaemonClient extends DaemonClient {
   Completer<Map<String, Object?>>? pendingCreate;
 
   int _terminalCounter = 0;
+  int _slotCounter = 0;
 
   @override
   Stream<TerminalFrame> get terminalFrames => frames.stream;
@@ -87,20 +102,32 @@ class FakeDaemonClient extends DaemonClient {
         },
       };
     }
+    if (type == MessageTypes.terminalSubscribeRequest) {
+      if (malformedSubscribeResponse) return const {};
+      _slotCounter++;
+      return {'slotId': _slotCounter};
+    }
+    if (type == MessageTypes.terminalListRequest) {
+      return {
+        'terminals': [
+          for (var i = 1; i <= _terminalCounter; i++)
+            {'terminalId': 'term-$i', 'cwd': _worktreePath, 'shell': 'bash'},
+        ],
+      };
+    }
     return switch (type) {
       MessageTypes.agentListRequest => {
           'agents': [_agent.toJson()],
         },
-      MessageTypes.terminalSubscribeRequest =>
-        malformedSubscribeResponse ? const {} : {'slotId': 7},
       _ => const {},
     };
   }
 }
 
-TerminalFrame _daemonFrame(TerminalOpcode opcode, String text) => TerminalFrame(
+TerminalFrame _daemonFrame(TerminalOpcode opcode, int slotId, String text) =>
+    TerminalFrame(
       opcode: opcode,
-      slotId: 7,
+      slotId: slotId,
       payload: Uint8List.fromList(utf8.encode(text)),
     );
 
@@ -117,8 +144,10 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: const MaterialApp(
-          home: Scaffold(body: TerminalPane(agentId: 'a1')),
+        child: const FluentApp(
+          home: ScaffoldPage(
+            content: TerminalPane(worktreePath: _worktreePath, tabId: _tabId),
+          ),
         ),
       ),
     );
@@ -130,12 +159,12 @@ void main() {
     expect(types, contains(MessageTypes.terminalCreateRequest));
     expect(types, contains(MessageTypes.terminalSubscribeRequest));
 
-    final session = container.read(terminalSessionProvider('a1'));
+    final session = container.read(terminalSessionProvider(_key));
     expect(session.status, TerminalSessionStatus.running);
 
     // Daemon replays scrollback (snapshot), then live output.
-    fake.frames.add(_daemonFrame(TerminalOpcode.snapshot, 'hello-snapshot\r\n'));
-    fake.frames.add(_daemonFrame(TerminalOpcode.output, 'live-output'));
+    fake.frames.add(_daemonFrame(TerminalOpcode.snapshot, 1, 'hello-snapshot\r\n'));
+    fake.frames.add(_daemonFrame(TerminalOpcode.output, 1, 'live-output'));
     await tester.pump();
 
     final bufferText = session.terminal.buffer.getText();
@@ -149,7 +178,7 @@ void main() {
         .where((f) => f.opcode == TerminalOpcode.input)
         .toList();
     expect(inputs, hasLength(1));
-    expect(inputs.single.slotId, 7);
+    expect(inputs.single.slotId, 1);
     expect(utf8.decode(inputs.single.payload), 'ls');
 
     // The daemon terminal was created in the agent's cwd.
@@ -171,14 +200,14 @@ void main() {
     // daemon terminal.
     fake.requests.clear();
     await tester.tap(find.text('Restart'));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
     await tester.pump();
 
     expect(
       fake.requests.any((r) => r.$1 == MessageTypes.terminalCreateRequest),
       isTrue,
     );
-    final restarted = container.read(terminalSessionProvider('a1'));
+    final restarted = container.read(terminalSessionProvider(_key));
     expect(restarted.status, TerminalSessionStatus.running);
   });
 
@@ -194,15 +223,17 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: const MaterialApp(
-          home: Scaffold(body: TerminalPane(agentId: 'a1')),
+        child: const FluentApp(
+          home: ScaffoldPage(
+            content: TerminalPane(worktreePath: _worktreePath, tabId: _tabId),
+          ),
         ),
       ),
     );
     await tester.pump();
     await tester.pump();
 
-    final session = container.read(terminalSessionProvider('a1'));
+    final session = container.read(terminalSessionProvider(_key));
     expect(session.status, TerminalSessionStatus.error);
     expect(find.textContaining('Terminal failed'), findsOneWidget);
     expect(find.textContaining('malformed create response'), findsOneWidget);
@@ -212,7 +243,7 @@ void main() {
     // but a fresh create request is issued).
     fake.requests.clear();
     await tester.tap(find.text('Restart'));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
     await tester.pump();
     expect(
       fake.requests.any((r) => r.$1 == MessageTypes.terminalCreateRequest),
@@ -232,15 +263,17 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: const MaterialApp(
-          home: Scaffold(body: TerminalPane(agentId: 'a1')),
+        child: const FluentApp(
+          home: ScaffoldPage(
+            content: TerminalPane(worktreePath: _worktreePath, tabId: _tabId),
+          ),
         ),
       ),
     );
     await tester.pump();
     await tester.pump();
 
-    final session = container.read(terminalSessionProvider('a1'));
+    final session = container.read(terminalSessionProvider(_key));
     expect(session.status, TerminalSessionStatus.error);
     expect(find.textContaining('malformed subscribe response'), findsOneWidget);
   });
@@ -257,15 +290,17 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: const MaterialApp(
-          home: Scaffold(body: TerminalPane(agentId: 'a1')),
+        child: const FluentApp(
+          home: ScaffoldPage(
+            content: TerminalPane(worktreePath: _worktreePath, tabId: _tabId),
+          ),
         ),
       ),
     );
     await tester.pump();
     await tester.pump();
 
-    final session = container.read(terminalSessionProvider('a1'));
+    final session = container.read(terminalSessionProvider(_key));
     expect(session.status, TerminalSessionStatus.error);
     expect(session.errorMessage, contains('daemon down'));
   });
@@ -287,8 +322,10 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: const MaterialApp(
-          home: Scaffold(body: TerminalPane(agentId: 'a1')),
+        child: const FluentApp(
+          home: ScaffoldPage(
+            content: TerminalPane(worktreePath: _worktreePath, tabId: _tabId),
+          ),
         ),
       ),
     );
@@ -299,7 +336,7 @@ void main() {
     // Rebuild the session before the create request resolves (bumping the
     // generation counter), the same way `restart()` does.
     fake.pendingCreate = null;
-    container.read(terminalSessionProvider('a1').notifier).restart();
+    container.read(terminalSessionProvider(_key).notifier).restart();
     await tester.pump();
     await tester.pump();
 
@@ -318,38 +355,54 @@ void main() {
   });
 
   testWidgets(
-      'archiving the agent shuts down its terminal session (unsubscribe + '
-      'kill) and invalidates the provider', (tester) async {
+      'archiving an agent does not touch terminal sessions (terminals are '
+      'worktree-scoped, not agent-scoped)', (tester) async {
     final fake = FakeDaemonClient();
     final container = ProviderContainer(
       overrides: [daemonClientProvider.overrideWithValue(fake)],
     );
     addTearDown(container.dispose);
     container.read(agentsProvider.notifier).upsert(_agent);
+    container
+        .read(worktreeTabsProvider(_worktreePath).notifier)
+        .addTab(WorktreeTabKind.terminal);
+    final tabId = _terminalTabIds(container).single;
+    final key = (worktreePath: _worktreePath, tabId: tabId);
 
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: const MaterialApp(
-          home: Scaffold(body: TerminalPane(agentId: 'a1')),
+        child: FluentApp(
+          home: ScaffoldPage(
+            content: TerminalPane(worktreePath: _worktreePath, tabId: tabId),
+          ),
         ),
       ),
     );
     await tester.pump();
     await tester.pump();
 
-    expect(container.exists(terminalSessionProvider('a1')), isTrue);
+    expect(container.exists(terminalSessionProvider(key)), isTrue);
 
     fake.requests.clear();
     await container.read(agentActionsProvider).archive('a1');
+    // Archiving triggers a WorktreeTabsNotifier rebuild (it watches
+    // agentsProvider), which re-checks pending terminal verification and
+    // fires an async terminal.list.request round-trip — give it a few extra
+    // ticks to fully settle before the test ends.
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
 
     expect(
       fake.requests.any((r) => r.$1 == MessageTypes.terminalUnsubscribeRequest),
-      isTrue,
+      isFalse,
     );
     expect(
       fake.requests.any((r) => r.$1 == MessageTypes.terminalKillRequest),
-      isTrue,
+      isFalse,
     );
+    expect(container.read(terminalSessionProvider(key)).status,
+        TerminalSessionStatus.running);
   });
 }

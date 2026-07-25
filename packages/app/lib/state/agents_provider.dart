@@ -2,10 +2,21 @@ import 'dart:async';
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../core/daemon_client.dart';
+import '../core/desktop/desktop_shell.dart';
+import '../core/desktop/notification_service.dart';
 import 'daemon_providers.dart';
-import 'terminal_providers.dart';
+import 'worktree_tabs_provider.dart';
+
+/// The worktree/session-group an agent belongs to: a worktree agent's `cwd`
+/// *is* the worktree path; a local-isolation agent's `cwd` *is* the project
+/// path. Distinct from `resolveAgentProjectPath` (sidebar_grouping_provider.dart),
+/// which resolves the *owning* repo/project for sidebar sectioning — a
+/// worktree agent's `projectPath` is the main checkout, not the worktree
+/// itself.
+String resolveWorktreeKey(AgentSummary agent) => agent.cwd;
 
 /// Live map of agentId -> [AgentSummary], fed by `agent.list` on (re)connect
 /// and kept fresh by `agent.state` broadcast events.
@@ -35,7 +46,47 @@ class AgentsNotifier extends Notifier<Map<String, AgentSummary>> {
     } catch (_) {
       return;
     }
+    final previous = state[payload.agent.agentId]?.runState;
     upsert(payload.agent);
+    _maybeNotify(previous, payload.agent);
+  }
+
+  /// Fires an OS notification on the transitions a user actually cares
+  /// about — first sighting an agent isn't a transition, and while the
+  /// window is focused the in-chat UI already makes this obvious.
+  void _maybeNotify(AgentRunState? previous, AgentSummary agent) {
+    if (previous == null) return;
+    if (windowFocusedNotifier.value) return;
+    final title = agent.title.isEmpty ? agent.agentId : agent.title;
+    final notifications = ref.read(notificationServiceProvider);
+    void onClick() {
+      windowManager.show();
+      windowManager.focus();
+      final worktreePath = resolveWorktreeKey(agent);
+      ref
+          .read(worktreeTabsProvider(worktreePath).notifier)
+          .focusAgent(agent.agentId);
+      ref.read(selectedWorktreeProvider.notifier).select(worktreePath);
+    }
+
+    if (previous != AgentRunState.awaitingPermission &&
+        agent.runState == AgentRunState.awaitingPermission) {
+      notifications.notify(
+        title: title,
+        body: 'Needs your input',
+        onClick: onClick,
+      );
+    } else if (previous == AgentRunState.running &&
+        agent.runState == AgentRunState.idle) {
+      notifications.notify(title: title, body: 'Finished', onClick: onClick);
+    } else if (previous == AgentRunState.running &&
+        agent.runState == AgentRunState.error) {
+      notifications.notify(
+        title: title,
+        body: 'Hit an error',
+        onClick: onClick,
+      );
+    }
   }
 
   void upsert(AgentSummary agent) {
@@ -64,8 +115,8 @@ class AgentsNotifier extends Notifier<Map<String, AgentSummary>> {
 
 final agentsProvider =
     NotifierProvider<AgentsNotifier, Map<String, AgentSummary>>(
-  AgentsNotifier.new,
-);
+      AgentsNotifier.new,
+    );
 
 /// Agents sorted most-recent first for the sidebar.
 final sortedAgentsProvider = Provider<List<AgentSummary>>((ref) {
@@ -77,18 +128,6 @@ final sortedAgentsProvider = Provider<List<AgentSummary>>((ref) {
 /// Summary (incl. runState) for a single agent.
 final agentSummaryProvider = Provider.family<AgentSummary?, String>(
   (ref, agentId) => ref.watch(agentsProvider)[agentId],
-);
-
-/// Currently selected agent in the shell.
-class SelectedAgentNotifier extends Notifier<String?> {
-  @override
-  String? build() => null;
-
-  void select(String? agentId) => state = agentId;
-}
-
-final selectedAgentProvider = NotifierProvider<SelectedAgentNotifier, String?>(
-  SelectedAgentNotifier.new,
 );
 
 /// Imperative daemon actions used by the UI.
@@ -115,34 +154,45 @@ class AgentActions {
       'model': model,
       'mode': mode.name,
       if (title != null && title.isNotEmpty) 'title': title,
-      if (projectPath != null) 'projectPath': projectPath,
-      if (branch != null) 'branch': branch,
+      'projectPath': ?projectPath,
+      'branch': ?branch,
       if (isWorktree) 'isWorktree': isWorktree,
     });
-    final agent =
-        AgentSummary.fromJson(res['agent'] as Map<String, Object?>? ?? const {});
+    final agent = AgentSummary.fromJson(
+      res['agent'] as Map<String, Object?>? ?? const {},
+    );
     _ref.read(agentsProvider.notifier).upsert(agent);
     return agent;
   }
 
-  Future<void> prompt(String agentId, String text) =>
-      _client.request(MessageTypes.agentPromptRequest, {
-        'agentId': agentId,
-        'text': text,
-      });
+  Future<void> prompt(String agentId, String text) => _client.request(
+    MessageTypes.agentPromptRequest,
+    {'agentId': agentId, 'text': text},
+  );
 
   Future<void> interrupt(String agentId) =>
       _client.request(MessageTypes.agentInterruptRequest, {'agentId': agentId});
 
   Future<void> archive(String agentId) async {
-    await _client
-        .request(MessageTypes.agentArchiveRequest, {'agentId': agentId});
-    // Tear down the agent's embedded terminal (if one was ever opened).
-    if (_ref.exists(terminalSessionProvider(agentId))) {
-      await _ref.read(terminalSessionProvider(agentId).notifier).shutdown();
-      _ref.invalidate(terminalSessionProvider(agentId));
-    }
+    await _client.request(MessageTypes.agentArchiveRequest, {
+      'agentId': agentId,
+    });
+    // Terminal tabs are worktree-scoped, not agent-scoped (several agents
+    // can share a worktree), so archiving one agent must never tear down
+    // terminal sessions here — that's worktree tab-close's job.
     _ref.read(agentsProvider.notifier).remove(agentId);
+  }
+
+  Future<AgentSummary> rename(String agentId, String title) async {
+    final res = await _client.request(MessageTypes.agentRenameRequest, {
+      'agentId': agentId,
+      'title': title,
+    });
+    final agent = AgentSummary.fromJson(
+      res['agent'] as Map<String, Object?>? ?? const {},
+    );
+    _ref.read(agentsProvider.notifier).upsert(agent);
+    return agent;
   }
 
   Future<void> respondPermission(String permissionId, String decision) =>

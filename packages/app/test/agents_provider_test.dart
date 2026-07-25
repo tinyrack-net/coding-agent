@@ -2,10 +2,24 @@ import 'dart:async';
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
+import 'package:coding_agent_app/core/desktop/desktop_shell.dart';
+import 'package:coding_agent_app/core/desktop/notification_service.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+/// Records `notify()` calls instead of touching the real `local_notifier`
+/// platform channel (unavailable/flaky in `flutter test`).
+class FakeNotificationService extends NotificationService {
+  final calls = <({String title, String body})>[];
+
+  @override
+  void notify({required String title, required String body, VoidCallback? onClick}) {
+    calls.add((title: title, body: body));
+  }
+}
 
 const _a1 = AgentSummary(
   agentId: 'a1',
@@ -72,15 +86,24 @@ class FakeDaemonClient extends DaemonClient {
   }
 }
 
-ProviderContainer makeContainer(FakeDaemonClient client) {
+ProviderContainer makeContainer(
+  FakeDaemonClient client, {
+  NotificationService? notificationService,
+}) {
   final container = ProviderContainer(
-    overrides: [daemonClientProvider.overrideWithValue(client)],
+    overrides: [
+      daemonClientProvider.overrideWithValue(client),
+      if (notificationService != null)
+        notificationServiceProvider.overrideWithValue(notificationService),
+    ],
   );
   addTearDown(container.dispose);
   return container;
 }
 
 void main() {
+  tearDown(() => windowFocusedNotifier.value = true);
+
   test('build() starts empty and does not fetch when disconnected', () async {
     final client = FakeDaemonClient();
     final container = makeContainer(client);
@@ -157,6 +180,114 @@ void main() {
     );
   });
 
+  group('OS notifications on run-state transitions', () {
+    test('does not notify on the first sighting of an agent', () async {
+      windowFocusedNotifier.value = false;
+      final client = FakeDaemonClient();
+      final notifications = FakeNotificationService();
+      final container =
+          makeContainer(client, notificationService: notifications);
+      container.read(agentsProvider);
+
+      client.eventsController.add(RpcEvent(
+        type: MessageTypes.agentStateEvent,
+        payload: AgentStatePayload(agent: _a1).toJson(),
+      ));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(notifications.calls, isEmpty);
+    });
+
+    test('notifies once when an agent transitions into awaitingPermission '
+        'while the window is unfocused', () async {
+      windowFocusedNotifier.value = false;
+      final client = FakeDaemonClient();
+      final notifications = FakeNotificationService();
+      final container =
+          makeContainer(client, notificationService: notifications);
+      container.read(agentsProvider.notifier).upsert(_a1);
+
+      client.eventsController.add(RpcEvent(
+        type: MessageTypes.agentStateEvent,
+        payload: AgentStatePayload(
+          agent: _a1.copyWith(runState: AgentRunState.awaitingPermission),
+        ).toJson(),
+      ));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(notifications.calls, hasLength(1));
+      expect(notifications.calls.single.title, 'First');
+      expect(notifications.calls.single.body, 'Needs your input');
+    });
+
+    test('notifies once when a running agent finishes (running -> idle) '
+        'while the window is unfocused', () async {
+      windowFocusedNotifier.value = false;
+      final client = FakeDaemonClient();
+      final notifications = FakeNotificationService();
+      final container =
+          makeContainer(client, notificationService: notifications);
+      container
+          .read(agentsProvider.notifier)
+          .upsert(_a1.copyWith(runState: AgentRunState.running));
+
+      client.eventsController.add(RpcEvent(
+        type: MessageTypes.agentStateEvent,
+        payload: AgentStatePayload(
+          agent: _a1.copyWith(runState: AgentRunState.idle),
+        ).toJson(),
+      ));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(notifications.calls, hasLength(1));
+      expect(notifications.calls.single.body, 'Finished');
+    });
+
+    test('notifies once when a running agent errors (running -> error) '
+        'while the window is unfocused', () async {
+      windowFocusedNotifier.value = false;
+      final client = FakeDaemonClient();
+      final notifications = FakeNotificationService();
+      final container =
+          makeContainer(client, notificationService: notifications);
+      container
+          .read(agentsProvider.notifier)
+          .upsert(_a1.copyWith(runState: AgentRunState.running));
+
+      client.eventsController.add(RpcEvent(
+        type: MessageTypes.agentStateEvent,
+        payload: AgentStatePayload(
+          agent: _a1.copyWith(runState: AgentRunState.error),
+        ).toJson(),
+      ));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(notifications.calls, hasLength(1));
+      expect(notifications.calls.single.body, 'Hit an error');
+    });
+
+    test('does not notify while the window is focused', () async {
+      windowFocusedNotifier.value = true;
+      final client = FakeDaemonClient();
+      final notifications = FakeNotificationService();
+      final container =
+          makeContainer(client, notificationService: notifications);
+      container
+          .read(agentsProvider.notifier)
+          .upsert(_a1.copyWith(runState: AgentRunState.running));
+
+      client.eventsController.add(RpcEvent(
+        type: MessageTypes.agentStateEvent,
+        payload: AgentStatePayload(
+          agent: _a1.copyWith(runState: AgentRunState.idle),
+        ).toJson(),
+      ));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(notifications.calls, isEmpty);
+    });
+  });
+
   test('malformed agent.state event is ignored', () async {
     final client = FakeDaemonClient();
     final container = makeContainer(client);
@@ -228,18 +359,6 @@ void main() {
     expect(container.read(agentSummaryProvider('missing')), isNull);
   });
 
-  test('selectedAgentProvider selects and clears', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    expect(container.read(selectedAgentProvider), isNull);
-
-    container.read(selectedAgentProvider.notifier).select('a1');
-    expect(container.read(selectedAgentProvider), 'a1');
-
-    container.read(selectedAgentProvider.notifier).select(null);
-    expect(container.read(selectedAgentProvider), isNull);
-  });
-
   group('AgentActions', () {
     test('create() requests agent.create and upserts the result', () async {
       final client = FakeDaemonClient();
@@ -295,6 +414,23 @@ void main() {
       final (type, payload) = client.requests.single;
       expect(type, MessageTypes.agentPromptRequest);
       expect(payload, <String, Object?>{'agentId': 'a1', 'text': 'hello'});
+    });
+
+    test('rename() requests agent.rename and upserts the result', () async {
+      final client = FakeDaemonClient();
+      final renamed = _a1.copyWith(title: 'New title');
+      client.onRequest = (type, payload) {
+        expect(type, MessageTypes.agentRenameRequest);
+        expect(payload, <String, Object?>{'agentId': 'a1', 'title': 'New title'});
+        return {'agent': renamed.toJson()};
+      };
+      final container = makeContainer(client);
+
+      final result =
+          await container.read(agentActionsProvider).rename('a1', 'New title');
+
+      expect(result.title, 'New title');
+      expect(container.read(agentsProvider)['a1']?.title, 'New title');
     });
 
     test('interrupt() sends agentId', () async {

@@ -5,7 +5,7 @@ import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/screens/agent_chat_screen.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -34,14 +34,37 @@ const _worktreeAgent = AgentSummary(
   isWorktree: true,
 );
 
-/// Scriptable fake covering everything AgentChatScreen's three tabs touch:
-/// agent list (for the header), the timeline fetch, the diff fetch, and the
-/// terminal create/subscribe handshake (so the Terminal tab doesn't hang).
+/// A second agent sharing `_worktreeAgent`'s cwd — used to verify the
+/// worktree-delete prompt only fires when archiving the *last* agent at
+/// that cwd, not any one of several.
+const _worktreeAgentSibling = AgentSummary(
+  agentId: 'a3',
+  title: 'Worktree sibling',
+  cwd: '/work/repo-wt',
+  provider: 'claude',
+  model: 'sonnet',
+  mode: AgentMode.normal,
+  runState: AgentRunState.idle,
+  createdAtMs: 1,
+  projectPath: '/work/repo',
+  branch: 'feature/x',
+  isWorktree: true,
+);
+
+/// Scriptable fake covering what AgentChatScreen's chat-only view touches:
+/// agent list (for the header) and the timeline fetch.
 class FakeDaemonClient extends DaemonClient {
-  FakeDaemonClient() : super(uri: Uri.parse('ws://fake'));
+  FakeDaemonClient({List<AgentSummary> extraAgents = const []})
+      : agents = [_agent, _worktreeAgent, ...extraAgents],
+        super(uri: Uri.parse('ws://fake'));
 
   final eventsController = StreamController<RpcEvent>.broadcast();
   final requests = <(String, Map<String, Object?>)>[];
+
+  /// Mirrors `agentsProvider`'s state so the connect-triggered
+  /// `agent.list.request` doesn't race a test's manually-upserted agents out
+  /// with the two hardcoded defaults.
+  final List<AgentSummary> agents;
 
   /// When true, the next `permission.respond.request` throws instead of
   /// responding (consumed after one use).
@@ -76,7 +99,7 @@ class FakeDaemonClient extends DaemonClient {
     }
     return switch (type) {
       MessageTypes.agentListRequest => {
-          'agents': [_agent.toJson(), _worktreeAgent.toJson()],
+          'agents': agents.map((a) => a.toJson()).toList(),
         },
       MessageTypes.agentTimelineFetchRequest => const TimelineFetchResponse(
           epoch: 0,
@@ -97,25 +120,29 @@ Future<ProviderContainer> pumpChatScreen(
   WidgetTester tester, {
   FakeDaemonClient? client,
   String agentId = 'a1',
+  List<AgentSummary> extraAgents = const [],
 }) async {
-  client ??= FakeDaemonClient();
+  client ??= FakeDaemonClient(extraAgents: extraAgents);
   final container = ProviderContainer(
     overrides: [daemonClientProvider.overrideWithValue(client)],
   );
   addTearDown(container.dispose);
   container.read(agentsProvider.notifier).upsert(_agent);
   container.read(agentsProvider.notifier).upsert(_worktreeAgent);
+  for (final agent in extraAgents) {
+    container.read(agentsProvider.notifier).upsert(agent);
+  }
 
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp(
-        home: Scaffold(body: AgentChatScreen(agentId: agentId)),
+      child: FluentApp(
+        home: ScaffoldPage(content: AgentChatScreen(agentId: agentId)),
       ),
     ),
   );
-  await tester.pump();
-  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 150));
+  await tester.pump(const Duration(milliseconds: 150));
   return container;
 }
 
@@ -144,72 +171,42 @@ void main() {
         item: UserMessageItem(id: 'm1', text: 'hello world'),
       ).toJson(),
     ));
-    await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 150));
 
     expect(find.text('hello world'), findsOneWidget);
     expect(find.text('No messages yet. Say something below.'), findsNothing);
   });
 
-  testWidgets('switching to the Diff tab fetches and renders the diff',
-      (tester) async {
-    await pumpChatScreen(tester);
-
-    await tester.tap(find.text('Diff'));
-    await tester.pump();
-    await tester.pump();
-    await tester.pump();
-
-    expect(find.text('No changes'), findsOneWidget);
-    expect(find.text('/work/demo'), findsOneWidget);
-  });
-
-  testWidgets('switching to the Terminal tab creates a daemon terminal',
+  testWidgets('archiving the agent requests agent.archive and removes it',
       (tester) async {
     final container = await pumpChatScreen(tester);
     final client = container.read(daemonClientProvider) as FakeDaemonClient;
 
-    await tester.tap(find.text('Terminal'));
-    await tester.pump();
-    await tester.pump();
-
-    expect(
-      client.requests.any((r) => r.$1 == MessageTypes.terminalCreateRequest),
-      isTrue,
-    );
-  });
-
-  testWidgets('archiving the agent requests agent.archive and deselects it',
-      (tester) async {
-    final container = await pumpChatScreen(tester);
-    final client = container.read(daemonClientProvider) as FakeDaemonClient;
-    container.read(selectedAgentProvider.notifier).select('a1');
-
-    await tester.tap(find.byTooltip('Archive agent'));
-    await tester.pump();
-    await tester.pump();
+    await tester.tap(find.byWidgetPredicate((w) => w is Tooltip && w.message == 'Archive agent'));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 150));
 
     expect(
       client.requests.any((r) => r.$1 == MessageTypes.agentArchiveRequest),
       isTrue,
     );
-    expect(container.read(selectedAgentProvider), isNull);
     expect(container.read(agentsProvider).containsKey('a1'), isFalse);
   });
 
-  testWidgets('a failed archive shows a snackbar and keeps the agent selected',
+  testWidgets('a failed archive shows a snackbar and keeps the agent',
       (tester) async {
     final client = FailingArchiveClient()..failArchive = true;
     final container = await pumpChatScreen(tester, client: client);
-    container.read(selectedAgentProvider.notifier).select('a1');
 
-    await tester.tap(find.byTooltip('Archive agent'));
-    await tester.pump();
-    await tester.pump();
+    await tester.tap(find.byWidgetPredicate((w) => w is Tooltip && w.message == 'Archive agent'));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 150));
 
     expect(find.textContaining('Failed to archive'), findsOneWidget);
-    expect(container.read(selectedAgentProvider), 'a1');
     expect(container.read(agentsProvider).containsKey('a1'), isTrue);
+    // Let AppToast's auto-dismiss timer fire so no Timer remains pending.
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('a worktree agent shows its branch in the header subtitle',
@@ -228,11 +225,10 @@ void main() {
       'Remove requests worktree.archive', (tester) async {
     final container = await pumpChatScreen(tester, agentId: 'a2');
     final client = container.read(daemonClientProvider) as FakeDaemonClient;
-    container.read(selectedAgentProvider.notifier).select('a2');
 
-    await tester.tap(find.byTooltip('Archive agent'));
-    await tester.pump();
-    await tester.pump();
+    await tester.tap(find.byWidgetPredicate((w) => w is Tooltip && w.message == 'Archive agent'));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 150));
 
     expect(
       client.requests.any((r) => r.$1 == MessageTypes.agentArchiveRequest),
@@ -253,15 +249,36 @@ void main() {
   });
 
   testWidgets(
+      'archiving one of two agents sharing a worktree does not prompt to '
+      'delete it', (tester) async {
+    final container = await pumpChatScreen(
+      tester,
+      agentId: 'a2',
+      extraAgents: [_worktreeAgentSibling],
+    );
+    final client = container.read(daemonClientProvider) as FakeDaemonClient;
+
+    await tester.tap(find.byWidgetPredicate((w) => w is Tooltip && w.message == 'Archive agent'));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(
+      client.requests.any((r) => r.$1 == MessageTypes.agentArchiveRequest),
+      isTrue,
+    );
+    expect(find.text('Delete worktree?'), findsNothing);
+    expect(container.read(agentsProvider).containsKey('a3'), isTrue);
+  });
+
+  testWidgets(
       'archiving a worktree agent and choosing Keep does not remove the '
       'worktree', (tester) async {
     final container = await pumpChatScreen(tester, agentId: 'a2');
     final client = container.read(daemonClientProvider) as FakeDaemonClient;
-    container.read(selectedAgentProvider.notifier).select('a2');
 
-    await tester.tap(find.byTooltip('Archive agent'));
-    await tester.pump();
-    await tester.pump();
+    await tester.tap(find.byWidgetPredicate((w) => w is Tooltip && w.message == 'Archive agent'));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 150));
 
     await tester.tap(find.text('Keep'));
     await tester.pumpAndSettle();
@@ -290,69 +307,22 @@ void main() {
         ).toJson(),
       ));
     }
-    await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 150));
 
-    expect(find.byIcon(Icons.arrow_downward), findsNothing);
+    expect(find.byIcon(FluentIcons.down), findsNothing);
 
     // Manually scroll away from the bottom to trigger _onScroll.
     await tester.drag(find.byType(ListView), const Offset(0, 400));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
 
-    expect(find.byIcon(Icons.arrow_downward), findsOneWidget);
+    expect(find.byIcon(FluentIcons.down), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.arrow_downward));
-    await tester.pump();
-    await tester.pump();
+    await tester.tap(find.byIcon(FluentIcons.down));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 150));
 
-    expect(find.byIcon(Icons.arrow_downward), findsNothing);
-  });
-
-  testWidgets('the Diff tab refresh button re-issues diff.get.request',
-      (tester) async {
-    final container = await pumpChatScreen(tester);
-    final client = container.read(daemonClientProvider) as FakeDaemonClient;
-
-    await tester.tap(find.text('Diff'));
-    await tester.pump();
-    await tester.pump();
-    await tester.pump();
-
-    client.requests.clear();
-    await tester.tap(find.byTooltip('Refresh diff'));
-    await tester.pump();
-
-    expect(
-      client.requests.any((r) => r.$1 == MessageTypes.diffGetRequest),
-      isTrue,
-    );
-  });
-
-  testWidgets('a diff fetch failure shows an inline error', (tester) async {
-    final client = FailingDiffClient();
-    final container = ProviderContainer(
-      overrides: [daemonClientProvider.overrideWithValue(client)],
-    );
-    addTearDown(container.dispose);
-    container.read(agentsProvider.notifier).upsert(_agent);
-
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: const MaterialApp(
-          home: Scaffold(body: AgentChatScreen(agentId: 'a1')),
-        ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump();
-
-    await tester.tap(find.text('Diff'));
-    await tester.pump();
-    await tester.pump();
-    await tester.pump();
-
-    expect(find.textContaining('Failed to load diff'), findsOneWidget);
+    expect(find.byIcon(FluentIcons.down), findsNothing);
   });
 
   testWidgets(
@@ -377,13 +347,13 @@ void main() {
         ),
       ).toJson(),
     ));
-    await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 150));
 
     // Success case.
     await tester.tap(find.text('Always allow'));
-    await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 150));
     expect(
       client.requests.any(
         (r) =>
@@ -410,14 +380,16 @@ void main() {
         ),
       ).toJson(),
     ));
-    await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 150));
 
     await tester.tap(find.text('Deny').last);
-    await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 150));
 
     expect(find.textContaining('Failed to respond'), findsOneWidget);
+    // Let AppToast's auto-dismiss timer fire so no Timer remains pending.
+    await tester.pump(const Duration(seconds: 5));
   });
 }
 
@@ -434,21 +406,6 @@ class FailingArchiveClient extends FakeDaemonClient {
   }) async {
     if (type == MessageTypes.agentArchiveRequest && failArchive) {
       throw StateError('archive rejected');
-    }
-    return super.request(type, payload, timeout: timeout);
-  }
-}
-
-/// Variant of [FakeDaemonClient] whose `diff.get.request` always fails.
-class FailingDiffClient extends FakeDaemonClient {
-  @override
-  Future<Map<String, Object?>> request(
-    String type,
-    Map<String, Object?> payload, {
-    Duration timeout = const Duration(seconds: 30),
-  }) async {
-    if (type == MessageTypes.diffGetRequest) {
-      throw StateError('diff unavailable');
     }
     return super.request(type, payload, timeout: timeout);
   }

@@ -172,6 +172,13 @@ Future<DaemonServerHandle> startDaemonServer({
       );
       return {'agent': agent.toJson()};
     })
+    ..on(MessageTypes.agentRenameRequest, (_, payload) async {
+      final agent = await manager.rename(
+        _requireString(payload, 'agentId'),
+        _requireString(payload, 'title'),
+      );
+      return {'agent': agent.toJson()};
+    })
     ..on(MessageTypes.agentArchiveRequest, (_, payload) async {
       await manager.archive(_requireString(payload, 'agentId'));
       return const <String, Object?>{};

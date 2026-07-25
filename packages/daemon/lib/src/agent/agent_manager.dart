@@ -213,6 +213,14 @@ class AgentManager {
     return runtime.summary;
   }
 
+  Future<AgentSummary> rename(String agentId, String title) async {
+    final runtime = _runtime(agentId);
+    runtime.summary = runtime.summary.copyWith(title: title);
+    _persist(runtime);
+    _broadcastState(runtime);
+    return runtime.summary;
+  }
+
   Future<void> archive(String agentId) async {
     final runtime = _runtime(agentId);
     runtime.archived = true;

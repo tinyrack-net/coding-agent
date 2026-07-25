@@ -11,15 +11,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// Fake with a controllable connectionState stream and scriptable request().
 class FakeDaemonClient extends DaemonClient {
-  FakeDaemonClient({DaemonConnectionState initial = DaemonConnectionState.disconnected})
-      : _state = initial,
-        super(uri: Uri.parse('ws://fake'));
+  FakeDaemonClient({
+    DaemonConnectionState initial = DaemonConnectionState.disconnected,
+  }) : _state = initial,
+       super(uri: Uri.parse('ws://fake'));
 
   final connectionController =
       StreamController<DaemonConnectionState>.broadcast();
   DaemonConnectionState _state;
   Map<String, Object?> Function(String type, Map<String, Object?> payload)?
-      onRequest;
+  onRequest;
 
   @override
   Stream<DaemonConnectionState> get connectionState =>
@@ -55,18 +56,20 @@ class FakeSupervisor extends DaemonSupervisor {
 
 void main() {
   group('daemonClientProvider', () {
-    test('non-desktop shell: constructs and connects a client from settings',
-        () {
-      final container = ProviderContainer(
-        overrides: [desktopShellProvider.overrideWithValue(false)],
-      );
-      addTearDown(container.dispose);
+    test(
+      'non-desktop shell: constructs and connects a client from settings',
+      () {
+        final container = ProviderContainer(
+          overrides: [desktopShellProvider.overrideWithValue(false)],
+        );
+        addTearDown(container.dispose);
 
-      final client = container.read(daemonClientProvider);
+        final client = container.read(daemonClientProvider);
 
-      expect(client.uri, const ConnectionSettings().uri);
-      expect(client.token, isNull);
-    });
+        expect(client.uri, const ConnectionSettings().uri);
+        expect(client.token, isNull);
+      },
+    );
 
     test('recreates the client when connection settings change', () {
       final container = ProviderContainer(
@@ -75,10 +78,9 @@ void main() {
       addTearDown(container.dispose);
 
       final before = container.read(daemonClientProvider);
-      container.read(connectionSettingsProvider.notifier).save(
-            host: '10.2.2.2',
-            port: 7777,
-          );
+      container
+          .read(connectionSettingsProvider.notifier)
+          .save(host: '10.2.2.2', port: 7777);
       final after = container.read(daemonClientProvider);
 
       expect(identical(before, after), isFalse);
@@ -86,8 +88,7 @@ void main() {
       expect(after.uri.port, 7777);
     });
 
-    test(
-        'desktop + loopback: the client is only created after the lifecycle '
+    test('desktop + loopback: the client is only created after the lifecycle '
         "provider's ensureRunning() resolves", () async {
       final supervisor = FakeSupervisor();
       final container = ProviderContainer(
@@ -119,7 +120,7 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final sub = container.listen(connectionStateProvider, (_, __) {});
+      final sub = container.listen(connectionStateProvider, (_, _) {});
       addTearDown(sub.close);
 
       fake.setState(DaemonConnectionState.connected);
@@ -137,20 +138,20 @@ void main() {
     test('returns an empty list until the client is connected', () async {
       final fake = FakeDaemonClient();
       fake.onRequest = (type, payload) => {
-            'providers': [
-              const ProviderInfo(
-                id: ProviderId.openai,
-                displayName: 'Codex',
-                configured: true,
-              ).toJson(),
-            ],
-          };
+        'providers': [
+          const ProviderInfo(
+            id: ProviderId.openai,
+            displayName: 'Codex',
+            configured: true,
+          ).toJson(),
+        ],
+      };
       final container = ProviderContainer(
         overrides: [daemonClientProvider.overrideWithValue(fake)],
       );
       addTearDown(container.dispose);
 
-      final sub = container.listen(providerListProvider, (_, __) {});
+      final sub = container.listen(providerListProvider, (_, _) {});
       addTearDown(sub.close);
       // Emit the (disconnected) initial state so connectionStateProvider's
       // future resolves; providerListProvider should then settle on `[]`
@@ -181,7 +182,7 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final sub = container.listen(providerListProvider, (_, __) {});
+      final sub = container.listen(providerListProvider, (_, _) {});
       addTearDown(sub.close);
 
       fake.setState(DaemonConnectionState.connected);
@@ -195,29 +196,31 @@ void main() {
   });
 
   group('ProviderCredentialActions', () {
-    test('setKey sends providerId/apiKey and invalidates the provider list',
-        () async {
-      final fake = FakeDaemonClient();
-      final calls = <(String, Map<String, Object?>)>[];
-      fake.onRequest = (type, payload) {
-        calls.add((type, payload));
-        return const {};
-      };
-      final container = ProviderContainer(
-        overrides: [daemonClientProvider.overrideWithValue(fake)],
-      );
-      addTearDown(container.dispose);
+    test(
+      'setKey sends providerId/apiKey and invalidates the provider list',
+      () async {
+        final fake = FakeDaemonClient();
+        final calls = <(String, Map<String, Object?>)>[];
+        fake.onRequest = (type, payload) {
+          calls.add((type, payload));
+          return const {};
+        };
+        final container = ProviderContainer(
+          overrides: [daemonClientProvider.overrideWithValue(fake)],
+        );
+        addTearDown(container.dispose);
 
-      await container
-          .read(providerCredentialActionsProvider)
-          .setKey(ProviderId.deepseek, 'sk-test');
+        await container
+            .read(providerCredentialActionsProvider)
+            .setKey(ProviderId.deepseek, 'sk-test');
 
-      final call = calls.singleWhere(
-        (c) => c.$1 == MessageTypes.providerCredentialSetRequest,
-      );
-      expect(call.$2['providerId'], 'deepseek');
-      expect(call.$2['apiKey'], 'sk-test');
-    });
+        final call = calls.singleWhere(
+          (c) => c.$1 == MessageTypes.providerCredentialSetRequest,
+        );
+        expect(call.$2['providerId'], 'deepseek');
+        expect(call.$2['apiKey'], 'sk-test');
+      },
+    );
 
     test('clearKey sends providerId only', () async {
       final fake = FakeDaemonClient();
@@ -241,26 +244,28 @@ void main() {
       expect(call.$2['providerId'], 'openrouter');
     });
 
-    test('testKey returns the parsed result and omits apiKey when not given',
-        () async {
-      final fake = FakeDaemonClient();
-      Map<String, Object?>? capturedPayload;
-      fake.onRequest = (type, payload) {
-        capturedPayload = payload;
-        return {'ok': true};
-      };
-      final container = ProviderContainer(
-        overrides: [daemonClientProvider.overrideWithValue(fake)],
-      );
-      addTearDown(container.dispose);
+    test(
+      'testKey returns the parsed result and omits apiKey when not given',
+      () async {
+        final fake = FakeDaemonClient();
+        Map<String, Object?>? capturedPayload;
+        fake.onRequest = (type, payload) {
+          capturedPayload = payload;
+          return {'ok': true};
+        };
+        final container = ProviderContainer(
+          overrides: [daemonClientProvider.overrideWithValue(fake)],
+        );
+        addTearDown(container.dispose);
 
-      final result = await container
-          .read(providerCredentialActionsProvider)
-          .testKey(ProviderId.openai);
+        final result = await container
+            .read(providerCredentialActionsProvider)
+            .testKey(ProviderId.openai);
 
-      expect(result.ok, isTrue);
-      expect(capturedPayload!.containsKey('apiKey'), isFalse);
-    });
+        expect(result.ok, isTrue);
+        expect(capturedPayload!.containsKey('apiKey'), isFalse);
+      },
+    );
 
     test('testKey includes apiKey when explicitly given', () async {
       final fake = FakeDaemonClient();

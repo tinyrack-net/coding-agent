@@ -26,6 +26,10 @@ dependencies:
   tray_manager: ^0.5.3
   window_manager: ^0.5.2
   launch_at_startup: ^0.5.1
+  local_notifier: ^0.1.6
+  fluent_ui: ^4.16.0
+  flutter_localizations:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:

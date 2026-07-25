@@ -68,7 +68,7 @@ class WorktreesNotifier extends AsyncNotifier<List<WorktreeInfo>> {
     final res = await client.request(MessageTypes.worktreeCreateRequest, {
       'projectPath': projectPath,
       'branch': branch,
-      if (baseRef != null) 'baseRef': baseRef,
+      'baseRef': ?baseRef,
     });
     final worktree = WorktreeInfo.fromJson(
       res['worktree'] as Map<String, Object?>? ?? const {},
@@ -102,6 +102,46 @@ final worktreesProvider =
     AsyncNotifierProvider.family<WorktreesNotifier, List<WorktreeInfo>, String>(
       WorktreesNotifier.new,
     );
+
+/// The project/branch metadata for creating a new agent at [worktreePath],
+/// resolved by searching every registered git project's worktree list for a
+/// match. `isWorktree` is only true for an isolated (non-main) worktree — a
+/// draft session opened in a project's main checkout behaves like "Local"
+/// isolation. Null fields (the common case: a non-git "local isolation"
+/// project, or a worktree path not yet reconciled) mean no owning
+/// project/branch to pass through.
+class WorktreeAgentContext {
+  const WorktreeAgentContext({
+    this.projectPath,
+    this.branch,
+    this.isWorktree = false,
+  });
+
+  final String? projectPath;
+  final String? branch;
+  final bool isWorktree;
+}
+
+final worktreeAgentContextProvider =
+    Provider.family<WorktreeAgentContext, String>((ref, worktreePath) {
+      final projects =
+          ref.watch(projectsProvider).value ?? const <ProjectInfo>[];
+      for (final project in projects) {
+        if (!project.isGitRepo) continue;
+        final worktrees =
+            ref.watch(worktreesProvider(project.path)).value ??
+            const <WorktreeInfo>[];
+        for (final worktree in worktrees) {
+          if (worktree.path != worktreePath) continue;
+          return WorktreeAgentContext(
+            projectPath: worktree.projectPath,
+            branch: worktree.isMain ? null : worktree.branch,
+            isWorktree: !worktree.isMain,
+          );
+        }
+      }
+      return const WorktreeAgentContext();
+    });
 
 /// Local branches of one project (family arg: the project's path), most
 /// recently committed first, plus the currently checked-out branch. Used by

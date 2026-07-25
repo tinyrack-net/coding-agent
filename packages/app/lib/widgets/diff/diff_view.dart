@@ -1,15 +1,17 @@
 import 'package:agent_protocol/agent_protocol.dart';
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
+
+import '../../core/theme.dart';
 
 /// Color/icon/letter mapping for a diff file status.
 (Color, IconData, String) diffStatusStyle(DiffFileStatus status) =>
     switch (status) {
-      DiffFileStatus.added => (Colors.green, Icons.add_circle_outline, 'A'),
-      DiffFileStatus.modified => (Colors.amber, Icons.edit_outlined, 'M'),
-      DiffFileStatus.deleted => (Colors.red, Icons.remove_circle_outline, 'D'),
+      DiffFileStatus.added => (Colors.green, FluentIcons.add, 'A'),
+      DiffFileStatus.modified => (Colors.yellow, FluentIcons.edit, 'M'),
+      DiffFileStatus.deleted => (Colors.red, FluentIcons.delete, 'D'),
       DiffFileStatus.renamed => (
         Colors.purple,
-        Icons.drive_file_move_outlined,
+        FluentIcons.move_to_folder,
         'R',
       ),
     };
@@ -50,12 +52,13 @@ class _DiffViewState extends State<DiffView> {
           return ListView(
             children: [
               for (final file in files)
-                ExpansionTile(
+                Padding(
                   key: PageStorageKey('diff-${file.path}'),
-                  dense: true,
-                  title: _FileRowLabel(file: file),
-                  childrenPadding: const EdgeInsets.only(bottom: 8),
-                  children: [_FileDiffBody(file: file)],
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Expander(
+                    header: _FileRowLabel(file: file),
+                    content: _FileDiffBody(file: file),
+                  ),
                 ),
             ],
           );
@@ -75,7 +78,7 @@ class _DiffViewState extends State<DiffView> {
                 ),
               ),
             ),
-            const VerticalDivider(width: 1),
+            const Divider(direction: Axis.vertical),
             Expanded(
               child: ListView(
                 key: ValueKey('diff-body-${selected.path}'),
@@ -94,20 +97,18 @@ class _NoChanges extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final outline = Theme.of(context).colorScheme.outline;
+    final outline = context.tokens.outline;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.check_circle_outline, size: 48, color: outline),
+          Icon(FluentIcons.completed_solid, size: 48, color: outline),
           const SizedBox(height: 12),
           Text('No changes', style: TextStyle(color: outline)),
           const SizedBox(height: 4),
           Text(
             'The working tree is clean.',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: outline),
+            style: context.textStyles.bodySmall?.copyWith(color: outline),
           ),
         ],
       ),
@@ -128,10 +129,9 @@ class _FileListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      dense: true,
+    return ListTile.selectable(
       selected: selected,
-      onTap: onTap,
+      onPressed: onTap,
       title: _FileRowLabel(file: file),
     );
   }
@@ -146,7 +146,7 @@ class _FileRowLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (color, icon, _) = diffStatusStyle(file.status);
-    final small = Theme.of(context).textTheme.bodySmall;
+    final small = context.textStyles.bodySmall;
     final path = file.status == DiffFileStatus.renamed && file.oldPath != null
         ? '${file.oldPath} → ${file.path}'
         : file.path;
@@ -159,7 +159,7 @@ class _FileRowLabel extends StatelessWidget {
             path,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodyMedium,
+            style: context.textStyles.bodyMedium,
           ),
         ),
         const SizedBox(width: 8),
@@ -179,14 +179,14 @@ class _FileDiffBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final outline = Theme.of(context).colorScheme.outline;
+    final outline = context.tokens.outline;
     if (file.binary) {
       return Padding(
         padding: const EdgeInsets.all(24),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.insert_drive_file_outlined, size: 18, color: outline),
+            Icon(FluentIcons.document, size: 18, color: outline),
             const SizedBox(width: 8),
             Text('Binary file', style: TextStyle(color: outline)),
           ],
@@ -220,16 +220,16 @@ class _HunkHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.tokens;
     return Container(
-      color: scheme.surfaceContainerHighest,
+      color: tokens.surfaceContainerHighest,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Text(
         header,
         style: TextStyle(
           fontFamily: 'monospace',
           fontSize: 12,
-          color: scheme.onSurfaceVariant,
+          color: tokens.onSurfaceVariant,
         ),
       ),
     );
@@ -245,19 +245,19 @@ class _DiffLineRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final outline = theme.colorScheme.outline;
+    final theme = FluentTheme.of(context);
+    final outline = context.tokens.outline;
     final dark = theme.brightness == Brightness.dark;
     final (background, marker, textColor) = switch (line.type) {
       DiffLineType.add => (
         Colors.green.withValues(alpha: 0.12),
         '+',
-        dark ? Colors.green.shade300 : Colors.green.shade800,
+        dark ? Colors.green.light : Colors.green.dark,
       ),
       DiffLineType.del => (
         Colors.red.withValues(alpha: 0.12),
         '-',
-        dark ? Colors.red.shade300 : Colors.red.shade800,
+        dark ? Colors.red.light : Colors.red.dark,
       ),
       DiffLineType.context => (null, ' ', null),
     };

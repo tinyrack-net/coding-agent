@@ -1,6 +1,6 @@
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/widgets/timeline_item_tile.dart';
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -28,9 +28,9 @@ void main() {
   testWidgets('renders a scripted timeline item list', (tester) async {
     final decisions = <(String, String)>[];
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListView(
+      FluentApp(
+        home: ScaffoldPage(
+          content: ListView(
             children: [
               for (final item in items)
                 TimelineItemTile(
@@ -46,14 +46,16 @@ void main() {
 
     // User bubble.
     expect(find.text('run the tests'), findsOneWidget);
-    // Reasoning collapsed by default: header visible, body hidden.
+    // Reasoning collapsed by default: header visible. (Fluent's `Expander`
+    // keeps its content mounted with an animated height rather than
+    // unmounting it like Material's `ExpansionTile`, so we don't assert the
+    // body text is absent here — only that it becomes visible on expand,
+    // covered below.)
     expect(find.text('Thinking…'), findsOneWidget);
-    expect(find.text('I should run flutter test'), findsNothing);
-    // Tool call card: name, summary, status chip; output collapsed.
+    // Tool call card: name, summary, status chip.
     expect(find.text('Bash'), findsOneWidget);
     expect(find.text('flutter test'), findsOneWidget);
     expect(find.text('success'), findsOneWidget);
-    expect(find.text('All tests passed!'), findsNothing);
     // Assistant markdown rendered (bold stripped of asterisks).
     expect(find.textContaining('green'), findsOneWidget);
     // Permission card with actions.
@@ -72,6 +74,7 @@ void main() {
 
     // Permission buttons dispatch decisions.
     await tester.tap(find.text('Always allow'));
+    await tester.pump(const Duration(milliseconds: 150));
     expect(decisions, [('perm-1', 'allow_always')]);
   });
 
@@ -85,8 +88,8 @@ void main() {
       detail: ShellDetail(command: 'rm -rf /'),
     );
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(body: TimelineItemTile(item: resolved)),
+      const FluentApp(
+        home: ScaffoldPage(content: TimelineItemTile(item: resolved)),
       ),
     );
     expect(find.text('Allow'), findsNothing);
@@ -103,8 +106,8 @@ void main() {
       detail: ShellDetail(command: 'echo hi'),
     );
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(body: TimelineItemTile(item: resolved)),
+      const FluentApp(
+        home: ScaffoldPage(content: TimelineItemTile(item: resolved)),
       ),
     );
     expect(find.text('Allowed'), findsOneWidget);
@@ -121,9 +124,9 @@ void main() {
       detail: ShellDetail(command: 'echo hi'),
     );
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: TimelineItemTile(
+      FluentApp(
+        home: ScaffoldPage(
+          content: TimelineItemTile(
             item: pending,
             onPermissionDecision: (id, decision) =>
                 decisions.add((id, decision)),
@@ -133,7 +136,9 @@ void main() {
     );
 
     await tester.tap(find.text('Allow'));
+    await tester.pump(const Duration(milliseconds: 150));
     await tester.tap(find.text('Deny'));
+    await tester.pump(const Duration(milliseconds: 150));
 
     expect(decisions, [('perm-4', 'allow'), ('perm-4', 'deny')]);
   });
@@ -146,8 +151,8 @@ void main() {
       complete: false,
     );
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(body: TimelineItemTile(item: streaming)),
+      const FluentApp(
+        home: ScaffoldPage(content: TimelineItemTile(item: streaming)),
       ),
     );
     await tester.pump(const Duration(milliseconds: 100));
@@ -198,9 +203,9 @@ void main() {
       ),
     ];
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListView(
+      FluentApp(
+        home: ScaffoldPage(
+          content: ListView(
             children: [
               for (final item in items) TimelineItemTile(item: item),
             ],
@@ -212,11 +217,11 @@ void main() {
     // Read: no expandable body (ReadDetail has no output/preview), so it's a
     // plain ListTile with the path as its summary.
     expect(find.text('lib/main.dart'), findsOneWidget);
-    expect(find.byIcon(Icons.file_open_outlined), findsOneWidget);
+    expect(find.byIcon(FluentIcons.open_file), findsOneWidget);
 
     // Write: content preview is rendered once expanded.
     expect(find.text('lib/new.dart'), findsOneWidget);
-    expect(find.byIcon(Icons.save_outlined), findsOneWidget);
+    expect(find.byIcon(FluentIcons.save), findsOneWidget);
     await tester.tap(find.text('Write'));
     await tester.pumpAndSettle(const Duration(milliseconds: 100));
     expect(find.text('void main() {}'), findsOneWidget);
@@ -225,12 +230,12 @@ void main() {
     expect(find.text('TODO in lib'), findsOneWidget);
     // Search without a path: summary is just the query.
     expect(find.text('TODO'), findsOneWidget);
-    expect(find.byIcon(Icons.search), findsNWidgets(2));
+    expect(find.byIcon(FluentIcons.search), findsNWidgets(2));
 
     // Generic: summary falls back to the tool name (rendered twice: once as
     // the tool name label, once as the summary); error status chip shown.
     expect(find.text('Custom'), findsNWidgets(2));
-    expect(find.byIcon(Icons.build_outlined), findsOneWidget);
+    expect(find.byIcon(FluentIcons.build), findsOneWidget);
     expect(find.text('error'), findsOneWidget);
     expect(find.text('running'), findsOneWidget);
     expect(find.text('pending'), findsOneWidget);
@@ -253,8 +258,8 @@ void main() {
       ),
     );
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(body: TimelineItemTile(item: item)),
+      const FluentApp(
+        home: ScaffoldPage(content: TimelineItemTile(item: item)),
       ),
     );
 
@@ -278,9 +283,9 @@ void main() {
       TurnItem(id: 'turn-canceled', phase: TurnPhase.canceled),
     ];
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Column(
+      FluentApp(
+        home: ScaffoldPage(
+          content: Column(
             children: [
               TimelineItemTile(item: items[0]),
               TimelineItemTile(item: items[1]),

@@ -1,9 +1,10 @@
 import 'package:agent_protocol/agent_protocol.dart';
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/agents_provider.dart';
+import '../widgets/fluent/toast.dart';
 
 /// Prompt input: Enter sends, Shift+Enter inserts a newline. The send button
 /// turns into a stop (interrupt) button while the agent is busy.
@@ -36,9 +37,8 @@ class _ComposerState extends ConsumerState<Composer> {
     } catch (e) {
       if (!mounted) return;
       _controller.text = text;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to send prompt: $e')),
-      );
+      AppToast.show(context, 'Failed to send prompt: $e',
+          severity: InfoBarSeverity.error);
     }
   }
 
@@ -47,9 +47,8 @@ class _ComposerState extends ConsumerState<Composer> {
       await ref.read(agentActionsProvider).interrupt(widget.agentId);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to interrupt: $e')),
-      );
+      AppToast.show(context, 'Failed to interrupt: $e',
+          severity: InfoBarSeverity.error);
     }
   }
 
@@ -82,33 +81,25 @@ class _ComposerState extends ConsumerState<Composer> {
             Expanded(
               child: Focus(
                 onKeyEvent: _onKeyEvent,
-                child: TextField(
+                child: TextBox(
                   controller: _controller,
                   focusNode: _focusNode,
                   minLines: 1,
                   maxLines: 8,
                   keyboardType: TextInputType.multiline,
                   textInputAction: TextInputAction.newline,
-                  decoration: const InputDecoration(
-                    hintText: 'Message the agent… (Enter to send)',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
+                  placeholder: 'Message the agent… (Enter to send)',
                 ),
               ),
             ),
             const SizedBox(width: 8),
-            busy
-                ? IconButton.filledTonal(
-                    tooltip: 'Stop',
-                    onPressed: _interrupt,
-                    icon: const Icon(Icons.stop),
-                  )
-                : IconButton.filled(
-                    tooltip: 'Send',
-                    onPressed: _send,
-                    icon: const Icon(Icons.send),
-                  ),
+            Tooltip(
+              message: busy ? 'Stop' : 'Send',
+              child: FilledButton(
+                onPressed: busy ? _interrupt : _send,
+                child: Icon(busy ? FluentIcons.stop : FluentIcons.send),
+              ),
+            ),
           ],
         ),
       ),

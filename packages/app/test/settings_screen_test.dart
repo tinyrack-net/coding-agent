@@ -3,24 +3,23 @@ import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/screens/settings_screen.dart';
 import 'package:coding_agent_app/state/connection_settings_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeDaemonClient extends DaemonClient {
   FakeDaemonClient({
-    DaemonConnectionState state = DaemonConnectionState.connected,
+    this._state = DaemonConnectionState.connected,
     this.rejectedHelloOverride,
-  })  : _state = state,
-        super(uri: Uri.parse('ws://fake'));
+  }) : super(uri: Uri.parse('ws://fake'));
 
   final DaemonConnectionState _state;
   final ServerHello? rejectedHelloOverride;
 
   /// Per-request-type scriptable response; defaults to an empty payload.
   Map<String, Object?> Function(String type, Map<String, Object?> payload)?
-      onRequest;
+  onRequest;
 
   @override
   ServerHello? get rejectedHello => rejectedHelloOverride;
@@ -36,52 +35,57 @@ class FakeDaemonClient extends DaemonClient {
     String type,
     Map<String, Object?> payload, {
     Duration timeout = const Duration(seconds: 30),
-  }) async =>
-      onRequest?.call(type, payload) ?? const {};
+  }) async => onRequest?.call(type, payload) ?? const {};
 }
 
 Future<ProviderContainer> pumpSettingsScreen(
   WidgetTester tester,
-  FakeDaemonClient client,
-) async {
+  FakeDaemonClient client, {
+  String section = 'general',
+}) async {
   SharedPreferences.setMockInitialValues({});
   final container = ProviderContainer(
     overrides: [daemonClientProvider.overrideWithValue(client)],
   );
   addTearDown(container.dispose);
-  // Tall enough that the AI Providers cards + Desktop section both land
-  // within the ListView's viewport/cache extent without needing a scroll.
   await tester.binding.setSurfaceSize(const Size(800, 2200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: const MaterialApp(home: SettingsScreen()),
+      child: FluentApp(home: SettingsScreen(section: section)),
     ),
   );
   await tester.pumpAndSettle();
   return container;
 }
 
+/// Finds the `TextFormBox` under the `InfoLabel` with the given [label] —
+/// the label text is a sibling, not a descendant, of the box (fluent_ui's
+/// `InfoLabel` lays out label + child in a column), so a plain
+/// `find.widgetWithText`/`find.ancestor` can't bridge them directly.
+Finder _labeledField(String label) => find.descendant(
+  of: find.ancestor(of: find.text(label), matching: find.byType(InfoLabel)),
+  matching: find.byType(TextFormBox),
+);
+
 void main() {
-  testWidgets('shows the current connection and the daemon uri',
-      (tester) async {
+  testWidgets('shows the current connection and the daemon uri', (
+    tester,
+  ) async {
     await pumpSettingsScreen(tester, FakeDaemonClient());
 
     expect(find.text('Connected — ws://127.0.0.1:6868'), findsOneWidget);
-    expect(find.widgetWithText(TextFormField, 'Host'), findsOneWidget);
+    expect(_labeledField('Host'), findsOneWidget);
   });
 
   testWidgets('validation: empty host is rejected', (tester) async {
     await pumpSettingsScreen(tester, FakeDaemonClient());
 
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'Host').first,
-      '',
-    );
+    await tester.enterText(_labeledField('Host'), '');
     await tester.tap(find.text('Save & Reconnect'));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
 
     expect(find.text('Host is required'), findsOneWidget);
     expect(find.text('Settings saved. Reconnecting…'), findsNothing);
@@ -90,38 +94,29 @@ void main() {
   testWidgets('validation: out-of-range port is rejected', (tester) async {
     await pumpSettingsScreen(tester, FakeDaemonClient());
 
-    final portField = find.ancestor(
-      of: find.text('Port'),
-      matching: find.byType(TextFormField),
-    );
-    await tester.enterText(portField, '99999');
+    await tester.enterText(_labeledField('Port'), '99999');
     await tester.tap(find.text('Save & Reconnect'));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
 
     expect(find.text('Enter a port between 1 and 65535'), findsOneWidget);
   });
 
-  testWidgets('valid input saves settings and shows a confirmation snackbar',
-      (tester) async {
+  testWidgets('valid input saves settings and shows a confirmation snackbar', (
+    tester,
+  ) async {
     final container = await pumpSettingsScreen(tester, FakeDaemonClient());
 
-    final hostField = find.ancestor(
-      of: find.text('Host'),
-      matching: find.byType(TextFormField),
-    );
-    final portField = find.ancestor(
-      of: find.text('Port'),
-      matching: find.byType(TextFormField),
-    );
-    await tester.enterText(hostField, '10.0.0.5');
-    await tester.enterText(portField, '7000');
+    await tester.enterText(_labeledField('Host'), '10.0.0.5');
+    await tester.enterText(_labeledField('Port'), '7000');
     await tester.tap(find.text('Save & Reconnect'));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
 
     expect(find.text('Settings saved. Reconnecting…'), findsOneWidget);
     final settings = container.read(connectionSettingsProvider);
     expect(settings.host, '10.0.0.5');
     expect(settings.port, 7000);
+    // Let AppToast's auto-dismiss timer fire so no Timer remains pending.
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('version mismatch shows the guidance card', (tester) async {
@@ -140,29 +135,27 @@ void main() {
     expect(find.textContaining('원격 데몬 v9.0.0'), findsOneWidget);
   });
 
-  testWidgets('desktop section: toggling keep-running persists the setting',
-      (tester) async {
-    await pumpSettingsScreen(tester, FakeDaemonClient());
+    testWidgets('desktop section: toggling keep-running persists the setting', (
+    tester,
+  ) async {
+    await pumpSettingsScreen(tester, FakeDaemonClient(), section: 'desktop');
 
-    // This test host is Windows, so the desktop settings section renders.
     expect(find.text('Keep daemon running after quit'), findsOneWidget);
-    final keepRunningSwitch = find.widgetWithText(
-      SwitchListTile,
-      'Keep daemon running after quit',
-    );
-    final before = tester.widget<SwitchListTile>(keepRunningSwitch).value;
+    final keepRunningSwitch = find.byType(ToggleSwitch).at(1);
+    final before = tester.widget<ToggleSwitch>(keepRunningSwitch).checked;
     expect(before, isTrue);
 
     await tester.tap(keepRunningSwitch);
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
 
-    final after = tester.widget<SwitchListTile>(keepRunningSwitch).value;
+    final after = tester.widget<ToggleSwitch>(keepRunningSwitch).checked;
     expect(after, isFalse);
   });
 
   group('AI Providers section', () {
-    testWidgets('shows all three providers with a configured indicator',
-        (tester) async {
+    testWidgets('shows all three providers with a configured indicator', (
+      tester,
+    ) async {
       final client = FakeDaemonClient()
         ..onRequest = (type, payload) {
           if (type == MessageTypes.providerListRequest) {
@@ -178,7 +171,7 @@ void main() {
           }
           return const {};
         };
-      await pumpSettingsScreen(tester, client);
+      await pumpSettingsScreen(tester, client, section: 'providers');
 
       expect(find.text('AI Providers'), findsOneWidget);
       expect(find.text('Codex'), findsOneWidget);
@@ -188,22 +181,23 @@ void main() {
       expect(find.text('Remove'), findsOneWidget);
     });
 
-    testWidgets('saving an API key sends provider.credential.set.request',
-        (tester) async {
+    testWidgets('saving an API key sends provider.credential.set.request', (
+      tester,
+    ) async {
       final calls = <(String, Map<String, Object?>)>[];
       final client = FakeDaemonClient()
         ..onRequest = (type, payload) {
           calls.add((type, payload));
           return const {};
         };
-      await pumpSettingsScreen(tester, client);
+      await pumpSettingsScreen(tester, client, section: 'providers');
 
       final deepseekKeyField = find.ancestor(
         of: find.text('DeepSeek'),
         matching: find.byType(Card),
       );
       await tester.enterText(
-        find.descendant(of: deepseekKeyField, matching: find.byType(TextField)),
+        find.descendant(of: deepseekKeyField, matching: find.byType(TextBox)),
         'sk-deepseek-test',
       );
       await tester.tap(
@@ -216,6 +210,8 @@ void main() {
       );
       expect(saveCall.$2['providerId'], 'deepseek');
       expect(saveCall.$2['apiKey'], 'sk-deepseek-test');
+      // Let AppToast's auto-dismiss timer fire so no Timer remains pending.
+      await tester.pump(const Duration(seconds: 5));
     });
 
     testWidgets('testing a connection shows the result', (tester) async {
@@ -226,7 +222,7 @@ void main() {
           }
           return const {};
         };
-      await pumpSettingsScreen(tester, client);
+      await pumpSettingsScreen(tester, client, section: 'providers');
 
       final openaiCard = find.ancestor(
         of: find.text('Codex'),
@@ -240,8 +236,9 @@ void main() {
       expect(find.text('invalid key'), findsOneWidget);
     });
 
-    testWidgets('removing a configured key sends provider.credential.clear',
-        (tester) async {
+    testWidgets('removing a configured key sends provider.credential.clear', (
+      tester,
+    ) async {
       final calls = <(String, Map<String, Object?>)>[];
       final client = FakeDaemonClient()
         ..onRequest = (type, payload) {
@@ -259,7 +256,7 @@ void main() {
           }
           return const {};
         };
-      await pumpSettingsScreen(tester, client);
+      await pumpSettingsScreen(tester, client, section: 'providers');
 
       final openrouterCard = find.ancestor(
         of: find.text('OpenRouter'),
@@ -282,16 +279,17 @@ void main() {
     // "Reset all data" label, so locate the section button via the
     // description text that's unique to the reset card.
     Finder sectionResetButton() => find.descendant(
-          of: find.ancestor(
-            of: find.textContaining('agent timelines'),
-            matching: find.byType(Card),
-          ),
-          matching: find.byType(FilledButton),
-        );
+      of: find.ancestor(
+        of: find.textContaining('agent timelines'),
+        matching: find.byType(Card),
+      ),
+      matching: find.byType(FilledButton),
+    );
 
-    testWidgets('shows the destructive card with a confirmation dialog',
-        (tester) async {
-      await pumpSettingsScreen(tester, FakeDaemonClient());
+    testWidgets('shows the destructive card with a confirmation dialog', (
+      tester,
+    ) async {
+      await pumpSettingsScreen(tester, FakeDaemonClient(), section: 'reset');
 
       // The reset card describes the action and offers a button.
       expect(find.textContaining('Reset all data'), findsWidgets);
@@ -318,18 +316,16 @@ void main() {
           }
           return const {};
         };
-      final container = await pumpSettingsScreen(tester, client);
-      await container.read(connectionSettingsProvider.notifier).save(
-            host: '10.9.9.9',
-            port: 7777,
-            token: 'keep-me',
-          );
+      final container = await pumpSettingsScreen(tester, client, section: 'reset');
+      await container
+          .read(connectionSettingsProvider.notifier)
+          .save(host: '10.9.9.9', port: 7777, token: 'keep-me');
 
       await tester.tap(sectionResetButton());
       await tester.pumpAndSettle();
 
       // Dialog is showing.
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(ContentDialog), findsOneWidget);
       expect(find.text('Reset all data?'), findsOneWidget);
 
       await tester.tap(find.text('Cancel'));
@@ -337,9 +333,7 @@ void main() {
 
       // No clear RPC was sent, settings still point at the seeded host.
       expect(
-        calls.where(
-          (c) => c.$1 == MessageTypes.providerCredentialClearRequest,
-        ),
+        calls.where((c) => c.$1 == MessageTypes.providerCredentialClearRequest),
         isEmpty,
       );
       expect(container.read(connectionSettingsProvider).host, '10.9.9.9');
@@ -348,165 +342,174 @@ void main() {
     });
 
     testWidgets(
-        'confirming resets local settings and clears every configured key',
-        (tester) async {
-      final calls = <(String, Map<String, Object?>)>[];
-      final client = FakeDaemonClient()
-        ..onRequest = (type, payload) {
-          calls.add((type, payload));
-          if (type == MessageTypes.providerListRequest) {
-            return {
-              'providers': [
-                const ProviderInfo(
-                  id: ProviderId.openai,
-                  displayName: 'Codex',
-                  configured: true,
-                ).toJson(),
-                const ProviderInfo(
-                  id: ProviderId.deepseek,
-                  displayName: 'DeepSeek',
-                  configured: false,
-                ).toJson(),
-                const ProviderInfo(
-                  id: ProviderId.openrouter,
-                  displayName: 'OpenRouter',
-                  configured: true,
-                ).toJson(),
-              ],
-            };
-          }
-          if (type == MessageTypes.agentConversationClearRequest) {
-            return {'cleared': 2};
-          }
-          if (type == MessageTypes.agentListRequest) {
-            // Return two agents so the snackbar count matches the response.
-            return {
-              'agents': [
-                const AgentSummary(
-                  agentId: 'a1',
-                  title: 'A',
-                  cwd: 'C:/r',
-                  provider: 'openai',
-                  model: 'm',
-                  mode: AgentMode.normal,
-                  runState: AgentRunState.idle,
-                  createdAtMs: 1,
-                ).toJson(),
-                const AgentSummary(
-                  agentId: 'a2',
-                  title: 'B',
-                  cwd: 'C:/r',
-                  provider: 'openai',
-                  model: 'm',
-                  mode: AgentMode.normal,
-                  runState: AgentRunState.idle,
-                  createdAtMs: 2,
-                ).toJson(),
-              ],
-            };
-          }
-          return const {};
-        };
-      final container = await pumpSettingsScreen(tester, client);
-      await container.read(connectionSettingsProvider.notifier).save(
-            host: '10.9.9.9',
-            port: 7777,
-            token: 'keep-me',
-          );
+      'confirming resets local settings and clears every configured key',
+      (tester) async {
+        final calls = <(String, Map<String, Object?>)>[];
+        final client = FakeDaemonClient()
+          ..onRequest = (type, payload) {
+            calls.add((type, payload));
+            if (type == MessageTypes.providerListRequest) {
+              return {
+                'providers': [
+                  const ProviderInfo(
+                    id: ProviderId.openai,
+                    displayName: 'Codex',
+                    configured: true,
+                  ).toJson(),
+                  const ProviderInfo(
+                    id: ProviderId.deepseek,
+                    displayName: 'DeepSeek',
+                    configured: false,
+                  ).toJson(),
+                  const ProviderInfo(
+                    id: ProviderId.openrouter,
+                    displayName: 'OpenRouter',
+                    configured: true,
+                  ).toJson(),
+                ],
+              };
+            }
+            if (type == MessageTypes.agentConversationClearRequest) {
+              return {'cleared': 2};
+            }
+            if (type == MessageTypes.agentListRequest) {
+              // Return two agents so the snackbar count matches the response.
+              return {
+                'agents': [
+                  const AgentSummary(
+                    agentId: 'a1',
+                    title: 'A',
+                    cwd: 'C:/r',
+                    provider: 'openai',
+                    model: 'm',
+                    mode: AgentMode.normal,
+                    runState: AgentRunState.idle,
+                    createdAtMs: 1,
+                  ).toJson(),
+                  const AgentSummary(
+                    agentId: 'a2',
+                    title: 'B',
+                    cwd: 'C:/r',
+                    provider: 'openai',
+                    model: 'm',
+                    mode: AgentMode.normal,
+                    runState: AgentRunState.idle,
+                    createdAtMs: 2,
+                  ).toJson(),
+                ],
+              };
+            }
+            return const {};
+          };
+        final container = await pumpSettingsScreen(tester, client, section: 'reset');
+        await container
+            .read(connectionSettingsProvider.notifier)
+            .save(host: '10.9.9.9', port: 7777, token: 'keep-me');
 
-      await tester.tap(sectionResetButton());
-      await tester.pumpAndSettle();
+        await tester.tap(sectionResetButton());
+        await tester.pumpAndSettle();
 
-      // Confirm inside the dialog (the only FilledButton there).
-      final confirmButton = find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.byType(FilledButton),
-      );
-      expect(confirmButton, findsOneWidget);
-      await tester.tap(confirmButton);
-      await tester.pumpAndSettle();
+        // Confirm inside the dialog (the only FilledButton there).
+        final confirmButton = find.descendant(
+          of: find.byType(ContentDialog),
+          matching: find.byType(FilledButton),
+        );
+        expect(confirmButton, findsOneWidget);
+        await tester.tap(confirmButton);
+        await tester.pumpAndSettle();
 
-      // Local settings snap back to defaults.
-      expect(container.read(connectionSettingsProvider),
-          const ConnectionSettings());
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.containsKey('daemon.host'), isFalse);
-      expect(prefs.containsKey('daemon.port'), isFalse);
-      expect(prefs.containsKey('daemon.token'), isFalse);
+        // Local settings snap back to defaults.
+        expect(
+          container.read(connectionSettingsProvider),
+          const ConnectionSettings(),
+        );
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.containsKey('daemon.host'), isFalse);
+        expect(prefs.containsKey('daemon.port'), isFalse);
+        expect(prefs.containsKey('daemon.token'), isFalse);
 
-      // A clear RPC was sent for each CONFIGURED provider, not for the
-      // unconfigured DeepSeek entry.
-      final clearCalls = calls
-          .where((c) => c.$1 == MessageTypes.providerCredentialClearRequest)
-          .toList();
-      final clearedIds = clearCalls
-          .map((c) => c.$2['providerId'])
-          .toSet();
-      expect(clearedIds, {'openai', 'openrouter'});
+        // A clear RPC was sent for each CONFIGURED provider, not for the
+        // unconfigured DeepSeek entry.
+        final clearCalls = calls
+            .where((c) => c.$1 == MessageTypes.providerCredentialClearRequest)
+            .toList();
+        final clearedIds = clearCalls.map((c) => c.$2['providerId']).toSet();
+        expect(clearedIds, {'openai', 'openrouter'});
 
-      // The agent.conversation.clear RPC was sent with an empty payload
-      // (means "wipe every agent").
-      final convCalls = calls
-          .where((c) => c.$1 == MessageTypes.agentConversationClearRequest)
-          .toList();
-      expect(convCalls, hasLength(1));
-      expect(convCalls.single.$2, isEmpty);
+        // The agent.conversation.clear RPC was sent with an empty payload
+        // (means "wipe every agent").
+        final convCalls = calls
+            .where((c) => c.$1 == MessageTypes.agentConversationClearRequest)
+            .toList();
+        expect(convCalls, hasLength(1));
+        expect(convCalls.single.$2, isEmpty);
 
-      // The success snackbar reports the cleared conversation count.
-      expect(
-        find.text('All data has been reset (2 conversations wiped).'),
-        findsOneWidget,
-      );
-    });
+        // The success snackbar reports the cleared conversation count.
+        expect(
+          find.text('All data has been reset (2 conversations wiped).'),
+          findsOneWidget,
+        );
+        // Let AppToast's auto-dismiss timer fire so no Timer remains pending.
+        await tester.pump(const Duration(seconds: 5));
+      },
+    );
 
     testWidgets(
-        'conversation-clear failure surfaces in the snackbar but the local '
-        'reset still completes', (tester) async {
-      final calls = <(String, Map<String, Object?>)>[];
-      final client = FakeDaemonClient()
-        ..onRequest = (type, payload) {
-          calls.add((type, payload));
-          if (type == MessageTypes.providerListRequest) {
-            return const {'providers': []};
-          }
-          if (type == MessageTypes.agentConversationClearRequest) {
-            throw StateError('daemon offline');
-          }
-          return const {};
-        };
-      final container = await pumpSettingsScreen(tester, client);
-      await container.read(connectionSettingsProvider.notifier).save(
-            host: '10.9.9.9',
-            port: 7777,
-          );
+      'conversation-clear failure surfaces in the snackbar but the local '
+      'reset still completes',
+      (tester) async {
+        final calls = <(String, Map<String, Object?>)>[];
+        final client = FakeDaemonClient()
+          ..onRequest = (type, payload) {
+            calls.add((type, payload));
+            if (type == MessageTypes.providerListRequest) {
+              return const {'providers': []};
+            }
+            if (type == MessageTypes.agentConversationClearRequest) {
+              throw StateError('daemon offline');
+            }
+            return const {};
+          };
+        final container = await pumpSettingsScreen(tester, client, section: 'reset');
+        await container
+            .read(connectionSettingsProvider.notifier)
+            .save(host: '10.9.9.9', port: 7777);
 
-      await tester.tap(sectionResetButton());
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.descendant(
-          of: find.byType(AlertDialog),
-          matching: find.byType(FilledButton),
-        ),
-      );
-      await tester.pumpAndSettle();
+        await tester.tap(sectionResetButton());
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(
+            of: find.byType(ContentDialog),
+            matching: find.byType(FilledButton),
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      // Local settings still reset.
-      expect(
-          container.read(connectionSettingsProvider), const ConnectionSettings());
-      // The snackbar mentions the conversation failure.
-      expect(
-        find.textContaining('Some daemon-side items could not be cleared'),
-        findsOneWidget,
-      );
-      expect(find.textContaining('conversations: Bad state: daemon offline'),
-          findsOneWidget);
-      // The RPC was attempted.
-      expect(
-        calls.where(
-          (c) => c.$1 == MessageTypes.agentConversationClearRequest,
-        ),
-        hasLength(1),
-      );
-    });
+        // Local settings still reset.
+        expect(
+          container.read(connectionSettingsProvider),
+          const ConnectionSettings(),
+        );
+        // The snackbar mentions the conversation failure.
+        expect(
+          find.textContaining('Some daemon-side items could not be cleared'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('conversations: Bad state: daemon offline'),
+          findsOneWidget,
+        );
+        // The RPC was attempted.
+        expect(
+          calls.where(
+            (c) => c.$1 == MessageTypes.agentConversationClearRequest,
+          ),
+          hasLength(1),
+        );
+        // Let AppToast's auto-dismiss timer fire (6s duration here) so no
+        // Timer remains pending.
+        await tester.pump(const Duration(seconds: 7));
+      },
+    );
   });
 }

@@ -1,6 +1,8 @@
 import 'package:agent_protocol/agent_protocol.dart';
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+
+import '../core/theme.dart';
 
 /// Pure presentation of a single [TimelineItem]. Kept free of providers so it
 /// is trivially widget-testable; permission responses are surfaced via
@@ -48,7 +50,7 @@ class _UserBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.tokens;
     return Align(
       alignment: Alignment.centerRight,
       child: Container(
@@ -56,7 +58,7 @@ class _UserBubble extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
         constraints: const BoxConstraints(maxWidth: 560),
         decoration: BoxDecoration(
-          color: scheme.primaryContainer,
+          color: tokens.primaryContainer,
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(14),
             topRight: Radius.circular(14),
@@ -66,7 +68,7 @@ class _UserBubble extends StatelessWidget {
         ),
         child: SelectableText(
           text,
-          style: TextStyle(color: scheme.onPrimaryContainer),
+          style: TextStyle(color: tokens.onPrimaryContainer),
         ),
       ),
     );
@@ -123,7 +125,7 @@ class _StreamingCursorState extends State<_StreamingCursor>
       child: Container(
         width: 8,
         height: 16,
-        color: Theme.of(context).colorScheme.primary,
+        color: context.tokens.primary,
       ),
     );
   }
@@ -136,27 +138,18 @@ class _ReasoningTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dim = Theme.of(context)
-        .textTheme
-        .bodySmall
-        ?.copyWith(color: Theme.of(context).colorScheme.outline);
+    final tokens = context.tokens;
+    final dim = context.textStyles.bodySmall?.copyWith(color: tokens.outline);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: const EdgeInsets.only(left: 24, bottom: 8),
-          dense: true,
-          initiallyExpanded: false,
-          leading: Icon(
-            Icons.psychology_outlined,
-            size: 18,
-            color: Theme.of(context).colorScheme.outline,
-          ),
-          title: Text('Thinking…', style: dim),
-          expandedCrossAxisAlignment: CrossAxisAlignment.start,
-          children: [SelectableText(text, style: dim)],
+      child: Expander(
+        headerBackgroundColor: WidgetStateColor.transparent,
+        contentBackgroundColor: Colors.transparent,
+        leading: Icon(FluentIcons.lightbulb, size: 18, color: tokens.outline),
+        header: Text('Thinking…', style: dim),
+        content: Align(
+          alignment: Alignment.centerLeft,
+          child: SelectableText(text, style: dim),
         ),
       ),
     );
@@ -165,15 +158,15 @@ class _ReasoningTile extends StatelessWidget {
 
 (IconData, String) _toolIconAndSummary(String toolName, ToolCallDetail detail) {
   return switch (detail) {
-    ShellDetail(:final command) => (Icons.terminal, command),
-    ReadDetail(:final path) => (Icons.file_open_outlined, path),
-    EditDetail(:final path) => (Icons.edit_outlined, path),
-    WriteDetail(:final path) => (Icons.save_outlined, path),
+    ShellDetail(:final command) => (FluentIcons.command_prompt, command),
+    ReadDetail(:final path) => (FluentIcons.open_file, path),
+    EditDetail(:final path) => (FluentIcons.edit, path),
+    WriteDetail(:final path) => (FluentIcons.save, path),
     SearchDetail(:final query, :final path) => (
-        Icons.search,
+        FluentIcons.search,
         path == null ? query : '$query in $path',
       ),
-    GenericDetail() => (Icons.build_outlined, toolName),
+    GenericDetail() => (FluentIcons.build, toolName),
   };
 }
 
@@ -190,7 +183,6 @@ class _ToolCallCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
       child: body == null
           ? ListTile(
-              dense: true,
               leading: Icon(icon, size: 20),
               title: _ToolTitle(
                 toolName: item.toolName,
@@ -198,21 +190,16 @@ class _ToolCallCard extends StatelessWidget {
                 statusChip: _ToolStatusChip(status: item.status),
               ),
             )
-          : Theme(
-              data:
-                  Theme.of(context).copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                dense: true,
-                leading: Icon(icon, size: 20),
-                title: _ToolTitle(
-                  toolName: item.toolName,
-                  summary: summary,
-                  statusChip: _ToolStatusChip(status: item.status),
-                ),
-                childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                expandedCrossAxisAlignment: CrossAxisAlignment.start,
-                children: [body],
+          : Expander(
+              headerBackgroundColor: WidgetStateColor.transparent,
+              contentBackgroundColor: Colors.transparent,
+              leading: Icon(icon, size: 20),
+              header: _ToolTitle(
+                toolName: item.toolName,
+                summary: summary,
+                statusChip: _ToolStatusChip(status: item.status),
               ),
+              content: body,
             ),
     );
   }
@@ -246,19 +233,20 @@ class _ToolTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final tokens = context.tokens;
+    final textStyles = context.textStyles;
     return Row(
       children: [
-        Text(toolName, style: theme.textTheme.labelLarge),
+        Text(toolName, style: textStyles.labelLarge),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             summary,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(
+            style: textStyles.bodySmall?.copyWith(
               fontFamily: 'monospace',
-              color: theme.colorScheme.onSurfaceVariant,
+              color: tokens.onSurfaceVariant,
             ),
           ),
         ),
@@ -276,11 +264,12 @@ class _ToolStatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final status_ = context.statusColors;
     final (label, color) = switch (status) {
-      ToolCallStatus.pending => ('pending', Colors.grey),
-      ToolCallStatus.running => ('running', Colors.amber),
-      ToolCallStatus.success => ('success', Colors.green),
-      ToolCallStatus.error => ('error', Colors.redAccent),
+      ToolCallStatus.pending => ('pending', status_.neutral),
+      ToolCallStatus.running => ('running', status_.running),
+      ToolCallStatus.success => ('success', status_.success),
+      ToolCallStatus.error => ('error', status_.danger),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -308,7 +297,7 @@ class _MonoBlock extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        color: context.tokens.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(6),
       ),
       child: SelectableText(
@@ -331,7 +320,7 @@ class _DiffView extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        color: context.tokens.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(6),
       ),
       child: SelectableText.rich(
@@ -342,9 +331,9 @@ class _DiffView extends StatelessWidget {
                 text: '$line\n',
                 style: TextStyle(
                   color: line.startsWith('+')
-                      ? Colors.greenAccent
+                      ? Colors.green
                       : line.startsWith('-')
-                          ? Colors.redAccent
+                          ? Colors.red
                           : null,
                 ),
               ),
@@ -365,18 +354,15 @@ class _PermissionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.tokens;
+    final textStyles = context.textStyles;
     final pending = item.status == PermissionStatus.pending;
     final (_, summary) = _toolIconAndSummary(item.toolName, item.detail);
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-      color: scheme.tertiaryContainer.withValues(alpha: 0.5),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: pending ? scheme.tertiary : scheme.outlineVariant,
-        ),
-      ),
+      backgroundColor: tokens.tertiaryContainer.withValues(alpha: 0.5),
+      borderColor: pending ? tokens.tertiary : tokens.outlineVariant,
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -384,12 +370,12 @@ class _PermissionCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.shield_outlined, size: 18, color: scheme.tertiary),
+                Icon(FluentIcons.shield, size: 18, color: tokens.tertiary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     '${providerLabel ?? 'The agent'} wants to use ${item.toolName}',
-                    style: Theme.of(context).textTheme.titleSmall,
+                    style: textStyles.titleSmall,
                   ),
                 ),
               ],
@@ -413,14 +399,14 @@ class _PermissionCard extends StatelessWidget {
                     child: const Text('Allow'),
                   ),
                   const SizedBox(width: 8),
-                  OutlinedButton(
+                  Button(
                     onPressed: onDecision == null
                         ? null
                         : () => onDecision!(item.permissionId, 'allow_always'),
                     child: const Text('Always allow'),
                   ),
                   const SizedBox(width: 8),
-                  TextButton(
+                  HyperlinkButton(
                     onPressed: onDecision == null
                         ? null
                         : () => onDecision!(item.permissionId, 'deny'),
@@ -433,19 +419,19 @@ class _PermissionCard extends StatelessWidget {
                 children: [
                   Icon(
                     item.status == PermissionStatus.allowed
-                        ? Icons.check_circle_outline
-                        : Icons.block,
+                        ? FluentIcons.completed_solid
+                        : FluentIcons.blocked,
                     size: 16,
                     color: item.status == PermissionStatus.allowed
-                        ? Colors.greenAccent
-                        : Colors.redAccent,
+                        ? context.statusColors.success
+                        : context.statusColors.danger,
                   ),
                   const SizedBox(width: 6),
                   Text(
                     item.status == PermissionStatus.allowed
                         ? 'Allowed'
                         : 'Denied',
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: textStyles.bodySmall,
                   ),
                 ],
               ),
@@ -465,11 +451,12 @@ class _TurnDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (phase == TurnPhase.started) return const SizedBox.shrink();
-    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.tokens;
+    final status = context.statusColors;
     final color = switch (phase) {
-      TurnPhase.failed => Colors.redAccent,
-      TurnPhase.canceled => Colors.orangeAccent,
-      _ => scheme.outline,
+      TurnPhase.failed => status.danger,
+      TurnPhase.canceled => status.warning,
+      _ => tokens.outline,
     };
     final label = switch (phase) {
       TurnPhase.completed => 'turn completed',
@@ -481,7 +468,7 @@ class _TurnDivider extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       child: Row(
         children: [
-          Expanded(child: Divider(color: color.withValues(alpha: 0.4))),
+          Expanded(child: Divider(style: DividerThemeData(decoration: BoxDecoration(color: color.withValues(alpha: 0.4))))),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Text(
@@ -489,7 +476,7 @@ class _TurnDivider extends StatelessWidget {
               style: TextStyle(fontSize: 11, color: color),
             ),
           ),
-          Expanded(child: Divider(color: color.withValues(alpha: 0.4))),
+          Expanded(child: Divider(style: DividerThemeData(decoration: BoxDecoration(color: color.withValues(alpha: 0.4))))),
         ],
       ),
     );
@@ -503,22 +490,22 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.tokens;
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: scheme.errorContainer,
+        color: tokens.errorContainer,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline, color: scheme.onErrorContainer),
+          Icon(FluentIcons.error_badge, color: tokens.onErrorContainer),
           const SizedBox(width: 8),
           Expanded(
             child: SelectableText(
               message,
-              style: TextStyle(color: scheme.onErrorContainer),
+              style: TextStyle(color: tokens.onErrorContainer),
             ),
           ),
         ],

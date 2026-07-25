@@ -1,21 +1,18 @@
-import 'package:agent_protocol/agent_protocol.dart';
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/provider_display.dart';
+import '../core/theme.dart';
 import '../core/worktree_actions.dart';
 import '../state/agents_provider.dart';
 import '../state/timeline_provider.dart';
-import '../state/workspace_providers.dart';
 import '../widgets/composer.dart';
-import '../widgets/diff/diff_view.dart';
-import '../widgets/terminal_pane.dart';
+import '../widgets/fluent/toast.dart';
 import '../widgets/timeline_item_tile.dart';
 
-/// Tabs of the agent pane.
-enum AgentPaneTab { chat, diff, terminal }
-
 /// Chat view for one agent: timeline list (auto-stick to bottom) + composer.
+/// Chat-only — diff and terminal are sibling top-level tabs at the worktree
+/// level (see `WorktreeTabbedPane`), not nested inside an agent's tab.
 class AgentChatScreen extends ConsumerStatefulWidget {
   const AgentChatScreen({super.key, required this.agentId});
 
@@ -28,7 +25,6 @@ class AgentChatScreen extends ConsumerStatefulWidget {
 class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   final _scrollController = ScrollController();
   bool _stickToBottom = true;
-  AgentPaneTab _tab = AgentPaneTab.chat;
 
   @override
   void initState() {
@@ -73,10 +69,9 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
 
     return Column(
       children: [
-        Material(
-          elevation: 1,
+        Container(
+          color: context.tokens.surfaceContainerHighest,
           child: ListTile(
-            dense: true,
             title: Text(
               agent == null || agent.title.isEmpty
                   ? widget.agentId
@@ -93,50 +88,19 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-            trailing: IconButton(
-              tooltip: 'Archive agent',
-              icon: const Icon(Icons.archive_outlined),
-              onPressed: agent == null
-                  ? null
-                  : () => _archiveAgent(context, ref, agent),
+            trailing: Tooltip(
+              message: 'Archive agent',
+              child: IconButton(
+                icon: const Icon(FluentIcons.archive),
+                onPressed: agent == null
+                    ? null
+                    : () => archiveAgentWithWorktreeConfirm(context, ref, agent),
+              ),
             ),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: SegmentedButton<AgentPaneTab>(
-              showSelectedIcon: false,
-              style: const ButtonStyle(visualDensity: VisualDensity.compact),
-              segments: const [
-                ButtonSegment(value: AgentPaneTab.chat, label: Text('Chat')),
-                ButtonSegment(value: AgentPaneTab.diff, label: Text('Diff')),
-                ButtonSegment(
-                  value: AgentPaneTab.terminal,
-                  label: Text('Terminal'),
-                ),
-              ],
-              selected: {_tab},
-              onSelectionChanged: (selection) =>
-                  setState(() => _tab = selection.first),
-            ),
-          ),
-        ),
-        const Divider(height: 1),
-        ...switch (_tab) {
-          AgentPaneTab.diff => [
-            Expanded(
-              child: agent == null
-                  ? const SizedBox.shrink()
-                  : _DiffPane(cwd: agent.cwd),
-            ),
-          ],
-          AgentPaneTab.terminal => [
-            Expanded(child: TerminalPane(agentId: widget.agentId)),
-          ],
-          AgentPaneTab.chat => _chatChildren(context, count, loading),
-        },
+        const Divider(),
+        ..._chatChildren(context, count, loading),
       ],
     );
   }
@@ -145,14 +109,12 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     return [
       Expanded(
         child: loading && count == 0
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: ProgressRing())
             : count == 0
             ? Center(
                 child: Text(
                   'No messages yet. Say something below.',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
+                  style: TextStyle(color: context.tokens.outline),
                 ),
               )
             : ListView.builder(
@@ -168,112 +130,25 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
           alignment: Alignment.centerRight,
           child: Padding(
             padding: const EdgeInsets.only(right: 16, bottom: 4),
-            child: FloatingActionButton.small(
-              tooltip: 'Jump to latest',
-              onPressed: () {
-                setState(() => _stickToBottom = true);
-                _scrollToBottom();
-              },
-              child: const Icon(Icons.arrow_downward),
+            child: Tooltip(
+              message: 'Jump to latest',
+              child: SizedBox(
+                width: 36,
+                height: 36,
+                child: IconButton(
+                  icon: const Icon(FluentIcons.down),
+                  onPressed: () {
+                    setState(() => _stickToBottom = true);
+                    _scrollToBottom();
+                  },
+                ),
+              ),
             ),
           ),
         ),
-      const Divider(height: 1),
+      const Divider(),
       Composer(agentId: widget.agentId),
     ];
-  }
-}
-
-/// Archives [agent], then — if it runs in an isolated worktree — asks
-/// whether to also delete the worktree/branch (mirrors Paseo's
-/// keep/remove-on-exit worktree flow).
-Future<void> _archiveAgent(
-  BuildContext context,
-  WidgetRef ref,
-  AgentSummary agent,
-) async {
-  final actions = ref.read(agentActionsProvider);
-  final selected = ref.read(selectedAgentProvider.notifier);
-  try {
-    await actions.archive(agent.agentId);
-    selected.select(null);
-  } catch (e) {
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Failed to archive: $e')));
-    return;
-  }
-
-  if (!agent.isWorktree || agent.projectPath == null) return;
-  if (!context.mounted) return;
-  final remove = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Delete worktree?'),
-      content: Text(
-        'This agent ran on branch "${agent.branch}" in an isolated '
-        'worktree. Keep it to resume later, or remove it now.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Keep'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Remove'),
-        ),
-      ],
-    ),
-  );
-  if (remove != true) return;
-  if (!context.mounted) return;
-  await archiveWorktreeWithConfirm(context, ref, agent.projectPath!, agent.cwd);
-}
-
-/// Diff of the agent's working directory with a manual refresh action.
-class _DiffPane extends ConsumerWidget {
-  const _DiffPane({required this.cwd});
-
-  final String cwd;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final diffAsync = ref.watch(diffProvider(cwd));
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  cwd,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              IconButton(
-                tooltip: 'Refresh diff',
-                icon: const Icon(Icons.refresh, size: 20),
-                onPressed: () => ref.read(diffProvider(cwd).notifier).refresh(),
-              ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: diffAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('Failed to load diff: $e')),
-            data: (diff) => DiffView(diff: diff),
-          ),
-        ),
-      ],
-    );
   }
 }
 
@@ -304,9 +179,8 @@ class _TimelineRow extends ConsumerWidget {
               .respondPermission(permissionId, decision);
         } catch (e) {
           if (!context.mounted) return;
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Failed to respond: $e')));
+          AppToast.show(context, 'Failed to respond: $e',
+              severity: InfoBarSeverity.error);
         }
       },
     );

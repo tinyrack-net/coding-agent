@@ -8,16 +8,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class FakeDaemonClient extends DaemonClient {
-  FakeDaemonClient({DaemonConnectionState initial = DaemonConnectionState.connected})
-      : _state = initial,
-        super(uri: Uri.parse('ws://fake'));
+  FakeDaemonClient({
+    DaemonConnectionState initial = DaemonConnectionState.connected,
+  }) : _state = initial,
+       super(uri: Uri.parse('ws://fake'));
 
   final connectionController =
       StreamController<DaemonConnectionState>.broadcast();
   DaemonConnectionState _state;
   final requests = <(String, Map<String, Object?>)>[];
   Map<String, Object?> Function(String type, Map<String, Object?> payload)?
-      onRequest;
+  onRequest;
 
   // Replays the current state to each new subscriber, then follows further
   // changes — matches how StreamProvider.build() subscribes fresh each time
@@ -74,12 +75,18 @@ void keepAlive(ProviderContainer container, ProviderSubscription<Object?> sub) {
 }
 
 const _proj = ProjectInfo(path: '/repo', name: 'repo', isGitRepo: true);
-const _wt = WorktreeInfo(path: '/repo-wt', branch: 'feature/x', projectPath: '/repo');
+const _wt = WorktreeInfo(
+  path: '/repo-wt',
+  branch: 'feature/x',
+  projectPath: '/repo',
+);
 
 void main() {
   group('ProjectsNotifier', () {
     test('build() returns empty list while disconnected', () async {
-      final client = FakeDaemonClient(initial: DaemonConnectionState.disconnected);
+      final client = FakeDaemonClient(
+        initial: DaemonConnectionState.disconnected,
+      );
       final container = makeContainer(client);
 
       final projects = await container.read(projectsProvider.future);
@@ -96,7 +103,7 @@ void main() {
         };
       };
       final container = makeContainer(client);
-      keepAlive(container, container.listen(projectsProvider, (_, __) {}));
+      keepAlive(container, container.listen(projectsProvider, (_, _) {}));
       await pump();
 
       final projects = await container.read(projectsProvider.future);
@@ -104,7 +111,11 @@ void main() {
     });
 
     test('add() requests project.add and appends the result', () async {
-      const another = ProjectInfo(path: '/other', name: 'other', isGitRepo: false);
+      const another = ProjectInfo(
+        path: '/other',
+        name: 'other',
+        isGitRepo: false,
+      );
       final client = FakeDaemonClient();
       client.onRequest = (type, payload) {
         if (type == MessageTypes.projectListRequest) {
@@ -117,11 +128,13 @@ void main() {
         return {'project': another.toJson()};
       };
       final container = makeContainer(client);
-      keepAlive(container, container.listen(projectsProvider, (_, __) {}));
+      keepAlive(container, container.listen(projectsProvider, (_, _) {}));
       await pump();
       await container.read(projectsProvider.future);
 
-      final added = await container.read(projectsProvider.notifier).add('/other');
+      final added = await container
+          .read(projectsProvider.notifier)
+          .add('/other');
 
       expect(added.path, '/other');
       final projects = container.read(projectsProvider).value!;
@@ -137,12 +150,15 @@ void main() {
           };
         }
         return {
-          'project': const ProjectInfo(path: '/repo', name: 'renamed', isGitRepo: true)
-              .toJson(),
+          'project': const ProjectInfo(
+            path: '/repo',
+            name: 'renamed',
+            isGitRepo: true,
+          ).toJson(),
         };
       };
       final container = makeContainer(client);
-      keepAlive(container, container.listen(projectsProvider, (_, __) {}));
+      keepAlive(container, container.listen(projectsProvider, (_, _) {}));
       await pump();
       await container.read(projectsProvider.future);
 
@@ -161,7 +177,7 @@ void main() {
         return const {'projects': []};
       };
       final container = makeContainer(client);
-      keepAlive(container, container.listen(projectsProvider, (_, __) {}));
+      keepAlive(container, container.listen(projectsProvider, (_, _) {}));
       await pump();
       await container.read(projectsProvider.future);
       expect(calls, 1);
@@ -184,7 +200,10 @@ void main() {
         };
       };
       final container = makeContainer(client);
-      keepAlive(container, container.listen(worktreesProvider('/repo'), (_, __) {}));
+      keepAlive(
+        container,
+        container.listen(worktreesProvider('/repo'), (_, _) {}),
+      );
       await pump();
 
       final worktrees = await container.read(worktreesProvider('/repo').future);
@@ -210,12 +229,16 @@ void main() {
         };
       };
       final container = makeContainer(client);
-      keepAlive(container, container.listen(worktreesProvider('/repo'), (_, __) {}));
+      keepAlive(
+        container,
+        container.listen(worktreesProvider('/repo'), (_, _) {}),
+      );
       await pump();
       await container.read(worktreesProvider('/repo').future);
 
-      final created =
-          await container.read(worktreesProvider('/repo').notifier).create('feature/y');
+      final created = await container
+          .read(worktreesProvider('/repo').notifier)
+          .create('feature/y');
 
       expect(created.path, '/repo-y');
       expect(
@@ -240,7 +263,10 @@ void main() {
         };
       };
       final container = makeContainer(client);
-      keepAlive(container, container.listen(worktreesProvider('/repo'), (_, __) {}));
+      keepAlive(
+        container,
+        container.listen(worktreesProvider('/repo'), (_, _) {}),
+      );
       await pump();
       await container.read(worktreesProvider('/repo').future);
 
@@ -249,28 +275,35 @@ void main() {
           .create('lucky-otter', baseRef: 'main');
     });
 
-    test('archive() requests worktree.archive and removes it from state',
-        () async {
-      final client = FakeDaemonClient();
-      client.onRequest = (type, payload) {
-        if (type == MessageTypes.worktreeListRequest) {
-          return {
-            'worktrees': [_wt.toJson()],
-          };
-        }
-        expect(type, MessageTypes.worktreeArchiveRequest);
-        expect(payload['path'], '/repo-wt');
-        return const {};
-      };
-      final container = makeContainer(client);
-      keepAlive(container, container.listen(worktreesProvider('/repo'), (_, __) {}));
-      await pump();
-      await container.read(worktreesProvider('/repo').future);
+    test(
+      'archive() requests worktree.archive and removes it from state',
+      () async {
+        final client = FakeDaemonClient();
+        client.onRequest = (type, payload) {
+          if (type == MessageTypes.worktreeListRequest) {
+            return {
+              'worktrees': [_wt.toJson()],
+            };
+          }
+          expect(type, MessageTypes.worktreeArchiveRequest);
+          expect(payload['path'], '/repo-wt');
+          return const {};
+        };
+        final container = makeContainer(client);
+        keepAlive(
+          container,
+          container.listen(worktreesProvider('/repo'), (_, _) {}),
+        );
+        await pump();
+        await container.read(worktreesProvider('/repo').future);
 
-      await container.read(worktreesProvider('/repo').notifier).archive('/repo-wt');
+        await container
+            .read(worktreesProvider('/repo').notifier)
+            .archive('/repo-wt');
 
-      expect(container.read(worktreesProvider('/repo')).value, isEmpty);
-    });
+        expect(container.read(worktreesProvider('/repo')).value, isEmpty);
+      },
+    );
 
     test('archive() propagates a conflict error for a dirty worktree without '
         'removing it from state', () async {
@@ -284,21 +317,29 @@ void main() {
         expect(type, MessageTypes.worktreeArchiveRequest);
         expect(payload.containsKey('force'), isFalse);
         throw DaemonRpcException(
-          const RpcError(code: RpcErrorCodes.conflict, message: 'uncommitted changes'),
+          const RpcError(
+            code: RpcErrorCodes.conflict,
+            message: 'uncommitted changes',
+          ),
         );
       };
       final container = makeContainer(client);
-      keepAlive(container, container.listen(worktreesProvider('/repo'), (_, __) {}));
+      keepAlive(
+        container,
+        container.listen(worktreesProvider('/repo'), (_, _) {}),
+      );
       await pump();
       await container.read(worktreesProvider('/repo').future);
 
       await expectLater(
         container.read(worktreesProvider('/repo').notifier).archive('/repo-wt'),
-        throwsA(isA<DaemonRpcException>().having(
-          (e) => e.error.code,
-          'code',
-          RpcErrorCodes.conflict,
-        )),
+        throwsA(
+          isA<DaemonRpcException>().having(
+            (e) => e.error.code,
+            'code',
+            RpcErrorCodes.conflict,
+          ),
+        ),
       );
       expect(
         container.read(worktreesProvider('/repo')).value!.map((w) => w.path),
@@ -306,35 +347,42 @@ void main() {
       );
     });
 
-    test('archive(force: true) forwards force and removes it from state',
-        () async {
-      final client = FakeDaemonClient();
-      client.onRequest = (type, payload) {
-        if (type == MessageTypes.worktreeListRequest) {
-          return {
-            'worktrees': [_wt.toJson()],
-          };
-        }
-        expect(type, MessageTypes.worktreeArchiveRequest);
-        expect(payload['force'], isTrue);
-        return const {};
-      };
-      final container = makeContainer(client);
-      keepAlive(container, container.listen(worktreesProvider('/repo'), (_, __) {}));
-      await pump();
-      await container.read(worktreesProvider('/repo').future);
+    test(
+      'archive(force: true) forwards force and removes it from state',
+      () async {
+        final client = FakeDaemonClient();
+        client.onRequest = (type, payload) {
+          if (type == MessageTypes.worktreeListRequest) {
+            return {
+              'worktrees': [_wt.toJson()],
+            };
+          }
+          expect(type, MessageTypes.worktreeArchiveRequest);
+          expect(payload['force'], isTrue);
+          return const {};
+        };
+        final container = makeContainer(client);
+        keepAlive(
+          container,
+          container.listen(worktreesProvider('/repo'), (_, _) {}),
+        );
+        await pump();
+        await container.read(worktreesProvider('/repo').future);
 
-      await container
-          .read(worktreesProvider('/repo').notifier)
-          .archive('/repo-wt', force: true);
+        await container
+            .read(worktreesProvider('/repo').notifier)
+            .archive('/repo-wt', force: true);
 
-      expect(container.read(worktreesProvider('/repo')).value, isEmpty);
-    });
+        expect(container.read(worktreesProvider('/repo')).value, isEmpty);
+      },
+    );
   });
 
   group('BranchesNotifier', () {
     test('build() returns empty while disconnected', () async {
-      final client = FakeDaemonClient(initial: DaemonConnectionState.disconnected);
+      final client = FakeDaemonClient(
+        initial: DaemonConnectionState.disconnected,
+      );
       final container = makeContainer(client);
 
       final branches = await container.read(branchesProvider('/repo').future);
@@ -353,7 +401,10 @@ void main() {
         ).toJson();
       };
       final container = makeContainer(client);
-      keepAlive(container, container.listen(branchesProvider('/repo'), (_, __) {}));
+      keepAlive(
+        container,
+        container.listen(branchesProvider('/repo'), (_, _) {}),
+      );
       await pump();
 
       final branches = await container.read(branchesProvider('/repo').future);
@@ -364,7 +415,9 @@ void main() {
 
   group('DiffNotifier', () {
     test('build() returns an empty diff while disconnected', () async {
-      final client = FakeDaemonClient(initial: DaemonConnectionState.disconnected);
+      final client = FakeDaemonClient(
+        initial: DaemonConnectionState.disconnected,
+      );
       final container = makeContainer(client);
 
       final diff = await container.read(diffProvider('/repo').future);
@@ -387,7 +440,7 @@ void main() {
         };
       };
       final container = makeContainer(client);
-      keepAlive(container, container.listen(diffProvider('/repo'), (_, __) {}));
+      keepAlive(container, container.listen(diffProvider('/repo'), (_, _) {}));
       await pump();
 
       final diff = await container.read(diffProvider('/repo').future);
@@ -402,7 +455,7 @@ void main() {
         return const {'files': []};
       };
       final container = makeContainer(client);
-      keepAlive(container, container.listen(diffProvider('/repo'), (_, __) {}));
+      keepAlive(container, container.listen(diffProvider('/repo'), (_, _) {}));
       await pump();
       await container.read(diffProvider('/repo').future);
       expect(calls, 1);

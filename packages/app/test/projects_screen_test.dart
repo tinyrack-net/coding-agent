@@ -2,7 +2,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/screens/projects_screen.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -77,7 +77,7 @@ Future<ProviderContainer> pumpProjectsScreen(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: const MaterialApp(home: ProjectsScreen()),
+      child: const FluentApp(home: ProjectsScreen()),
     ),
   );
   await tester.pumpAndSettle();
@@ -150,7 +150,9 @@ void main() {
     await tester.tap(find.text('repo'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Archive worktree'));
+    await tester.tap(find.byWidgetPredicate(
+      (w) => w is Tooltip && w.message == 'Archive worktree',
+    ));
     await tester.pumpAndSettle();
 
     final archived = client.requests

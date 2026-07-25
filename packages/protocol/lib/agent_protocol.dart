@@ -5,6 +5,7 @@ export 'src/binary/terminal_frames.dart';
 export 'src/messages/agent.dart';
 export 'src/messages/diff.dart';
 export 'src/messages/hello.dart';
+export 'src/messages/terminal.dart';
 export 'src/messages/workspace.dart';
 export 'src/messages/provider.dart';
 export 'src/rpc_envelope.dart';

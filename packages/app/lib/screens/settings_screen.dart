@@ -1,26 +1,46 @@
 import 'package:agent_protocol/agent_protocol.dart';
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/daemon_client.dart';
 import '../core/desktop/desktop_shell.dart';
 import '../core/provider_display.dart';
+import '../core/theme.dart';
 import '../state/agents_provider.dart';
 import '../state/connection_settings_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/desktop_settings_provider.dart';
+import '../widgets/fluent/toast.dart';
 
-/// Daemon connection settings: host/port/token, persisted across launches.
-/// Saving reconnects the client, so a phone can point at a desktop over LAN.
-class SettingsScreen extends ConsumerStatefulWidget {
-  const SettingsScreen({super.key});
+class SettingsScreen extends ConsumerWidget {
+  const SettingsScreen({super.key, required this.section});
+
+  final String section;
 
   @override
-  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    return switch (section) {
+      'general' => _ConnectionSettingsSection(key: const ValueKey('general')),
+      'providers' =>
+        _ProviderCredentialsSection(key: const ValueKey('providers')),
+      'desktop' => _DesktopSettingsSection(key: const ValueKey('desktop')),
+      'reset' => _DataResetSection(key: const ValueKey('reset')),
+      _ => _ConnectionSettingsSection(key: const ValueKey('general')),
+    };
+  }
 }
 
-class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+class _ConnectionSettingsSection extends ConsumerStatefulWidget {
+  const _ConnectionSettingsSection({super.key});
+
+  @override
+  ConsumerState<_ConnectionSettingsSection> createState() =>
+      _ConnectionSettingsSectionState();
+}
+
+class _ConnectionSettingsSectionState
+    extends ConsumerState<_ConnectionSettingsSection> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _host;
   late final TextEditingController _port;
@@ -51,9 +71,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           token: _token.text.trim(),
         );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Settings saved. Reconnecting…')),
-    );
+    AppToast.show(context, 'Settings saved. Reconnecting…');
   }
 
   @override
@@ -62,23 +80,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final connection =
         ref.watch(connectionStateProvider).value ?? client.currentState;
     final (color, label) = switch (connection) {
-      DaemonConnectionState.connected => (Colors.greenAccent, 'Connected'),
-      DaemonConnectionState.connecting => (Colors.amber, 'Connecting…'),
+      DaemonConnectionState.connected => (Colors.green, 'Connected'),
+      DaemonConnectionState.connecting => (Colors.yellow, 'Connecting…'),
       DaemonConnectionState.disconnected => (
-          Colors.redAccent,
+          Colors.red,
           'Disconnected (retrying)',
         ),
       DaemonConnectionState.versionMismatch => (
-          Colors.orangeAccent,
+          Colors.orange,
           'Version mismatch',
         ),
     };
     final settings = ref.watch(connectionSettingsProvider);
     final rejectedHello = client.rejectedHello;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Connection Settings')),
-      body: Center(
+    return ScaffoldPage(
+      header: const PageHeader(title: Text('Connection Settings')),
+      content: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
           child: Form(
@@ -88,12 +106,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.circle, size: 12, color: color),
+                    Icon(FluentIcons.circle_fill, size: 12, color: color),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         '$label — ${settings.uri}',
-                        style: Theme.of(context).textTheme.titleSmall,
+                        style: context.textStyles.titleSmall,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -103,88 +121,68 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     rejectedHello != null) ...[
                   const SizedBox(height: 12),
                   Card(
-                    color: Theme.of(context).colorScheme.errorContainer,
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text(
-                        versionMismatchMessage(rejectedHello),
-                        style: TextStyle(
-                          color:
-                              Theme.of(context).colorScheme.onErrorContainer,
-                        ),
-                      ),
+                    backgroundColor: context.tokens.errorContainer,
+                    child: Text(
+                      versionMismatchMessage(rejectedHello),
+                      style: TextStyle(color: context.tokens.onErrorContainer),
                     ),
                   ),
                 ],
                 const SizedBox(height: 24),
-                TextFormField(
-                  controller: _host,
-                  decoration: const InputDecoration(
-                    labelText: 'Host',
-                    hintText: '127.0.0.1 or a LAN address',
-                    border: OutlineInputBorder(),
+                InfoLabel(
+                  label: 'Host',
+                  child: TextFormBox(
+                    controller: _host,
+                    placeholder: '127.0.0.1 or a LAN address',
+                    validator: (value) =>
+                        (value == null || value.trim().isEmpty)
+                            ? 'Host is required'
+                            : null,
                   ),
-                  validator: (value) =>
-                      (value == null || value.trim().isEmpty)
-                          ? 'Host is required'
-                          : null,
                 ),
                 const SizedBox(height: 16),
-                TextFormField(
-                  controller: _port,
-                  decoration: const InputDecoration(
-                    labelText: 'Port',
-                    border: OutlineInputBorder(),
+                InfoLabel(
+                  label: 'Port',
+                  child: TextFormBox(
+                    controller: _port,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    validator: (value) {
+                      final port = int.tryParse(value?.trim() ?? '');
+                      if (port == null || port < 1 || port > 65535) {
+                        return 'Enter a port between 1 and 65535';
+                      }
+                      return null;
+                    },
                   ),
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  validator: (value) {
-                    final port = int.tryParse(value?.trim() ?? '');
-                    if (port == null || port < 1 || port > 65535) {
-                      return 'Enter a port between 1 and 65535';
-                    }
-                    return null;
-                  },
                 ),
                 const SizedBox(height: 16),
-                TextFormField(
-                  controller: _token,
-                  decoration: const InputDecoration(
-                    labelText: 'Token (optional)',
-                    helperText: 'Required when the daemon enforces auth',
-                    border: OutlineInputBorder(),
+                InfoLabel(
+                  label: 'Token (optional)',
+                  child: TextFormBox(
+                    controller: _token,
+                    obscureText: true,
                   ),
-                  obscureText: true,
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Required when the daemon enforces auth',
+                    style: context.textStyles.bodySmall,
+                  ),
                 ),
                 const SizedBox(height: 24),
-                FilledButton.icon(
+                FilledButton(
                   onPressed: _save,
-                  icon: const Icon(Icons.save_outlined),
-                  label: const Text('Save & Reconnect'),
-                ),
-                const SizedBox(height: 32),
-                Text(
-                  'AI Providers',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                const _ProviderCredentialsSection(),
-                if (isDesktopShell) ...[
-                  const SizedBox(height: 32),
-                  Text(
-                    'Desktop',
-                    style: Theme.of(context).textTheme.titleMedium,
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(FluentIcons.save, size: 16),
+                      SizedBox(width: 6),
+                      Text('Save & Reconnect'),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  const _DesktopSettingsSection(),
-                ],
-                const SizedBox(height: 32),
-                Text(
-                  'Data',
-                  style: Theme.of(context).textTheme.titleMedium,
                 ),
-                const SizedBox(height: 8),
-                const _DataResetSection(),
               ],
             ),
           ),
@@ -194,40 +192,85 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 }
 
-/// Tray-residency toggles; only rendered when [isDesktopShell].
 class _DesktopSettingsSection extends ConsumerWidget {
-  const _DesktopSettingsSection();
+  const _DesktopSettingsSection({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (!isDesktopShell) {
+      return ScaffoldPage(
+        header: const PageHeader(title: Text('Desktop')),
+        content: const Center(child: Text('Desktop settings are only available on Windows/macOS.')),
+      );
+    }
     final desktop = ref.watch(desktopSettingsProvider);
     final notifier = ref.read(desktopSettingsProvider.notifier);
-    return Column(
-      children: [
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Start at login'),
-          subtitle: const Text('Launch hidden in the tray when you sign in'),
-          value: desktop.autoStartAtLogin,
-          onChanged: (value) => notifier.setAutoStartAtLogin(value),
-        ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Keep daemon running after quit'),
-          subtitle: const Text(
-            'When off, quitting the app also stops the local daemon',
+    return ScaffoldPage(
+      header: const PageHeader(title: Text('Desktop Settings')),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              _ToggleRow(
+                title: 'Start at login',
+                subtitle: 'Launch hidden in the tray when you sign in',
+                value: desktop.autoStartAtLogin,
+                onChanged: notifier.setAutoStartAtLogin,
+              ),
+              const SizedBox(height: 12),
+              _ToggleRow(
+                title: 'Keep daemon running after quit',
+                subtitle:
+                    'When off, quitting the app also stops the local daemon',
+                value: desktop.keepRunningAfterQuit,
+                onChanged: notifier.setKeepRunningAfterQuit,
+              ),
+            ],
           ),
-          value: desktop.keepRunningAfterQuit,
-          onChanged: (value) => notifier.setKeepRunningAfterQuit(value),
         ),
+      ),
+    );
+  }
+}
+
+class _ToggleRow extends StatelessWidget {
+  const _ToggleRow({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title),
+              Text(subtitle, style: context.textStyles.bodySmall),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        ToggleSwitch(checked: value, onChanged: onChanged),
       ],
     );
   }
 }
 
-/// API-key entry + connection test per native LLM provider.
 class _ProviderCredentialsSection extends ConsumerStatefulWidget {
-  const _ProviderCredentialsSection();
+  const _ProviderCredentialsSection({super.key});
 
   @override
   ConsumerState<_ProviderCredentialsSection> createState() =>
@@ -261,13 +304,11 @@ class _ProviderCredentialsSectionState
         _testResults[id] = null;
         _controllers[id]!.clear();
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${providerDisplayName(id.name)} API key saved')),
-      );
+      AppToast.show(context, '${providerDisplayName(id.name)} API key saved');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Failed to save key: $e')));
+      AppToast.show(context, 'Failed to save key: $e',
+          severity: InfoBarSeverity.error);
     } finally {
       if (mounted) setState(() => _busy[id] = false);
     }
@@ -307,16 +348,24 @@ class _ProviderCredentialsSectionState
   Widget build(BuildContext context) {
     final providers =
         ref.watch(providerListProvider).value ?? const <ProviderInfo>[];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final id in ProviderId.values)
-          _buildProviderTile(
-            context,
-            id,
-            providers.where((p) => p.id == id).firstOrNull,
+    return ScaffoldPage(
+      header: const PageHeader(title: Text('AI Providers')),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              for (final id in ProviderId.values)
+                _buildProviderTile(
+                  context,
+                  id,
+                  providers.where((p) => p.id == id).firstOrNull,
+                ),
+            ],
           ),
-      ],
+        ),
+      ),
     );
   }
 
@@ -330,91 +379,79 @@ class _ProviderCredentialsSectionState
     final result = _testResults[id];
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  configured
-                      ? Icons.check_circle
-                      : Icons.radio_button_unchecked,
-                  color: configured ? Colors.greenAccent : null,
-                  size: 18,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    info?.displayName ?? providerDisplayName(id.name),
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                ),
-                if (configured)
-                  TextButton(
-                    onPressed: busy ? null : () => _clear(id),
-                    child: const Text('Remove'),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _controllers[id],
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: configured ? 'Replace API key' : 'API key',
-                border: const OutlineInputBorder(),
-                isDense: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                configured
+                    ? FluentIcons.completed_solid
+                    : FluentIcons.circle_ring,
+                color: configured ? Colors.green : null,
+                size: 18,
               ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                FilledButton(
-                  onPressed: busy ? null : () => _save(id),
-                  child: const Text('Save'),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: busy ? null : () => _test(id),
-                  child: const Text('Test Connection'),
-                ),
-                if (busy) ...[
-                  const SizedBox(width: 12),
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ],
-              ],
-            ),
-            if (result != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                result.ok
-                    ? 'Connection OK'
-                    : (result.error ?? 'Connection failed'),
-                style: TextStyle(
-                  color: result.ok
-                      ? Colors.greenAccent
-                      : Theme.of(context).colorScheme.error,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  info?.displayName ?? providerDisplayName(id.name),
+                  style: context.textStyles.titleSmall,
                 ),
               ),
+              if (configured)
+                Button(
+                  onPressed: busy ? null : () => _clear(id),
+                  child: const Text('Remove'),
+                ),
             ],
+          ),
+          const SizedBox(height: 8),
+          TextBox(
+            controller: _controllers[id],
+            obscureText: true,
+            placeholder: configured ? 'Replace API key' : 'API key',
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              FilledButton(
+                onPressed: busy ? null : () => _save(id),
+                child: const Text('Save'),
+              ),
+              const SizedBox(width: 8),
+              Button(
+                onPressed: busy ? null : () => _test(id),
+                child: const Text('Test Connection'),
+              ),
+              if (busy) ...[
+                const SizedBox(width: 12),
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: ProgressRing(strokeWidth: 2),
+                ),
+              ],
+            ],
+          ),
+          if (result != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              result.ok
+                  ? 'Connection OK'
+                  : (result.error ?? 'Connection failed'),
+              style: TextStyle(
+                color: result.ok ? Colors.green : context.tokens.error,
+              ),
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
 }
 
-/// "Reset all data" — clears local app settings (host/port/token, desktop
-/// toggles) and best-effort removes any stored provider API keys on the
-/// daemon. Confirmation is required; the action is not undoable.
 class _DataResetSection extends ConsumerStatefulWidget {
-  const _DataResetSection();
+  const _DataResetSection({super.key});
 
   @override
   ConsumerState<_DataResetSection> createState() => _DataResetSectionState();
@@ -427,7 +464,7 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
     if (_busy) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => ContentDialog(
         title: const Text('Reset all data?'),
         content: const Text(
           'This will:\n'
@@ -439,14 +476,16 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
           'This cannot be undone.',
         ),
         actions: [
-          TextButton(
+          Button(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(dialogContext).colorScheme.error,
-              foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+            style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.all(
+                FluentTheme.of(dialogContext).resources.systemFillColorCritical,
+              ),
+              foregroundColor: const WidgetStatePropertyAll(Colors.white),
             ),
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Reset all data'),
@@ -458,8 +497,6 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
 
     setState(() => _busy = true);
 
-    // Capture the currently-configured providers before we kick the reset,
-    // since `providerListProvider` will be invalidated as keys are cleared.
     final providers =
         ref.read(providerListProvider).value ?? const <ProviderInfo>[];
     final configuredIds = providers
@@ -469,7 +506,6 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
 
     final failures = <String>[];
 
-    // 1. Reset app-side settings first — this is guaranteed-local work.
     try {
       await ref.read(connectionSettingsProvider.notifier).reset();
     } catch (e) {
@@ -483,9 +519,6 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
       }
     }
 
-    // 2. Best-effort: ask the daemon to clear each configured provider key.
-    //    If the daemon is unreachable, surface that in the snackbar but keep
-    //    the local reset intact.
     final actions = ref.read(providerCredentialActionsProvider);
     for (final id in configuredIds) {
       try {
@@ -495,13 +528,8 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
       }
     }
 
-    // Invalidate so the providers card reflects the cleared state.
     ref.invalidate(providerListProvider);
 
-    // 3. Wipe every agent's conversation on the daemon. This tears down
-    //    provider sessions and clears persisted timeline files; the next
-    //    prompt on any surviving agent will start a brand-new provider
-    //    session with empty history.
     int? clearedAgents;
     try {
       clearedAgents = await ref.read(agentActionsProvider).clearConversations();
@@ -512,75 +540,91 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
     if (!mounted) return;
     setState(() => _busy = false);
 
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
+    AppToast.dismissCurrent();
     if (failures.isEmpty) {
       final summary = clearedAgents == null
           ? 'All data has been reset.'
           : 'All data has been reset '
               '(${clearedAgents == 0 ? 'no' : clearedAgents} '
               'conversation${clearedAgents == 1 ? '' : 's'} wiped).';
-      messenger.showSnackBar(SnackBar(content: Text(summary)));
+      AppToast.show(context, summary);
     } else {
-      messenger.showSnackBar(
-        SnackBar(
-          duration: const Duration(seconds: 6),
-          content: Text(
-            'Local data reset. Some daemon-side items could not be cleared: '
-            '${failures.join('; ')}',
-          ),
-        ),
+      AppToast.show(
+        context,
+        'Local data reset. Some daemon-side items could not be cleared: '
+        '${failures.join('; ')}',
+        severity: InfoBarSeverity.warning,
+        duration: const Duration(seconds: 6),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      color: theme.colorScheme.errorContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Reset all data',
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: theme.colorScheme.onErrorContainer,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Clears the daemon connection, desktop preferences, every saved '
-              'provider API key, and every conversation (agent timelines + '
-              'history). The app will reconnect to the default localhost '
-              'daemon.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onErrorContainer,
-              ),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.colorScheme.error,
-                foregroundColor: theme.colorScheme.onError,
-              ),
-              onPressed: _busy ? null : _confirmAndReset,
-              icon: _busy
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.restart_alt),
-              label: Text(_busy ? 'Resetting…' : 'Reset all data'),
-            ),
-          ],
+    ref.watch(providerListProvider);
+    return ScaffoldPage(
+      header: const PageHeader(title: Text('Data Reset')),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              _buildResetCard(context),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildResetCard(BuildContext context) {
+    final tokens = context.tokens;
+    return Card(
+      backgroundColor: tokens.errorContainer,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Reset all data',
+            style: context.textStyles.titleSmall?.copyWith(
+              color: tokens.onErrorContainer,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Clears the daemon connection, desktop preferences, every saved '
+            'provider API key, and every conversation (agent timelines + '
+            'history). The app will reconnect to the default localhost '
+            'daemon.',
+            style: context.textStyles.bodySmall?.copyWith(
+              color: tokens.onErrorContainer,
+            ),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.all(tokens.error),
+              foregroundColor: const WidgetStatePropertyAll(Colors.white),
+            ),
+            onPressed: _busy ? null : _confirmAndReset,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _busy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: ProgressRing(
+                            strokeWidth: 2, activeColor: Colors.white),
+                      )
+                    : const Icon(FluentIcons.reset, size: 16),
+                const SizedBox(width: 6),
+                Text(_busy ? 'Resetting…' : 'Reset all data'),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

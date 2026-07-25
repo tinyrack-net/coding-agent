@@ -18,6 +18,7 @@ abstract final class MessageTypes {
   static const agentPromptRequest = 'agent.prompt.request';
   static const agentInterruptRequest = 'agent.interrupt.request';
   static const agentSetModeRequest = 'agent.set_mode.request';
+  static const agentRenameRequest = 'agent.rename.request';
   static const agentArchiveRequest = 'agent.archive.request';
   static const agentTimelineFetchRequest = 'agent.timeline.fetch.request';
   // Wipe persisted + in-memory conversation state. Request payload is

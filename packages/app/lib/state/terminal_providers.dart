@@ -6,10 +6,15 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xterm/xterm.dart';
 
-import 'agents_provider.dart';
 import 'daemon_providers.dart';
+import 'worktree_tabs_provider.dart';
 
 enum TerminalSessionStatus { starting, running, exited, error }
+
+/// Identifies one terminal tab: the worktree whose path is its `cwd`, plus
+/// the [WorktreeTab.tabId] it belongs to (a worktree can have several
+/// terminal tabs, each backed by its own daemon-side PTY).
+typedef TerminalSessionKey = ({String worktreePath, String tabId});
 
 /// UI-facing snapshot of one embedded terminal session.
 class TerminalSessionState {
@@ -41,14 +46,18 @@ class TerminalSessionState {
       );
 }
 
-/// One daemon-backed PTY per agent, created lazily when the Terminal tab is
+/// One daemon-backed PTY per terminal tab, created lazily when the tab is
 /// first opened and kept alive across tab switches. Killed via [shutdown]
-/// when the agent is archived (see [AgentActions.archive]).
+/// when its tab is closed or the owning agent is archived (see
+/// [AgentActions.archive]).
 class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
-  TerminalSessionNotifier(this.agentId);
+  TerminalSessionNotifier(this.key);
 
-  /// Family argument: the agent this terminal belongs to.
-  final String agentId;
+  /// Family argument: which worktree/tab this terminal belongs to.
+  /// [TerminalSessionKey.worktreePath] *is* the daemon-side `cwd` directly;
+  /// [TerminalSessionKey.tabId] gives each tab its own independent session
+  /// identity.
+  final TerminalSessionKey key;
 
   String? _terminalId;
   int? _slotId;
@@ -91,7 +100,7 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
 
   Future<void> _start(int generation, Terminal terminal) async {
     final client = ref.read(daemonClientProvider);
-    final cwd = ref.read(agentSummaryProvider(agentId))?.cwd ?? '.';
+    final cwd = key.worktreePath;
     try {
       final created =
           await client.request(MessageTypes.terminalCreateRequest, {
@@ -99,24 +108,27 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
         'cols': terminal.viewWidth,
         'rows': terminal.viewHeight,
       });
+      final terminalJson = created['terminal'] as Map<String, Object?>?;
+      if (terminalJson == null || terminalJson['terminalId'] is! String) {
+        throw StateError('malformed create response');
+      }
+      final info = TerminalInfo.fromJson(terminalJson);
       if (generation != _generation) {
         // Rebuilt while creating: don't leak the daemon terminal.
-        final id = (created['terminal'] as Map?)?['terminalId'] as String?;
-        if (id != null) {
-          unawaited(client
-              .request(MessageTypes.terminalKillRequest, {'terminalId': id})
-              .catchError((_) => const <String, Object?>{}));
-        }
+        unawaited(client
+            .request(MessageTypes.terminalKillRequest,
+                {'terminalId': info.terminalId})
+            .catchError((_) => const <String, Object?>{}));
         return;
       }
-      final terminalId =
-          (created['terminal'] as Map?)?['terminalId'] as String?;
-      if (terminalId == null) throw StateError('malformed create response');
-      _terminalId = terminalId;
+      _terminalId = info.terminalId;
+      ref
+          .read(worktreeTabsProvider(key.worktreePath).notifier)
+          .setTerminalId(key.tabId, info.terminalId);
 
       final subscribed = await client.request(
         MessageTypes.terminalSubscribeRequest,
-        {'terminalId': terminalId},
+        {'terminalId': info.terminalId},
       );
       if (generation != _generation) return;
       final slotId = (subscribed['slotId'] as num?)?.toInt();
@@ -159,7 +171,8 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
   /// swapping in a new emulator.
   void restart() => ref.invalidateSelf();
 
-  /// Kills the daemon-side terminal. Called when the agent is archived.
+  /// Kills the daemon-side terminal. Called when this tab is closed or the
+  /// owning agent is archived.
   Future<void> shutdown() async {
     _generation++;
     final client = ref.read(daemonClientProvider);
@@ -183,6 +196,6 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
 }
 
 final terminalSessionProvider = NotifierProvider.family<
-    TerminalSessionNotifier, TerminalSessionState, String>(
+    TerminalSessionNotifier, TerminalSessionState, TerminalSessionKey>(
   TerminalSessionNotifier.new,
 );

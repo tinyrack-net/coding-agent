@@ -1,15 +1,18 @@
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xterm/xterm.dart';
 
+import '../core/theme.dart';
 import '../state/terminal_providers.dart';
 
-/// Embedded terminal for one agent: fills the pane, dark background, and
-/// forwards keystrokes to the daemon PTY while focused.
+/// Embedded terminal for one tab of one worktree: fills the pane, dark
+/// background, and forwards keystrokes to the daemon PTY while focused.
 class TerminalPane extends ConsumerStatefulWidget {
-  const TerminalPane({super.key, required this.agentId});
+  const TerminalPane(
+      {super.key, required this.worktreePath, required this.tabId});
 
-  final String agentId;
+  final String worktreePath;
+  final String tabId;
 
   @override
   ConsumerState<TerminalPane> createState() => _TerminalPaneState();
@@ -17,6 +20,9 @@ class TerminalPane extends ConsumerStatefulWidget {
 
 class _TerminalPaneState extends ConsumerState<TerminalPane> {
   final _focusNode = FocusNode(debugLabel: 'TerminalPane');
+
+  TerminalSessionKey get _key =>
+      (worktreePath: widget.worktreePath, tabId: widget.tabId);
 
   @override
   void dispose() {
@@ -26,27 +32,25 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
 
   @override
   Widget build(BuildContext context) {
-    final session = ref.watch(terminalSessionProvider(widget.agentId));
+    final session = ref.watch(terminalSessionProvider(_key));
 
     return Column(
       children: [
         if (session.status == TerminalSessionStatus.exited)
           _Banner(
-            icon: Icons.stop_circle_outlined,
+            icon: FluentIcons.stop,
             text: session.exitCode == null
                 ? 'Terminal exited'
                 : 'Terminal exited (code ${session.exitCode})',
-            onRestart: () => ref
-                .read(terminalSessionProvider(widget.agentId).notifier)
-                .restart(),
+            onRestart: () =>
+                ref.read(terminalSessionProvider(_key).notifier).restart(),
           ),
         if (session.status == TerminalSessionStatus.error)
           _Banner(
-            icon: Icons.error_outline,
+            icon: FluentIcons.error_badge,
             text: 'Terminal failed: ${session.errorMessage ?? 'unknown error'}',
-            onRestart: () => ref
-                .read(terminalSessionProvider(widget.agentId).notifier)
-                .restart(),
+            onRestart: () =>
+                ref.read(terminalSessionProvider(_key).notifier).restart(),
           ),
         Expanded(
           child: ColoredBox(
@@ -83,30 +87,34 @@ class _Banner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: scheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: scheme.error),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                text,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+    final tokens = context.tokens;
+    return Container(
+      color: tokens.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: tokens.error),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.textStyles.bodySmall,
             ),
-            TextButton.icon(
-              onPressed: onRestart,
-              icon: const Icon(Icons.refresh, size: 16),
-              label: const Text('Restart'),
+          ),
+          Button(
+            onPressed: onRestart,
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(FluentIcons.refresh, size: 16),
+                SizedBox(width: 6),
+                Text('Restart'),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

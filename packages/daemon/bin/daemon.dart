@@ -2,20 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:agent_daemon/agent_daemon.dart';
-import 'package:agent_daemon/src/agent/agent_manager.dart';
-import 'package:agent_daemon/src/agent/agent_store.dart';
-import 'package:agent_daemon/src/git/git_service.dart';
-import 'package:agent_daemon/src/git/workspace_rpc.dart';
-import 'package:agent_daemon/src/store/project_store.dart';
-import 'package:agent_daemon/src/providers/native/credential_store.dart';
-import 'package:agent_daemon/src/providers/native/native_client.dart';
-import 'package:agent_daemon/src/providers/native/openai_compatible_backend.dart';
-import 'package:agent_daemon/src/providers/native/provider_catalog.dart';
-import 'package:agent_daemon/src/providers/provider_registry.dart';
 import 'package:agent_daemon/src/server/rpc_router.dart';
-import 'package:agent_daemon/src/server/ws_server.dart';
-import 'package:agent_daemon/src/terminal/terminal_manager.dart';
-import 'package:agent_daemon/src/terminal/terminal_rpc.dart';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 
@@ -118,7 +105,9 @@ ProviderId _parseProviderId(Object? raw) {
     return ProviderId.fromWire(name);
   } catch (_) {
     throw RpcException(
-        RpcErrorCodes.invalidPayload, 'unknown providerId "$name"');
+      RpcErrorCodes.invalidPayload,
+      'unknown providerId "$name"',
+    );
   }
 }
 

@@ -385,6 +385,16 @@ void main() {
     expect(states.last.agent.mode, AgentMode.plan);
   });
 
+  test('rename stores the new title and broadcasts it', () async {
+    final agent = await createAgent();
+    final updated = await manager.rename(agent.agentId, 'Renamed agent');
+    expect(updated.title, 'Renamed agent');
+    expect(states.last.agent.title, 'Renamed agent');
+
+    final listed = manager.list().singleWhere((a) => a.agentId == agent.agentId);
+    expect(listed.title, 'Renamed agent');
+  });
+
   test('persists and reloads agents across manager restarts', () async {
     final agent = await createAgent();
     final session = client.sessions.single;

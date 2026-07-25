@@ -4,7 +4,7 @@ import 'package:coding_agent_app/screens/status_screen.dart';
 import 'package:coding_agent_app/state/daemon_lifecycle_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -14,15 +14,14 @@ import 'package:flutter_test/flutter_test.dart';
 /// up any real supervisor/tray code.
 class FakeDaemonClient extends DaemonClient {
   FakeDaemonClient({
-    DaemonConnectionState state = DaemonConnectionState.connected,
+    this._state = DaemonConnectionState.connected,
     this.rejectedHelloOverride,
-  })  : _state = state,
-        super(uri: Uri.parse('ws://fake'));
+  }) : super(uri: Uri.parse('ws://fake'));
 
   final DaemonConnectionState _state;
   final ServerHello? rejectedHelloOverride;
   Map<String, Object?> Function(String type, Map<String, Object?> payload)?
-      onRequest;
+  onRequest;
 
   @override
   ServerHello? get rejectedHello => rejectedHelloOverride;
@@ -58,15 +57,16 @@ Future<void> pumpStatusScreen(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: const MaterialApp(home: StatusScreen()),
+      child: const FluentApp(home: StatusScreen()),
     ),
   );
   await tester.pumpAndSettle();
 }
 
 void main() {
-  testWidgets('connected: shows the connected banner and provider list',
-      (tester) async {
+  testWidgets('connected: shows the connected banner and provider list', (
+    tester,
+  ) async {
     final client = FakeDaemonClient();
     client.onRequest = (type, payload) {
       expect(type, MessageTypes.providerListRequest);
@@ -76,7 +76,9 @@ void main() {
             id: ProviderId.openai,
             displayName: 'Codex',
             configured: true,
-            models: [ProviderModel(id: 'gpt-5.4-codex', displayName: 'GPT-5.4 Codex')],
+            models: [
+              ProviderModel(id: 'gpt-5.4-codex', displayName: 'GPT-5.4 Codex'),
+            ],
           ).toJson(),
           const ProviderInfo(
             id: ProviderId.deepseek,
@@ -110,8 +112,9 @@ void main() {
     expect(find.text('Connecting…'), findsOneWidget);
   });
 
-  testWidgets('version mismatch: shows the incompatible banner and guidance',
-      (tester) async {
+  testWidgets('version mismatch: shows the incompatible banner and guidance', (
+    tester,
+  ) async {
     final client = FakeDaemonClient(
       state: DaemonConnectionState.versionMismatch,
       rejectedHelloOverride: const ServerHello(
@@ -125,16 +128,18 @@ void main() {
     expect(find.textContaining('원격 데몬 v9.0.0'), findsOneWidget);
   });
 
-  testWidgets('no providers reported yet shows the empty-state text',
-      (tester) async {
+  testWidgets('no providers reported yet shows the empty-state text', (
+    tester,
+  ) async {
     final client = FakeDaemonClient()..onRequest = (type, payload) => const {};
     await pumpStatusScreen(tester, client);
 
     expect(find.text('No providers reported yet.'), findsOneWidget);
   });
 
-  testWidgets('a failed provider list request shows an inline error',
-      (tester) async {
+  testWidgets('a failed provider list request shows an inline error', (
+    tester,
+  ) async {
     final client = FakeDaemonClient()
       ..onRequest = (type, payload) {
         throw StateError('daemon unreachable');
@@ -145,37 +150,39 @@ void main() {
   });
 
   testWidgets(
-      'a local daemon spawn failure surfaces the "Failed to start local '
-      'daemon" banner', (tester) async {
-    final client = FakeDaemonClient();
-    client.onRequest = (type, payload) {
-      expect(type, MessageTypes.providerListRequest);
-      return const {'providers': []};
-    };
-    final supervisor = _SpawnFailingSupervisor();
-    final container = ProviderContainer(
-      overrides: [
-        daemonClientProvider.overrideWithValue(client),
-        desktopShellProvider.overrideWithValue(true),
-        daemonSupervisorFactoryProvider.overrideWithValue((_) => supervisor),
-      ],
-    );
-    addTearDown(container.dispose);
+    'a local daemon spawn failure surfaces the "Failed to start local '
+    'daemon" banner',
+    (tester) async {
+      final client = FakeDaemonClient();
+      client.onRequest = (type, payload) {
+        expect(type, MessageTypes.providerListRequest);
+        return const {'providers': []};
+      };
+      final supervisor = _SpawnFailingSupervisor();
+      final container = ProviderContainer(
+        overrides: [
+          daemonClientProvider.overrideWithValue(client),
+          desktopShellProvider.overrideWithValue(true),
+          daemonSupervisorFactoryProvider.overrideWithValue((_) => supervisor),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: const MaterialApp(home: StatusScreen()),
-      ),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const FluentApp(home: StatusScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.textContaining('Failed to start local daemon'),
-      findsOneWidget,
-    );
-    expect(find.textContaining('spawn exploded'), findsOneWidget);
-  });
+      expect(
+        find.textContaining('Failed to start local daemon'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('spawn exploded'), findsOneWidget);
+    },
+  );
 }
 
 class _SpawnFailingSupervisor extends DaemonSupervisor {

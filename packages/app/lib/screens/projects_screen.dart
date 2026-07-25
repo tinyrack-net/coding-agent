@@ -1,10 +1,12 @@
 import 'package:agent_protocol/agent_protocol.dart';
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/worktree_actions.dart';
 import '../state/agents_provider.dart';
 import '../state/workspace_providers.dart';
+import '../state/worktree_tabs_provider.dart';
+import '../widgets/fluent/page_back_button.dart';
 
 /// Lists registered projects and, per project, their git worktrees —
 /// showing which agent (if any) is using each one and letting the user
@@ -16,10 +18,13 @@ class ProjectsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final projectsAsync = ref.watch(projectsProvider);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Projects & worktrees')),
-      body: projectsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+    return ScaffoldPage(
+      header: const PageHeader(
+        leading: PageBackButton(),
+        title: Text('Projects & worktrees'),
+      ),
+      content: projectsAsync.when(
+        loading: () => const Center(child: ProgressRing()),
         error: (e, _) => Center(child: Text('Failed to load projects: $e')),
         data: (projects) {
           final gitProjects = projects.where((p) => p.isGitRepo).toList();
@@ -46,14 +51,23 @@ class _ProjectSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return ExpansionTile(
-      title: Text(project.name.isEmpty ? project.path : project.name),
-      subtitle: Text(
-        project.path,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Expander(
+        header: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(project.name.isEmpty ? project.path : project.name),
+            Text(
+              project.path,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+        content: _WorktreeList(projectPath: project.path),
       ),
-      children: [_WorktreeList(projectPath: project.path)],
     );
   }
 }
@@ -71,7 +85,7 @@ class _WorktreeList extends ConsumerWidget {
     return worktreesAsync.when(
       loading: () => const Padding(
         padding: EdgeInsets.all(16),
-        child: Center(child: CircularProgressIndicator()),
+        child: Center(child: ProgressRing()),
       ),
       error: (e, _) => Padding(
         padding: const EdgeInsets.all(16),
@@ -109,9 +123,8 @@ class _WorktreeTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return ListTile(
-      dense: true,
       leading: Icon(
-        worktree.isMain ? Icons.home_outlined : Icons.call_split,
+        worktree.isMain ? FluentIcons.home : FluentIcons.branch_fork2,
         size: 18,
       ),
       title: Text(worktree.branch.isEmpty ? '(detached)' : worktree.branch),
@@ -128,24 +141,32 @@ class _WorktreeTile extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (owner != null)
-                  IconButton(
-                    tooltip: 'Open agent',
-                    icon: const Icon(Icons.open_in_new, size: 18),
-                    onPressed: () {
-                      ref
-                          .read(selectedAgentProvider.notifier)
-                          .select(owner!.agentId);
-                      Navigator.of(context).pop();
-                    },
+                  Tooltip(
+                    message: 'Open agent',
+                    child: IconButton(
+                      icon: const Icon(FluentIcons.open_in_new_window, size: 18),
+                      onPressed: () {
+                        final worktreePath = resolveWorktreeKey(owner!);
+                        ref
+                            .read(worktreeTabsProvider(worktreePath).notifier)
+                            .focusAgent(owner!.agentId);
+                        ref
+                            .read(selectedWorktreeProvider.notifier)
+                            .select(worktreePath);
+                        Navigator.of(context).pop();
+                      },
+                    ),
                   ),
-                IconButton(
-                  tooltip: 'Archive worktree',
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  onPressed: () => archiveWorktreeWithConfirm(
-                    context,
-                    ref,
-                    worktree.projectPath,
-                    worktree.path,
+                Tooltip(
+                  message: 'Archive worktree',
+                  child: IconButton(
+                    icon: const Icon(FluentIcons.delete, size: 18),
+                    onPressed: () => archiveWorktreeWithConfirm(
+                      context,
+                      ref,
+                      worktree.projectPath,
+                      worktree.path,
+                    ),
                   ),
                 ),
               ],

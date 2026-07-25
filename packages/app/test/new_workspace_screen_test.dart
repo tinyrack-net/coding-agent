@@ -3,7 +3,7 @@ import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/screens/new_workspace_screen.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/workspace_providers.dart';
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -91,7 +91,7 @@ Future<ProviderContainer> pumpNewWorkspaceScreen(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: const MaterialApp(home: NewWorkspaceScreen()),
+      child: const FluentApp(home: NewWorkspaceScreen()),
     ),
   );
   await tester.pumpAndSettle();
@@ -164,7 +164,7 @@ void main() {
     expect(find.text('Local'), findsOneWidget);
 
     await tester.enterText(
-      find.byType(TextField).last,
+      find.byType(TextBox).last,
       'fix the login bug',
     );
     await tester.tap(find.text('Create'));
@@ -357,19 +357,21 @@ void main() {
     await tester.tap(find.text('Add project'));
     await tester.pumpAndSettle();
 
+    // 'Project path' is an `InfoLabel` sibling of the box, not a descendant,
+    // so scope by the dialog instead of the label text.
     await tester.enterText(
-      find.widgetWithText(TextField, 'Project path'),
+      find.descendant(
+        of: find.byType(ContentDialog),
+        matching: find.byType(TextBox),
+      ),
       '/scratch',
     );
-    // Deliberately avoid pumping after tapping Add: the dialog's local
-    // `TextEditingController` is disposed as soon as the pop resolves, and
-    // pumping through the exit animation's intermediate frames rebuilds the
-    // (now-disposed) TextField mid-flight, tripping a debug-only framework
-    // assertion (see the same documented pattern in the old
-    // new_agent_screen_test.dart). `tester.tap` already settles the gesture
-    // and the fake client resolves synchronously, so the project.add
-    // request has already landed by this point.
     await tester.tap(find.text('Add'));
+    // A single short pump: enough to flush fluent_ui's internal 100ms
+    // press-state timer (`HoverButton`) without pumping all the way through
+    // the dialog's exit transition (which would rebuild the dialog's
+    // disposed local `TextEditingController` mid-flight).
+    await tester.pump(const Duration(milliseconds: 150));
 
     expect(
       client.requests.any((r) => r.$1 == MessageTypes.projectAddRequest),

@@ -1,6 +1,6 @@
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/widgets/diff/diff_view.dart';
-import 'package:flutter/material.dart';
+import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _diff = DiffResponse(
@@ -82,9 +82,9 @@ const _diff = DiffResponse(
 );
 
 Widget _wrap(Widget child, {Size size = const Size(1200, 800)}) {
-  return MaterialApp(
-    home: Scaffold(
-      body: MediaQuery(
+  return FluentApp(
+    home: ScaffoldPage(
+      content: MediaQuery(
         data: MediaQueryData(size: size),
         child: child,
       ),
@@ -159,9 +159,11 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(_wrap(const DiffView(diff: _diff)));
 
-    // Collapsed by default: file rows visible, hunk bodies hidden.
+    // Collapsed by default: file rows visible. Fluent's `Expander` keeps its
+    // content mounted (animating height via `SizeTransition`) rather than
+    // unmounting it like Material's `ExpansionTile`, so we only assert the
+    // row is present here and check content visibility after expanding.
     expect(find.text('lib/changed.dart'), findsOneWidget);
-    expect(find.text('new line'), findsNothing);
 
     await tester.tap(find.text('lib/changed.dart'));
     await tester.pumpAndSettle();
@@ -195,7 +197,7 @@ void main() {
       find.text('lib/old_name.dart → lib/new_name.dart'),
       findsOneWidget,
     );
-    expect(find.byIcon(Icons.drive_file_move_outlined), findsOneWidget);
+    expect(find.byIcon(FluentIcons.move_to_folder), findsOneWidget);
   });
 
   testWidgets('a non-binary file with no hunks shows "No textual changes"',
