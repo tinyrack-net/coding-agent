@@ -133,6 +133,48 @@ void main() {
       expect((await lock.read())!.pid, 100);
     }, timeout: const Timeout(Duration(seconds: 30)));
 
+    // Regression: the heartbeat used to `writeAsString` in place, which
+    // truncates before writing. A reader landing in that window got an empty
+    // file, so read() returned null — and acquire() reads null as "corrupt,
+    // therefore stale" and deletes the lock, letting a second daemon start on
+    // the same data dir. Hammering read() against a fast heartbeat reliably
+    // caught it before the write became an atomic rename.
+    test('read never observes a torn file while the heartbeat runs', () async {
+      final lock = PidLock(lockPath);
+      await lock.acquire(data());
+      lock.startHeartbeat(interval: const Duration(milliseconds: 1));
+      addTearDown(lock.release);
+
+      final reader = PidLock(lockPath);
+      for (var i = 0; i < 400; i++) {
+        expect(
+          await reader.read(),
+          isNotNull,
+          reason: 'lock file was unreadable on attempt $i',
+        );
+        await Future<void>.delayed(Duration.zero);
+      }
+    }, timeout: const Timeout(Duration(seconds: 30)));
+
+    test('a second acquire is refused throughout the heartbeat', () async {
+      // The consequence of the bug above, stated directly: single-instance
+      // enforcement must not depend on when the contender samples the file.
+      final holder = PidLock(lockPath);
+      await holder.acquire(data());
+      holder.startHeartbeat(interval: const Duration(milliseconds: 1));
+      addTearDown(holder.release);
+
+      for (var i = 0; i < 50; i++) {
+        final contender = PidLock(lockPath, isPidAlive: (_) async => true);
+        await expectLater(
+          contender.acquire(data(pid: 200)),
+          throwsA(isA<LockHeldException>()),
+          reason: 'contender acquired the lock on attempt $i',
+        );
+        await Future<void>.delayed(Duration.zero);
+      }
+    }, timeout: const Timeout(Duration(seconds: 30)));
+
     test('does nothing before a lock is held (no-op tick)', () async {
       final lock = PidLock(lockPath);
       // Never call acquire(): _held stays null, so each timer tick should

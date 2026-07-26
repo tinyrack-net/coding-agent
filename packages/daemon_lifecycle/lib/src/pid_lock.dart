@@ -106,7 +106,7 @@ class PidLock {
   /// Updates the held lock (e.g. once the real bound port is known).
   Future<void> update(PidLockData data) async {
     _held = data;
-    await File(path).writeAsString(jsonEncode(data.toJson()), flush: true);
+    await _replaceAtomically(data);
   }
 
   /// Rewrites the file periodically so mtime doubles as a liveness heartbeat.
@@ -121,10 +121,25 @@ class PidLock {
     final held = _held;
     if (held == null) return;
     try {
-      await File(path).writeAsString(jsonEncode(held.toJson()), flush: true);
+      await _replaceAtomically(held);
     } catch (_) {
       // Best effort; staleness only kicks in after [staleAfter].
     }
+  }
+
+  /// Replaces the lock file in one step (write a sibling temp, then rename).
+  ///
+  /// A plain `writeAsString` truncates before writing, so a concurrent reader
+  /// can observe a zero-byte file. That matters because [read] reports an
+  /// unparseable file as `null`, and [acquire] treats `null` as "corrupt lock,
+  /// therefore stale" and *deletes* it — so a second daemon could start on the
+  /// same data dir purely because it sampled the file mid-heartbeat. `rename`
+  /// replaces the target atomically (including on Windows), so a reader always
+  /// sees either the old or the new content.
+  Future<void> _replaceAtomically(PidLockData data) async {
+    final tmp = File('$path.tmp');
+    await tmp.writeAsString(jsonEncode(data.toJson()), flush: true);
+    await tmp.rename(path);
   }
 
   Future<void> release() async {
@@ -138,16 +153,33 @@ class PidLock {
       _held = null;
       await _deleteQuietly(File(path));
     }
+    // A heartbeat that died between write and rename leaves this behind.
+    await _deleteQuietly(File('$path.tmp'));
   }
 
   /// Reads the lock file without taking it. Null when absent or corrupt.
+  ///
+  /// Retries a few times before giving up, because a concurrent heartbeat
+  /// rewrite makes a single read fail transiently — replacing the file briefly
+  /// locks the path on Windows, and a torn read yields unparseable content.
+  /// Reporting that as "corrupt" is actively dangerous: [acquire] treats null
+  /// as a stale lock and *deletes* it, so one unlucky sample would let a second
+  /// daemon start on the same data dir. A genuinely corrupt file stays
+  /// unreadable across every attempt and still returns null.
   Future<PidLockData?> read() async {
-    try {
-      final content = await File(path).readAsString();
-      return PidLockData.fromJson(
-          jsonDecode(content) as Map<String, Object?>);
-    } catch (_) {
-      return null;
+    for (var attempt = 0;; attempt++) {
+      // An absent file is a legitimate answer, not a transient failure.
+      if (!File(path).existsSync()) return null;
+      try {
+        final content = await File(path).readAsString();
+        final data =
+            PidLockData.fromJson(jsonDecode(content) as Map<String, Object?>);
+        if (data != null) return data;
+      } catch (_) {
+        // Fall through and retry.
+      }
+      if (attempt >= 4) return null;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
     }
   }
 
