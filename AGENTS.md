@@ -40,12 +40,14 @@ cd packages/app && flutter test               # 위젯 테스트
   dart run agent_daemon:smoke_ws       # WebSocket + 권한 승인 (OPENAI_API_KEY 필요)
   dart run agent_daemon:smoke_git      # 프로젝트/worktree/diff
   dart run agent_daemon:smoke_terminal # ConPTY 터미널
-  dart run agent_daemon:smoke_native <openai|deepseek|openrouter> # 네이티브 하네스 E2E
+  dart run agent_daemon:smoke_native <openai|claude|deepseek|openrouter> # 네이티브 하네스 E2E (프리셋 이름)
   ```
 
 ## 작업 시 유의사항
 
 - 프로토콜(`packages/protocol`)을 변경하면 이를 사용하는 `daemon`과 `app` 양쪽의 직렬화/역직렬화 코드와 테스트를 함께 갱신해야 합니다.
-- 에이전트는 CLI 서브프로세스가 아니라 데몬이 직접 LLM API(Codex/OpenAI·DeepSeek·OpenRouter, 전부 OpenAI Chat Completions 호환)를 호출하는 자체 하네스로 동작합니다. API 키는 앱의 Settings > AI Providers에서 등록(`provider.credential.set/clear/test.request`)하며, `packages/daemon/lib/src/providers/native/credential_store.dart`에 Windows DPAPI로 암호화 저장됩니다.
+- 에이전트는 CLI 서브프로세스가 아니라 데몬이 직접 LLM API를 호출하는 자체 하네스로 동작합니다. 지원 방언은 `ProviderKind` 두 가지 — OpenAI Chat Completions 호환(`openai_compatible_backend.dart`)과 Anthropic Messages API 호환(`anthropic_backend.dart`)입니다.
+- 프로바이더는 하드코딩된 목록이 아니라 **사용자가 등록하는 데이터**입니다. 설정은 `packages/daemon/.../provider_config_store.dart`(`<dataDir>/providers.json`), API 키는 같은 id로 `credential_store.dart`(Windows DPAPI 암호화)에 저장됩니다. 앱의 Settings > AI Providers에서 추가/수정/삭제하며, RPC는 `provider.list/upsert/delete.request` + `provider.credential.set/clear/test.request`입니다. `provider_presets.dart`(daemon/app 양쪽)는 "추가" 폼을 채우는 템플릿일 뿐 존재하는 프로바이더의 출처가 아닙니다.
+- 프로바이더 id는 불투명한 문자열이므로 표시 이름은 `provider.list` 결과에서 조회해야 합니다(`app/lib/core/provider_display.dart`). 백엔드는 `ProviderRegistry`가 id별로 지연 생성/캐시하고 수정·삭제 시 무효화하므로, 데몬 재시작 없이 반영됩니다.
 - 새 기능을 구현하기 전 `~/Workspaces/learn/paseo`에서 대응하는 TS 구현(RPC 핸들러, 권한 모드, 워크트리 로직 등)을 먼저 찾아 동작 방식을 확인하세요. 1:1로 옮길 필요는 없지만 의도를 존중해야 합니다.
 - 계획 문서: `~/.claude/plans/ai-coding-agent-polymorphic-blossom.md`, `~/.claude/plans/cli-dreamy-nest.md`

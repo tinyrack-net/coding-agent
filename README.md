@@ -47,6 +47,7 @@ dart run agent_daemon:smoke_ws        # WebSocket + 권한 승인 E2E (OPENAI_AP
 dart run agent_daemon:smoke_git       # 프로젝트/worktree/diff E2E
 dart run agent_daemon:smoke_terminal  # ConPTY 터미널 E2E
 dart run agent_daemon:smoke_native openai     # 네이티브 하네스 E2E (OPENAI_API_KEY 필요)
+dart run agent_daemon:smoke_native claude     # Anthropic Messages API (ANTHROPIC_API_KEY 필요)
 dart run agent_daemon:smoke_native deepseek   # (DEEPSEEK_API_KEY 필요)
 dart run agent_daemon:smoke_native openrouter # (OPENROUTER_API_KEY 필요)
 ```
