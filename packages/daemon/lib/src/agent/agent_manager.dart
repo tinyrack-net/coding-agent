@@ -15,6 +15,12 @@ import '../server/rpc_router.dart';
 import 'agent_store.dart';
 import 'timeline_store.dart';
 
+/// Resolves a provider id to its client at session-start time. Providers are
+/// user-configurable, so this cannot be a map built once at boot: a provider
+/// added after startup must be usable, and one deleted must fail loudly.
+/// Throws [RpcException] (invalidPayload) for an unknown id.
+typedef AgentClientResolver = Future<AgentClient> Function(String provider);
+
 typedef PermissionRequestedBroadcast = void Function(
   String agentId,
   String permissionId,
@@ -50,18 +56,18 @@ final class AgentRuntime {
 
 class AgentManager {
   AgentManager({
-    required Map<String, AgentClient> clients,
+    required AgentClientResolver resolveClient,
     required AgentStore store,
     PermissionBroker? broker,
     this.onStream,
     this.onState,
     this.onPermissionRequested,
     this.onPermissionResolved,
-  })  : _clients = clients,
+  })  : _resolveClient = resolveClient,
         _store = store,
         broker = broker ?? PermissionBroker();
 
-  final Map<String, AgentClient> _clients;
+  final AgentClientResolver _resolveClient;
   final AgentStore _store;
   final PermissionBroker broker;
   final _uuid = const Uuid();
@@ -114,13 +120,9 @@ class AgentManager {
     String? branch,
     bool isWorktree = false,
   }) async {
-    final client = _clients[provider];
-    if (client == null) {
-      throw RpcException(
-        RpcErrorCodes.invalidPayload,
-        'unsupported provider "$provider" (supported: ${_clients.keys.join(', ')})',
-      );
-    }
+    // Resolve up front so an unknown provider is a clean invalidPayload rather
+    // than a half-created runtime that fails at _startSession.
+    await _resolveClient(provider);
     final agentId = _uuid.v4();
     final runtime = AgentRuntime(
       summary: AgentSummary(
@@ -152,7 +154,7 @@ class AgentManager {
   }
 
   Future<void> _startSession(AgentRuntime runtime) async {
-    final client = _clients[runtime.summary.provider]!;
+    final client = await _resolveClient(runtime.summary.provider);
     final session = await client.createSession(
       cwd: runtime.summary.cwd,
       model: runtime.summary.model,

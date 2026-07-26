@@ -1,3 +1,4 @@
+import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,6 +6,7 @@ import '../core/provider_display.dart';
 import '../core/theme.dart';
 import '../core/worktree_actions.dart';
 import '../state/agents_provider.dart';
+import '../state/daemon_providers.dart';
 import '../state/timeline_provider.dart';
 import '../widgets/composer.dart';
 import '../widgets/fluent/toast.dart';
@@ -168,10 +170,14 @@ class _TimelineRow extends ConsumerWidget {
     );
     if (item == null) return const SizedBox.shrink();
     final agent = ref.watch(agentSummaryProvider(agentId));
+    // Provider ids are opaque, so the name has to come from the live list.
+    final providers =
+        ref.watch(providerListProvider).value ?? const <ProviderInfo>[];
     return TimelineItemTile(
       key: ValueKey(item.id),
       item: item,
-      providerLabel: providerDisplayName(agent?.provider),
+      providerLabel:
+          providerDisplayName(agent?.provider, providers: providers),
       onPermissionDecision: (permissionId, decision) async {
         try {
           await ref

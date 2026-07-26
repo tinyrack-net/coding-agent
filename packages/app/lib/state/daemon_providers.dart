@@ -41,37 +41,59 @@ final providerListProvider = FutureProvider<List<ProviderInfo>>((ref) async {
   return ProviderListResponse.fromJson(payload).providers;
 });
 
-/// Imperative actions for managing per-provider API keys.
-class ProviderCredentialActions {
-  ProviderCredentialActions(this._ref);
+/// Imperative actions for managing providers and their API keys.
+class ProviderActions {
+  ProviderActions(this._ref);
 
   final Ref _ref;
 
   DaemonClient get _client => _ref.read(daemonClientProvider);
 
-  Future<void> setKey(ProviderId providerId, String apiKey) async {
+  /// Creates (empty [ProviderConfig.id]) or updates a provider. A null or
+  /// empty [apiKey] leaves any stored key untouched, so editing a provider
+  /// doesn't require re-typing the secret.
+  Future<ProviderConfig> upsert(
+    ProviderConfig config, {
+    String? apiKey,
+  }) async {
+    final payload = await _client.request(MessageTypes.providerUpsertRequest, {
+      'config': config.toJson(),
+      if (apiKey != null && apiKey.isNotEmpty) 'apiKey': apiKey,
+    });
+    _ref.invalidate(providerListProvider);
+    return ProviderUpsertResponse.fromJson(payload).config;
+  }
+
+  Future<void> delete(String providerId) async {
+    await _client.request(MessageTypes.providerDeleteRequest, {
+      'providerId': providerId,
+    });
+    _ref.invalidate(providerListProvider);
+  }
+
+  Future<void> setKey(String providerId, String apiKey) async {
     await _client.request(MessageTypes.providerCredentialSetRequest, {
-      'providerId': providerId.name,
+      'providerId': providerId,
       'apiKey': apiKey,
     });
     _ref.invalidate(providerListProvider);
   }
 
-  Future<void> clearKey(ProviderId providerId) async {
+  Future<void> clearKey(String providerId) async {
     await _client.request(MessageTypes.providerCredentialClearRequest, {
-      'providerId': providerId.name,
+      'providerId': providerId,
     });
     _ref.invalidate(providerListProvider);
   }
 
   Future<ProviderCredentialTestResult> testKey(
-    ProviderId providerId, {
+    String providerId, {
     String? apiKey,
   }) async {
     final payload = await _client.request(
       MessageTypes.providerCredentialTestRequest,
       {
-        'providerId': providerId.name,
+        'providerId': providerId,
         if (apiKey != null && apiKey.isNotEmpty) 'apiKey': apiKey,
       },
     );
@@ -79,5 +101,5 @@ class ProviderCredentialActions {
   }
 }
 
-final providerCredentialActionsProvider =
-    Provider<ProviderCredentialActions>(ProviderCredentialActions.new);
+final providerActionsProvider =
+    Provider<ProviderActions>(ProviderActions.new);

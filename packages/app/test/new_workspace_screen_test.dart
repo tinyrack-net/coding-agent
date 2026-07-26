@@ -8,7 +8,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _codex = ProviderInfo(
-  id: ProviderId.openai,
+  id: 'openai',
+                  kind: ProviderKind.openaiCompatible,
+                  baseUrl: 'https://api.openai.example/v1',
   displayName: 'Codex',
   configured: true,
   models: [

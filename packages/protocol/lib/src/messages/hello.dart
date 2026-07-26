@@ -6,6 +6,11 @@ abstract final class MessageTypes {
   static const clientHelloRequest = 'client.hello.request';
   // providers
   static const providerListRequest = 'provider.list.request';
+  // Create or update a provider. Payload `{config, apiKey?}`; an empty
+  // `config.id` creates. Response is [ProviderUpsertResponse].
+  static const providerUpsertRequest = 'provider.upsert.request';
+  // Remove a provider and its stored key. Payload `{providerId}`.
+  static const providerDeleteRequest = 'provider.delete.request';
   static const providerCredentialSetRequest =
       'provider.credential.set.request';
   static const providerCredentialClearRequest =

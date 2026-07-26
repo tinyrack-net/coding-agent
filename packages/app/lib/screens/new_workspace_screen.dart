@@ -35,7 +35,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
   String? _projectChoice;
   WorkspaceIsolation _isolation = WorkspaceIsolation.local;
   String? _baseRef;
-  ProviderId? _provider;
+  String? _provider;
   String? _model;
   AgentMode _mode = AgentMode.normal;
   bool _submitting = false;
@@ -199,7 +199,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
 
       final agent = await ref.read(agentActionsProvider).create(
             cwd: cwd,
-            provider: provider.name,
+            provider: provider,
             model: model,
             mode: _mode,
             projectPath: worktreeProjectPath,
@@ -317,7 +317,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: ComboBox<ProviderId>(
+                          child: ComboBox<String>(
                             value: selectedProvider.id,
                             items: [
                               for (final p in providers)
@@ -335,7 +335,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: ComboBox<String>(
-                            key: ValueKey('model-${selectedProvider.id.name}'),
+                            key: ValueKey('model-${selectedProvider.id}'),
                             value: _model,
                             items: [
                               for (final m in models)

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:agent_daemon/src/providers/native/credential_store.dart';
+import 'package:agent_daemon/src/providers/native/provider_config_store.dart';
 import 'package:agent_daemon/src/providers/provider_registry.dart';
 import 'package:agent_daemon/src/server/connection.dart';
 import 'package:agent_daemon/src/server/rpc_router.dart';
@@ -12,13 +13,92 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:test/test.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+/// Buffers every frame a connection receives.
+///
+/// A plain `channel.stream.asBroadcastStream()` loses frames: `first` /
+/// `firstWhere` cancel their subscription once satisfied, and anything the
+/// server sends while no listener is attached is dropped — which made the
+/// broadcast test flaky, because `server.broadcast()` often fired in exactly
+/// that window. Buffering decouples "has the frame arrived" from "is someone
+/// currently listening".
+class FrameLog {
+  FrameLog(Stream<dynamic> raw) {
+    _sub = raw.listen((frame) {
+      // Only JSON (text) frames are RPC; binary frames are terminal I/O.
+      if (frame is! String) return;
+      _buffer.add(jsonDecode(frame) as Map<String, Object?>);
+      final waiter = _waiter;
+      if (waiter != null && !waiter.isCompleted) {
+        _waiter = null;
+        waiter.complete();
+      }
+    });
+  }
+
+  late final StreamSubscription<dynamic> _sub;
+  final List<Map<String, Object?>> _buffer = [];
+  Completer<void>? _waiter;
+
+  /// How many buffered frames the caller has already consumed via [next].
+  int _cursor = 0;
+
+  Future<void> dispose() => _sub.cancel();
+
+  /// The next frame not yet returned by [next], waiting if none has arrived.
+  Future<Map<String, Object?>> next({
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    while (_cursor >= _buffer.length) {
+      await _wait(timeout);
+    }
+    return _buffer[_cursor++];
+  }
+
+  /// The first buffered-or-future frame matching [test]. Scans frames that
+  /// already arrived, so it can't miss one sent before this call.
+  Future<Map<String, Object?>> firstWhere(
+    bool Function(Map<String, Object?>) test, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    var i = 0;
+    while (true) {
+      for (; i < _buffer.length; i++) {
+        if (test(_buffer[i])) return _buffer[i];
+      }
+      await _wait(timeout);
+    }
+  }
+
+  Future<void> _wait(Duration timeout) {
+    final waiter = _waiter ??= Completer<void>();
+    return waiter.future.timeout(
+      timeout,
+      onTimeout: () => throw StateError(
+        'no matching frame within $timeout (buffered: '
+        '${_buffer.map((f) => f['type']).toList()})',
+      ),
+    );
+  }
+}
+
 void main() {
   late WsServer server;
   late Directory tempDir;
 
   setUp(() async {
     tempDir = Directory.systemTemp.createTempSync('ws_server_test_');
-    final registry = ProviderRegistry(CredentialStore(dataDir: tempDir.path));
+    final registry = ProviderRegistry(
+      credentials: CredentialStore(dataDir: tempDir.path),
+      configs: ProviderConfigStore(dataDir: tempDir.path),
+    );
+    // Providers are user-configured now, so seed one to give provider.list
+    // something to return.
+    await registry.upsert(const ProviderConfig(
+      id: '',
+      displayName: 'Claude',
+      kind: ProviderKind.anthropic,
+      baseUrl: 'https://api.anthropic.example/v1',
+    ));
     final router = RpcRouter()
       ..on(MessageTypes.providerListRequest, (_, __) async {
         final providers = await registry.list();
@@ -35,14 +115,13 @@ void main() {
     } catch (_) {}
   });
 
-  Future<(WebSocketChannel, Stream<Map<String, Object?>>)> connect() async {
+  Future<(WebSocketChannel, FrameLog)> connect() async {
     final channel =
         WebSocketChannel.connect(Uri.parse('ws://127.0.0.1:${server.port}'));
     await channel.ready;
-    final frames = channel.stream
-        .map((f) => jsonDecode(f as String) as Map<String, Object?>)
-        .asBroadcastStream();
-    return (channel, frames);
+    final log = FrameLog(channel.stream);
+    addTearDown(log.dispose);
+    return (channel, log);
   }
 
   test('hello handshake then provider.list', () async {
@@ -53,7 +132,7 @@ void main() {
       requestId: 'h1',
       payload: {'clientName': 'test', 'clientVersion': '0.0.1'},
     ).toJson()));
-    final hello = await frames.first;
+    final hello = await frames.next();
     expect(hello['type'], 'client.hello.response');
     final serverHello =
         ServerHello.fromJson(hello['payload'] as Map<String, Object?>);
@@ -67,7 +146,9 @@ void main() {
         .firstWhere((f) => f['type'] == 'provider.list.response');
     final list = ProviderListResponse.fromJson(
         response['payload'] as Map<String, Object?>);
-    expect(list.providers, hasLength(3));
+    expect(list.providers, hasLength(1));
+    expect(list.providers.single.displayName, 'Claude');
+    expect(list.providers.single.kind, ProviderKind.anthropic);
 
     await channel.sink.close();
   });
@@ -78,7 +159,7 @@ void main() {
       type: MessageTypes.providerListRequest,
       requestId: 'p1',
     ).toJson()));
-    final response = await frames.first;
+    final response = await frames.next();
     expect(
       ((response['error'] as Map<String, Object?>?) ?? const {})['code'],
       RpcErrorCodes.unauthorized,
@@ -94,6 +175,8 @@ void main() {
     final channel = WebSocketChannel.connect(
         Uri.parse('ws://127.0.0.1:${tokenServer.port}'));
     await channel.ready;
+    // This test uses its own server, so it holds a plain stream rather than a
+    // FrameLog — it only ever reads one frame.
     final frames = channel.stream
         .map((f) => jsonDecode(f as String) as Map<String, Object?>);
     channel.sink.add(jsonEncode(const RpcRequest(
@@ -112,20 +195,20 @@ void main() {
     );
   });
 
-  Future<void> hello(WebSocketChannel channel, Stream<Map<String, Object?>> frames,
+  Future<void> hello(WebSocketChannel channel, FrameLog frames,
       {String id = 'h'}) async {
     channel.sink.add(jsonEncode(RpcRequest(
       type: MessageTypes.clientHelloRequest,
       requestId: id,
       payload: const {'clientName': 'test', 'clientVersion': '0.0.1'},
     ).toJson()));
-    await frames.first;
+    await frames.next();
   }
 
   test('malformed JSON frames get a protocol.error response', () async {
     final (channel, frames) = await connect();
     channel.sink.add('not valid json {{{');
-    final response = await frames.first;
+    final response = await frames.next();
     expect(response['type'], 'protocol.error');
     await channel.sink.close();
   });

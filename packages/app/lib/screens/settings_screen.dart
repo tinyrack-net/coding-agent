@@ -5,13 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/daemon_client.dart';
 import '../core/desktop/desktop_shell.dart';
-import '../core/provider_display.dart';
 import '../core/theme.dart';
 import '../state/agents_provider.dart';
 import '../state/connection_settings_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/desktop_settings_provider.dart';
 import '../widgets/fluent/toast.dart';
+import 'settings/provider_settings_section.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key, required this.section});
@@ -23,7 +23,7 @@ class SettingsScreen extends ConsumerWidget {
     return switch (section) {
       'general' => _ConnectionSettingsSection(key: const ValueKey('general')),
       'providers' =>
-        _ProviderCredentialsSection(key: const ValueKey('providers')),
+        const ProviderSettingsSection(key: ValueKey('providers')),
       'desktop' => _DesktopSettingsSection(key: const ValueKey('desktop')),
       'reset' => _DataResetSection(key: const ValueKey('reset')),
       _ => _ConnectionSettingsSection(key: const ValueKey('general')),
@@ -269,186 +269,6 @@ class _ToggleRow extends StatelessWidget {
   }
 }
 
-class _ProviderCredentialsSection extends ConsumerStatefulWidget {
-  const _ProviderCredentialsSection({super.key});
-
-  @override
-  ConsumerState<_ProviderCredentialsSection> createState() =>
-      _ProviderCredentialsSectionState();
-}
-
-class _ProviderCredentialsSectionState
-    extends ConsumerState<_ProviderCredentialsSection> {
-  final _controllers = {
-    for (final id in ProviderId.values) id: TextEditingController(),
-  };
-  final _testResults = <ProviderId, ProviderCredentialTestResult?>{};
-  final _busy = <ProviderId, bool>{};
-
-  @override
-  void dispose() {
-    for (final controller in _controllers.values) {
-      controller.dispose();
-    }
-    super.dispose();
-  }
-
-  Future<void> _save(ProviderId id) async {
-    final apiKey = _controllers[id]!.text.trim();
-    if (apiKey.isEmpty) return;
-    setState(() => _busy[id] = true);
-    try {
-      await ref.read(providerCredentialActionsProvider).setKey(id, apiKey);
-      if (!mounted) return;
-      setState(() {
-        _testResults[id] = null;
-        _controllers[id]!.clear();
-      });
-      AppToast.show(context, '${providerDisplayName(id.name)} API key saved');
-    } catch (e) {
-      if (!mounted) return;
-      AppToast.show(context, 'Failed to save key: $e',
-          severity: InfoBarSeverity.error);
-    } finally {
-      if (mounted) setState(() => _busy[id] = false);
-    }
-  }
-
-  Future<void> _test(ProviderId id) async {
-    setState(() => _busy[id] = true);
-    try {
-      final apiKey = _controllers[id]!.text.trim();
-      final result = await ref.read(providerCredentialActionsProvider).testKey(
-            id,
-            apiKey: apiKey.isEmpty ? null : apiKey,
-          );
-      if (!mounted) return;
-      setState(() => _testResults[id] = result);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _testResults[id] =
-          ProviderCredentialTestResult(ok: false, error: '$e'));
-    } finally {
-      if (mounted) setState(() => _busy[id] = false);
-    }
-  }
-
-  Future<void> _clear(ProviderId id) async {
-    setState(() => _busy[id] = true);
-    try {
-      await ref.read(providerCredentialActionsProvider).clearKey(id);
-      if (!mounted) return;
-      setState(() => _testResults[id] = null);
-    } finally {
-      if (mounted) setState(() => _busy[id] = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final providers =
-        ref.watch(providerListProvider).value ?? const <ProviderInfo>[];
-    return ScaffoldPage(
-      header: const PageHeader(title: Text('AI Providers')),
-      content: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              for (final id in ProviderId.values)
-                _buildProviderTile(
-                  context,
-                  id,
-                  providers.where((p) => p.id == id).firstOrNull,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProviderTile(
-    BuildContext context,
-    ProviderId id,
-    ProviderInfo? info,
-  ) {
-    final configured = info?.configured ?? false;
-    final busy = _busy[id] ?? false;
-    final result = _testResults[id];
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(
-                configured
-                    ? FluentIcons.completed_solid
-                    : FluentIcons.circle_ring,
-                color: configured ? Colors.green : null,
-                size: 18,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  info?.displayName ?? providerDisplayName(id.name),
-                  style: context.textStyles.titleSmall,
-                ),
-              ),
-              if (configured)
-                Button(
-                  onPressed: busy ? null : () => _clear(id),
-                  child: const Text('Remove'),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          TextBox(
-            controller: _controllers[id],
-            obscureText: true,
-            placeholder: configured ? 'Replace API key' : 'API key',
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              FilledButton(
-                onPressed: busy ? null : () => _save(id),
-                child: const Text('Save'),
-              ),
-              const SizedBox(width: 8),
-              Button(
-                onPressed: busy ? null : () => _test(id),
-                child: const Text('Test Connection'),
-              ),
-              if (busy) ...[
-                const SizedBox(width: 12),
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: ProgressRing(strokeWidth: 2),
-                ),
-              ],
-            ],
-          ),
-          if (result != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              result.ok
-                  ? 'Connection OK'
-                  : (result.error ?? 'Connection failed'),
-              style: TextStyle(
-                color: result.ok ? Colors.green : context.tokens.error,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
 
 class _DataResetSection extends ConsumerStatefulWidget {
   const _DataResetSection({super.key});
@@ -470,7 +290,7 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
           'This will:\n'
           '• Clear the daemon host, port, and token (back to defaults)\n'
           '• Reset desktop startup and tray preferences\n'
-          '• Remove every stored LLM provider API key\n'
+          '• Remove every configured LLM provider and its API key\n'
           '• Wipe every conversation (agent timelines, history)\n\n'
           'You will need to re-enter your API keys and reconnect. '
           'This cannot be undone.',
@@ -497,12 +317,9 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
 
     setState(() => _busy = true);
 
+    // Snapshot before mutating: deleting providers invalidates the list.
     final providers =
         ref.read(providerListProvider).value ?? const <ProviderInfo>[];
-    final configuredIds = providers
-        .where((p) => p.configured)
-        .map((p) => p.id)
-        .toList();
 
     final failures = <String>[];
 
@@ -519,12 +336,14 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
       }
     }
 
-    final actions = ref.read(providerCredentialActionsProvider);
-    for (final id in configuredIds) {
+    // Delete rather than just clearing keys: providers are user data now, so a
+    // reset that left providers.json populated wouldn't be a reset.
+    final actions = ref.read(providerActionsProvider);
+    for (final provider in providers) {
       try {
-        await actions.clearKey(id);
+        await actions.delete(provider.id);
       } catch (e) {
-        failures.add('${providerDisplayName(id.name)} key: $e');
+        failures.add('${provider.displayName}: $e');
       }
     }
 

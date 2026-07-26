@@ -9,10 +9,9 @@ import 'agent/agent_store.dart';
 import 'git/git_service.dart';
 import 'git/workspace_rpc.dart';
 import 'providers/native/credential_store.dart';
-import 'providers/native/native_client.dart';
-import 'providers/native/openai_compatible_backend.dart';
-import 'providers/native/provider_catalog.dart';
+import 'providers/native/provider_config_store.dart';
 import 'providers/provider_registry.dart';
+import 'providers/provider_rpc.dart';
 import 'server/rpc_router.dart';
 import 'server/ws_server.dart';
 import 'store/project_store.dart';
@@ -64,21 +63,19 @@ Future<DaemonServerHandle> startDaemonServer({
   }
 
   final credentials = CredentialStore(dataDir: dataDir);
-  final nativeBackends = {
-    for (final entry in ProviderCatalog.all)
-      entry.id: OpenAiCompatibleBackend(catalogEntry: entry),
-  };
-  final registry = ProviderRegistry(credentials, nativeBackends);
+  final registry = ProviderRegistry(
+    credentials: credentials,
+    configs: ProviderConfigStore(dataDir: dataDir),
+  );
 
   late final WsServer server;
   final manager = AgentManager(
-    clients: {
-      for (final entry in ProviderCatalog.all)
-        entry.id.name: NativeClient(
-          providerId: entry.id,
-          backend: nativeBackends[entry.id]!,
-          credentials: credentials,
-        ),
+    resolveClient: (provider) async {
+      try {
+        return await registry.clientFor(provider);
+      } on UnknownProviderException catch (e) {
+        throw RpcException(RpcErrorCodes.invalidPayload, '$e');
+      }
     },
     store: AgentStore(dataDir: dataDir),
     onStream: (payload) => server.broadcast(
@@ -105,36 +102,9 @@ Future<DaemonServerHandle> startDaemonServer({
   );
   await manager.load();
 
-  final router = RpcRouter()
-    ..on(MessageTypes.providerListRequest, (_, __) async {
-      final providers = await registry.list();
-      return ProviderListResponse(providers: providers).toJson();
-    })
-    ..on(MessageTypes.providerCredentialSetRequest, (_, payload) async {
-      final providerId = _parseProviderId(payload['providerId']);
-      final apiKey = _requireString(payload, 'apiKey');
-      await credentials.set(providerId.name, apiKey);
-      return const <String, Object?>{};
-    })
-    ..on(MessageTypes.providerCredentialClearRequest, (_, payload) async {
-      final providerId = _parseProviderId(payload['providerId']);
-      await credentials.clear(providerId.name);
-      return const <String, Object?>{};
-    })
-    ..on(MessageTypes.providerCredentialTestRequest, (_, payload) async {
-      final providerId = _parseProviderId(payload['providerId']);
-      final apiKey =
-          (payload['apiKey'] as String?) ?? await credentials.get(providerId.name);
-      if (apiKey == null || apiKey.isEmpty) {
-        return const ProviderCredentialTestResult(ok: false, error: 'no API key given')
-            .toJson();
-      }
-      final ok = await nativeBackends[providerId]!.testCredential(apiKey);
-      return ProviderCredentialTestResult(
-        ok: ok,
-        error: ok ? null : 'API key rejected by provider',
-      ).toJson();
-    })
+  final router = RpcRouter();
+  registerProviderHandlers(router, registry: registry);
+  router
     ..on(MessageTypes.agentCreateRequest, (_, payload) async {
       final cwd = payload['cwd'] as String?;
       if (cwd == null || cwd.isEmpty) {
@@ -142,8 +112,11 @@ Future<DaemonServerHandle> startDaemonServer({
       }
       final agent = await manager.createAgent(
         cwd: cwd,
-        provider: (payload['provider'] as String?) ?? ProviderId.openai.name,
-        model: (payload['model'] as String?) ?? '',
+        // No implicit default: with user-configured providers there is no
+        // sensible fallback, and an empty model only failed later as an opaque
+        // HTTP error mid-stream.
+        provider: requireString(payload, 'provider'),
+        model: requireString(payload, 'model'),
         mode: _parseMode(payload['mode']),
         title: payload['title'] as String?,
         projectPath: payload['projectPath'] as String?,
@@ -156,37 +129,37 @@ Future<DaemonServerHandle> startDaemonServer({
       return {'agents': manager.list().map((a) => a.toJson()).toList()};
     })
     ..on(MessageTypes.agentPromptRequest, (_, payload) {
-      final agentId = _requireString(payload, 'agentId');
-      final text = _requireString(payload, 'text');
+      final agentId = requireString(payload, 'agentId');
+      final text = requireString(payload, 'text');
       unawaited(manager.prompt(agentId, text));
       return const <String, Object?>{};
     })
     ..on(MessageTypes.agentInterruptRequest, (_, payload) async {
-      await manager.interrupt(_requireString(payload, 'agentId'));
+      await manager.interrupt(requireString(payload, 'agentId'));
       return const <String, Object?>{};
     })
     ..on(MessageTypes.agentSetModeRequest, (_, payload) async {
       final agent = await manager.setMode(
-        _requireString(payload, 'agentId'),
+        requireString(payload, 'agentId'),
         _parseMode(payload['mode']),
       );
       return {'agent': agent.toJson()};
     })
     ..on(MessageTypes.agentRenameRequest, (_, payload) async {
       final agent = await manager.rename(
-        _requireString(payload, 'agentId'),
-        _requireString(payload, 'title'),
+        requireString(payload, 'agentId'),
+        requireString(payload, 'title'),
       );
       return {'agent': agent.toJson()};
     })
     ..on(MessageTypes.agentArchiveRequest, (_, payload) async {
-      await manager.archive(_requireString(payload, 'agentId'));
+      await manager.archive(requireString(payload, 'agentId'));
       return const <String, Object?>{};
     })
     ..on(MessageTypes.agentTimelineFetchRequest, (_, payload) {
       return manager
           .fetchTimeline(
-            _requireString(payload, 'agentId'),
+            requireString(payload, 'agentId'),
             epoch: (payload['epoch'] as num?)?.toInt(),
             afterSeq: (payload['afterSeq'] as num?)?.toInt(),
           )
@@ -203,8 +176,8 @@ Future<DaemonServerHandle> startDaemonServer({
     })
     ..on(MessageTypes.permissionRespondRequest, (_, payload) async {
       await manager.respondPermission(
-        _requireString(payload, 'permissionId'),
-        _requireString(payload, 'decision'),
+        requireString(payload, 'permissionId'),
+        requireString(payload, 'decision'),
       );
       return const <String, Object?>{};
     });
@@ -303,25 +276,4 @@ AgentMode _parseMode(Object? raw) {
   } catch (_) {
     throw RpcException(RpcErrorCodes.invalidPayload, 'unknown mode "$name"');
   }
-}
-
-ProviderId _parseProviderId(Object? raw) {
-  final name = raw as String?;
-  if (name == null || name.isEmpty) {
-    throw RpcException(RpcErrorCodes.invalidPayload, 'providerId is required');
-  }
-  try {
-    return ProviderId.fromWire(name);
-  } catch (_) {
-    throw RpcException(
-        RpcErrorCodes.invalidPayload, 'unknown providerId "$name"');
-  }
-}
-
-String _requireString(Map<String, Object?> payload, String key) {
-  final value = payload[key] as String?;
-  if (value == null || value.isEmpty) {
-    throw RpcException(RpcErrorCodes.invalidPayload, '$key is required');
-  }
-  return value;
 }

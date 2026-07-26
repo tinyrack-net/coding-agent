@@ -140,7 +140,9 @@ void main() {
       fake.onRequest = (type, payload) => {
         'providers': [
           const ProviderInfo(
-            id: ProviderId.openai,
+            id: 'openai',
+                  kind: ProviderKind.openaiCompatible,
+                  baseUrl: 'https://api.openai.example/v1',
             displayName: 'Codex',
             configured: true,
           ).toJson(),
@@ -170,7 +172,9 @@ void main() {
         return {
           'providers': [
             const ProviderInfo(
-              id: ProviderId.openai,
+              id: 'openai',
+                  kind: ProviderKind.openaiCompatible,
+                  baseUrl: 'https://api.openai.example/v1',
               displayName: 'Codex',
               configured: true,
             ).toJson(),
@@ -195,7 +199,88 @@ void main() {
     });
   });
 
-  group('ProviderCredentialActions', () {
+  group('ProviderActions', () {
+    /// Container + call log wired to a fake client, for the payload assertions.
+    (ProviderContainer, List<(String, Map<String, Object?>)>) harness({
+      Map<String, Object?> Function(String type)? respond,
+    }) {
+      final fake = FakeDaemonClient();
+      final calls = <(String, Map<String, Object?>)>[];
+      fake.onRequest = (type, payload) {
+        calls.add((type, payload));
+        return respond?.call(type) ?? const {};
+      };
+      final container = ProviderContainer(
+        overrides: [daemonClientProvider.overrideWithValue(fake)],
+      );
+      addTearDown(container.dispose);
+      return (container, calls);
+    }
+
+    test('upsert sends the config and returns the stored one', () async {
+      const stored = ProviderConfig(
+        id: 'generated-id',
+        displayName: 'Claude',
+        kind: ProviderKind.anthropic,
+        baseUrl: 'https://api.anthropic.com/v1',
+      );
+      final (container, calls) = harness(
+        respond: (type) => type == MessageTypes.providerUpsertRequest
+            ? const ProviderUpsertResponse(config: stored).toJson()
+            : const {},
+      );
+
+      final result = await container.read(providerActionsProvider).upsert(
+            const ProviderConfig(
+              id: '',
+              displayName: 'Claude',
+              kind: ProviderKind.anthropic,
+              baseUrl: 'https://api.anthropic.com/v1',
+            ),
+            apiKey: 'sk-ant-1',
+          );
+
+      final call = calls.singleWhere(
+        (c) => c.$1 == MessageTypes.providerUpsertRequest,
+      );
+      final config = call.$2['config'] as Map<String, Object?>;
+      expect(config['id'], '');
+      expect(config['kind'], 'anthropic');
+      expect(call.$2['apiKey'], 'sk-ant-1');
+      // The daemon-assigned id comes back to the caller.
+      expect(result.id, 'generated-id');
+    });
+
+    test('upsert omits apiKey when null or empty', () async {
+      const config = ProviderConfig(
+        id: 'p1',
+        displayName: 'Claude',
+        kind: ProviderKind.anthropic,
+        baseUrl: 'https://api.anthropic.com/v1',
+      );
+
+      for (final key in [null, '']) {
+        final (container, calls) = harness();
+        await container
+            .read(providerActionsProvider)
+            .upsert(config, apiKey: key);
+        final call = calls.singleWhere(
+          (c) => c.$1 == MessageTypes.providerUpsertRequest,
+        );
+        // A blank key must not be sent, or it would clear the stored secret.
+        expect(call.$2.containsKey('apiKey'), isFalse);
+      }
+    });
+
+    test('delete sends providerId', () async {
+      final (container, calls) = harness();
+      await container.read(providerActionsProvider).delete('p1');
+      final call = calls.singleWhere(
+        (c) => c.$1 == MessageTypes.providerDeleteRequest,
+      );
+      expect(call.$2['providerId'], 'p1');
+    });
+
     test(
       'setKey sends providerId/apiKey and invalidates the provider list',
       () async {
@@ -211,8 +296,8 @@ void main() {
         addTearDown(container.dispose);
 
         await container
-            .read(providerCredentialActionsProvider)
-            .setKey(ProviderId.deepseek, 'sk-test');
+            .read(providerActionsProvider)
+            .setKey('deepseek', 'sk-test');
 
         final call = calls.singleWhere(
           (c) => c.$1 == MessageTypes.providerCredentialSetRequest,
@@ -235,8 +320,8 @@ void main() {
       addTearDown(container.dispose);
 
       await container
-          .read(providerCredentialActionsProvider)
-          .clearKey(ProviderId.openrouter);
+          .read(providerActionsProvider)
+          .clearKey('openrouter');
 
       final call = calls.singleWhere(
         (c) => c.$1 == MessageTypes.providerCredentialClearRequest,
@@ -259,8 +344,8 @@ void main() {
         addTearDown(container.dispose);
 
         final result = await container
-            .read(providerCredentialActionsProvider)
-            .testKey(ProviderId.openai);
+            .read(providerActionsProvider)
+            .testKey('openai');
 
         expect(result.ok, isTrue);
         expect(capturedPayload!.containsKey('apiKey'), isFalse);
@@ -280,8 +365,8 @@ void main() {
       addTearDown(container.dispose);
 
       final result = await container
-          .read(providerCredentialActionsProvider)
-          .testKey(ProviderId.openai, apiKey: 'sk-try-me');
+          .read(providerActionsProvider)
+          .testKey('openai', apiKey: 'sk-try-me');
 
       expect(result.ok, isFalse);
       expect(result.error, 'bad key');

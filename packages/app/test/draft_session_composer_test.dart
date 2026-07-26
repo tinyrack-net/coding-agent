@@ -10,7 +10,9 @@ import 'package:flutter_test/flutter_test.dart';
 const _worktreePath = '/repo-wt/lucky-otter';
 
 const _claude = ProviderInfo(
-  id: ProviderId.openai,
+  id: 'openai',
+                  kind: ProviderKind.openaiCompatible,
+                  baseUrl: 'https://api.openai.example/v1',
   displayName: 'Claude',
   configured: true,
   models: [
@@ -110,7 +112,7 @@ void main() {
     await pumpComposer(tester, client);
 
     expect(find.textContaining('No providers are configured'), findsOneWidget);
-    expect(find.byType(ComboBox<ProviderId>), findsNothing);
+    expect(find.byType(ComboBox<String>), findsNothing);
   });
 
   testWidgets(

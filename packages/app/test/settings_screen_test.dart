@@ -10,11 +10,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeDaemonClient extends DaemonClient {
   FakeDaemonClient({
-    this._state = DaemonConnectionState.connected,
+    this.state = DaemonConnectionState.connected,
     this.rejectedHelloOverride,
   }) : super(uri: Uri.parse('ws://fake'));
 
-  final DaemonConnectionState _state;
+  final DaemonConnectionState state;
   final ServerHello? rejectedHelloOverride;
 
   /// Per-request-type scriptable response; defaults to an empty payload.
@@ -25,10 +25,10 @@ class FakeDaemonClient extends DaemonClient {
   ServerHello? get rejectedHello => rejectedHelloOverride;
 
   @override
-  DaemonConnectionState get currentState => _state;
+  DaemonConnectionState get currentState => state;
 
   @override
-  Stream<DaemonConnectionState> get connectionState => Stream.value(_state);
+  Stream<DaemonConnectionState> get connectionState => Stream.value(state);
 
   @override
   Future<Map<String, Object?>> request(
@@ -71,6 +71,24 @@ Finder _labeledField(String label) => find.descendant(
 );
 
 void main() {
+  testWidgets('an unknown section falls back to the connection settings', (
+    tester,
+  ) async {
+    await pumpSettingsScreen(tester, FakeDaemonClient(), section: 'bogus');
+    expect(find.text('Connection Settings'), findsOneWidget);
+  });
+
+  testWidgets('reports a disconnected daemon', (tester) async {
+    await pumpSettingsScreen(
+      tester,
+      FakeDaemonClient(state: DaemonConnectionState.disconnected),
+    );
+    expect(
+      find.text('Disconnected (retrying) — ws://127.0.0.1:6868'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('shows the current connection and the daemon uri', (
     tester,
   ) async {
@@ -153,124 +171,331 @@ void main() {
   });
 
   group('AI Providers section', () {
-    testWidgets('shows all three providers with a configured indicator', (
-      tester,
-    ) async {
-      final client = FakeDaemonClient()
-        ..onRequest = (type, payload) {
-          if (type == MessageTypes.providerListRequest) {
-            return {
-              'providers': [
-                const ProviderInfo(
-                  id: ProviderId.openai,
-                  displayName: 'Codex',
-                  configured: true,
-                ).toJson(),
-              ],
-            };
-          }
-          return const {};
-        };
-      await pumpSettingsScreen(tester, client, section: 'providers');
-
-      expect(find.text('AI Providers'), findsOneWidget);
-      expect(find.text('Codex'), findsOneWidget);
-      expect(find.text('DeepSeek'), findsOneWidget);
-      expect(find.text('OpenRouter'), findsOneWidget);
-      // Only the configured provider (Codex) shows a Remove button.
-      expect(find.text('Remove'), findsOneWidget);
-    });
-
-    testWidgets('saving an API key sends provider.credential.set.request', (
-      tester,
-    ) async {
+    /// Scripts `provider.list` with [providers] and records every request.
+    (FakeDaemonClient, List<(String, Map<String, Object?>)>) listing(
+      List<ProviderInfo> providers, {
+      Map<String, Object?> Function(String type)? extra,
+    }) {
       final calls = <(String, Map<String, Object?>)>[];
       final client = FakeDaemonClient()
         ..onRequest = (type, payload) {
           calls.add((type, payload));
-          return const {};
+          if (type == MessageTypes.providerListRequest) {
+            return {'providers': [for (final p in providers) p.toJson()]};
+          }
+          return extra?.call(type) ?? const {};
         };
+      return (client, calls);
+    }
+
+    const claude = ProviderInfo(
+      id: 'p-claude',
+      displayName: 'Claude (work)',
+      kind: ProviderKind.anthropic,
+      baseUrl: 'https://api.anthropic.com/v1',
+      configured: true,
+    );
+    const unconfigured = ProviderInfo(
+      id: 'p-local',
+      displayName: 'Local llama',
+      kind: ProviderKind.openaiCompatible,
+      baseUrl: 'http://localhost:8080/v1',
+      configured: false,
+      unavailableReason: 'no API key configured',
+    );
+
+    testWidgets('empty list invites the user to add one', (tester) async {
+      final (client, _) = listing(const []);
       await pumpSettingsScreen(tester, client, section: 'providers');
 
-      final deepseekKeyField = find.ancestor(
-        of: find.text('DeepSeek'),
-        matching: find.byType(Card),
-      );
-      await tester.enterText(
-        find.descendant(of: deepseekKeyField, matching: find.byType(TextBox)),
-        'sk-deepseek-test',
-      );
-      await tester.tap(
-        find.descendant(of: deepseekKeyField, matching: find.text('Save')),
-      );
-      await tester.pumpAndSettle();
-
-      final saveCall = calls.singleWhere(
-        (c) => c.$1 == MessageTypes.providerCredentialSetRequest,
-      );
-      expect(saveCall.$2['providerId'], 'deepseek');
-      expect(saveCall.$2['apiKey'], 'sk-deepseek-test');
-      // Let AppToast's auto-dismiss timer fire so no Timer remains pending.
-      await tester.pump(const Duration(seconds: 5));
+      expect(find.text('AI Providers'), findsOneWidget);
+      expect(find.textContaining('No providers yet'), findsOneWidget);
+      expect(find.text('Add provider'), findsOneWidget);
     });
 
-    testWidgets('testing a connection shows the result', (tester) async {
-      final client = FakeDaemonClient()
-        ..onRequest = (type, payload) {
-          if (type == MessageTypes.providerCredentialTestRequest) {
-            return {'ok': false, 'error': 'invalid key'};
-          }
-          return const {};
-        };
+    testWidgets('renders a row per provider with kind badge and base URL', (
+      tester,
+    ) async {
+      final (client, _) = listing(const [claude, unconfigured]);
       await pumpSettingsScreen(tester, client, section: 'providers');
 
-      final openaiCard = find.ancestor(
-        of: find.text('Codex'),
-        matching: find.byType(Card),
+      expect(find.text('Claude (work)'), findsOneWidget);
+      expect(find.text('Claude-compatible'), findsOneWidget);
+      expect(find.text('https://api.anthropic.com/v1'), findsOneWidget);
+
+      expect(find.text('Local llama'), findsOneWidget);
+      expect(find.text('OpenAI-compatible'), findsOneWidget);
+      expect(find.text('no API key configured'), findsOneWidget);
+    });
+
+    testWidgets('Test Connection is only offered once a key is stored', (
+      tester,
+    ) async {
+      final (client, _) = listing(const [claude, unconfigured]);
+      await pumpSettingsScreen(tester, client, section: 'providers');
+
+      Finder testButtonIn(String name) => find.descendant(
+        of: find.ancestor(of: find.text(name), matching: find.byType(Card)),
+        matching: find.widgetWithText(Button, 'Test Connection'),
       );
-      await tester.tap(
-        find.descendant(of: openaiCard, matching: find.text('Test Connection')),
+
+      expect(
+        tester.widget<Button>(testButtonIn('Claude (work)')).onPressed,
+        isNotNull,
       );
+      expect(
+        tester.widget<Button>(testButtonIn('Local llama')).onPressed,
+        isNull,
+      );
+    });
+
+    testWidgets('testing a connection shows the failure reason', (tester) async {
+      final (client, _) = listing(
+        const [claude],
+        extra: (type) => type == MessageTypes.providerCredentialTestRequest
+            ? {'ok': false, 'error': 'invalid key'}
+            : const {},
+      );
+      await pumpSettingsScreen(tester, client, section: 'providers');
+
+      await tester.tap(find.text('Test Connection'));
       await tester.pumpAndSettle();
 
       expect(find.text('invalid key'), findsOneWidget);
     });
 
-    testWidgets('removing a configured key sends provider.credential.clear', (
+    testWidgets('adding a preset provider sends provider.upsert', (
       tester,
     ) async {
-      final calls = <(String, Map<String, Object?>)>[];
+      final (client, calls) = listing(
+        const [],
+        extra: (type) => type == MessageTypes.providerUpsertRequest
+            ? ProviderUpsertResponse(
+                config: ProviderConfig.fromJson(claude.toConfig().toJson()),
+              ).toJson()
+            : const {},
+      );
+      await pumpSettingsScreen(tester, client, section: 'providers');
+
+      await tester.tap(find.text('Add provider'));
+      await tester.pumpAndSettle();
+
+      // Preset picker, then the form pre-filled from it.
+      await tester.tap(find.text('Claude (Anthropic)'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(_labeledField('Name'), 'Claude (work)');
+      await tester.enterText(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('API key'),
+            matching: find.byType(InfoLabel),
+          ),
+          matching: find.byType(TextBox),
+        ),
+        'sk-ant-123',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      final upsert = calls.singleWhere(
+        (c) => c.$1 == MessageTypes.providerUpsertRequest,
+      );
+      final config = upsert.$2['config'] as Map<String, Object?>;
+      // Empty id means "create"; the daemon assigns the real one.
+      expect(config['id'], '');
+      expect(config['displayName'], 'Claude (work)');
+      expect(config['kind'], 'anthropic');
+      expect(config['baseUrl'], 'https://api.anthropic.com/v1');
+      expect(upsert.$2['apiKey'], 'sk-ant-123');
+
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('editing prefills the form and preserves the id', (
+      tester,
+    ) async {
+      final (client, calls) = listing(
+        const [claude],
+        extra: (type) => type == MessageTypes.providerUpsertRequest
+            ? ProviderUpsertResponse(config: claude.toConfig()).toJson()
+            : const {},
+      );
+      await pumpSettingsScreen(tester, client, section: 'providers');
+
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<TextFormBox>(_labeledField('Name')).controller!.text,
+        'Claude (work)',
+      );
+      // A blank key field must not clear the stored secret.
+      expect(
+        find.textContaining('Leave blank to keep the existing key'),
+        findsOneWidget,
+      );
+
+      await tester.enterText(_labeledField('Name'), 'Claude (renamed)');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      final upsert = calls.singleWhere(
+        (c) => c.$1 == MessageTypes.providerUpsertRequest,
+      );
+      final config = upsert.$2['config'] as Map<String, Object?>;
+      expect(config['id'], 'p-claude');
+      expect(config['displayName'], 'Claude (renamed)');
+      expect(upsert.$2.containsKey('apiKey'), isFalse);
+
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('an invalid base URL blocks the save', (tester) async {
+      final (client, calls) = listing(const []);
+      await pumpSettingsScreen(tester, client, section: 'providers');
+
+      await tester.tap(find.text('Add provider'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Custom (OpenAI-compatible)'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(_labeledField('Name'), 'Broken');
+      await tester.enterText(_labeledField('Base URL'), 'not-a-url');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Must be an absolute http(s) URL'), findsOneWidget);
+      expect(
+        calls.where((c) => c.$1 == MessageTypes.providerUpsertRequest),
+        isEmpty,
+      );
+    });
+
+    testWidgets('deleting asks for confirmation then sends provider.delete', (
+      tester,
+    ) async {
+      final (client, calls) = listing(const [claude]);
+      await pumpSettingsScreen(tester, client, section: 'providers');
+
+      await tester.tap(find.byIcon(FluentIcons.delete));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete Claude (work)?'), findsOneWidget);
+      // The copy must warn that live agents break.
+      expect(find.textContaining('fail to start'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      final deleteCall = calls.singleWhere(
+        (c) => c.$1 == MessageTypes.providerDeleteRequest,
+      );
+      expect(deleteCall.$2['providerId'], 'p-claude');
+
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('cancelling the delete sends nothing', (tester) async {
+      final (client, calls) = listing(const [claude]);
+      await pumpSettingsScreen(tester, client, section: 'providers');
+
+      await tester.tap(find.byIcon(FluentIcons.delete));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(Button, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(
+        calls.where((c) => c.$1 == MessageTypes.providerDeleteRequest),
+        isEmpty,
+      );
+    });
+
+    testWidgets('a failing provider.list surfaces the error', (tester) async {
       final client = FakeDaemonClient()
         ..onRequest = (type, payload) {
-          calls.add((type, payload));
           if (type == MessageTypes.providerListRequest) {
-            return {
-              'providers': [
-                const ProviderInfo(
-                  id: ProviderId.openrouter,
-                  displayName: 'OpenRouter',
-                  configured: true,
-                ).toJson(),
-              ],
-            };
+            throw StateError('daemon offline');
           }
           return const {};
         };
       await pumpSettingsScreen(tester, client, section: 'providers');
 
-      final openrouterCard = find.ancestor(
-        of: find.text('OpenRouter'),
-        matching: find.byType(Card),
+      expect(
+        find.textContaining('Failed to load providers'),
+        findsOneWidget,
       );
-      await tester.tap(
-        find.descendant(of: openrouterCard, matching: find.text('Remove')),
-      );
+    });
+
+    testWidgets('a failing test surfaces the exception inline', (tester) async {
+      final client = FakeDaemonClient()
+        ..onRequest = (type, payload) {
+          if (type == MessageTypes.providerListRequest) {
+            return {'providers': [claude.toJson()]};
+          }
+          if (type == MessageTypes.providerCredentialTestRequest) {
+            throw StateError('socket closed');
+          }
+          return const {};
+        };
+      await pumpSettingsScreen(tester, client, section: 'providers');
+
+      await tester.tap(find.text('Test Connection'));
       await tester.pumpAndSettle();
 
-      final clearCall = calls.singleWhere(
-        (c) => c.$1 == MessageTypes.providerCredentialClearRequest,
-      );
-      expect(clearCall.$2['providerId'], 'openrouter');
+      expect(find.textContaining('socket closed'), findsOneWidget);
+    });
+
+    testWidgets('a failing delete keeps the row and toasts', (tester) async {
+      final client = FakeDaemonClient()
+        ..onRequest = (type, payload) {
+          if (type == MessageTypes.providerListRequest) {
+            return {'providers': [claude.toJson()]};
+          }
+          if (type == MessageTypes.providerDeleteRequest) {
+            throw StateError('write failed');
+          }
+          return const {};
+        };
+      await pumpSettingsScreen(tester, client, section: 'providers');
+
+      await tester.tap(find.byIcon(FluentIcons.delete));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Failed to delete provider'), findsOneWidget);
+      expect(find.text('Claude (work)'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('a failing upsert keeps the dialog open and toasts', (
+      tester,
+    ) async {
+      final client = FakeDaemonClient()
+        ..onRequest = (type, payload) {
+          if (type == MessageTypes.providerListRequest) {
+            return const {'providers': []};
+          }
+          if (type == MessageTypes.providerUpsertRequest) {
+            throw StateError('baseUrl rejected');
+          }
+          return const {};
+        };
+      await pumpSettingsScreen(tester, client, section: 'providers');
+
+      await tester.tap(find.text('Add provider'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Claude (Anthropic)'));
+      await tester.pumpAndSettle();
+      await tester.enterText(_labeledField('Name'), 'Claude');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Failed to save provider'), findsOneWidget);
+      // The form stays up so the user can correct and retry.
+      expect(find.byType(ContentDialog), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
     });
   });
 
@@ -307,7 +532,9 @@ void main() {
             return {
               'providers': [
                 const ProviderInfo(
-                  id: ProviderId.openai,
+                  id: 'openai',
+                  kind: ProviderKind.openaiCompatible,
+                  baseUrl: 'https://api.openai.example/v1',
                   displayName: 'Codex',
                   configured: true,
                 ).toJson(),
@@ -331,9 +558,9 @@ void main() {
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
 
-      // No clear RPC was sent, settings still point at the seeded host.
+      // Nothing was deleted, settings still point at the seeded host.
       expect(
-        calls.where((c) => c.$1 == MessageTypes.providerCredentialClearRequest),
+        calls.where((c) => c.$1 == MessageTypes.providerDeleteRequest),
         isEmpty,
       );
       expect(container.read(connectionSettingsProvider).host, '10.9.9.9');
@@ -352,17 +579,23 @@ void main() {
               return {
                 'providers': [
                   const ProviderInfo(
-                    id: ProviderId.openai,
+                    id: 'openai',
+                  kind: ProviderKind.openaiCompatible,
+                  baseUrl: 'https://api.openai.example/v1',
                     displayName: 'Codex',
                     configured: true,
                   ).toJson(),
                   const ProviderInfo(
-                    id: ProviderId.deepseek,
+                    id: 'deepseek',
+                  kind: ProviderKind.openaiCompatible,
+                  baseUrl: 'https://api.deepseek.example/v1',
                     displayName: 'DeepSeek',
                     configured: false,
                   ).toJson(),
                   const ProviderInfo(
-                    id: ProviderId.openrouter,
+                    id: 'openrouter',
+                  kind: ProviderKind.openaiCompatible,
+                  baseUrl: 'https://openrouter.example/api/v1',
                     displayName: 'OpenRouter',
                     configured: true,
                   ).toJson(),
@@ -428,13 +661,14 @@ void main() {
         expect(prefs.containsKey('daemon.port'), isFalse);
         expect(prefs.containsKey('daemon.token'), isFalse);
 
-        // A clear RPC was sent for each CONFIGURED provider, not for the
-        // unconfigured DeepSeek entry.
-        final clearCalls = calls
-            .where((c) => c.$1 == MessageTypes.providerCredentialClearRequest)
-            .toList();
-        final clearedIds = clearCalls.map((c) => c.$2['providerId']).toSet();
-        expect(clearedIds, {'openai', 'openrouter'});
+        // Every provider is DELETED, not merely un-keyed: providers are user
+        // data now, so a reset that left providers.json populated wouldn't be
+        // a reset. That includes the unconfigured DeepSeek entry.
+        final deletedIds = calls
+            .where((c) => c.$1 == MessageTypes.providerDeleteRequest)
+            .map((c) => c.$2['providerId'])
+            .toSet();
+        expect(deletedIds, {'openai', 'deepseek', 'openrouter'});
 
         // The agent.conversation.clear RPC was sent with an empty payload
         // (means "wipe every agent").

@@ -1,6 +1,7 @@
 /// [LlmBackend] for any OpenAI Chat-Completions-compatible API — covers
-/// OpenAI/Codex, DeepSeek, and OpenRouter with one implementation; only the
-/// [ProviderCatalogEntry] (base URL, headers) differs per provider.
+/// OpenAI/Codex, DeepSeek, OpenRouter, and hand-configured compatible
+/// endpoints with one implementation; only the [ProviderConfig] (base URL,
+/// headers) differs per provider.
 library;
 
 import 'dart:async';
@@ -10,13 +11,12 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:http/http.dart' as http;
 
 import 'llm_backend.dart';
-import 'provider_catalog.dart';
 
 class OpenAiCompatibleBackend implements LlmBackend {
-  OpenAiCompatibleBackend({required this.catalogEntry, http.Client? httpClient})
+  OpenAiCompatibleBackend({required this.config, http.Client? httpClient})
       : _http = httpClient ?? http.Client();
 
-  final ProviderCatalogEntry catalogEntry;
+  final ProviderConfig config;
   final http.Client _http;
 
   @override
@@ -27,10 +27,10 @@ class OpenAiCompatibleBackend implements LlmBackend {
     required String apiKey,
   }) async* {
     final request =
-        http.Request('POST', Uri.parse('${catalogEntry.baseUrl}/chat/completions'))
+        http.Request('POST', Uri.parse('${config.baseUrl}/chat/completions'))
           ..headers['Content-Type'] = 'application/json'
           ..headers['Authorization'] = 'Bearer $apiKey'
-          ..headers.addAll(catalogEntry.extraHeaders)
+          ..headers.addAll(config.extraHeaders)
           ..body = jsonEncode({
             'model': model,
             'stream': true,
@@ -113,10 +113,10 @@ class OpenAiCompatibleBackend implements LlmBackend {
   Future<bool> testCredential(String apiKey) async {
     try {
       final response = await _http.get(
-        Uri.parse('${catalogEntry.baseUrl}/models'),
+        Uri.parse('${config.baseUrl}/models'),
         headers: {
           'Authorization': 'Bearer $apiKey',
-          ...catalogEntry.extraHeaders,
+          ...config.extraHeaders,
         },
       );
       return response.statusCode == 200;
@@ -130,19 +130,19 @@ class OpenAiCompatibleBackend implements LlmBackend {
     try {
       final response = await _http
           .get(
-            Uri.parse('${catalogEntry.baseUrl}/models'),
+            Uri.parse('${config.baseUrl}/models'),
             headers: {
               'Authorization': 'Bearer $apiKey',
-              ...catalogEntry.extraHeaders,
+              ...config.extraHeaders,
             },
           )
           .timeout(const Duration(seconds: 5));
 
-      if (response.statusCode != 200) return catalogEntry.models;
+      if (response.statusCode != 200) return config.models;
 
       final body = jsonDecode(response.body) as Map<String, Object?>;
       final data = body['data'] as List?;
-      if (data == null || data.isEmpty) return catalogEntry.models;
+      if (data == null || data.isEmpty) return config.models;
 
       final models = <ProviderModel>[];
       for (final item in data) {
@@ -154,9 +154,9 @@ class OpenAiCompatibleBackend implements LlmBackend {
           }
         }
       }
-      return models.isNotEmpty ? models : catalogEntry.models;
+      return models.isNotEmpty ? models : config.models;
     } catch (_) {
-      return catalogEntry.models;
+      return config.models;
     }
   }
 

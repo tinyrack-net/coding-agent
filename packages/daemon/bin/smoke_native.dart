@@ -2,13 +2,15 @@
 // `dart test`). Requires a real API key via environment variable for the
 // chosen provider:
 //
-//   OPENAI_API_KEY / DEEPSEEK_API_KEY / OPENROUTER_API_KEY
+//   OPENAI_API_KEY / ANTHROPIC_API_KEY / DEEPSEEK_API_KEY / OPENROUTER_API_KEY
 //
 // Creates an agent in a temp dir, prompts it to write a file via the
 // write_file tool, auto-allows the resulting permission request, and prints
-// the resulting timeline.
+// the resulting timeline. The argument names a *preset*, which is instantiated
+// into a throwaway provider config in a temp data dir.
 //
 //   dart run agent_daemon:smoke_native openai
+//   dart run agent_daemon:smoke_native claude
 //   dart run agent_daemon:smoke_native deepseek
 //   dart run agent_daemon:smoke_native openrouter
 
@@ -18,31 +20,33 @@ import 'dart:io';
 import 'package:agent_daemon/src/agent/agent_manager.dart';
 import 'package:agent_daemon/src/agent/agent_store.dart';
 import 'package:agent_daemon/src/providers/native/credential_store.dart';
-import 'package:agent_daemon/src/providers/native/native_client.dart';
-import 'package:agent_daemon/src/providers/native/openai_compatible_backend.dart';
-import 'package:agent_daemon/src/providers/native/provider_catalog.dart';
+import 'package:agent_daemon/src/providers/native/provider_config_store.dart';
+import 'package:agent_daemon/src/providers/native/provider_presets.dart';
+import 'package:agent_daemon/src/providers/provider_registry.dart';
 import 'package:agent_protocol/agent_protocol.dart';
 
+/// Which env var holds the key for each preset.
+const _envVars = {
+  'openai': 'OPENAI_API_KEY',
+  'claude': 'ANTHROPIC_API_KEY',
+  'deepseek': 'DEEPSEEK_API_KEY',
+  'openrouter': 'OPENROUTER_API_KEY',
+};
+
 Future<void> main(List<String> args) async {
-  final providerName = args.isNotEmpty ? args.first : 'openai';
-  final ProviderId providerId;
-  try {
-    providerId = ProviderId.fromWire(providerName);
-  } catch (_) {
+  final presetId = args.isNotEmpty ? args.first : 'openai';
+  final preset = ProviderPresets.byId(presetId);
+  if (preset == null) {
     stderr.writeln(
-      'unknown provider "$providerName" (expected openai/deepseek/openrouter)',
+      'unknown preset "$presetId" (expected ${_envVars.keys.join('/')})',
     );
     exit(2);
   }
 
-  final envVar = switch (providerId) {
-    ProviderId.openai => 'OPENAI_API_KEY',
-    ProviderId.deepseek => 'DEEPSEEK_API_KEY',
-    ProviderId.openrouter => 'OPENROUTER_API_KEY',
-  };
+  final envVar = _envVars[presetId]!;
   final apiKey = Platform.environment[envVar];
   if (apiKey == null || apiKey.isEmpty) {
-    stderr.writeln('$envVar is not set; skipping smoke_native ($providerName)');
+    stderr.writeln('$envVar is not set; skipping smoke_native ($presetId)');
     exit(1);
   }
 
@@ -51,22 +55,20 @@ Future<void> main(List<String> args) async {
   stdout.writeln('cwd: ${scratch.path}');
 
   final credentials = CredentialStore(dataDir: dataDir.path);
-  await credentials.set(providerId.name, apiKey);
-
-  final catalogEntry = ProviderCatalog.byId(providerId);
-  final model = catalogEntry.models.first.id;
-  stdout.writeln('provider: ${providerId.name}, model: $model');
+  final registry = ProviderRegistry(
+    credentials: credentials,
+    configs: ProviderConfigStore(dataDir: dataDir.path),
+  );
+  final config = await registry.upsert(preset.toConfig(), apiKey: apiKey);
+  final model = config.models.first.id;
+  stdout.writeln(
+    'provider: ${config.displayName} (${config.kind.wire}), model: $model',
+  );
 
   final idle = Completer<void>();
   late final AgentManager manager;
   manager = AgentManager(
-    clients: {
-      providerId.name: NativeClient(
-        providerId: providerId,
-        backend: OpenAiCompatibleBackend(catalogEntry: catalogEntry),
-        credentials: credentials,
-      ),
-    },
+    resolveClient: registry.clientFor,
     store: AgentStore(dataDir: dataDir.path),
     onStream: (payload) {
       final item = payload.item;
@@ -100,7 +102,7 @@ Future<void> main(List<String> args) async {
 
   final agent = await manager.createAgent(
     cwd: scratch.path,
-    provider: providerId.name,
+    provider: config.id,
     model: model,
     mode: AgentMode.normal,
     title: 'smoke-native',

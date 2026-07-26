@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:agent_daemon/agent_daemon.dart';
-import 'package:agent_daemon/src/server/rpc_router.dart';
-import 'package:agent_protocol/agent_protocol.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 
 Future<void> main(List<String> args) async {
@@ -85,38 +83,6 @@ Future<void> _run(
       exit(0);
     });
   }
-}
-
-AgentMode _parseMode(Object? raw) {
-  final name = (raw as String?) ?? 'normal';
-  try {
-    return AgentMode.values.byName(name);
-  } catch (_) {
-    throw RpcException(RpcErrorCodes.invalidPayload, 'unknown mode "$name"');
-  }
-}
-
-ProviderId _parseProviderId(Object? raw) {
-  final name = raw as String?;
-  if (name == null || name.isEmpty) {
-    throw RpcException(RpcErrorCodes.invalidPayload, 'providerId is required');
-  }
-  try {
-    return ProviderId.fromWire(name);
-  } catch (_) {
-    throw RpcException(
-      RpcErrorCodes.invalidPayload,
-      'unknown providerId "$name"',
-    );
-  }
-}
-
-String _requireString(Map<String, Object?> payload, String key) {
-  final value = payload[key] as String?;
-  if (value == null || value.isEmpty) {
-    throw RpcException(RpcErrorCodes.invalidPayload, '$key is required');
-  }
-  return value;
 }
 
 String? _argValue(List<String> args, String name) {

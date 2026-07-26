@@ -47,7 +47,7 @@ class DraftSessionComposer extends ConsumerStatefulWidget {
 class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
   final _promptController = TextEditingController();
 
-  ProviderId? _provider;
+  String? _provider;
   String? _model;
   AgentMode _mode = AgentMode.normal;
   bool _submitting = false;
@@ -71,7 +71,7 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
     try {
       final agent = await ref.read(agentActionsProvider).create(
             cwd: widget.worktreePath,
-            provider: provider.name,
+            provider: provider,
             model: model,
             mode: _mode,
             projectPath: widget.projectPath,
@@ -138,7 +138,7 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
                   Row(
                     children: [
                       Expanded(
-                        child: ComboBox<ProviderId>(
+                        child: ComboBox<String>(
                           value: selectedProvider.id,
                           items: [
                             for (final p in providers)
@@ -156,7 +156,7 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: ComboBox<String>(
-                          key: ValueKey('model-${selectedProvider.id.name}'),
+                          key: ValueKey('model-${selectedProvider.id}'),
                           value: _model,
                           items: [
                             for (final m in models)

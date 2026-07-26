@@ -73,7 +73,9 @@ void main() {
       return {
         'providers': [
           const ProviderInfo(
-            id: ProviderId.openai,
+            id: 'openai',
+                  kind: ProviderKind.openaiCompatible,
+                  baseUrl: 'https://api.openai.example/v1',
             displayName: 'Codex',
             configured: true,
             models: [
@@ -81,7 +83,9 @@ void main() {
             ],
           ).toJson(),
           const ProviderInfo(
-            id: ProviderId.deepseek,
+            id: 'deepseek',
+                  kind: ProviderKind.openaiCompatible,
+                  baseUrl: 'https://api.deepseek.example/v1',
             displayName: 'DeepSeek',
             configured: false,
             unavailableReason: 'not installed',

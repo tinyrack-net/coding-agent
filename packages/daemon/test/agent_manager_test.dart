@@ -98,7 +98,7 @@ void main() {
     permissionRequests = [];
     permissionResolutions = [];
     manager = AgentManager(
-      clients: {'claude': client},
+      resolveClient: (_) async => client,
       store: AgentStore(dataDir: tempDir.path),
       onStream: streamed.add,
       onState: states.add,
@@ -124,16 +124,29 @@ void main() {
         title: 'Test',
       );
 
-  test('rejects unsupported providers', () async {
+  test('surfaces a rejecting resolveClient as an RpcException', () async {
+    // Provider ids are user-configured, so "unsupported" is now decided by the
+    // resolver (the registry) rather than a map owned by the manager.
+    final strict = AgentManager(
+      resolveClient: (provider) async => throw RpcException(
+        RpcErrorCodes.invalidPayload,
+        'unknown provider "$provider"',
+      ),
+      store: AgentStore(dataDir: tempDir.path),
+    );
+    addTearDown(strict.dispose);
+
     await expectLater(
-      manager.createAgent(
+      strict.createAgent(
         cwd: tempDir.path,
-        provider: 'codex',
+        provider: 'deleted-provider',
         model: 'gpt-5.4',
         mode: AgentMode.normal,
       ),
       throwsA(isA<RpcException>()),
     );
+    // The half-created runtime must not linger.
+    expect(strict.list(), isEmpty);
   });
 
   test('createAgent stores and round-trips projectPath/branch/isWorktree',
@@ -410,7 +423,7 @@ void main() {
     await manager.dispose();
 
     final manager2 = AgentManager(
-      clients: {'claude': client},
+      resolveClient: (_) async => client,
       store: AgentStore(dataDir: tempDir.path),
     );
     await manager2.load();
@@ -593,7 +606,7 @@ void main() {
     // both agents still exist (createdAtMs preserved) but timelines are empty
     // and session ids are gone.
     final manager2 = AgentManager(
-      clients: {'claude': client},
+      resolveClient: (_) async => client,
       store: AgentStore(dataDir: tempDir.path),
     );
     await manager2.load();

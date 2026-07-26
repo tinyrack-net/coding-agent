@@ -3,10 +3,18 @@ import 'dart:convert';
 
 import 'package:agent_daemon/src/providers/native/llm_backend.dart';
 import 'package:agent_daemon/src/providers/native/openai_compatible_backend.dart';
-import 'package:agent_daemon/src/providers/native/provider_catalog.dart';
+import 'package:agent_protocol/agent_protocol.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:test/test.dart';
+
+const _config = ProviderConfig(
+  id: 'openai-1',
+  displayName: 'OpenAI',
+  kind: ProviderKind.openaiCompatible,
+  baseUrl: 'https://api.openai.example/v1',
+  models: [ProviderModel(id: 'fallback-model', displayName: 'Fallback')],
+);
 
 http.StreamedResponse _sseResponse(
   List<String> lines, {
@@ -51,7 +59,7 @@ void main() {
         ]);
       });
       final backend =
-          OpenAiCompatibleBackend(catalogEntry: ProviderCatalog.openai, httpClient: client);
+          OpenAiCompatibleBackend(config: _config, httpClient: client);
 
       final events = await backend
           .chat(
@@ -71,7 +79,7 @@ void main() {
 
       expect(capturedRequest.method, 'POST');
       expect(capturedRequest.url.toString(),
-          '${ProviderCatalog.openai.baseUrl}/chat/completions');
+          'https://api.openai.example/v1/chat/completions');
       expect(capturedRequest.headers['Authorization'], 'Bearer sk-test');
 
       final decodedBody = jsonDecode(capturedBody!) as Map<String, Object?>;
@@ -90,7 +98,7 @@ void main() {
         return _sseResponse(['[DONE]']);
       });
       final backend = OpenAiCompatibleBackend(
-        catalogEntry: ProviderCatalog.openrouter,
+        config: _config.copyWith(extraHeaders: const {'HTTP-Referer': 'https://tinyrack.net', 'X-Title': 'coding-agent'}),
         httpClient: client,
       );
 
@@ -148,7 +156,7 @@ void main() {
         ]);
       });
       final backend =
-          OpenAiCompatibleBackend(catalogEntry: ProviderCatalog.openai, httpClient: client);
+          OpenAiCompatibleBackend(config: _config, httpClient: client);
 
       final events = await backend
           .chat(
@@ -184,7 +192,7 @@ void main() {
         return _sseResponse(['[DONE]']);
       });
       final backend =
-          OpenAiCompatibleBackend(catalogEntry: ProviderCatalog.openai, httpClient: client);
+          OpenAiCompatibleBackend(config: _config, httpClient: client);
 
       await backend
           .chat(
@@ -236,7 +244,7 @@ void main() {
         );
       });
       final backend =
-          OpenAiCompatibleBackend(catalogEntry: ProviderCatalog.openai, httpClient: client);
+          OpenAiCompatibleBackend(config: _config, httpClient: client);
 
       final events = await backend
           .chat(
@@ -261,7 +269,7 @@ void main() {
         throw const SocketExceptionStub();
       });
       final backend =
-          OpenAiCompatibleBackend(catalogEntry: ProviderCatalog.openai, httpClient: client);
+          OpenAiCompatibleBackend(config: _config, httpClient: client);
 
       final events = await backend
           .chat(
@@ -281,21 +289,21 @@ void main() {
     test('returns true on HTTP 200', () async {
       final client = MockClient((request) async => http.Response('{}', 200));
       final backend =
-          OpenAiCompatibleBackend(catalogEntry: ProviderCatalog.deepseek, httpClient: client);
+          OpenAiCompatibleBackend(config: _config, httpClient: client);
       expect(await backend.testCredential('ds-key'), isTrue);
     });
 
     test('returns false on non-200', () async {
       final client = MockClient((request) async => http.Response('nope', 401));
       final backend =
-          OpenAiCompatibleBackend(catalogEntry: ProviderCatalog.deepseek, httpClient: client);
+          OpenAiCompatibleBackend(config: _config, httpClient: client);
       expect(await backend.testCredential('bad-key'), isFalse);
     });
 
     test('returns false when the request throws', () async {
       final client = MockClient((request) async => throw Exception('boom'));
       final backend =
-          OpenAiCompatibleBackend(catalogEntry: ProviderCatalog.deepseek, httpClient: client);
+          OpenAiCompatibleBackend(config: _config, httpClient: client);
       expect(await backend.testCredential('ds-key'), isFalse);
     });
   });

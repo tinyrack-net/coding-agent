@@ -12,12 +12,12 @@ import 'timeline_history.dart';
 
 class NativeClient implements AgentClient {
   NativeClient({
-    required this.providerId,
+    required this.config,
     required this.backend,
     required this.credentials,
   });
 
-  final ProviderId providerId;
+  final ProviderConfig config;
   final LlmBackend backend;
   final CredentialStore credentials;
 
@@ -29,9 +29,9 @@ class NativeClient implements AgentClient {
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) async {
-    final apiKey = await credentials.get(providerId.name);
+    final apiKey = await credentials.get(config.id);
     if (apiKey == null || apiKey.isEmpty) {
-      throw StateError('no API key configured for ${providerId.name}');
+      throw StateError('no API key configured for "${config.displayName}"');
     }
     return NativeSession(
       backend: backend,
