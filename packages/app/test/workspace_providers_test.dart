@@ -466,4 +466,154 @@ void main() {
       expect(calls, 2);
     });
   });
+
+  group('WorktreesNotifier.refresh', () {
+    test('re-fetches worktree.list.request', () async {
+      final client = FakeDaemonClient();
+      var calls = 0;
+      client.onRequest = (type, payload) {
+        if (type == MessageTypes.worktreeListRequest) calls++;
+        return {
+          'worktrees': [_wt.toJson()],
+        };
+      };
+      final container = makeContainer(client);
+      keepAlive(
+        container,
+        container.listen(worktreesProvider('/repo'), (_, _) {}),
+      );
+      await pump();
+      await container.read(worktreesProvider('/repo').future);
+      expect(calls, 1);
+
+      await container.read(worktreesProvider('/repo').notifier).refresh();
+      await container.read(worktreesProvider('/repo').future);
+      expect(calls, 2);
+    });
+  });
+
+  group('BranchesNotifier.refresh', () {
+    test('re-fetches branch.list.request', () async {
+      final client = FakeDaemonClient();
+      var calls = 0;
+      client.onRequest = (type, payload) {
+        if (type == MessageTypes.branchListRequest) calls++;
+        return const {'branches': [], 'current': 'main'};
+      };
+      final container = makeContainer(client);
+      keepAlive(
+        container,
+        container.listen(branchesProvider('/repo'), (_, _) {}),
+      );
+      await pump();
+      await container.read(branchesProvider('/repo').future);
+      expect(calls, 1);
+
+      await container.read(branchesProvider('/repo').notifier).refresh();
+      await container.read(branchesProvider('/repo').future);
+      expect(calls, 2);
+    });
+  });
+
+  // Resolves the project/branch a worktree path belongs to, by searching every
+  // registered git project's worktree list. Drives the "new agent in this
+  // worktree" flow, so a wrong answer creates the agent against the wrong repo.
+  group('worktreeAgentContextProvider', () {
+    ProviderContainer withProjectsAndWorktrees(
+      List<ProjectInfo> projects,
+      Map<String, List<WorktreeInfo>> worktreesByProject,
+    ) {
+      final client = FakeDaemonClient();
+      client.onRequest = (type, payload) {
+        if (type == MessageTypes.projectListRequest) {
+          return {'projects': [for (final p in projects) p.toJson()]};
+        }
+        if (type == MessageTypes.worktreeListRequest) {
+          final list =
+              worktreesByProject[payload['projectPath'] as String] ?? const [];
+          return {'worktrees': [for (final w in list) w.toJson()]};
+        }
+        return const {};
+      };
+      return makeContainer(client);
+    }
+
+    test('resolves the owning project and branch for a worktree', () async {
+      final container = withProjectsAndWorktrees(
+        [_proj],
+        {'/repo': [_wt]},
+      );
+      keepAlive(container, container.listen(projectsProvider, (_, _) {}));
+      keepAlive(
+        container,
+        container.listen(worktreesProvider('/repo'), (_, _) {}),
+      );
+      await pump();
+
+      final context = container.read(worktreeAgentContextProvider('/repo-wt'));
+      expect(context.projectPath, '/repo');
+      expect(context.branch, 'feature/x');
+      expect(context.isWorktree, isTrue);
+    });
+
+    test('the main worktree reports no branch and isWorktree false', () async {
+      const main = WorktreeInfo(
+        path: '/repo',
+        branch: 'main',
+        projectPath: '/repo',
+        isMain: true,
+      );
+      final container = withProjectsAndWorktrees(
+        [_proj],
+        {'/repo': [main]},
+      );
+      keepAlive(container, container.listen(projectsProvider, (_, _) {}));
+      keepAlive(
+        container,
+        container.listen(worktreesProvider('/repo'), (_, _) {}),
+      );
+      await pump();
+
+      final context = container.read(worktreeAgentContextProvider('/repo'));
+      expect(context.projectPath, '/repo');
+      // A main worktree isn't an isolated branch, so no branch is reported.
+      expect(context.branch, isNull);
+      expect(context.isWorktree, isFalse);
+    });
+
+    test('an unknown path falls back to an empty context', () async {
+      final container = withProjectsAndWorktrees(
+        [_proj],
+        {'/repo': [_wt]},
+      );
+      keepAlive(container, container.listen(projectsProvider, (_, _) {}));
+      keepAlive(
+        container,
+        container.listen(worktreesProvider('/repo'), (_, _) {}),
+      );
+      await pump();
+
+      final context = container.read(
+        worktreeAgentContextProvider('/somewhere-else'),
+      );
+      expect(context.projectPath, isNull);
+      expect(context.branch, isNull);
+      expect(context.isWorktree, isFalse);
+    });
+
+    test('non-git projects are skipped', () async {
+      const plain = ProjectInfo(path: '/plain', name: 'plain', isGitRepo: false);
+      final container = withProjectsAndWorktrees(
+        [plain],
+        // Even if the daemon returned worktrees, a non-git project is skipped
+        // without ever being asked.
+        {'/plain': [_wt]},
+      );
+      keepAlive(container, container.listen(projectsProvider, (_, _) {}));
+      await pump();
+
+      final context = container.read(worktreeAgentContextProvider('/repo-wt'));
+      expect(context.projectPath, isNull);
+    });
+  });
 }
