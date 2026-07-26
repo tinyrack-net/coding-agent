@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fluent_ui/fluent_ui.dart';
 
 /// A transient, self-dismissing notification banner — fluent_ui's `InfoBar`
@@ -9,9 +11,18 @@ class AppToast {
 
   static OverlayEntry? _current;
 
+  /// The pending auto-dismiss timer for [_current], cancelled whenever the
+  /// toast goes away early. Without this the timer outlives the overlay entry,
+  /// which is harmless in the app but trips the "timer still pending" check in
+  /// any widget test that dismisses a toast before it expires.
+  static Timer? _timer;
+
   /// Dismisses the currently-shown toast, if any (mirrors
-  /// `ScaffoldMessenger.hideCurrentSnackBar()`).
+  /// `ScaffoldMessenger.hideCurrentSnackBar()`). Safe to call when nothing is
+  /// showing — the destructive flows call it unconditionally.
   static void dismissCurrent() {
+    _timer?.cancel();
+    _timer = null;
     _current?.remove();
     _current = null;
   }
@@ -45,8 +56,9 @@ class AppToast {
     );
     _current = entry;
     overlay.insert(entry);
-    Future.delayed(duration, () {
+    _timer = Timer(duration, () {
       if (_current == entry) {
+        _timer = null;
         entry.remove();
         _current = null;
       }
