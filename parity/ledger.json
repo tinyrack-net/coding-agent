@@ -11741,14 +11741,15 @@
     {
       "id": "source-unit:packages/server/src/server/agent/tools/paseo-tools.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/git/git_service.dart",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/workspace/workspace_scripts_service.dart; packages/daemon/lib/src/git/git_service.dart",
       "evidence": [
         "packages/daemon/test/agent_mcp_tools_test.dart",
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
         "packages/daemon/test/workspace/workspace_v2_service_test.dart",
+        "packages/daemon/test/workspace/workspace_scripts_service_test.dart",
         "packages/daemon/test/git_service_test.dart"
       ],
-      "notes": "The runtime MCP catalog includes canonical create/list/archive workspace and create-agent orchestration in addition to agent, permission, and provider tools. Local, branch-off, remote branch, and GitHub/GitLab/Gitea-family change-request checkout placement; immediate initial prompts; blocking/background behavior; cross-workspace parentage; notifications; and workspace-scoped teardown are covered. Schedule, heartbeat, standalone terminal/worktree/script, browser, voice, and remaining mutation tools are pending."
+      "notes": "The runtime MCP catalog includes canonical create, list, rename, and archive workspace orchestration, create-agent orchestration, and list, start, and stop workspace-script operations in addition to agent, permission, and provider tools. Workspace resolution, lifecycle errors, script terminal ownership, checkout placement, initial prompts, parentage, notifications, and workspace-scoped teardown are covered. Terminal, schedule, heartbeat, browser, voice, and remaining mutation tools are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tools/types.ts",
@@ -12602,12 +12603,13 @@
     {
       "id": "source-unit:packages/server/src/server/session/workspace-scripts/workspace-scripts-service.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/workspace/workspace_scripts_service.dart",
+      "implementation": "packages/daemon/lib/src/workspace/workspace_scripts_service.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart",
       "evidence": [
         "packages/daemon/test/workspace/workspace_scripts_service_test.dart",
-        "packages/daemon/test/daemon_workspace_scripts_e2e_test.dart"
+        "packages/daemon/test/daemon_workspace_scripts_e2e_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
       ],
-      "notes": "List, legacy and management start/stop, terminal lifecycle, runtime projection, errors, broadcasts, service proxy URLs, dynamic port allocation, environment projection, health monitoring, and live branch route replacement are implemented. Full workspace lifecycle reconciliation and every upstream configuration edge remain."
+      "notes": "List, legacy and management start/stop, terminal lifecycle, runtime projection, errors, broadcasts, service proxy URLs, dynamic port allocation, environment projection, health monitoring, live branch route replacement, and the frozen MCP list/start/stop surface are implemented. Full workspace lifecycle reconciliation and every upstream configuration edge remain."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/audio.ts",

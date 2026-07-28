@@ -6,6 +6,7 @@ import '../agent/agent_manager.dart';
 import '../providers/paseo/provider_catalog_registry.dart';
 import '../terminal/terminal_manager.dart';
 import '../workspace/workspace_v2_service.dart';
+import '../workspace/workspace_scripts_service.dart';
 import 'agent_mcp_tools.dart';
 import 'daemon_auth.dart';
 
@@ -14,6 +15,7 @@ final class AgentMcpHttpHandler {
     required AgentManager manager,
     required PaseoProviderCatalogRegistry providerCatalog,
     required WorkspaceV2Service Function() workspaceService,
+    required WorkspaceScriptsService Function() workspaceScripts,
     required TerminalManager terminals,
     required String capabilityToken,
     String? passwordHash,
@@ -22,6 +24,7 @@ final class AgentMcpHttpHandler {
          manager: manager,
          providerCatalog: providerCatalog,
          workspaceService: workspaceService,
+         workspaceScripts: workspaceScripts,
          terminals: terminals,
          agentWaitTimeout: agentWaitTimeout,
        ),
@@ -222,6 +225,68 @@ final class AgentMcpHttpHandler {
           'notifyOnFinish': {'type': 'boolean'},
         },
         'required': ['title', 'provider', 'initialPrompt'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'rename_workspace',
+      'title': 'Rename workspace',
+      'description':
+          'Rename a workspace by setting its user-visible title. Omit '
+          'workspaceId to rename your current workspace.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'workspaceId': {'type': 'string', 'minLength': 1},
+          'title': {'type': 'string', 'minLength': 1},
+        },
+        'required': ['title'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'list_workspace_scripts',
+      'title': 'List workspace scripts',
+      'description':
+          'List configured workspace scripts and their lifecycle, service '
+          'port, proxy URL, health, and terminal ID.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'workspaceId': {'type': 'string', 'minLength': 1},
+        },
+        'required': ['workspaceId'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'start_workspace_script',
+      'title': 'Start workspace script',
+      'description':
+          'Start one configured workspace script through the managed '
+          'workspace-script launcher.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'workspaceId': {'type': 'string', 'minLength': 1},
+          'scriptName': {'type': 'string', 'minLength': 1},
+        },
+        'required': ['workspaceId', 'scriptName'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'stop_workspace_script',
+      'title': 'Stop workspace script',
+      'description':
+          'Stop a running script through its supervised terminal lifecycle.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'workspaceId': {'type': 'string', 'minLength': 1},
+          'scriptName': {'type': 'string', 'minLength': 1},
+        },
+        'required': ['workspaceId', 'scriptName'],
         'additionalProperties': false,
       },
     },

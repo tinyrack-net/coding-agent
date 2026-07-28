@@ -697,6 +697,7 @@ Future<DaemonServerHandle> startDaemonServer({
       manager: manager,
       providerCatalog: paseoProviderCatalog,
       workspaceService: () => workspaceV2,
+      workspaceScripts: () => workspaceScripts,
       terminals: terminals,
       capabilityToken: agentMcpAuthToken,
       passwordHash: passwordHash,

@@ -168,6 +168,16 @@ final class WorkspaceV2Service {
     return workspace;
   }
 
+  Future<PersistedWorkspaceRecord> renameAutomationWorkspace(
+    String workspaceId,
+    String title,
+  ) async {
+    final workspace = await requireActiveAutomationWorkspace(workspaceId);
+    final updated = workspace.copyWith(title: title, updatedAt: _timestamp());
+    await registries.workspaces.upsert(updated);
+    return updated;
+  }
+
   /// Archives only the requested workspace record. Its owned agents and
   /// terminals are torn down by the MCP boundary before this call.
   Future<AutomationWorkspaceArchiveResult> archiveAutomationWorkspace(

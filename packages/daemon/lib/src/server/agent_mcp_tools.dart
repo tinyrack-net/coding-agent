@@ -10,6 +10,7 @@ import '../agent/timeline_store.dart';
 import '../providers/paseo/provider_catalog_registry.dart';
 import '../terminal/terminal_manager.dart';
 import '../workspace/workspace_registry.dart';
+import '../workspace/workspace_scripts_service.dart';
 import '../workspace/workspace_v2_service.dart';
 
 final class AgentMcpTools {
@@ -17,16 +18,19 @@ final class AgentMcpTools {
     required AgentManager manager,
     required PaseoProviderCatalogRegistry providerCatalog,
     required WorkspaceV2Service Function() workspaceService,
+    required WorkspaceScriptsService Function() workspaceScripts,
     required TerminalManager terminals,
     this.agentWaitTimeout = const Duration(seconds: 30),
   }) : _manager = manager,
        _providerCatalog = providerCatalog,
        _workspaceService = workspaceService,
+       _workspaceScripts = workspaceScripts,
        _terminals = terminals;
 
   final AgentManager _manager;
   final PaseoProviderCatalogRegistry _providerCatalog;
   final WorkspaceV2Service Function() _workspaceService;
+  final WorkspaceScriptsService Function() _workspaceScripts;
   final TerminalManager _terminals;
   final Duration agentWaitTimeout;
 
@@ -44,6 +48,14 @@ final class AgentMcpTools {
         return _archiveWorkspace(arguments);
       case 'create_agent':
         return _createAgent(arguments, callerAgentId);
+      case 'rename_workspace':
+        return _renameWorkspace(arguments, callerAgentId);
+      case 'list_workspace_scripts':
+        return _listWorkspaceScripts(arguments);
+      case 'start_workspace_script':
+        return _startWorkspaceScript(arguments);
+      case 'stop_workspace_script':
+        return _stopWorkspaceScript(arguments);
       case 'list_agents':
         return _listAgents(arguments, callerAgentId);
       case 'get_agent_status':
@@ -131,6 +143,67 @@ final class AgentMcpTools {
       default:
         throw StateError('Unknown tool: $name');
     }
+  }
+
+  Future<Map<String, Object?>> _renameWorkspace(
+    Map<String, Object?> arguments,
+    String? callerAgentId,
+  ) async {
+    final requestedWorkspaceId = _nullableString(arguments, 'workspaceId');
+    late final String workspaceId;
+    if (requestedWorkspaceId != null) {
+      workspaceId = requestedWorkspaceId;
+    } else if (callerAgentId != null) {
+      final caller = _manager.get(callerAgentId);
+      if (caller == null || caller.archivedAt != null) {
+        throw StateError('Caller agent $callerAgentId not found');
+      }
+      final currentWorkspaceId = caller.workspaceId;
+      if (currentWorkspaceId == null) {
+        throw StateError(
+          'Caller agent $callerAgentId has no current workspace',
+        );
+      }
+      workspaceId = currentWorkspaceId;
+    } else {
+      throw StateError(
+        'workspaceId is required outside an agent-scoped session',
+      );
+    }
+    final title = _requiredString(arguments, 'title');
+    await _workspaceService().renameAutomationWorkspace(workspaceId, title);
+    return {'success': true, 'workspaceId': workspaceId, 'title': title};
+  }
+
+  Future<Map<String, Object?>> _listWorkspaceScripts(
+    Map<String, Object?> arguments,
+  ) async {
+    final scripts = await _workspaceScripts().list(
+      _requiredString(arguments, 'workspaceId'),
+    );
+    return {
+      'scripts': [for (final script in scripts) script.toJson()],
+    };
+  }
+
+  Future<Map<String, Object?>> _startWorkspaceScript(
+    Map<String, Object?> arguments,
+  ) async {
+    final script = await _workspaceScripts().launch(
+      workspaceId: _requiredString(arguments, 'workspaceId'),
+      scriptName: _requiredString(arguments, 'scriptName'),
+    );
+    return {'script': script.toJson()};
+  }
+
+  Future<Map<String, Object?>> _stopWorkspaceScript(
+    Map<String, Object?> arguments,
+  ) async {
+    final script = await _workspaceScripts().stop(
+      workspaceId: _requiredString(arguments, 'workspaceId'),
+      scriptName: _requiredString(arguments, 'scriptName'),
+    );
+    return {'script': script.toJson()};
   }
 
   Future<Map<String, Object?>> _createWorkspace(

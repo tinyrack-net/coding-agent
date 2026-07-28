@@ -191,6 +191,10 @@ void main() {
         'list_workspaces',
         'archive_workspace',
         'create_agent',
+        'rename_workspace',
+        'list_workspace_scripts',
+        'start_workspace_script',
+        'stop_workspace_script',
         'list_agents',
         'get_agent_status',
         'send_agent_prompt',
@@ -471,6 +475,17 @@ void main() {
       final otherDirectory = Directory(
         '${home.path}${Platform.pathSeparator}other',
       )..createSync();
+      File(
+        '${otherDirectory.path}${Platform.pathSeparator}tinyrack.json',
+      ).writeAsStringSync(
+        jsonEncode({
+          'scripts': {
+            'watch': {
+              'command': Platform.isWindows ? 'ping -t 127.0.0.1' : 'sleep 30',
+            },
+          },
+        }),
+      );
       final workspaceB = await _call(
         endpoint,
         mcpAuthToken,
@@ -503,6 +518,69 @@ void main() {
       );
 
       final topLevelEndpoint = endpoint.replace(queryParameters: const {});
+      final renamed = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'rename_workspace',
+        {'workspaceId': workspaceA['workspaceId'], 'title': 'Renamed A'},
+      );
+      expect(renamed, {
+        'success': true,
+        'workspaceId': workspaceA['workspaceId'],
+        'title': 'Renamed A',
+      });
+      final renamedWorkspaceList = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'list_workspaces',
+        const {},
+      );
+      expect(
+        (renamedWorkspaceList['workspaces']! as List).cast<Map>().singleWhere(
+          (workspace) => workspace['workspaceId'] == workspaceA['workspaceId'],
+        )['title'],
+        'Renamed A',
+      );
+
+      final configuredScripts = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'list_workspace_scripts',
+        {'workspaceId': workspaceB['workspaceId']},
+      );
+      final configuredScript =
+          (configuredScripts['scripts']! as List).single as Map;
+      expect(configuredScript['scriptName'], 'watch');
+      expect(configuredScript['type'], 'script');
+      expect(configuredScript['lifecycle'], 'stopped');
+      expect(configuredScript['terminalId'], isNull);
+
+      final startedScript = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'start_workspace_script',
+        {'workspaceId': workspaceB['workspaceId'], 'scriptName': 'watch'},
+      );
+      final runningScript = startedScript['script']! as Map;
+      expect(runningScript['lifecycle'], 'running');
+      expect(runningScript['terminalId'], isA<String>());
+      expect(
+        handle.terminals.contains(runningScript['terminalId']! as String),
+        isTrue,
+      );
+
+      final stoppedScript = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'stop_workspace_script',
+        {'workspaceId': workspaceB['workspaceId'], 'scriptName': 'watch'},
+      );
+      expect((stoppedScript['script']! as Map)['lifecycle'], 'stopped');
+      expect(
+        (stoppedScript['script']! as Map)['terminalId'],
+        runningScript['terminalId'],
+      );
+
       final sourceRepo = Directory(
         '${home.path}${Platform.pathSeparator}source-repo',
       )..createSync();
@@ -590,6 +668,14 @@ void main() {
       final scopedEndpoint = endpoint.replace(
         queryParameters: {'callerAgentId': workspaceParent.agentId},
       );
+      final renamedFromCaller = await _call(
+        scopedEndpoint,
+        mcpAuthToken,
+        'rename_workspace',
+        {'title': 'Caller workspace'},
+      );
+      expect(renamedFromCaller['workspaceId'], workspaceA['workspaceId']);
+      expect(renamedFromCaller['title'], 'Caller workspace');
       final crossWorkspaceChild =
           await _call(scopedEndpoint, mcpAuthToken, 'create_agent', {
             'title': 'Cross workspace child',
