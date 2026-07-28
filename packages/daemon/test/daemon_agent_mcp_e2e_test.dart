@@ -68,6 +68,7 @@ final class _McpClient implements AgentClient, McpAgentClient {
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) => createSessionWithMcp(
@@ -89,6 +90,7 @@ final class _McpClient implements AgentClient, McpAgentClient {
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
     Map<String, Object?> mcpServers = const {},

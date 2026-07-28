@@ -51,6 +51,7 @@ abstract interface class AgentClient {
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   });
@@ -66,6 +67,7 @@ abstract interface class McpAgentClient implements AgentClient {
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
     Map<String, Object?> mcpServers = const {},

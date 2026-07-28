@@ -84,6 +84,7 @@ final class ClaudeAgentClient
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) async {
@@ -99,6 +100,7 @@ final class ClaudeAgentClient
       fastMode: featureValues['fast_mode'] == true,
       model: _normalize(model),
       thinkingOptionId: normalizeClaudeThinkingOption(thinkingOptionId),
+      systemPrompt: _normalize(systemPrompt),
       sessionId: _normalize(sessionId),
     );
     final history = config.sessionId == null
@@ -138,6 +140,10 @@ final class ClaudeAgentClient
       '--include-partial-messages',
       '--setting-sources=user,project,local',
       if (config.model case final model?) ...['--model', model],
+      if (config.systemPrompt case final prompt?) ...[
+        '--append-system-prompt',
+        prompt,
+      ],
       if (config.thinkingOptionId == 'off') ...[
         '--thinking',
         'disabled',

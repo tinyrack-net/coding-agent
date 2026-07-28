@@ -109,6 +109,7 @@ void main() {
       modeId: 'acceptEdits',
       thinkingOptionId: 'high',
       featureValues: const {'fast_mode': true},
+      systemPrompt: 'Voice instructions',
       sessionId: 'resume-id',
     );
     addTearDown(session.dispose);
@@ -132,6 +133,8 @@ void main() {
         '--setting-sources=user,project,local',
         '--model',
         'claude-opus-4-1',
+        '--append-system-prompt',
+        'Voice instructions',
         '--effort',
         'high',
         '--resume=resume-id',

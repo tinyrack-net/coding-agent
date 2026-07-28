@@ -29,6 +29,7 @@ class NativeClient implements AgentClient {
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) async {
@@ -42,7 +43,11 @@ class NativeClient implements AgentClient {
       cwd: cwd,
       mode: mode,
       apiKey: apiKey,
-      initialMessages: historyFromTimeline(initialHistory),
+      initialMessages: [
+        if (systemPrompt?.trim().isNotEmpty == true)
+          LlmSystemMessage(systemPrompt!.trim()),
+        ...historyFromTimeline(initialHistory),
+      ],
     );
   }
 }

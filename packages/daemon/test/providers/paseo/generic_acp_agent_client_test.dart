@@ -44,6 +44,33 @@ Future<T> eventOf<T extends ProviderEvent>(Stream<ProviderEvent> events) =>
     events.firstWhere((event) => event is T).then((event) => event as T);
 
 void main() {
+  test('rejects unsupported system prompts before spawning ACP', () async {
+    var resolved = false;
+    final configured = client(
+      resolveCommand: () async {
+        resolved = true;
+        return Platform.resolvedExecutable;
+      },
+    );
+
+    await expectLater(
+      configured.createSession(
+        cwd: Directory.current.path,
+        model: 'fixture-model',
+        mode: AgentMode.normal,
+        systemPrompt: 'Voice instructions',
+      ),
+      throwsA(
+        isA<UnsupportedError>().having(
+          (error) => error.message,
+          'message',
+          contains('does not advertise system-prompt support'),
+        ),
+      ),
+    );
+    expect(resolved, isFalse);
+  });
+
   test(
     'runs ACP initialize, session, stream, tool and permission lifecycle',
     () async {

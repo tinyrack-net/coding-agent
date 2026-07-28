@@ -43,6 +43,7 @@ final class GenericAcpAgentClient
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) => createSessionWithMcp(
@@ -52,6 +53,7 @@ final class GenericAcpAgentClient
     modeId: modeId,
     thinkingOptionId: thinkingOptionId,
     featureValues: featureValues,
+    systemPrompt: systemPrompt,
     sessionId: sessionId,
     initialHistory: initialHistory,
   );
@@ -64,10 +66,16 @@ final class GenericAcpAgentClient
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
     Map<String, Object?> mcpServers = const {},
   }) async {
+    if (systemPrompt?.trim().isNotEmpty == true) {
+      throw UnsupportedError(
+        "ACP provider '$provider' does not advertise system-prompt support",
+      );
+    }
     final executable = await _resolveCommand();
     if (executable == null) {
       throw StateError(

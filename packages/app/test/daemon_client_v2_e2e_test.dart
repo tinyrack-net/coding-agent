@@ -657,6 +657,7 @@ final class _TestAgentClient implements AgentClient, ImportableAgentClient {
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) async => _TestAgentSession(

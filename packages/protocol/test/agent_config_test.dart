@@ -63,12 +63,19 @@ void main() {
       'model': 'm',
       'thinkingOptionId': 'high',
       'featureValues': {'search': true},
+      'systemPrompt': 'Voice instructions',
     });
     expect(summary.toJson()['thinkingOptionId'], 'high');
     expect(summary.featureValues, {'search': true});
+    expect(summary.systemPrompt, 'Voice instructions');
     expect(
-      summary.copyWith(model: null, thinkingOptionId: null).toJson(),
-      isNot(contains('thinkingOptionId')),
+      summary
+          .copyWith(model: null, thinkingOptionId: null, systemPrompt: null)
+          .toJson(),
+      allOf(
+        isNot(contains('thinkingOptionId')),
+        isNot(contains('systemPrompt')),
+      ),
     );
   });
 

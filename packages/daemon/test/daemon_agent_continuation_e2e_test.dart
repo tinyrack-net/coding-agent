@@ -422,6 +422,7 @@ final class _Client implements AgentClient {
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) async => _Session();

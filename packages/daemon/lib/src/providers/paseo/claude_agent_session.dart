@@ -179,6 +179,7 @@ final class ClaudeAgentSession
       fastMode: _config.fastMode,
       model: _config.model,
       thinkingOptionId: _config.thinkingOptionId,
+      systemPrompt: _config.systemPrompt,
       sessionId: _config.sessionId,
     );
     _sendControl({'subtype': 'set_permission_mode', 'mode': modeId});
@@ -195,6 +196,7 @@ final class ClaudeAgentSession
       fastMode: _config.fastMode,
       model: model,
       thinkingOptionId: _config.thinkingOptionId,
+      systemPrompt: _config.systemPrompt,
       sessionId: _config.sessionId,
     );
     _sendControl({'subtype': 'set_model', 'model': model});
@@ -215,6 +217,7 @@ final class ClaudeAgentSession
       fastMode: _config.fastMode,
       model: _config.model,
       thinkingOptionId: thinking,
+      systemPrompt: _config.systemPrompt,
       sessionId: _config.sessionId,
     );
     _restartNeeded = true;
@@ -239,6 +242,7 @@ final class ClaudeAgentSession
       fastMode: enabled,
       model: _config.model,
       thinkingOptionId: _config.thinkingOptionId,
+      systemPrompt: _config.systemPrompt,
       sessionId: _config.sessionId,
     );
     _sendControl({
@@ -635,6 +639,7 @@ final class ClaudeAgentSession
       fastMode: _config.fastMode,
       model: _config.model,
       thinkingOptionId: _config.thinkingOptionId,
+      systemPrompt: _config.systemPrompt,
       sessionId: _sessionId ?? _config.sessionId,
     );
     try {

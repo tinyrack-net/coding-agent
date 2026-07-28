@@ -10771,9 +10771,11 @@
         "packages/daemon/test/daemon_agent_continuation_e2e_test.dart",
         "packages/daemon/test/daemon_custom_acp_e2e_test.dart",
         "packages/daemon/test/schedule/schedule_agent_runner_test.dart",
-        "packages/app/test/daemon_client_v2_e2e_test.dart"
+        "packages/app/test/daemon_client_v2_e2e_test.dart",
+        "packages/daemon/test/providers/paseo/claude_agent_client_test.dart",
+        "packages/daemon/test/providers/paseo/codex_agent_client_test.dart"
       ],
-      "notes": "Lifecycle persistence, workspace ownership, managed parentage, detach/archive propagation, edge-triggered attention, permission notifications, durable clear, heartbeat-aware notification selection, exact v2 clear assembly, atomic initial prompt sequencing, import/resume, and runtime-only internal agents with global event, attention, provider-subagent, list, lookup, and persistence suppression are ported. User-configured MCP session config is persisted outside public summaries and forwarded through direct and scheduled ACP creation. Runtime Tinyrack MCP injection, the rest of the provider process contracts, Hub push dispatch, and the full snapshot contract remain."
+      "notes": "Lifecycle persistence, workspace ownership, parentage, archive/attention, permissions, initial prompt sequencing, import/resume, internal agents, and runtime MCP injection are ported. Frozen atomic hot reload now creates a replacement before closing the active session, preserves id/session/timeline, interrupts active turns, persists nullable systemPrompt, and forwards it to Claude, Codex, and native providers; custom ACP rejects unsupported prompts instead of silently dropping them. Hub push dispatch and the remaining full manager contract remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-owner.ts",
@@ -10819,10 +10821,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-sdk-types.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/agent.dart; packages/daemon/lib/src/providers/agent_client.dart",
+      "evidence": [
+        "packages/protocol/test/agent_config_test.dart",
+        "packages/daemon/test/agent_client_test.dart"
+      ],
+      "notes": "Agent session config now carries a nullable systemPrompt through durable summaries and provider creation. The remaining frozen SDK type surface is not yet fully mapped."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-storage.ts",
@@ -10832,10 +10837,11 @@
         "packages/daemon/test/agent_manager_test.dart",
         "packages/daemon/test/agent_store_test.dart",
         "packages/protocol/test/paseo_agent_snapshot_codec_test.dart",
+        "packages/protocol/test/agent_config_test.dart",
         "packages/daemon/test/agent_project_placement_test.dart",
         "packages/app/test/daemon_client_v2_e2e_test.dart"
       ],
-      "notes": "Archive persists archivedAt and the frozen closed run state, restore preserves that state, active versus archived listing is explicit, registry-owned placement is authoritative, unavailable providers restore with providerUnavailable, and legacy internal markers round-trip while internal runtimes never persist. Replica pagination and remaining storage migrations remain."
+      "notes": "Archive state, provider availability, authoritative placement, legacy internal markers, and nullable systemPrompt round-trip durably; internal runtimes remain excluded from persistence. Replica pagination and remaining storage migrations remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-stream-coalescer.ts",

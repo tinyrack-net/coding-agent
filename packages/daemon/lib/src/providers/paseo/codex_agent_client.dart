@@ -102,6 +102,7 @@ final class CodexAgentClient
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) async {
@@ -126,6 +127,7 @@ final class CodexAgentClient
         modeId: modeId ?? _modeId(mode),
         model: model.trim().isEmpty ? null : model,
         thinkingOptionId: thinkingOptionId,
+        systemPrompt: systemPrompt,
       ),
       resumeThreadId: sessionId,
     );

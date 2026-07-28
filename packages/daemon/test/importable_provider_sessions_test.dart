@@ -32,6 +32,7 @@ final class _ImportableClient implements AgentClient, ImportableAgentClient {
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) => throw UnimplementedError();
@@ -193,6 +194,7 @@ final class _PlainClient implements AgentClient {
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) => throw UnimplementedError();

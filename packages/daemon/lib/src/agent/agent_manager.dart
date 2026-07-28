@@ -594,6 +594,7 @@ class AgentManager {
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     Map<String, Object?> mcpServers = const {},
     String? title,
     String? workspaceId,
@@ -644,6 +645,7 @@ class AgentManager {
         thinkingOptionId: thinkingOptionId,
         currentModeId: modeId,
         featureValues: featureValues,
+        systemPrompt: _normalizeOptionalText(systemPrompt),
       ),
       timeline: TimelineStore(agentId: agentId),
       internal: internal,
@@ -676,6 +678,17 @@ class AgentManager {
   }
 
   Future<void> _startSession(AgentRuntime runtime) async {
+    final session = await _createProviderSession(
+      runtime,
+      systemPrompt: runtime.summary.systemPrompt,
+    );
+    _attachSession(runtime, session, restoreHistory: true);
+  }
+
+  Future<AgentSession> _createProviderSession(
+    AgentRuntime runtime, {
+    required String? systemPrompt,
+  }) async {
     final client = _clientFor(runtime.summary.provider);
     if (client == null) {
       throw StateError(
@@ -698,6 +711,7 @@ class AgentManager {
             modeId: runtime.summary.currentModeId,
             thinkingOptionId: runtime.summary.thinkingOptionId,
             featureValues: runtime.summary.featureValues,
+            systemPrompt: systemPrompt,
             sessionId: runtime.summary.sessionId,
             initialHistory: runtime.timeline.snapshot(),
             mcpServers: launchMcpServers,
@@ -709,14 +723,23 @@ class AgentManager {
             modeId: runtime.summary.currentModeId,
             thinkingOptionId: runtime.summary.thinkingOptionId,
             featureValues: runtime.summary.featureValues,
+            systemPrompt: systemPrompt,
             sessionId: runtime.summary.sessionId,
             initialHistory: runtime.timeline.snapshot(),
           );
+    return session;
+  }
+
+  void _attachSession(
+    AgentRuntime runtime,
+    AgentSession session, {
+    required bool restoreHistory,
+  }) {
     runtime.session = session;
     runtime.sessionSub = session.events.listen(
       (event) => _onProviderEvent(runtime, event),
     );
-    if (session is HistoryRestoringAgentSession) {
+    if (restoreHistory && session is HistoryRestoringAgentSession) {
       final history = session.restoredHistory;
       if (history != null) {
         runtime.timeline.rebuild(history);
@@ -733,6 +756,57 @@ class AgentManager {
         session.restoredProviderSubagents,
       );
     }
+  }
+
+  Future<AgentSummary> reloadAgentSession(
+    String agentId, {
+    required String? systemPrompt,
+  }) async {
+    final runtime = _runtime(agentId);
+    if (runtime.currentTurnId != null ||
+        runtime.summary.runState == AgentRunState.running ||
+        runtime.summary.runState == AgentRunState.awaitingPermission) {
+      await interrupt(agentId);
+      if (runtime.currentTurnId != null) {
+        _closeTurn(runtime, TurnPhase.canceled);
+      }
+      _setRunState(runtime, AgentRunState.idle);
+    }
+
+    final normalizedSystemPrompt = _normalizeOptionalText(systemPrompt);
+    final replacement = await _createProviderSession(
+      runtime,
+      systemPrompt: normalizedSystemPrompt,
+    );
+    final previousSession = runtime.session;
+    final previousSubscription = runtime.sessionSub;
+    runtime.session = null;
+    runtime.sessionSub = null;
+    await previousSubscription?.cancel();
+    try {
+      await previousSession?.dispose();
+    } catch (_) {
+      // The replacement is already live. A stale provider process failing to
+      // close must not roll the agent back to a canceled subscription.
+    }
+    runtime.summary = runtime.summary.copyWith(
+      systemPrompt: normalizedSystemPrompt,
+      updatedAt: DateTime.now().toUtc().toIso8601String(),
+    );
+    _attachSession(runtime, replacement, restoreHistory: false);
+    _persist(runtime);
+    await _store.flush();
+    _broadcastState(runtime);
+    return runtime.summary;
+  }
+
+  bool hasActiveAgentRun(String? agentId) {
+    if (agentId == null) return false;
+    final runtime = _runtimes[agentId];
+    if (runtime == null || runtime.archived) return false;
+    return runtime.currentTurnId != null ||
+        runtime.summary.runState == AgentRunState.running ||
+        runtime.summary.runState == AgentRunState.awaitingPermission;
   }
 
   AgentClient? _clientFor(String provider) =>
@@ -1656,6 +1730,11 @@ class AgentManager {
       ),
     );
   }
+}
+
+String? _normalizeOptionalText(String? value) {
+  final normalized = value?.trim();
+  return normalized == null || normalized.isEmpty ? null : normalized;
 }
 
 AgentMode _modeFromId(String modeId) => switch (modeId) {

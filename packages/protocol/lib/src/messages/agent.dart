@@ -82,6 +82,7 @@ final class AgentSummary {
     this.thinkingOptionId,
     this.currentModeId,
     this.featureValues = const {},
+    this.systemPrompt,
     this.lastUserMessageAt,
     this.lastError,
     this.labels = const {},
@@ -124,6 +125,7 @@ final class AgentSummary {
   final String? thinkingOptionId;
   final String? currentModeId;
   final Map<String, Object?> featureValues;
+  final String? systemPrompt;
   final String? lastUserMessageAt;
   final String? lastError;
   final Map<String, String> labels;
@@ -147,6 +149,7 @@ final class AgentSummary {
     Object? thinkingOptionId = _absentAgentField,
     Object? currentModeId = _absentAgentField,
     Map<String, Object?>? featureValues,
+    Object? systemPrompt = _absentAgentField,
     Object? lastUserMessageAt = _absentAgentField,
     Object? lastError = _absentAgentField,
     Map<String, String>? labels,
@@ -192,6 +195,9 @@ final class AgentSummary {
         ? this.currentModeId
         : currentModeId as String?,
     featureValues: featureValues ?? this.featureValues,
+    systemPrompt: identical(systemPrompt, _absentAgentField)
+        ? this.systemPrompt
+        : systemPrompt as String?,
     lastUserMessageAt: identical(lastUserMessageAt, _absentAgentField)
         ? this.lastUserMessageAt
         : lastUserMessageAt as String?,
@@ -236,6 +242,7 @@ final class AgentSummary {
             json['featureValues']! as Map<String, Object?>,
           )
         : const {},
+    systemPrompt: json['systemPrompt'] as String?,
     lastUserMessageAt: json['lastUserMessageAt'] as String?,
     lastError: json['lastError'] as String?,
     labels: json['labels'] is Map
@@ -270,6 +277,7 @@ final class AgentSummary {
     if (thinkingOptionId != null) 'thinkingOptionId': thinkingOptionId,
     if (currentModeId != null) 'currentModeId': currentModeId,
     if (featureValues.isNotEmpty) 'featureValues': featureValues,
+    if (systemPrompt != null) 'systemPrompt': systemPrompt,
     'lastUserMessageAt': lastUserMessageAt,
     if (lastError != null) 'lastError': lastError,
     'labels': labels,

@@ -5,6 +5,7 @@ final class ClaudeProcessConfig {
     required this.fastMode,
     this.model,
     this.thinkingOptionId,
+    this.systemPrompt,
     this.sessionId,
   });
 
@@ -13,6 +14,7 @@ final class ClaudeProcessConfig {
   final bool fastMode;
   final String? model;
   final String? thinkingOptionId;
+  final String? systemPrompt;
   final String? sessionId;
 }
 

@@ -31,6 +31,7 @@ class FakeClient implements AgentClient {
       AgentMode mode,
       String? modeId,
       String? sessionId,
+      String? systemPrompt,
       String? thinkingOptionId,
     })
   >
@@ -44,6 +45,7 @@ class FakeClient implements AgentClient {
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) async {
@@ -54,6 +56,7 @@ class FakeClient implements AgentClient {
       mode: mode,
       modeId: modeId,
       sessionId: sessionId,
+      systemPrompt: systemPrompt,
       thinkingOptionId: thinkingOptionId,
     ));
     return FakeSession();
@@ -70,6 +73,7 @@ void main() {
       modeId: 'accept-edits',
       thinkingOptionId: 'high',
       featureValues: const {'webSearch': true},
+      systemPrompt: 'Voice instructions',
     );
 
     expect(session, isA<AgentSession>());
@@ -79,6 +83,7 @@ void main() {
     expect(client.calls.single.modeId, 'accept-edits');
     expect(client.calls.single.thinkingOptionId, 'high');
     expect(client.calls.single.featureValues, {'webSearch': true});
+    expect(client.calls.single.systemPrompt, 'Voice instructions');
     expect(client.calls.single.sessionId, isNull);
   });
 

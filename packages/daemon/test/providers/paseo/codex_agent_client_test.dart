@@ -107,10 +107,7 @@ void main() {
       ),
     );
 
-    expect(features.map((feature) => feature.id), [
-      'fast_mode',
-      'plan_mode',
-    ]);
+    expect(features.map((feature) => feature.id), ['fast_mode', 'plan_mode']);
     expect((features.last as AgentFeatureToggle).value, isTrue);
   });
 
@@ -220,6 +217,29 @@ void main() {
       expect(params['sandbox'], entry.value.$2);
       expect(params['approvalsReviewer'], entry.value.$3);
     }
+  });
+
+  test('forwards system prompt as Codex developer instructions', () async {
+    final connection = _ThreadStartingConnection();
+    final client = CodexAgentClient(
+      resolveExecutable: () async => 'codex',
+      startConnection: (_) async => connection,
+    );
+    final session = await client.createSession(
+      cwd: 'C:/workspace',
+      model: 'gpt',
+      mode: AgentMode.normal,
+      systemPrompt: 'Voice instructions',
+    );
+    await session.prompt('go');
+    await session.dispose();
+
+    final params =
+        connection.requests
+                .singleWhere((request) => request.$1 == 'thread/start')
+                .$2
+            as Map<String, Object?>;
+    expect(params['developerInstructions'], 'Voice instructions');
   });
 
   test('uses exact Paseo mode and thinking option when supplied', () async {

@@ -132,6 +132,7 @@ class MockAgentClient implements AgentClient {
       AgentMode mode,
       String? modeId,
       String? sessionId,
+      String? systemPrompt,
       String? thinkingOptionId,
     })
   >
@@ -152,6 +153,7 @@ class MockAgentClient implements AgentClient {
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) async {
@@ -162,6 +164,7 @@ class MockAgentClient implements AgentClient {
       mode: mode,
       modeId: modeId,
       sessionId: sessionId,
+      systemPrompt: systemPrompt,
       thinkingOptionId: thinkingOptionId,
     ));
     final error = createSessionError;
@@ -601,17 +604,107 @@ void main() {
         modeId: 'accept-edits',
         thinkingOptionId: 'high',
         featureValues: const {'webSearch': true, 'effort': 'max'},
+        systemPrompt: '  Keep responses audible.  ',
       );
 
       expect(agent.currentModeId, 'accept-edits');
       expect(agent.thinkingOptionId, 'high');
       expect(agent.featureValues, {'webSearch': true, 'effort': 'max'});
+      expect(agent.systemPrompt, 'Keep responses audible.');
       expect(client.createCalls.single.modeId, 'accept-edits');
       expect(client.createCalls.single.thinkingOptionId, 'high');
       expect(client.createCalls.single.featureValues, {
         'webSearch': true,
         'effort': 'max',
       });
+      expect(client.createCalls.single.systemPrompt, 'Keep responses audible.');
+    },
+  );
+
+  test(
+    'reloadAgentSession preserves identity and timeline while swapping prompt',
+    () async {
+      final agent = await createAgent();
+      final first = client.sessions.single;
+      first.emit(const SessionStarted(sessionId: 'session-1'));
+      await pumpEventQueue();
+      await manager.prompt(agent.agentId, 'existing turn');
+      first.emit(
+        const AssistantMessageComplete(
+          itemId: 'assistant-1',
+          fullText: 'existing answer',
+        ),
+      );
+      first.emit(const TurnCompleted());
+      await pumpEventQueue();
+      final before = manager.fetchTimeline(agent.agentId);
+
+      final reloaded = await manager.reloadAgentSession(
+        agent.agentId,
+        systemPrompt: '  voice mode on  ',
+      );
+
+      expect(reloaded.agentId, agent.agentId);
+      expect(reloaded.sessionId, 'session-1');
+      expect(reloaded.systemPrompt, 'voice mode on');
+      expect(first.disposed, isTrue);
+      expect(client.sessions, hasLength(2));
+      expect(client.createCalls.last.systemPrompt, 'voice mode on');
+      expect(client.createCalls.last.sessionId, 'session-1');
+      final after = manager.fetchTimeline(agent.agentId);
+      expect(after.epoch, before.epoch);
+      expect(
+        after.items.map((item) => item.toJson()),
+        before.items.map((item) => item.toJson()),
+      );
+
+      final cleared = await manager.reloadAgentSession(
+        agent.agentId,
+        systemPrompt: null,
+      );
+      expect(cleared.systemPrompt, isNull);
+      expect(client.createCalls.last.systemPrompt, isNull);
+    },
+  );
+
+  test(
+    'reloadAgentSession leaves the current session intact on spawn failure',
+    () async {
+      final agent = await createAgent();
+      final first = client.sessions.single;
+      client.createSessionError = StateError('replacement failed');
+
+      await expectLater(
+        manager.reloadAgentSession(
+          agent.agentId,
+          systemPrompt: 'voice mode on',
+        ),
+        throwsStateError,
+      );
+
+      expect(first.disposed, isFalse);
+      expect(manager.get(agent.agentId)!.systemPrompt, isNull);
+      await manager.prompt(agent.agentId, 'still active');
+      expect(first.prompts, ['still active']);
+    },
+  );
+
+  test(
+    'reloadAgentSession interrupts an active turn before replacement',
+    () async {
+      final agent = await createAgent();
+      final first = client.sessions.single;
+      await manager.prompt(agent.agentId, 'running');
+      expect(manager.hasActiveAgentRun(agent.agentId), isTrue);
+
+      final reloaded = await manager.reloadAgentSession(
+        agent.agentId,
+        systemPrompt: 'voice mode on',
+      );
+
+      expect(first.interrupted, isTrue);
+      expect(reloaded.runState, AgentRunState.idle);
+      expect(manager.hasActiveAgentRun(agent.agentId), isFalse);
     },
   );
 
@@ -1338,6 +1431,10 @@ void main() {
     );
     session.emit(const TurnCompleted());
     await pumpEventQueue();
+    await manager.reloadAgentSession(
+      agent.agentId,
+      systemPrompt: 'Persisted voice instructions',
+    );
     await manager.dispose();
 
     final manager2 = AgentManager(
@@ -1348,6 +1445,7 @@ void main() {
     final restored = manager2.list().single;
     expect(restored.agentId, agent.agentId);
     expect(restored.sessionId, 'sess-1');
+    expect(restored.systemPrompt, 'Persisted voice instructions');
     expect(restored.runState, AgentRunState.idle);
     final timeline = manager2.fetchTimeline(agent.agentId);
     expect(
@@ -1357,6 +1455,10 @@ void main() {
     // Prompting the restored agent resumes the provider session.
     await manager2.prompt(agent.agentId, 'welcome back');
     expect(client.createCalls.last.sessionId, 'sess-1');
+    expect(
+      client.createCalls.last.systemPrompt,
+      'Persisted voice instructions',
+    );
     await manager2.dispose();
   });
 
