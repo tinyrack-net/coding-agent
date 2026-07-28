@@ -199,6 +199,46 @@ void main() {
     expect((persisted['agents'] as Map?)?['providers'], isNull);
   });
 
+  test('migrates frozen legacy provider runtime settings on load', () {
+    File(p.join(home.path, 'config.json')).writeAsStringSync(
+      jsonEncode({
+        'version': 1,
+        'agents': {
+          'providers': {
+            'claude': {
+              'command': {
+                'mode': 'replace',
+                'argv': ['docker', 'run', 'claude'],
+              },
+              'env': {'CLAUDE_CONFIG_DIR': '/custom'},
+            },
+            'codex': {
+              'command': {'mode': 'default'},
+              'env': {'CODEX_HOME': '/codex'},
+            },
+            'opencode': {
+              'command': {
+                'mode': 'append',
+                'args': ['--debug'],
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    final providers = DaemonConfigStore.load(home: home.path).config.providers;
+
+    expect(providers['claude']?.extra, {
+      'command': ['docker', 'run', 'claude'],
+      'env': {'CLAUDE_CONFIG_DIR': '/custom'},
+    });
+    expect(providers['codex']?.extra, {
+      'env': {'CODEX_HOME': '/codex'},
+    });
+    expect(providers, isNot(contains('opencode')));
+  });
+
   test(
     'provider persistence strips passthrough fields and validates overrides',
     () {

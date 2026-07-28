@@ -33,6 +33,7 @@ import 'providers/paseo/claude_agent_client.dart';
 import 'providers/paseo/generic_acp_agent_client.dart';
 import 'providers/paseo/provider_catalog_registry.dart';
 import 'providers/paseo/provider_catalog_v2_service.dart';
+import 'providers/paseo/provider_launch_config.dart';
 import 'providers/paseo/provider_manifest.dart';
 import 'providers/provider_registry.dart';
 import 'server/rpc_router.dart';
@@ -244,8 +245,16 @@ Future<DaemonServerHandle> startDaemonServer({
     clients:
         agentClients ??
         {
-          'claude': ClaudeAgentClient(),
-          'codex': CodexAgentClient(),
+          'claude': ClaudeAgentClient(
+            runtimeSettingsResolver: () => providerRuntimeSettingsFromOverride(
+              configStore.config.providers['claude'],
+            ),
+          ),
+          'codex': CodexAgentClient(
+            runtimeSettingsResolver: () => providerRuntimeSettingsFromOverride(
+              configStore.config.providers['codex'],
+            ),
+          ),
           for (final entry in ProviderCatalog.all)
             entry.id.name: NativeClient(
               providerId: entry.id,

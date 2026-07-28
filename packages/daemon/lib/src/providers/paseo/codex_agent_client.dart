@@ -10,6 +10,7 @@ import 'codex_app_server_client.dart';
 import 'codex_session_runtime.dart';
 import 'executable_resolver.dart';
 import 'jsonl_rpc_process.dart';
+import 'provider_launch_config.dart';
 import 'provider_manifest.dart';
 
 typedef CodexExecutableResolver = Future<String?> Function();
@@ -27,17 +28,22 @@ final class CodexAgentClient
     CodexExecutableResolver? resolveExecutable,
     CodexConnectionFactory? startConnection,
     Map<String, String>? environment,
+    ProviderRuntimeSettings? runtimeSettings,
+    ProviderRuntimeSettingsResolver? runtimeSettingsResolver,
   }) : _resolveExecutable =
            resolveExecutable ??
            (executableResolver ?? ExecutableResolver()).findCodex,
        _startConnection =
            startConnection ??
            ((launch) => CodexAppServerClient.start(launch: launch)),
-       _environment = environment ?? const {};
+       _environment = environment ?? const {},
+       _runtimeSettingsResolver =
+           runtimeSettingsResolver ?? (() => runtimeSettings);
 
   final CodexExecutableResolver _resolveExecutable;
   final CodexConnectionFactory _startConnection;
   final Map<String, String> _environment;
+  final ProviderRuntimeSettingsResolver _runtimeSettingsResolver;
 
   @override
   Future<List<AgentFeature>> listFeatures(
@@ -48,19 +54,20 @@ final class CodexAgentClient
   Future<List<ImportableProviderSession>> listImportableSessions([
     ListImportableSessionsOptions? options,
   ]) async {
-    final executable = await _resolveExecutable();
-    if (executable == null) {
-      throw StateError(
-        'Codex CLI is not installed or could not be resolved from PATH',
-      );
-    }
+    final resolvedLaunch = await _resolveLaunch();
+    final launch = resolvedLaunch.launch;
     final cwd = options?.cwd ?? Directory.current.path;
     final connection = await _startConnection(
       JsonlRpcLaunch(
-        command: executable,
-        args: const ['app-server'],
+        command: launch.command,
+        args: [...launch.args, 'app-server'],
         cwd: cwd,
-        environment: _environment,
+        environment: createProviderEnvironment(
+          baseEnvironment: Platform.environment,
+          runtimeSettings: resolvedLaunch.runtimeSettings,
+          overlays: [_environment],
+        ),
+        includeParentEnvironment: false,
       ),
     );
     try {
@@ -106,18 +113,19 @@ final class CodexAgentClient
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) async {
-    final executable = await _resolveExecutable();
-    if (executable == null) {
-      throw StateError(
-        'Codex CLI is not installed or could not be resolved from PATH',
-      );
-    }
+    final resolvedLaunch = await _resolveLaunch();
+    final launch = resolvedLaunch.launch;
     final connection = await _startConnection(
       JsonlRpcLaunch(
-        command: executable,
-        args: const ['app-server'],
+        command: launch.command,
+        args: [...launch.args, 'app-server'],
         cwd: cwd,
-        environment: _environment,
+        environment: createProviderEnvironment(
+          baseEnvironment: Platform.environment,
+          runtimeSettings: resolvedLaunch.runtimeSettings,
+          overlays: [_environment],
+        ),
+        includeParentEnvironment: false,
       ),
     );
     final runtime = CodexSessionRuntime(
@@ -139,6 +147,38 @@ final class CodexAgentClient
       await session.dispose();
       rethrow;
     }
+  }
+
+  Future<
+    ({ResolvedProviderLaunch launch, ProviderRuntimeSettings? runtimeSettings})
+  >
+  _resolveLaunch() async {
+    final runtimeSettings = _runtimeSettingsResolver();
+    final defaultBinary = ProviderLaunchDefault(
+      command: 'codex',
+      resolvePath: _resolveExecutable,
+    );
+    final launch = await resolveProviderLaunch(
+      commandConfig: runtimeSettings?.command,
+      defaultBinary: defaultBinary,
+    );
+    final availability = await checkProviderLaunchAvailable(
+      launch,
+      defaultBinary: defaultBinary,
+    );
+    if (!availability.available) {
+      throw StateError(
+        'Codex CLI is not installed or could not be resolved from PATH',
+      );
+    }
+    return (
+      launch: ResolvedProviderLaunch(
+        command: availability.resolvedPath ?? launch.command,
+        args: launch.args,
+        source: launch.source,
+      ),
+      runtimeSettings: runtimeSettings,
+    );
   }
 }
 

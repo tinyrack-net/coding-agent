@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
 
+import '../providers/paseo/provider_launch_config.dart';
+
 typedef DaemonConfigFieldListener = void Function(bool value);
 typedef DaemonConfigListener = void Function(MutableDaemonConfig config);
 
@@ -37,7 +39,16 @@ final class DaemonConfigStore {
     final config = MutableDaemonConfig.fromJson({
       'mcp': {'injectIntoAgents': mcp['injectIntoAgents'] == true},
       'browserTools': {'enabled': browserTools['enabled'] == true},
-      'providers': _normalizeProviderOverrides(_object(agents['providers'])),
+      'providers': _normalizeProviderOverrides(
+        migrateProviderSettings(_object(agents['providers']), const [
+          'claude',
+          'codex',
+          'copilot',
+          'opencode',
+          'pi',
+          'omp',
+        ]),
+      ),
       'metadataGeneration': {
         'providers': metadataGeneration['providers'] ?? const <Object?>[],
       },

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:uuid/uuid.dart';
@@ -10,6 +11,7 @@ import 'acp_catalog.dart';
 import 'acp_client_runtime.dart';
 import 'acp_history.dart';
 import 'acp_rpc_process.dart';
+import 'provider_launch_config.dart';
 
 typedef AcpCommandResolver = Future<String?> Function();
 
@@ -87,7 +89,7 @@ final class GenericAcpAgentClient
       executable: executable,
       commandArgs: commandArgs,
       cwd: cwd,
-      environment: environment,
+      environment: _providerEnvironment(),
       model: model,
       modeId: modeId,
       thinkingOptionId: thinkingOptionId,
@@ -116,7 +118,7 @@ final class GenericAcpAgentClient
       executable: executable,
       commandArgs: commandArgs,
       cwd: cwd,
-      environment: {...environment, 'NO_BROWSER': 'true'},
+      environment: _providerEnvironment(const {'NO_BROWSER': 'true'}),
       model: '',
       modeId: null,
       thinkingOptionId: null,
@@ -145,7 +147,8 @@ final class GenericAcpAgentClient
         command: executable,
         args: commandArgs,
         cwd: options?.cwd ?? '.',
-        environment: {...environment, 'NO_BROWSER': 'true'},
+        environment: _providerEnvironment(const {'NO_BROWSER': 'true'}),
+        includeParentEnvironment: false,
       ),
       diagnosticName: '$provider ACP session list',
       onIncoming: (method, _) {
@@ -216,6 +219,12 @@ final class GenericAcpAgentClient
     }
     return executable;
   }
+
+  Map<String, String> _providerEnvironment([Map<String, String?>? overlay]) =>
+      createProviderEnvironment(
+        baseEnvironment: Platform.environment,
+        overlays: [environment, overlay],
+      );
 }
 
 final class _PendingAcpPermission {
@@ -329,6 +338,7 @@ final class GenericAcpAgentSession
           args: commandArgs,
           cwd: cwd,
           environment: environment,
+          includeParentEnvironment: false,
         ),
         diagnosticName: '$provider ACP',
         onIncoming: _handleIncoming,

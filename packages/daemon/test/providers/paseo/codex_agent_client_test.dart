@@ -1,10 +1,12 @@
 import 'package:agent_daemon/src/providers/paseo/codex_agent_client.dart';
 import 'package:agent_daemon/src/providers/paseo/codex_app_server_client.dart';
 import 'package:agent_daemon/src/providers/paseo/jsonl_rpc_process.dart';
+import 'package:agent_daemon/src/providers/paseo/provider_launch_config.dart';
 import 'package:agent_daemon/src/providers/agent_client.dart';
 import 'package:agent_daemon/src/providers/agent_session.dart';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:test/test.dart';
+import 'dart:io';
 
 final class _ClientConnection implements CodexAppServerConnection {
   final requests = <(String, Object?, Duration?)>[];
@@ -174,7 +176,12 @@ void main() {
     expect(capturedLaunch?.command, 'C:/bin/codex.exe');
     expect(capturedLaunch?.args, ['app-server']);
     expect(capturedLaunch?.cwd, 'C:/workspace');
-    expect(capturedLaunch?.environment, {'CODEX_HOME': 'C:/codex-home'});
+    expect(
+      capturedLaunch?.environment,
+      containsPair('CODEX_HOME', 'C:/codex-home'),
+    );
+    expect(capturedLaunch?.environment, containsPair('PATH', isNotEmpty));
+    expect(capturedLaunch?.includeParentEnvironment, isFalse);
     expect(connection.requests.map((request) => request.$1), [
       'initialize',
       'thread/loaded/list',
@@ -186,6 +193,38 @@ void main() {
               as AssistantMessageItem)
           .text,
       'restored',
+    );
+  });
+
+  test('applies provider command prefix and runtime environment', () async {
+    final connection = _ClientConnection();
+    JsonlRpcLaunch? capturedLaunch;
+    final client = CodexAgentClient(
+      runtimeSettings: ProviderRuntimeSettings(
+        command: ProviderCommand.replace([
+          Platform.resolvedExecutable,
+          'codex-wrapper',
+        ]),
+        environment: const {'CODEX_RUNTIME': 'configured'},
+      ),
+      startConnection: (launch) async {
+        capturedLaunch = launch;
+        return connection;
+      },
+    );
+
+    final session = await client.createSession(
+      cwd: 'C:/workspace',
+      model: 'gpt-5.4',
+      mode: AgentMode.normal,
+    );
+    addTearDown(session.dispose);
+
+    expect(capturedLaunch?.command, Platform.resolvedExecutable);
+    expect(capturedLaunch?.args, ['codex-wrapper', 'app-server']);
+    expect(
+      capturedLaunch?.environment,
+      containsPair('CODEX_RUNTIME', 'configured'),
     );
   });
 

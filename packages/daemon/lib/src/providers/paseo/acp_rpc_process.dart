@@ -20,12 +20,14 @@ final class AcpRpcProcessLaunch {
     required this.args,
     required this.cwd,
     this.environment = const {},
+    this.includeParentEnvironment = true,
   });
 
   final String command;
   final List<String> args;
   final String cwd;
   final Map<String, String> environment;
+  final bool includeParentEnvironment;
 }
 
 final class AcpRpcError implements Exception {
@@ -105,6 +107,8 @@ final class AcpRpcProcess {
   late final StreamSubscription<String> _stdoutSubscription;
   late final StreamSubscription<String> _stderrSubscription;
   late final StreamSubscription<int> _exitSubscription;
+  final Completer<void> _exitCleanup = Completer<void>();
+  Future<void>? _closeFuture;
 
   var _stderrBuffer = '';
   var _stdoutBuffer = '';
@@ -150,18 +154,29 @@ final class AcpRpcProcess {
     _send({'jsonrpc': '2.0', 'method': method, 'params': params});
   }
 
-  Future<void> close([StateError? error]) async {
-    if (_disposed) return;
+  Future<void> close([StateError? error]) => _closeFuture ??= _close(error);
+
+  Future<void> _close(StateError? error) async {
+    if (_disposed) {
+      await _waitForExitCleanup();
+      return;
+    }
     _failAll(error ?? StateError('$diagnosticName process is closed'));
     try {
       await _process.stdin.close();
     } on Object {
       // The child may close stdin before shutdown reaches this point.
     }
-    if (_exited) return;
+    if (_exited) {
+      await _waitForExitCleanup();
+      return;
+    }
 
     _process.kill();
-    if (await _waitForExit(_gracefulShutdownTimeout)) return;
+    if (await _waitForExit(_gracefulShutdownTimeout)) {
+      await _waitForExitCleanup();
+      return;
+    }
     await _forceKillProcessTree(_process);
     if (!await _waitForExit(_forceShutdownTimeout)) {
       _warningSink(
@@ -169,6 +184,8 @@ final class AcpRpcProcess {
         null,
         null,
       );
+    } else {
+      await _waitForExitCleanup();
     }
   }
 
@@ -271,6 +288,7 @@ final class AcpRpcProcess {
   }
 
   void _handleExit(int code) {
+    if (_exited) return;
     _exited = true;
     final error = StateError(
       '$diagnosticName process exited with code $code${_stderrSuffix()}',
@@ -280,10 +298,23 @@ final class AcpRpcProcess {
       subscriber(exit);
     }
     _failAll(error);
-    unawaited(_stdoutSubscription.cancel());
-    unawaited(_stderrSubscription.cancel());
-    unawaited(_exitSubscription.cancel());
+    unawaited(_cleanupExitSubscriptions());
   }
+
+  Future<void> _cleanupExitSubscriptions() async {
+    try {
+      await Future.wait([
+        _stdoutSubscription.cancel(),
+        _stderrSubscription.cancel(),
+        _exitSubscription.cancel(),
+      ]);
+    } finally {
+      if (!_exitCleanup.isCompleted) _exitCleanup.complete();
+    }
+  }
+
+  Future<void> _waitForExitCleanup() =>
+      _exited ? _exitCleanup.future : Future.value();
 
   void _failAll(StateError error) {
     if (_disposed) return;
@@ -301,7 +332,8 @@ final class AcpRpcProcess {
   Future<bool> _waitForExit(Duration timeout) async {
     if (_exited) return true;
     try {
-      await _process.exitCode.timeout(timeout);
+      final code = await _process.exitCode.timeout(timeout);
+      _handleExit(code);
       return true;
     } on TimeoutException {
       return false;
@@ -326,7 +358,7 @@ Future<Process> _spawnProcess(AcpRpcProcessLaunch launch) {
     launch.args,
     workingDirectory: launch.cwd,
     environment: launch.environment,
-    includeParentEnvironment: true,
+    includeParentEnvironment: launch.includeParentEnvironment,
     runInShell:
         Platform.isWindows &&
         (command.endsWith('.cmd') || command.endsWith('.bat')),

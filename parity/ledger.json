@@ -11019,12 +11019,17 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/provider-launch-config.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/providers/paseo/executable_resolver.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/provider_launch_config.dart; packages/daemon/lib/src/providers/paseo/executable_resolver.dart; packages/daemon/lib/src/providers/paseo/claude_agent_client.dart; packages/daemon/lib/src/providers/paseo/codex_agent_client.dart; packages/daemon/lib/src/providers/paseo/generic_acp_agent_client.dart; packages/daemon/lib/src/server/daemon_config_store.dart; packages/daemon/lib/src/daemon_server.dart",
       "evidence": [
-        "packages/daemon/test/providers/paseo/executable_resolver_test.dart"
+        "packages/daemon/test/providers/paseo/provider_launch_config_test.dart",
+        "packages/daemon/test/providers/paseo/claude_agent_client_test.dart",
+        "packages/daemon/test/providers/paseo/codex_agent_client_test.dart",
+        "packages/daemon/test/providers/paseo/generic_acp_agent_client_test.dart",
+        "packages/daemon/test/daemon_config_store_test.dart",
+        "packages/daemon/test/daemon_custom_acp_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Matches frozen default, append, and replace launch selection; availability resolution; command-prefix behavior; shell environment caching; legacy provider-setting migration; ordered environment overlays; parent Claude-session removal; and external runtime-control sanitization. Built-in Claude/Codex and ACP launches consume live daemon overrides and start with an explicit complete environment. The 85-test launch/provider/config smoke passed three concurrent independent runs, provider_launch_config.dart covered 155/156 lines, and the 93-test daemon/provider boundary suite passed. JSONL and ACP shutdown now await process stream cleanup, removing a Windows parallel-test file-handle race."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/provider-notices.ts",

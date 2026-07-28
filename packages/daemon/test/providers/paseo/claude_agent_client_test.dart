@@ -9,6 +9,7 @@ import 'package:agent_daemon/src/providers/paseo/claude_agent_session.dart';
 import 'package:agent_daemon/src/providers/paseo/claude_history.dart';
 import 'package:agent_daemon/src/providers/paseo/claude_stream_connection.dart';
 import 'package:agent_daemon/src/providers/paseo/jsonl_rpc_process.dart';
+import 'package:agent_daemon/src/providers/paseo/provider_launch_config.dart';
 import 'package:agent_daemon/src/providers/provider_event.dart';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
@@ -65,7 +66,9 @@ void main() {
     final modified = DateTime.utc(2026, 7, 28, 3);
     session.setLastModifiedSync(modified);
     final client = ClaudeAgentClient(
-      environment: {'CLAUDE_CONFIG_DIR': temp.path},
+      runtimeSettings: ProviderRuntimeSettings(
+        environment: {'CLAUDE_CONFIG_DIR': temp.path},
+      ),
     );
 
     final sessions = await client.listImportableSessions(
@@ -141,13 +144,16 @@ void main() {
         '--settings={"fastMode":true}',
       ]),
     );
-    expect(launch?.environment, {
-      'CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING': 'true',
-      'CLAUDE_CODE_ENTRYPOINT': 'sdk-ts',
-      'MCP_TIMEOUT': '600000',
-      'MCP_TOOL_TIMEOUT': '600000',
-      'CLAUDE_CONFIG_DIR': 'C:/claude',
-    });
+    expect(launch?.environment, containsPair('PATH', isNotEmpty));
+    expect(
+      launch?.environment,
+      containsPair('CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING', 'true'),
+    );
+    expect(launch?.environment, containsPair('MCP_TIMEOUT', '600000'));
+    expect(launch?.environment, containsPair('MCP_TOOL_TIMEOUT', '600000'));
+    expect(launch?.environment, containsPair('CLAUDE_CONFIG_DIR', 'C:/claude'));
+    expect(launch?.environment, isNot(contains('CLAUDE_CODE_ENTRYPOINT')));
+    expect(launch?.includeParentEnvironment, isFalse);
     expect(connection.sent.single['type'], 'control_request');
     expect((connection.sent.single['request'] as Map)['subtype'], 'initialize');
   });
@@ -208,6 +214,35 @@ void main() {
       expect(changed.last.kind, AgentSlashCommandKind.command);
     },
   );
+
+  test('applies provider command prefix and runtime environment', () async {
+    final connection = _FakeClaudeConnection();
+    JsonlRpcLaunch? launch;
+    final client = ClaudeAgentClient(
+      runtimeSettings: ProviderRuntimeSettings(
+        command: ProviderCommand.replace([
+          Platform.resolvedExecutable,
+          'claude-wrapper',
+        ]),
+        environment: const {'CLAUDE_RUNTIME': 'configured'},
+      ),
+      startConnection: (value) async {
+        launch = value;
+        return connection;
+      },
+    );
+
+    final session = await client.createSession(
+      cwd: 'C:/workspace',
+      model: 'claude-sonnet-4',
+      mode: AgentMode.normal,
+    );
+    addTearDown(session.dispose);
+
+    expect(launch?.command, Platform.resolvedExecutable);
+    expect(launch?.args.first, 'claude-wrapper');
+    expect(launch?.environment, containsPair('CLAUDE_RUNTIME', 'configured'));
+  });
 
   test(
     'surfaces Claude initialize control errors from command listing',

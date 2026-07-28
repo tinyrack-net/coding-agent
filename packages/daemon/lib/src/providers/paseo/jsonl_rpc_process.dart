@@ -18,12 +18,14 @@ final class JsonlRpcLaunch {
     required this.args,
     required this.cwd,
     this.environment = const {},
+    this.includeParentEnvironment = true,
   });
 
   final String command;
   final List<String> args;
   final String cwd;
   final Map<String, String> environment;
+  final bool includeParentEnvironment;
 }
 
 final class JsonlRpcExit {
@@ -91,6 +93,8 @@ final class JsonlRpcProcess {
   late final StreamSubscription<String> _stdoutSubscription;
   late final StreamSubscription<String> _stderrSubscription;
   late final StreamSubscription<int> _exitSubscription;
+  final Completer<void> _exitCleanup = Completer<void>();
+  Future<void>? _closeFuture;
 
   var _stderrBuffer = '';
   var _stdoutBuffer = '';
@@ -158,8 +162,11 @@ final class JsonlRpcProcess {
     }
   }
 
-  Future<void> close([StateError? error]) async {
+  Future<void> close([StateError? error]) => _closeFuture ??= _close(error);
+
+  Future<void> _close(StateError? error) async {
     if (_disposed) {
+      await _waitForExitCleanup();
       return;
     }
     _failAll(error ?? StateError('$diagnosticName process is closed'));
@@ -169,11 +176,13 @@ final class JsonlRpcProcess {
       // Ignore cleanup races.
     }
     if (_exited) {
+      await _waitForExitCleanup();
       return;
     }
 
     _process.kill();
     if (await _waitForExit(_gracefulShutdownTimeout)) {
+      await _waitForExitCleanup();
       return;
     }
 
@@ -190,6 +199,8 @@ final class JsonlRpcProcess {
         null,
         null,
       );
+    } else {
+      await _waitForExitCleanup();
     }
   }
 
@@ -277,6 +288,7 @@ final class JsonlRpcProcess {
   }
 
   void _handleExit(int code) {
+    if (_exited) return;
     _exited = true;
     final error = StateError(
       '$diagnosticName process exited with code $code and signal null'
@@ -287,10 +299,23 @@ final class JsonlRpcProcess {
       subscriber(exit);
     }
     _failAll(error);
-    unawaited(_stdoutSubscription.cancel());
-    unawaited(_stderrSubscription.cancel());
-    unawaited(_exitSubscription.cancel());
+    unawaited(_cleanupExitSubscriptions());
   }
+
+  Future<void> _cleanupExitSubscriptions() async {
+    try {
+      await Future.wait([
+        _stdoutSubscription.cancel(),
+        _stderrSubscription.cancel(),
+        _exitSubscription.cancel(),
+      ]);
+    } finally {
+      if (!_exitCleanup.isCompleted) _exitCleanup.complete();
+    }
+  }
+
+  Future<void> _waitForExitCleanup() =>
+      _exited ? _exitCleanup.future : Future.value();
 
   void _failAll(StateError error) {
     if (_disposed) {
@@ -313,7 +338,8 @@ final class JsonlRpcProcess {
       return true;
     }
     try {
-      await _process.exitCode.timeout(timeout);
+      final code = await _process.exitCode.timeout(timeout);
+      _handleExit(code);
       return true;
     } on TimeoutException {
       return false;
@@ -331,7 +357,7 @@ Future<Process> _spawnProcess(JsonlRpcLaunch launch) {
     launch.args,
     workingDirectory: launch.cwd,
     environment: launch.environment,
-    includeParentEnvironment: true,
+    includeParentEnvironment: launch.includeParentEnvironment,
     runInShell: runInShell,
   );
 }

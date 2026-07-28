@@ -12,6 +12,7 @@ import 'claude_process_config.dart';
 import 'claude_stream_connection.dart';
 import 'executable_resolver.dart';
 import 'jsonl_rpc_process.dart';
+import 'provider_launch_config.dart';
 import 'provider_manifest.dart';
 
 typedef ClaudeExecutableResolver = Future<String?> Function();
@@ -28,17 +29,22 @@ final class ClaudeAgentClient
     ClaudeExecutableResolver? resolveExecutable,
     ClaudeConnectionFactory? startConnection,
     Map<String, String>? environment,
+    ProviderRuntimeSettings? runtimeSettings,
+    ProviderRuntimeSettingsResolver? runtimeSettingsResolver,
   }) : _resolveExecutable =
            resolveExecutable ??
            (() => (executableResolver ?? ExecutableResolver()).find('claude')),
        _startConnection =
            startConnection ??
            ((launch) => ClaudeJsonlConnection.start(launch: launch)),
-       _environment = environment ?? const {};
+       _environment = environment ?? const {},
+       _runtimeSettingsResolver =
+           runtimeSettingsResolver ?? (() => runtimeSettings);
 
   final ClaudeExecutableResolver _resolveExecutable;
   final ClaudeConnectionFactory _startConnection;
   final Map<String, String> _environment;
+  final ProviderRuntimeSettingsResolver _runtimeSettingsResolver;
 
   @override
   Future<List<AgentFeature>> listFeatures(
@@ -49,7 +55,7 @@ final class ClaudeAgentClient
   Future<List<ImportableProviderSession>> listImportableSessions([
     ListImportableSessionsOptions? options,
   ]) async {
-    final environment = {...Platform.environment, ..._environment};
+    final environment = _providerEnvironment(_runtimeSettingsResolver());
     final configDir =
         environment['CLAUDE_CONFIG_DIR'] ??
         p.join(
@@ -88,12 +94,9 @@ final class ClaudeAgentClient
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) async {
-    final executable = await _resolveExecutable();
-    if (executable == null) {
-      throw StateError(
-        'Claude Code CLI is not installed or could not be resolved from PATH',
-      );
-    }
+    final resolvedLaunch = await _resolveLaunch();
+    final launch = resolvedLaunch.launch;
+    final runtimeSettings = resolvedLaunch.runtimeSettings;
     final config = ClaudeProcessConfig(
       cwd: cwd,
       permissionMode: modeId ?? _modeId(mode),
@@ -108,13 +111,14 @@ final class ClaudeAgentClient
         : await loadClaudeHistorySnapshot(
             cwd: cwd,
             sessionId: config.sessionId!,
-            environment: {...Platform.environment, ..._environment},
+            environment: _providerEnvironment(runtimeSettings),
           );
-    final connection = await _launch(executable, config);
+    final connection = await _launch(launch, config, runtimeSettings);
     final session = ClaudeAgentSession(
       connection,
       config: config,
-      restartConnection: (nextConfig) => _launch(executable, nextConfig),
+      restartConnection: (nextConfig) =>
+          _launch(launch, nextConfig, runtimeSettings),
       restoredHistory: history?.timeline,
       restoredProviderSubagents: history?.providerSubagents ?? const [],
     );
@@ -123,10 +127,12 @@ final class ClaudeAgentClient
   }
 
   Future<ClaudeStreamConnection> _launch(
-    String executable,
+    ResolvedProviderLaunch launch,
     ClaudeProcessConfig config,
+    ProviderRuntimeSettings? runtimeSettings,
   ) {
     final args = <String>[
+      ...launch.args,
       '--output-format',
       'stream-json',
       '--verbose',
@@ -162,19 +168,66 @@ final class ClaudeAgentClient
     ];
     return _startConnection(
       JsonlRpcLaunch(
-        command: executable,
+        command: launch.command,
         args: args,
         cwd: config.cwd,
-        environment: {
-          'CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING': 'true',
-          'CLAUDE_CODE_ENTRYPOINT': 'sdk-ts',
-          'MCP_TIMEOUT': '600000',
-          'MCP_TOOL_TIMEOUT': '600000',
-          ..._environment,
-        },
+        environment: createProviderEnvironment(
+          baseEnvironment: Platform.environment,
+          runtimeSettings: runtimeSettings,
+          overlays: [
+            const {
+              'CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING': 'true',
+              'MCP_TIMEOUT': '600000',
+              'MCP_TOOL_TIMEOUT': '600000',
+            },
+            _environment,
+          ],
+        ),
+        includeParentEnvironment: false,
       ),
     );
   }
+
+  Future<
+    ({ResolvedProviderLaunch launch, ProviderRuntimeSettings? runtimeSettings})
+  >
+  _resolveLaunch() async {
+    final runtimeSettings = _runtimeSettingsResolver();
+    final defaultBinary = ProviderLaunchDefault(
+      command: 'claude',
+      resolvePath: _resolveExecutable,
+    );
+    final launch = await resolveProviderLaunch(
+      commandConfig: runtimeSettings?.command,
+      defaultBinary: defaultBinary,
+    );
+    final availability = await checkProviderLaunchAvailable(
+      launch,
+      defaultBinary: defaultBinary,
+    );
+    if (!availability.available) {
+      throw StateError(
+        'Claude Code CLI is not installed or could not be resolved from PATH',
+      );
+    }
+    return (
+      launch: ResolvedProviderLaunch(
+        command: availability.resolvedPath ?? launch.command,
+        args: launch.args,
+        source: launch.source,
+      ),
+      runtimeSettings: runtimeSettings,
+    );
+  }
+
+  Map<String, String> _providerEnvironment(
+    ProviderRuntimeSettings? runtimeSettings, [
+    Map<String, String?>? overlay,
+  ]) => createProviderEnvironment(
+    baseEnvironment: Platform.environment,
+    runtimeSettings: runtimeSettings,
+    overlays: [_environment, overlay],
+  );
 }
 
 final class _ClaudeSessionFile {
