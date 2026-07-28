@@ -10763,9 +10763,11 @@
         "packages/daemon/test/agent_attention_policy_test.dart",
         "packages/daemon/test/daemon_v2_workspace_e2e_test.dart",
         "packages/daemon/test/daemon_agent_continuation_e2e_test.dart",
+        "packages/daemon/test/daemon_custom_acp_e2e_test.dart",
+        "packages/daemon/test/schedule/schedule_agent_runner_test.dart",
         "packages/app/test/daemon_client_v2_e2e_test.dart"
       ],
-      "notes": "Lifecycle persistence, workspace ownership, managed parentage, detach/archive propagation, edge-triggered attention, permission notifications, durable clear, heartbeat-aware notification selection, exact v2 clear assembly, atomic initial prompt sequencing, and runtime-only internal agents with global event, attention, provider-subagent, list, lookup, and persistence suppression are ported. Remaining gaps include the rest of the provider process contracts, Hub push dispatch, import/resume, and the full snapshot contract."
+      "notes": "Lifecycle persistence, workspace ownership, managed parentage, detach/archive propagation, edge-triggered attention, permission notifications, durable clear, heartbeat-aware notification selection, exact v2 clear assembly, atomic initial prompt sequencing, import/resume, and runtime-only internal agents with global event, attention, provider-subagent, list, lookup, and persistence suppression are ported. User-configured MCP session config is persisted outside public summaries and forwarded through direct and scheduled ACP creation. Runtime Tinyrack MCP injection, the rest of the provider process contracts, Hub push dispatch, and the full snapshot contract remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-owner.ts",
@@ -11042,13 +11044,14 @@
     {
       "id": "source-unit:packages/server/src/server/agent/providers/acp-agent.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/providers/paseo/acp_rpc_process.dart;packages/daemon/lib/src/providers/paseo/acp_history.dart;packages/daemon/lib/src/providers/paseo/generic_acp_agent_client.dart;packages/daemon/lib/src/providers/provider_event.dart;packages/daemon/lib/src/agent/agent_manager.dart",
+      "implementation": "packages/daemon/lib/src/providers/paseo/acp_rpc_process.dart;packages/daemon/lib/src/providers/paseo/acp_history.dart;packages/daemon/lib/src/providers/paseo/acp_client_runtime.dart;packages/daemon/lib/src/providers/paseo/generic_acp_agent_client.dart;packages/daemon/lib/src/providers/provider_event.dart;packages/daemon/lib/src/agent/agent_manager.dart",
       "evidence": [
         "packages/daemon/test/providers/paseo/acp_history_test.dart",
+        "packages/daemon/test/providers/paseo/acp_client_runtime_test.dart",
         "packages/daemon/test/providers/paseo/generic_acp_agent_client_test.dart",
         "packages/daemon/test/daemon_custom_acp_e2e_test.dart"
       ],
-      "notes": "ACP JSON-RPC initialization, new/load/resume sessions, text/reasoning/tool streaming, slash commands, permission selection, usage, cancellation, process exit, and structured text attachments are normalized through the shared daemon runtime. Capability-gated paginated session/list forwards cwd and limit, while session/load coalesces user content blocks, stable assistant/reasoning ids, tool snapshots, and plans into an authoritative import timeline. Explicit and config-option model/mode/thinking selection plus workspace catalog probing use the frozen derivation precedence, grouped selectors, shared thinking options, normalized cwd caching, and NO_BROWSER probe environment. MCP injection, live image/audio/resource blocks, richer tool details, client fs/terminal methods, diagnostics, close capability, and provider-specific config feature mapping remain."
+      "notes": "ACP JSON-RPC initialization, new/load/resume sessions, text/reasoning/tool streaming, slash commands, permission selection, usage, cancellation, process exit, and structured text attachments are normalized through the shared daemon runtime. Capability-gated paginated session/list forwards cwd and limit, while session/load coalesces user content blocks, stable assistant/reasoning ids, tool snapshots, and plans into an authoritative import timeline. Frozen client capability defaults and overrides now drive recursive fs read/write and owned terminal create/output/wait/kill/release requests, including byte-boundary truncation and disposal. User stdio/http/sse MCP servers are normalized and consistently supplied to new/load/resume when supported. Runtime Tinyrack MCP injection, live image/audio/resource blocks, richer tool details, diagnostics, close capability, and provider-specific config feature mapping remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/claude/agent.ts",
@@ -11246,15 +11249,16 @@
     {
       "id": "source-unit:packages/server/src/server/agent/providers/generic-acp-agent.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/providers/paseo/acp_catalog.dart;packages/daemon/lib/src/providers/paseo/acp_history.dart;packages/daemon/lib/src/providers/paseo/acp_rpc_process.dart;packages/daemon/lib/src/providers/paseo/generic_acp_agent_client.dart;packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart",
+      "implementation": "packages/daemon/lib/src/providers/paseo/acp_catalog.dart;packages/daemon/lib/src/providers/paseo/acp_history.dart;packages/daemon/lib/src/providers/paseo/acp_client_runtime.dart;packages/daemon/lib/src/providers/paseo/acp_rpc_process.dart;packages/daemon/lib/src/providers/paseo/generic_acp_agent_client.dart;packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart",
       "evidence": [
         "packages/daemon/test/providers/paseo/acp_catalog_test.dart",
         "packages/daemon/test/providers/paseo/acp_history_test.dart",
+        "packages/daemon/test/providers/paseo/acp_client_runtime_test.dart",
         "packages/daemon/test/providers/paseo/generic_acp_agent_client_test.dart",
         "packages/daemon/test/providers/paseo/provider_catalog_registry_test.dart",
         "packages/daemon/test/daemon_custom_acp_e2e_test.dart"
       ],
-      "notes": "Configured generic ACP processes now support initialize, new/load/resume sessions, prompt streaming, permissions, cancellation, commands, explicit or config-option model/mode/thinking selection, isolated workspace catalog probes, capability-gated paginated native-session discovery, and authoritative load-history import through the live daemon. MCP injection, client fs/terminal methods, live rich content, richer tool details, diagnostics, and close capability remain."
+      "notes": "Configured generic ACP processes now support initialize, new/load/resume sessions, prompt streaming, permissions, cancellation, commands, explicit or config-option model/mode/thinking selection, isolated workspace catalog probes, capability-gated paginated native-session discovery, authoritative load-history import, provider client-capability overrides, fs/terminal client requests, and normalized user MCP servers through the live daemon. Runtime Tinyrack MCP injection, live rich content, richer tool details, diagnostics, and close capability remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/jsonl-rpc-process.ts",

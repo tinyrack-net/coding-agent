@@ -22,6 +22,7 @@ void main() {
     String agentId = 'agent-1',
     String cwd = r'C:\proj',
     bool internal = false,
+    Map<String, Object?> mcpServers = const {},
   }) => PersistedAgent(
     summary: AgentSummary(
       agentId: agentId,
@@ -55,6 +56,7 @@ void main() {
       ),
     ],
     internal: internal,
+    mcpServers: mcpServers,
   );
 
   group('AgentStore', () {
@@ -94,6 +96,32 @@ void main() {
         expect(legacy.internal, isFalse);
       },
     );
+
+    test('MCP session config round-trips outside the public summary', () async {
+      final store = AgentStore(dataDir: tempDir.path);
+      await store.save(
+        record(
+          mcpServers: const {
+            'local': {
+              'type': 'stdio',
+              'command': 'dart',
+              'args': ['run', 'server.dart'],
+            },
+          },
+        ),
+      );
+
+      final loaded = (await store.loadAll()).single;
+      expect(loaded.mcpServers, {
+        'local': {
+          'type': 'stdio',
+          'command': 'dart',
+          'args': ['run', 'server.dart'],
+        },
+      });
+      expect(loaded.summary.toJson(), isNot(contains('mcpServers')));
+      expect(PersistedAgent.fromJson(record().toJson()).mcpServers, isEmpty);
+    });
 
     test('scheduleSave debounces and flush() forces the write', () async {
       final store = AgentStore(

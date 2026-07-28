@@ -41,12 +41,14 @@ final class AgentRuntime {
     required this.timeline,
     this.archived = false,
     this.internal = false,
+    this.mcpServers = const {},
   });
 
   AgentSummary summary;
   TimelineStore timeline;
   bool archived;
   final bool internal;
+  final Map<String, Object?> mcpServers;
 
   AgentSession? session;
   StreamSubscription<ProviderEvent>? sessionSub;
@@ -150,6 +152,7 @@ class AgentManager {
         ),
         archived: record.archived,
         internal: record.internal,
+        mcpServers: record.mcpServers,
       );
       runtime.timeline.onItem = _onTimelineItem;
       _runtimes[record.summary.agentId] = runtime;
@@ -556,6 +559,7 @@ class AgentManager {
     String? modeId,
     String? thinkingOptionId,
     Map<String, Object?> featureValues = const {},
+    Map<String, Object?> mcpServers = const {},
     String? title,
     String? workspaceId,
     String? projectPath,
@@ -603,6 +607,7 @@ class AgentManager {
       ),
       timeline: TimelineStore(agentId: agentId),
       internal: internal,
+      mcpServers: Map.unmodifiable(mcpServers),
     );
     runtime.timeline.onItem = _onTimelineItem;
     _runtimes[agentId] = runtime;
@@ -637,16 +642,28 @@ class AgentManager {
         "Provider '${runtime.summary.provider}' is no longer configured",
       );
     }
-    final session = await client.createSession(
-      cwd: runtime.summary.cwd,
-      model: runtime.summary.model,
-      mode: runtime.summary.mode,
-      modeId: runtime.summary.currentModeId,
-      thinkingOptionId: runtime.summary.thinkingOptionId,
-      featureValues: runtime.summary.featureValues,
-      sessionId: runtime.summary.sessionId,
-      initialHistory: runtime.timeline.snapshot(),
-    );
+    final session = client is McpAgentClient
+        ? await client.createSessionWithMcp(
+            cwd: runtime.summary.cwd,
+            model: runtime.summary.model,
+            mode: runtime.summary.mode,
+            modeId: runtime.summary.currentModeId,
+            thinkingOptionId: runtime.summary.thinkingOptionId,
+            featureValues: runtime.summary.featureValues,
+            sessionId: runtime.summary.sessionId,
+            initialHistory: runtime.timeline.snapshot(),
+            mcpServers: runtime.mcpServers,
+          )
+        : await client.createSession(
+            cwd: runtime.summary.cwd,
+            model: runtime.summary.model,
+            mode: runtime.summary.mode,
+            modeId: runtime.summary.currentModeId,
+            thinkingOptionId: runtime.summary.thinkingOptionId,
+            featureValues: runtime.summary.featureValues,
+            sessionId: runtime.summary.sessionId,
+            initialHistory: runtime.timeline.snapshot(),
+          );
     runtime.session = session;
     runtime.sessionSub = session.events.listen(
       (event) => _onProviderEvent(runtime, event),
@@ -1430,6 +1447,7 @@ class AgentManager {
         lastSeq: runtime.timeline.lastSeq,
         items: runtime.timeline.snapshot(),
         rows: runtime.timeline.snapshotRows(),
+        mcpServers: runtime.mcpServers,
       ),
     );
   }

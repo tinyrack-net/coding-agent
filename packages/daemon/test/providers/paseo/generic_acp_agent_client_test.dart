@@ -186,6 +186,109 @@ void main() {
     expect((session as HistoryRestoringAgentSession).restoredHistory, isNull);
   });
 
+  test(
+    'advertises client overrides and projects configured MCP servers',
+    () async {
+      final configured = client(
+        environment: const {'ACP_FIXTURE_EXPECT_CLIENT_RUNTIME': 'true'},
+      );
+      final runtimeClient = GenericAcpAgentClient(
+        provider: configured.provider,
+        command: configured.command,
+        commandArgs: configured.commandArgs,
+        environment: configured.environment,
+        providerParams: const {
+          'supportsMcpServers': true,
+          'clientCapabilities': {
+            'fs': {'readTextFile': true, 'writeTextFile': true},
+            'terminal': true,
+          },
+        },
+        resolveCommand: () async => Platform.resolvedExecutable,
+      );
+      final session = await runtimeClient.createSessionWithMcp(
+        cwd: Directory.current.path,
+        model: '',
+        mode: AgentMode.normal,
+        mcpServers: const {
+          'local': {
+            'type': 'stdio',
+            'command': 'dart',
+            'args': ['run', 'server.dart'],
+            'env': {'TOKEN': 'test'},
+          },
+          'remote': {
+            'type': 'http',
+            'url': 'http://127.0.0.1/mcp',
+            'headers': {'Authorization': 'Bearer test'},
+          },
+        },
+      );
+      addTearDown(session.dispose);
+      expect(
+        await eventOf<SessionStarted>(session.events),
+        isA<SessionStarted>(),
+      );
+    },
+  );
+
+  test(
+    'drops configured MCP servers when provider support is disabled',
+    () async {
+      final session =
+          await GenericAcpAgentClient(
+            provider: 'fixture-acp',
+            command: 'dart',
+            commandArgs: [fixturePath()],
+            environment: const {'ACP_FIXTURE_EXPECT_NO_MCP': 'true'},
+            providerParams: const {'supportsMcpServers': false},
+            resolveCommand: () async => Platform.resolvedExecutable,
+          ).createSessionWithMcp(
+            cwd: Directory.current.path,
+            model: '',
+            mode: AgentMode.normal,
+            mcpServers: const {
+              'remote': {'type': 'http', 'url': 'http://127.0.0.1/mcp'},
+            },
+          );
+      addTearDown(session.dispose);
+      expect(
+        await eventOf<SessionStarted>(session.events),
+        isA<SessionStarted>(),
+      );
+    },
+  );
+
+  test(
+    'serves ACP filesystem and terminal client requests end to end',
+    () async {
+      final session =
+          await GenericAcpAgentClient(
+            provider: 'fixture-acp',
+            command: 'dart',
+            commandArgs: [fixturePath()],
+            environment: const {'ACP_FIXTURE_EXERCISE_CLIENT_RUNTIME': 'true'},
+            providerParams: const {
+              'clientCapabilities': {
+                'fs': {'readTextFile': true, 'writeTextFile': true},
+                'terminal': true,
+              },
+            },
+            resolveCommand: () async => Platform.resolvedExecutable,
+          ).createSession(
+            cwd: Directory.current.path,
+            model: '',
+            mode: AgentMode.normal,
+          );
+      addTearDown(session.dispose);
+
+      expect(
+        await eventOf<SessionStarted>(session.events),
+        isA<SessionStarted>(),
+      );
+    },
+  );
+
   test('lists paginated ACP sessions with cwd filtering and limit', () async {
     final cwd = Directory.current.path;
     final sessions = await client().listImportableSessions(

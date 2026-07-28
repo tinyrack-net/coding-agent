@@ -43,8 +43,17 @@ void main() {
                 'extends': 'acp',
                 'label': 'Fixture ACP',
                 'command': [Platform.resolvedExecutable, fixturePath()],
-                'env': const {'ACP_FIXTURE_ENV': 'configured'},
-                'params': const {'supportsMcpServers': false},
+                'env': const {
+                  'ACP_FIXTURE_ENV': 'configured',
+                  'ACP_FIXTURE_EXPECT_CLIENT_RUNTIME': 'true',
+                },
+                'params': const {
+                  'supportsMcpServers': true,
+                  'clientCapabilities': {
+                    'fs': {'readTextFile': true, 'writeTextFile': true},
+                    'terminal': true,
+                  },
+                },
               },
             ),
           },
@@ -115,6 +124,19 @@ void main() {
         model: '',
         mode: AgentMode.normal,
         title: 'Custom ACP',
+        mcpServers: const {
+          'local': {
+            'type': 'stdio',
+            'command': 'dart',
+            'args': ['run', 'server.dart'],
+            'env': {'TOKEN': 'test'},
+          },
+          'remote': {
+            'type': 'http',
+            'url': 'http://127.0.0.1/mcp',
+            'headers': {'Authorization': 'Bearer test'},
+          },
+        },
       );
       await pumpEventQueue();
 

@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 Object? pendingPromptId;
+Object? pendingRuntimeSessionId;
+String? pendingRuntimeTerminalId;
+String? pendingRuntimeFile;
 var pendingPromptWaitsForCancel = false;
 var configMode = 'default';
 var configModel = 'base-model';
@@ -17,6 +20,12 @@ bool get malformedSessionList =>
     Platform.environment['ACP_FIXTURE_MALFORMED_LIST'] == 'true';
 bool get failSessionLoad =>
     Platform.environment['ACP_FIXTURE_LOAD_FAIL'] == 'true';
+bool get expectClientRuntime =>
+    Platform.environment['ACP_FIXTURE_EXPECT_CLIENT_RUNTIME'] == 'true';
+bool get expectNoMcp =>
+    Platform.environment['ACP_FIXTURE_EXPECT_NO_MCP'] == 'true';
+bool get exerciseClientRuntime =>
+    Platform.environment['ACP_FIXTURE_EXERCISE_CLIENT_RUNTIME'] == 'true';
 
 List<Map<String, Object?>> configOnlyOptions() => [
   {
@@ -72,6 +81,100 @@ void main() {
     final id = message['id'];
     final params = map(message['params'] ?? const {});
 
+    if (method == null && exerciseClientRuntime) {
+      switch ('$id') {
+        case '600':
+          if (map(message['result']).isNotEmpty) {
+            throw StateError('unexpected write result');
+          }
+          send({
+            'jsonrpc': '2.0',
+            'id': 601,
+            'method': 'fs/read_text_file',
+            'params': {
+              'sessionId': 'session-1',
+              'path': pendingRuntimeFile,
+              'line': 2,
+              'limit': 1,
+            },
+          });
+          return;
+        case '601':
+          final result = map(message['result']);
+          if (result['content'] != 'two') {
+            throw StateError('unexpected read result: ${result['content']}');
+          }
+          File(pendingRuntimeFile!).deleteSync();
+          send({
+            'jsonrpc': '2.0',
+            'id': 602,
+            'method': 'terminal/create',
+            'params': {
+              'sessionId': 'session-1',
+              'command': Platform.resolvedExecutable,
+              'args': [
+                Platform.script.resolve('acp_terminal_child.dart').toFilePath(),
+                'rpc',
+              ],
+              'cwd': Directory.current.path,
+              'env': [
+                {'name': 'ACP_TERMINAL_ENV', 'value': 'rpc'},
+              ],
+              'outputByteLimit': 200,
+            },
+          });
+          return;
+        case '602':
+          pendingRuntimeTerminalId =
+              map(message['result'])['terminalId']! as String;
+          send({
+            'jsonrpc': '2.0',
+            'id': 603,
+            'method': 'terminal/wait_for_exit',
+            'params': {
+              'sessionId': 'session-1',
+              'terminalId': pendingRuntimeTerminalId,
+            },
+          });
+          return;
+        case '603':
+          if (map(message['result'])['exitCode'] != 0) {
+            throw StateError('terminal did not exit successfully');
+          }
+          send({
+            'jsonrpc': '2.0',
+            'id': 604,
+            'method': 'terminal/output',
+            'params': {
+              'sessionId': 'session-1',
+              'terminalId': pendingRuntimeTerminalId,
+            },
+          });
+          return;
+        case '604':
+          final output = map(message['result'])['output'] as String;
+          if (!output.contains('stdout:rpc') ||
+              !output.contains(':stderr:rpc')) {
+            throw StateError('unexpected terminal output: $output');
+          }
+          send({
+            'jsonrpc': '2.0',
+            'id': 605,
+            'method': 'terminal/release',
+            'params': {
+              'sessionId': 'session-1',
+              'terminalId': pendingRuntimeTerminalId,
+            },
+          });
+          return;
+        case '605':
+          respond(pendingRuntimeSessionId, {'sessionId': 'session-1'});
+          pendingRuntimeSessionId = null;
+          pendingRuntimeTerminalId = null;
+          return;
+      }
+    }
+
     if (method == null && '$id' == '500') {
       final result = map(message['result']);
       final outcome = map(result['outcome']);
@@ -123,6 +226,23 @@ void main() {
             'error': {'code': -32602, 'message': 'invalid initialize'},
           });
           return;
+        }
+        if (expectClientRuntime) {
+          final clientCapabilities = map(params['clientCapabilities']);
+          final filesystem = map(clientCapabilities['fs']);
+          if (filesystem['readTextFile'] != true ||
+              filesystem['writeTextFile'] != true ||
+              clientCapabilities['terminal'] != true) {
+            send({
+              'jsonrpc': '2.0',
+              'id': id,
+              'error': {
+                'code': -32602,
+                'message': 'missing client runtime capabilities',
+              },
+            });
+            return;
+          }
         }
         send({
           'jsonrpc': '2.0',
@@ -254,6 +374,60 @@ void main() {
         }
         respond(id, {'sessionId': loadedSessionId});
       case 'session/new':
+        final mcpServers = params['mcpServers'];
+        if (expectNoMcp && (mcpServers is! List || mcpServers.isNotEmpty)) {
+          send({
+            'jsonrpc': '2.0',
+            'id': id,
+            'error': {'code': -32602, 'message': 'MCP must be disabled'},
+          });
+          return;
+        }
+        if (expectClientRuntime &&
+            Platform.environment['NO_BROWSER'] != 'true') {
+          if (mcpServers is! List || mcpServers.length != 2) {
+            send({
+              'jsonrpc': '2.0',
+              'id': id,
+              'error': {'code': -32602, 'message': 'missing MCP servers'},
+            });
+            return;
+          }
+          final stdio = map(mcpServers[0]);
+          final http = map(mcpServers[1]);
+          if (stdio['name'] != 'local' ||
+              stdio['command'] != 'dart' ||
+              (stdio['args'] as List).join(' ') != 'run server.dart' ||
+              map((stdio['env'] as List).single)['name'] != 'TOKEN' ||
+              http['type'] != 'http' ||
+              http['name'] != 'remote' ||
+              map((http['headers'] as List).single)['name'] !=
+                  'Authorization') {
+            send({
+              'jsonrpc': '2.0',
+              'id': id,
+              'error': {'code': -32602, 'message': 'invalid MCP projection'},
+            });
+            return;
+          }
+        }
+        if (exerciseClientRuntime) {
+          pendingRuntimeSessionId = id;
+          pendingRuntimeFile =
+              '${Directory.systemTemp.path}${Platform.pathSeparator}'
+              'acp-runtime-$pid.txt';
+          send({
+            'jsonrpc': '2.0',
+            'id': 600,
+            'method': 'fs/write_text_file',
+            'params': {
+              'sessionId': 'session-1',
+              'path': pendingRuntimeFile,
+              'content': 'one\ntwo\nthree',
+            },
+          });
+          return;
+        }
         if (configOnly) {
           respond(id, {
             'sessionId': 'session-1',

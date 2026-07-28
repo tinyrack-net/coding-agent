@@ -23,6 +23,7 @@ final class PersistedAgent {
     required this.items,
     this.rows = const [],
     this.internal = false,
+    this.mcpServers = const {},
   });
 
   final AgentSummary summary;
@@ -32,22 +33,32 @@ final class PersistedAgent {
   final List<TimelineItem> items;
   final List<TimelineRow> rows;
   final bool internal;
+  final Map<String, Object?> mcpServers;
 
-  static PersistedAgent fromJson(Map<String, Object?> json) => PersistedAgent(
-    summary: AgentSummary.fromJson(json['summary'] as Map<String, Object?>),
-    archived: (json['archived'] as bool?) ?? false,
-    epoch: (json['epoch'] as num?)?.toInt() ?? 1,
-    lastSeq: (json['lastSeq'] as num?)?.toInt() ?? 0,
-    items: ((json['items'] as List?) ?? const [])
-        .cast<Map<String, Object?>>()
-        .map(TimelineItem.fromJson)
-        .toList(),
-    rows: ((json['rows'] as List?) ?? const [])
-        .cast<Map<String, Object?>>()
-        .map(TimelineRow.fromJson)
-        .toList(),
-    internal: (json['internal'] as bool?) ?? false,
-  );
+  static PersistedAgent fromJson(Map<String, Object?> json) {
+    final config = json['config'];
+    final mcpServers = config is Map && config['mcpServers'] is Map
+        ? Map<String, Object?>.unmodifiable(
+            Map<String, Object?>.from(config['mcpServers']! as Map),
+          )
+        : const <String, Object?>{};
+    return PersistedAgent(
+      summary: AgentSummary.fromJson(json['summary'] as Map<String, Object?>),
+      archived: (json['archived'] as bool?) ?? false,
+      epoch: (json['epoch'] as num?)?.toInt() ?? 1,
+      lastSeq: (json['lastSeq'] as num?)?.toInt() ?? 0,
+      items: ((json['items'] as List?) ?? const [])
+          .cast<Map<String, Object?>>()
+          .map(TimelineItem.fromJson)
+          .toList(),
+      rows: ((json['rows'] as List?) ?? const [])
+          .cast<Map<String, Object?>>()
+          .map(TimelineRow.fromJson)
+          .toList(),
+      internal: (json['internal'] as bool?) ?? false,
+      mcpServers: mcpServers,
+    );
+  }
 
   Map<String, Object?> toJson() => {
     'summary': summary.toJson(),
@@ -57,6 +68,7 @@ final class PersistedAgent {
     'items': items.map((i) => i.toJson()).toList(),
     if (rows.isNotEmpty) 'rows': rows.map((row) => row.toJson()).toList(),
     if (internal) 'internal': true,
+    if (mcpServers.isNotEmpty) 'config': {'mcpServers': mcpServers},
   };
 }
 

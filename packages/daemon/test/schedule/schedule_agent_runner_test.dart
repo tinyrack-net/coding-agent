@@ -95,6 +95,9 @@ void main() {
             cwd: temp.path,
             model: 'gpt-5.4',
             archiveOnFinish: true,
+            mcpServers: const {
+              'review': {'type': 'http', 'url': 'http://127.0.0.1/mcp'},
+            },
           ),
         ),
       ),
@@ -106,6 +109,9 @@ void main() {
     expect(records.first.agentId, isNull);
     expect(records.last.agentId, result.agentId);
     expect(manager.list(), isEmpty);
+    expect(client.mcpCalls.single, {
+      'review': {'type': 'http', 'url': 'http://127.0.0.1/mcp'},
+    });
     expect(
       (await registries.workspaces.get(result.workspaceId!))?.archivedAt,
       isNotNull,
@@ -147,8 +153,9 @@ StoredSchedule _schedule({String? name, required ScheduleTarget target}) =>
       runs: const [],
     );
 
-final class _AutoClient implements AgentClient {
+final class _AutoClient implements AgentClient, McpAgentClient {
   final sessions = <_AutoSession>[];
+  final mcpCalls = <Map<String, Object?>>[];
 
   @override
   Future<AgentSession> createSession({
@@ -164,6 +171,31 @@ final class _AutoClient implements AgentClient {
     final session = _AutoSession();
     sessions.add(session);
     return session;
+  }
+
+  @override
+  Future<AgentSession> createSessionWithMcp({
+    required String cwd,
+    required String model,
+    required AgentMode mode,
+    String? modeId,
+    String? thinkingOptionId,
+    Map<String, Object?> featureValues = const {},
+    String? sessionId,
+    List<TimelineItem> initialHistory = const [],
+    Map<String, Object?> mcpServers = const {},
+  }) {
+    mcpCalls.add(mcpServers);
+    return createSession(
+      cwd: cwd,
+      model: model,
+      mode: mode,
+      modeId: modeId,
+      thinkingOptionId: thinkingOptionId,
+      featureValues: featureValues,
+      sessionId: sessionId,
+      initialHistory: initialHistory,
+    );
   }
 }
 

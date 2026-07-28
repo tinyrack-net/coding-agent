@@ -7,13 +7,14 @@ import '../agent_client.dart';
 import '../agent_session.dart';
 import '../provider_event.dart';
 import 'acp_catalog.dart';
+import 'acp_client_runtime.dart';
 import 'acp_history.dart';
 import 'acp_rpc_process.dart';
 
 typedef AcpCommandResolver = Future<String?> Function();
 
 final class GenericAcpAgentClient
-    implements AgentClient, ImportableAgentClient {
+    implements AgentClient, McpAgentClient, ImportableAgentClient {
   const GenericAcpAgentClient({
     required this.provider,
     required this.command,
@@ -44,6 +45,28 @@ final class GenericAcpAgentClient
     Map<String, Object?> featureValues = const {},
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
+  }) => createSessionWithMcp(
+    cwd: cwd,
+    model: model,
+    mode: mode,
+    modeId: modeId,
+    thinkingOptionId: thinkingOptionId,
+    featureValues: featureValues,
+    sessionId: sessionId,
+    initialHistory: initialHistory,
+  );
+
+  @override
+  Future<AgentSession> createSessionWithMcp({
+    required String cwd,
+    required String model,
+    required AgentMode mode,
+    String? modeId,
+    String? thinkingOptionId,
+    Map<String, Object?> featureValues = const {},
+    String? sessionId,
+    List<TimelineItem> initialHistory = const [],
+    Map<String, Object?> mcpServers = const {},
   }) async {
     final executable = await _resolveCommand();
     if (executable == null) {
@@ -63,6 +86,10 @@ final class GenericAcpAgentClient
       featureValues: featureValues,
       resumeSessionId: sessionId,
       fallbackModes: fallbackModes,
+      mcpServers: acpSupportsMcpServers(providerParams)
+          ? normalizeAcpMcpServers(mcpServers)
+          : const [],
+      clientCapabilities: buildAcpClientCapabilities(providerParams),
       processStarter: processStarter,
     );
     await session.initialize();
@@ -88,6 +115,8 @@ final class GenericAcpAgentClient
       featureValues: const {},
       resumeSessionId: null,
       fallbackModes: fallbackModes,
+      mcpServers: const [],
+      clientCapabilities: buildAcpClientCapabilities(providerParams),
       processStarter: processStarter,
     );
     try {
@@ -119,7 +148,10 @@ final class GenericAcpAgentClient
       spawn: processStarter,
     );
     try {
-      final initialized = await _initializeAcp(rpc);
+      final initialized = await _initializeAcp(
+        rpc,
+        buildAcpClientCapabilities(providerParams),
+      );
       final capabilities =
           _map(initialized['agentCapabilities']) ?? const <String, Object?>{};
       final sessionCapabilities =
@@ -219,6 +251,8 @@ final class GenericAcpAgentSession
     required this.featureValues,
     required this.resumeSessionId,
     required this.fallbackModes,
+    required this.mcpServers,
+    required this.clientCapabilities,
     this.processStarter,
   }) {
     _events = StreamController<ProviderEvent>.broadcast(sync: true);
@@ -237,6 +271,8 @@ final class GenericAcpAgentSession
   final Map<String, Object?> featureValues;
   final String? resumeSessionId;
   final List<ProviderMode> fallbackModes;
+  final List<Map<String, Object?>> mcpServers;
+  final Map<String, Object?> clientCapabilities;
   final AcpRpcProcessStarter? processStarter;
 
   late final StreamController<ProviderEvent> _events;
@@ -246,6 +282,10 @@ final class GenericAcpAgentSession
   final Map<String, Object?> _sessionState = {};
 
   AcpRpcProcess? _rpc;
+  late final AcpClientRuntime _clientRuntime = AcpClientRuntime(
+    cwd: cwd,
+    environment: environment,
+  );
   AcpHistoryProjector? _historyProjector;
   late AcpProviderCatalog _catalog;
   List<TimelineItem>? _restoredHistory;
@@ -293,7 +333,7 @@ final class GenericAcpAgentSession
         }
       });
 
-      final initialized = await _initializeAcp(rpc);
+      final initialized = await _initializeAcp(rpc, clientCapabilities);
       final capabilities =
           _map(initialized['agentCapabilities']) ?? const <String, Object?>{};
       final sessionCapabilities =
@@ -305,7 +345,7 @@ final class GenericAcpAgentSession
       if (requestedSessionId == null) {
         response = await rpc.request('session/new', {
           'cwd': cwd,
-          'mcpServers': const [],
+          'mcpServers': mcpServers,
         });
       } else {
         _sessionId = requestedSessionId;
@@ -344,7 +384,11 @@ final class GenericAcpAgentSession
     required bool loadSession,
     required bool resumeSession,
   }) {
-    final params = {'sessionId': sessionId, 'cwd': cwd, 'mcpServers': const []};
+    final params = {
+      'sessionId': sessionId,
+      'cwd': cwd,
+      'mcpServers': mcpServers,
+    };
     if (loadSession) return rpc.request('session/load', params);
     if (resumeSession) return rpc.request('session/resume', params);
     throw StateError('$provider does not support ACP session resume');
@@ -416,6 +460,7 @@ final class GenericAcpAgentSession
     _disposed = true;
     _intentionalClose = true;
     await interrupt();
+    await _clientRuntime.dispose();
     final rpc = _rpc;
     _rpc = null;
     if (rpc != null) await rpc.close();
@@ -503,6 +548,9 @@ final class GenericAcpAgentSession
     String method,
     Map<String, Object?> params,
   ) async {
+    if (_clientRuntime.supports(method)) {
+      return _clientRuntime.handle(method, params);
+    }
     switch (method) {
       case 'session/update':
         _handleSessionUpdate(params);
@@ -751,6 +799,7 @@ final class GenericAcpAgentSession
 
   Future<void> _closeAfterInitializationFailure() async {
     _intentionalClose = true;
+    await _clientRuntime.dispose();
     final rpc = _rpc;
     _rpc = null;
     if (rpc != null) await rpc.close();
@@ -811,18 +860,17 @@ String _requestErrorMessage(Object? error) {
   return record?['message'] as String? ?? error.toString();
 }
 
-Future<Map<String, Object?>> _initializeAcp(AcpRpcProcess rpc) async =>
-    _requiredMap(
-      await rpc.request('initialize', {
-        'protocolVersion': 1,
-        'clientCapabilities': {
-          'fs': {'readTextFile': false, 'writeTextFile': false},
-          'terminal': false,
-        },
-        'clientInfo': {'name': 'Tinyrack', 'version': '0.2.0'},
-      }),
-      'initialize result',
-    );
+Future<Map<String, Object?>> _initializeAcp(
+  AcpRpcProcess rpc,
+  Map<String, Object?> clientCapabilities,
+) async => _requiredMap(
+  await rpc.request('initialize', {
+    'protocolVersion': 1,
+    'clientCapabilities': clientCapabilities,
+    'clientInfo': {'name': 'Tinyrack', 'version': '0.2.0'},
+  }),
+  'initialize result',
+);
 
 bool _capabilityEnabled(Map<String, Object?> capabilities, String key) =>
     capabilities.containsKey(key) &&

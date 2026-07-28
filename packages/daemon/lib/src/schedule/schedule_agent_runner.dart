@@ -96,6 +96,7 @@ final class ScheduleAgentRunner {
         modeId: config.modeId,
         thinkingOptionId: config.thinkingOptionId,
         featureValues: config.featureValues ?? const {},
+        mcpServers: config.mcpServers ?? const {},
         title: config.title ?? _title(schedule.summary.prompt),
         workspaceId: workspace.workspaceId,
         projectPath: workspace.mainRepoRoot,

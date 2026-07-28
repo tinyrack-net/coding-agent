@@ -380,6 +380,9 @@ Future<DaemonServerHandle> startDaemonServer({
           featureValues: payload['features'] is Map
               ? Map<String, Object?>.from(payload['features']! as Map)
               : const {},
+          mcpServers: payload['mcpServers'] is Map
+              ? Map<String, Object?>.from(payload['mcpServers']! as Map)
+              : const {},
           title: payload['title'] as String?,
           workspaceId: workspaceId,
           projectPath: payload['projectPath'] as String?,

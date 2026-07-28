@@ -56,6 +56,22 @@ abstract interface class AgentClient {
   });
 }
 
+/// Provider client that accepts the persisted MCP server portion of an agent
+/// session configuration.
+abstract interface class McpAgentClient implements AgentClient {
+  Future<AgentSession> createSessionWithMcp({
+    required String cwd,
+    required String model,
+    required AgentMode mode,
+    String? modeId,
+    String? thinkingOptionId,
+    Map<String, Object?> featureValues = const {},
+    String? sessionId,
+    List<TimelineItem> initialHistory = const [],
+    Map<String, Object?> mcpServers = const {},
+  });
+}
+
 abstract interface class DraftCommandListingAgentClient implements AgentClient {
   Future<List<AgentSlashCommand>> listCommands(ListCommandsDraftConfig config);
 }
