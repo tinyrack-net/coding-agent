@@ -16,9 +16,13 @@ final class WorkspaceGitObserverSnapshot {
 }
 
 final class WorkspaceGitSubscription {
-  const WorkspaceGitSubscription({required this.unsubscribe});
+  const WorkspaceGitSubscription({
+    required this.unsubscribe,
+    this.unsubscribeAndWait,
+  });
 
   final void Function() unsubscribe;
+  final Future<void> Function()? unsubscribeAndWait;
 }
 
 abstract interface class WorkspaceGitObserverBackend {

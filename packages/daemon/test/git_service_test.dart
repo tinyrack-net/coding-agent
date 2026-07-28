@@ -122,6 +122,61 @@ void main() {
       expect(branches.trim(), isNotEmpty);
     });
 
+    test(
+      'checkout fetches a remote-only branch into the requested slug',
+      () async {
+        final remote = p.join(tempDir.path, 'remote.git');
+        await _git(['init', '--bare', remote], tempDir.path);
+        await _git(['remote', 'add', 'origin', remote], repo);
+        await _git(['push', '-u', 'origin', 'main'], repo);
+        await _git(['checkout', '-b', 'remote-feature'], repo);
+        File(p.join(repo, 'remote.txt')).writeAsStringSync('remote\n');
+        await _git(['add', '-A'], repo);
+        await _commit(repo, 'remote feature');
+        await _git(['push', 'origin', 'remote-feature'], repo);
+        await _git(['checkout', 'main'], repo);
+        await _git(['branch', '-D', 'remote-feature'], repo);
+
+        final created = await service.createWorktree(
+          repo,
+          'remote-feature',
+          worktreeSlug: 'remote-copy',
+          requireExistingBranch: true,
+        );
+
+        expect(created.branch, 'remote-feature');
+        expect(p.basename(created.path), 'remote-copy');
+        expect(
+          File(p.join(created.path, 'remote.txt')).readAsStringSync(),
+          'remote\n',
+        );
+        await service.archiveWorktree(created.path);
+      },
+    );
+
+    test('change-request refs create unique local review branches', () async {
+      final remote = p.join(tempDir.path, 'remote.git');
+      await _git(['init', '--bare', remote], tempDir.path);
+      await _git(['remote', 'add', 'origin', remote], repo);
+      await _git(['push', 'origin', 'HEAD:refs/pull/42/head'], repo);
+      await _git(['branch', 'pr-42'], repo);
+
+      final created = await service.createWorktree(
+        repo,
+        'pr-42',
+        worktreeSlug: 'review-42',
+        fetchRef: 'refs/pull/42/head',
+      );
+
+      expect(created.branch, 'pr-42-2');
+      expect(p.basename(created.path), 'review-42');
+      expect(
+        (await _git(['rev-parse', 'HEAD'], created.path)).trim(),
+        (await _git(['rev-parse', 'refs/pull/42/head'], remote)).trim(),
+      );
+      await service.archiveWorktree(created.path);
+    });
+
     test('create with baseRef branches off that ref instead of HEAD', () async {
       await _git(['branch', 'base-branch'], repo);
       File(p.join(repo, 'readme.md')).writeAsStringSync('hello\nworld\nmore\n');

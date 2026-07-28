@@ -130,14 +130,26 @@ final class PollingWorkspaceGitBackend implements WorkspaceGitObserverBackend {
     );
     unawaited(refreshNow(normalized));
     var subscribed = true;
+    Future<void>? inFlightAtUnsubscribe;
+    void unsubscribe() {
+      if (!subscribed) return;
+      subscribed = false;
+      target.listeners.remove(onSnapshot);
+      if (target.listeners.isEmpty) {
+        target.timer?.cancel();
+        inFlightAtUnsubscribe = target.refreshInFlight;
+        _targets.remove(normalized);
+      }
+    }
+
     return WorkspaceGitSubscription(
-      unsubscribe: () {
-        if (!subscribed) return;
-        subscribed = false;
-        target.listeners.remove(onSnapshot);
-        if (target.listeners.isEmpty) {
-          target.timer?.cancel();
-          _targets.remove(normalized);
+      unsubscribe: unsubscribe,
+      unsubscribeAndWait: () async {
+        unsubscribe();
+        try {
+          await inFlightAtUnsubscribe;
+        } on Object {
+          // The target may disappear while its final snapshot is settling.
         }
       },
     );

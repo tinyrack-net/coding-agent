@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
 
+import '../forge/git_remote.dart';
 import 'git_runner.dart';
 import 'unified_diff_parser.dart';
 import 'worktree_metadata.dart';
@@ -87,35 +88,66 @@ class GitService {
     String projectPath,
     String branch, {
     String? baseRef,
+    String? worktreeSlug,
+    bool requireExistingBranch = false,
+    String? fetchRef,
   }) async {
     final metadataBaseRef = baseRef ?? await currentBranch(projectPath);
     final projectName = p.basename(p.normalize(projectPath));
-    final sanitized = sanitizeBranch(branch);
+    final sanitized = sanitizeBranch(worktreeSlug ?? branch);
     final worktreesDir = Directory(p.join(dataDir, 'worktrees'));
     await worktreesDir.create(recursive: true);
 
-    var target = p.join(worktreesDir.path, '$projectName-$sanitized');
-    var suffix = 2;
+    final targetName = worktreeSlug == null
+        ? '$projectName-$sanitized'
+        : sanitized;
+    var target = p.join(worktreesDir.path, targetName);
+    var suffix = worktreeSlug == null ? 2 : 1;
     while (Directory(target).existsSync() || File(target).existsSync()) {
-      target = p.join(worktreesDir.path, '$projectName-$sanitized-$suffix');
+      target = p.join(worktreesDir.path, '$targetName-$suffix');
       suffix++;
     }
 
-    final branchExists = (await runner.run(
+    var effectiveBranch = branch;
+    if (fetchRef != null) {
+      effectiveBranch = await _uniqueLocalBranch(projectPath, branch);
+      await runner.run([
+        'fetch',
+        'origin',
+        '$fetchRef:refs/heads/$effectiveBranch',
+      ], cwd: projectPath);
+    }
+
+    var branchExists = (await runner.run(
       ['rev-parse', '--verify', '--quiet', 'refs/heads/$branch'],
       cwd: projectPath,
       check: false,
     )).ok;
+    if (fetchRef != null) {
+      branchExists = true;
+    } else if (!branchExists && requireExistingBranch) {
+      await runner.run([
+        'fetch',
+        'origin',
+        'refs/heads/$branch:refs/heads/$branch',
+      ], cwd: projectPath);
+      branchExists = true;
+    }
 
     if (branchExists) {
-      await runner.run(['worktree', 'add', target, branch], cwd: projectPath);
+      await runner.run([
+        'worktree',
+        'add',
+        target,
+        effectiveBranch,
+      ], cwd: projectPath);
     } else {
       await runner.run([
         'worktree',
         'add',
         target,
         '-b',
-        branch,
+        effectiveBranch,
         if (baseRef != null) baseRef,
       ], cwd: projectPath);
     }
@@ -125,12 +157,40 @@ class GitService {
       (w) => p.equals(_canonical(w.path), canonicalTarget),
       orElse: () => WorktreeInfo(
         path: p.normalize(target),
-        branch: branch,
+        branch: effectiveBranch,
         projectPath: p.normalize(projectPath),
       ),
     );
     writeWorktreeBaseMetadata(created.path, baseRefName: metadataBaseRef);
     return created;
+  }
+
+  Future<String> _uniqueLocalBranch(
+    String projectPath,
+    String candidate,
+  ) async {
+    var result = candidate;
+    var suffix = 2;
+    while ((await runner.run(
+      ['rev-parse', '--verify', '--quiet', 'refs/heads/$result'],
+      cwd: projectPath,
+      check: false,
+    )).ok) {
+      result = '$candidate-$suffix';
+      suffix++;
+    }
+    return result;
+  }
+
+  Future<String?> resolveOriginForge(String projectPath) async {
+    final remote = await runner.run(
+      ['config', '--get', 'remote.origin.url'],
+      cwd: projectPath,
+      check: false,
+    );
+    if (!remote.ok || remote.stdout.trim().isEmpty) return null;
+    final location = parseGitRemoteLocation(remote.stdout.trim());
+    return location == null ? null : forgeForKnownHost(location.host);
   }
 
   /// Recreates an archived worktree at its original durable path.
@@ -198,13 +258,65 @@ class GitService {
         throw GitDirtyWorktreeException(path: path, uncommittedPaths: dirty);
       }
     }
-    // Run from the main checkout so we are not deleting our own cwd.
-    await runner.run([
-      'worktree',
-      'remove',
-      '--force',
-      path,
-    ], cwd: info.projectPath);
+    // Run from the main checkout so we are not deleting our own cwd. Windows
+    // can transiently keep a file handle after git unregisters the worktree;
+    // Paseo retries that partial-removal state before reporting failure.
+    GitException? lastError;
+    for (final delay in const [
+      Duration.zero,
+      Duration(milliseconds: 50),
+      Duration(milliseconds: 150),
+      Duration(milliseconds: 400),
+      Duration(milliseconds: 800),
+    ]) {
+      if (delay != Duration.zero) await Future<void>.delayed(delay);
+      try {
+        await runner.run([
+          'worktree',
+          'remove',
+          '--force',
+          path,
+        ], cwd: info.projectPath);
+        return;
+      } on GitException catch (error) {
+        lastError = error;
+        final stillRegistered = (await listWorktrees(
+          info.projectPath,
+        )).any((worktree) => p.equals(_canonical(worktree.path), wanted));
+        if (!stillRegistered) {
+          if (await _deleteWorktreeDirectoryWithRetries(path)) {
+            await runner.run(
+              ['worktree', 'prune'],
+              cwd: info.projectPath,
+              check: false,
+            );
+            return;
+          }
+        }
+      }
+    }
+    throw lastError!;
+  }
+
+  Future<bool> _deleteWorktreeDirectoryWithRetries(String path) async {
+    for (final delay in const [
+      Duration.zero,
+      Duration(milliseconds: 100),
+      Duration(milliseconds: 300),
+      Duration(milliseconds: 700),
+      Duration(milliseconds: 1500),
+    ]) {
+      if (delay != Duration.zero) await Future<void>.delayed(delay);
+      final directory = Directory(path);
+      if (!directory.existsSync()) return true;
+      try {
+        await directory.delete(recursive: true);
+      } on FileSystemException {
+        // A short-lived editor, antivirus, or process cwd handle can race the
+        // removal on Windows. The bounded retry keeps failures deterministic.
+      }
+    }
+    return !Directory(path).existsSync();
   }
 
   /// Structured diff. Without [baseRef]: working tree vs HEAD plus untracked

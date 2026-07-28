@@ -182,12 +182,10 @@ final class AgentMcpTools {
       final branchName = _nullableString(arguments, 'branchName');
       final baseBranch = _nullableString(arguments, 'baseBranch');
       final branch = _nullableString(arguments, 'branch');
-      if (mode == 'checkout-pr') {
-        _boundedInt(arguments, 'prNumber', 0, 1, 0x7fffffff);
-        throw UnsupportedError(
-          'checkout-pr workspace creation is not implemented yet',
-        );
-      }
+      final prNumber = mode == 'checkout-pr'
+          ? _boundedInt(arguments, 'prNumber', 0, 1, 0x7fffffff)
+          : null;
+      final forge = _nullableString(arguments, 'forge');
       if (mode == 'checkout-branch' && branch == null) {
         throw const FormatException(
           'branch is required for checkout-branch mode',
@@ -202,9 +200,18 @@ final class AgentMcpTools {
               : WorktreeCreateAction.checkout,
           refName: mode == 'checkout-branch' ? branch : baseBranch,
           baseBranch: baseBranch,
-          branchName: mode == 'checkout-branch'
+          branchName: mode == 'checkout-pr'
+              ? null
+              : mode == 'checkout-branch'
               ? branch
               : branchName ?? worktreeSlug ?? 'worktree',
+          checkoutSource: prNumber == null
+              ? null
+              : {
+                  'kind': 'change_request',
+                  if (forge != null) 'forge': forge,
+                  'number': prNumber,
+                },
           worktreeSlug: worktreeSlug,
         ),
         title: title,

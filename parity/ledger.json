@@ -11741,13 +11741,14 @@
     {
       "id": "source-unit:packages/server/src/server/agent/tools/paseo-tools.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/git/git_service.dart",
       "evidence": [
         "packages/daemon/test/agent_mcp_tools_test.dart",
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
-        "packages/daemon/test/workspace/workspace_v2_service_test.dart"
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
+        "packages/daemon/test/git_service_test.dart"
       ],
-      "notes": "The runtime MCP catalog now includes canonical create/list/archive workspace and create-agent orchestration in addition to the verified agent, permission, and provider tools. Local workspace ownership, immediate initial prompts, blocking/background behavior, parent labels, cross-workspace subagents, notifications, and workspace-scoped agent/terminal teardown are covered. Checkout-PR workspaces plus schedule, heartbeat, terminal, script, browser, voice, and remaining mutation tools are pending."
+      "notes": "The runtime MCP catalog includes canonical create/list/archive workspace and create-agent orchestration in addition to agent, permission, and provider tools. Local, branch-off, remote branch, and GitHub/GitLab/Gitea-family change-request checkout placement; immediate initial prompts; blocking/background behavior; cross-workspace parentage; notifications; and workspace-scoped teardown are covered. Schedule, heartbeat, standalone terminal/worktree/script, browser, voice, and remaining mutation tools are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tools/types.ts",
@@ -12292,10 +12293,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/resolve-worktree-creation-intent.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/git/git_service.dart",
+      "evidence": [
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
+        "packages/daemon/test/git_service_test.dart"
+      ],
+      "notes": "Worktree intent resolves branch-off, checkout-branch, canonical change_request, legacy GitHub PR, known forge mismatch, and GitHub/GitLab/Gitea-family fetch namespaces. Forge API metadata, cross-repository push remotes, and exact upstream head/base naming remain pending."
     },
     {
       "id": "source-unit:packages/server/src/server/schedule/cron.ts",
@@ -12968,12 +12972,13 @@
     {
       "id": "source-unit:packages/server/src/server/workspace-archive-service.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/workspace/polling_workspace_git_backend.dart",
       "evidence": [
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
-        "packages/daemon/test/workspace/workspace_v2_service_test.dart"
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
+        "packages/daemon/test/workspace/polling_workspace_git_backend_test.dart"
       ],
-      "notes": "MCP archive_workspace now scopes teardown by workspaceId, archives only agents owned by that workspace, kills owned terminals, preserves cross-workspace children and local directories, and removes a final Tinyrack-owned worktree while retaining shared references. Teardown hooks and full failure-isolation parity remain pending."
+      "notes": "MCP archive_workspace scopes teardown by workspaceId, archives only owned agents, kills owned terminals, preserves cross-workspace children and local/shared directories, quiesces in-flight Git observers, and retries Windows worktree removal. Teardown command hooks and complete failure-isolation parity remain pending."
     },
     {
       "id": "source-unit:packages/server/src/server/workspace-auto-name.ts",
@@ -13124,10 +13129,14 @@
     },
     {
       "id": "source-unit:packages/server/src/server/worktree-core.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/git/git_service.dart",
+      "evidence": [
+        "packages/daemon/test/git_service_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+      ],
+      "notes": "Core worktree creation now supports explicit slugs, branch-off bases, remote-only branch fetches, unique local change-request branches, forge-specific PR/MR refs, ownership metadata, and Windows-safe archive retries. Existing-slug reuse, exact mnemonic defaults, cross-repo remotes, config seeding, and remaining lifecycle parity are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/worktree-errors.ts",
@@ -13732,11 +13741,13 @@
     {
       "id": "source-unit:packages/server/src/utils/worktree.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/workspace/workspace_setup_service.dart",
+      "implementation": "packages/daemon/lib/src/workspace/workspace_setup_service.dart; packages/daemon/lib/src/git/git_service.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart",
       "evidence": [
-        "packages/daemon/test/workspace/workspace_setup_service_test.dart"
+        "packages/daemon/test/workspace/workspace_setup_service_test.dart",
+        "packages/daemon/test/git_service_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
       ],
-      "notes": "Branded/compatible worktree.setup loading, sequential platform-shell execution, streamed output, duration, exit code, first-failure behavior, Tinyrack/Paseo runtime environment aliases, persisted/reused worktree port, ANSI/carriage-return normalization, and bounded middle-truncated logs are implemented; teardown, ownership, and broader worktree utilities remain."
+      "notes": "Worktree setup plus core branch/PR creation, slug placement, ownership, archive/reference protection, bounded Windows deletion retry, and observer quiescence are implemented. Cross-repository checkout remotes, config seeding, full teardown scripts, and broader utility parity remain."
     },
     {
       "id": "wire-message:abort_request",

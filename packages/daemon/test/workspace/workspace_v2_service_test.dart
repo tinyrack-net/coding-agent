@@ -68,7 +68,11 @@ void main() {
     String? projectId,
     WorktreeCreateAction? action,
     String? refName,
+    String? baseBranch,
     String? branchName,
+    Map<String, Object?>? checkoutSource,
+    int? githubPrNumber,
+    String? worktreeSlug,
   }) async => WorkspaceCreateResponse.fromJson(
     (await service.handle(
       connection,
@@ -79,7 +83,11 @@ void main() {
           projectId: projectId,
           action: action,
           refName: refName,
+          baseBranch: baseBranch,
           branchName: branchName,
+          checkoutSource: checkoutSource,
+          githubPrNumber: githubPrNumber,
+          worktreeSlug: worktreeSlug,
         ),
       ).toJson(),
     ))!,
@@ -409,6 +417,80 @@ void main() {
       expect(record.baseBranch, 'main');
       expect(git.createdBranch, 'feature');
       expect(git.createdBaseRef, 'main');
+    });
+
+    test('checkout-branch requires and fetches an existing branch', () async {
+      git.isGit = true;
+      final response = await createWorktree(
+        cwd: projectDirectory.path,
+        action: WorktreeCreateAction.checkout,
+        refName: 'existing-work',
+        branchName: 'existing-work',
+        worktreeSlug: 'existing-work-copy',
+      );
+
+      expect(response.error, isNull);
+      expect(git.createdBranch, 'existing-work');
+      expect(git.createdWorktreeSlug, 'existing-work-copy');
+      expect(git.createdRequireExistingBranch, isTrue);
+      expect(git.createdFetchRef, isNull);
+    });
+
+    test(
+      'checkout change request selects forge-specific remote refs',
+      () async {
+        git
+          ..isGit = true
+          ..originForge = 'gitlab';
+        final response = await createWorktree(
+          cwd: projectDirectory.path,
+          action: WorktreeCreateAction.checkout,
+          checkoutSource: const {
+            'kind': 'change_request',
+            'forge': 'gitlab',
+            'number': 42,
+          },
+          worktreeSlug: 'review-42',
+        );
+
+        expect(response.error, isNull);
+        expect(git.createdBranch, 'review-42');
+        expect(git.createdWorktreeSlug, 'review-42');
+        expect(git.createdFetchRef, 'refs/merge-requests/42/head');
+        expect(git.createdRequireExistingBranch, isFalse);
+      },
+    );
+
+    test('checkout change request rejects a mismatched forge', () async {
+      git
+        ..isGit = true
+        ..originForge = 'github';
+      final response = await createWorktree(
+        cwd: projectDirectory.path,
+        action: WorktreeCreateAction.checkout,
+        checkoutSource: const {
+          'kind': 'change_request',
+          'forge': 'gitlab',
+          'number': 42,
+        },
+      );
+
+      expect(response.errorCode, 'checkout_forge_mismatch');
+      expect(response.error, contains('resolved to github'));
+      expect(git.createdBranch, isNull);
+    });
+
+    test('legacy GitHub PR checkout uses the pull ref namespace', () async {
+      git.isGit = true;
+      final response = await createWorktree(
+        cwd: projectDirectory.path,
+        action: WorktreeCreateAction.checkout,
+        githubPrNumber: 7,
+      );
+
+      expect(response.error, isNull);
+      expect(git.createdBranch, 'pr-7');
+      expect(git.createdFetchRef, 'refs/pull/7/head');
     });
 
     test('starts background setup progress for a created worktree', () async {
@@ -1976,6 +2058,10 @@ final class _FakeGitService extends GitService {
   String branch = 'main';
   String? createdBranch;
   String? createdBaseRef;
+  String? createdWorktreeSlug;
+  String? createdFetchRef;
+  bool createdRequireExistingBranch = false;
+  String? originForge;
   Object? createError;
   Object? archiveError;
   Object? restoreError;
@@ -1998,16 +2084,25 @@ final class _FakeGitService extends GitService {
     String projectPath,
     String branch, {
     String? baseRef,
+    String? worktreeSlug,
+    bool requireExistingBranch = false,
+    String? fetchRef,
   }) async {
     if (createError case final error?) throw error;
     createdBranch = branch;
     createdBaseRef = baseRef;
+    createdWorktreeSlug = worktreeSlug;
+    createdFetchRef = fetchRef;
+    createdRequireExistingBranch = requireExistingBranch;
     return WorktreeInfo(
       path: '$projectPath${Platform.pathSeparator}$branch',
       branch: branch,
       projectPath: projectPath,
     );
   }
+
+  @override
+  Future<String?> resolveOriginForge(String projectPath) async => originForge;
 
   @override
   Future<void> archiveWorktree(String path, {bool force = false}) async {

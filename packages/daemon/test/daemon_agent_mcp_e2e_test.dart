@@ -503,6 +503,54 @@ void main() {
       );
 
       final topLevelEndpoint = endpoint.replace(queryParameters: const {});
+      final sourceRepo = Directory(
+        '${home.path}${Platform.pathSeparator}source-repo',
+      )..createSync();
+      final remoteRepo = Directory(
+        '${home.path}${Platform.pathSeparator}source-remote.git',
+      );
+      await _git(['init', '-b', 'main'], sourceRepo.path);
+      await _git(['config', 'user.email', 'test@example.com'], sourceRepo.path);
+      await _git(['config', 'user.name', 'Test'], sourceRepo.path);
+      File(
+        '${sourceRepo.path}${Platform.pathSeparator}README.md',
+      ).writeAsStringSync('fixture\n');
+      await _git(['add', '-A'], sourceRepo.path);
+      await _git(['commit', '-m', 'initial'], sourceRepo.path);
+      await _git(['init', '--bare', remoteRepo.path], home.path);
+      await _git(['remote', 'add', 'origin', remoteRepo.path], sourceRepo.path);
+      await _git(['push', 'origin', 'HEAD:refs/pull/5/head'], sourceRepo.path);
+      final reviewWorkspace =
+          await _call(topLevelEndpoint, mcpAuthToken, 'create_workspace', {
+            'isolation': 'worktree',
+            'path': sourceRepo.path,
+            'mode': 'checkout-pr',
+            'prNumber': 5,
+            'forge': 'github',
+            'worktreeSlug': 'review-5',
+          });
+      expect(reviewWorkspace['isolation'], 'worktree');
+      expect(reviewWorkspace['kind'], 'worktree');
+      expect(Directory(reviewWorkspace['cwd']! as String).existsSync(), isTrue);
+      expect(
+        await _gitOutput([
+          'branch',
+          '--show-current',
+        ], reviewWorkspace['cwd']! as String),
+        'review-5',
+      );
+      final archivedReviewWorkspace = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'archive_workspace',
+        {'workspaceId': reviewWorkspace['workspaceId']},
+      );
+      expect(archivedReviewWorkspace['removedDirectory'], isTrue);
+      expect(
+        Directory(reviewWorkspace['cwd']! as String).existsSync(),
+        isFalse,
+      );
+
       final autonomous = await _call(
         topLevelEndpoint,
         mcpAuthToken,
@@ -636,4 +684,25 @@ Future<void> _waitUntil(bool Function() predicate) async {
     }
     await Future<void>.delayed(const Duration(milliseconds: 10));
   }
+}
+
+Future<void> _git(List<String> arguments, String cwd) async {
+  final result = await Process.run('git', arguments, workingDirectory: cwd);
+  if (result.exitCode != 0) {
+    fail(
+      'git ${arguments.join(' ')} failed (${result.exitCode}): '
+      '${result.stderr}',
+    );
+  }
+}
+
+Future<String> _gitOutput(List<String> arguments, String cwd) async {
+  final result = await Process.run('git', arguments, workingDirectory: cwd);
+  if (result.exitCode != 0) {
+    fail(
+      'git ${arguments.join(' ')} failed (${result.exitCode}): '
+      '${result.stderr}',
+    );
+  }
+  return (result.stdout as String).trim();
 }

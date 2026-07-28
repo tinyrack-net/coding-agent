@@ -739,12 +739,53 @@ final class WorkspaceV2Service {
       isGit: true,
       timestamp: now,
     );
-    final branch = source.branchName ?? source.refName;
-    if (branch == null || branch.isEmpty) {
-      throw const _WorkspaceRequestException(
-        'branchName or refName is required',
-        'branch_required',
-      );
+    final changeRequest = _changeRequestSource(source);
+    final checkoutBranch =
+        source.action == WorktreeCreateAction.checkout && changeRequest == null;
+    String branch;
+    String? fetchRef;
+    if (changeRequest != null) {
+      final requestedForge = changeRequest.$1;
+      final detectedForge = await git.resolveOriginForge(project.rootPath);
+      if (requestedForge != null &&
+          detectedForge != null &&
+          requestedForge != detectedForge) {
+        throw _WorkspaceRequestException(
+          'Checkout source is for $requestedForge, but this workspace '
+              'resolved to $detectedForge',
+          'checkout_forge_mismatch',
+        );
+      }
+      final forge = requestedForge ?? detectedForge ?? 'github';
+      if (!const {
+        'github',
+        'gitlab',
+        'gitea',
+        'forgejo',
+        'codeberg',
+      }.contains(forge)) {
+        throw _WorkspaceRequestException(
+          'Checkout from change request is not supported for $forge yet',
+          'unsupported_forge_checkout',
+        );
+      }
+      final number = changeRequest.$2;
+      branch =
+          source.branchName ??
+          source.worktreeSlug ??
+          '${forge == 'gitlab' ? 'mr' : 'pr'}-$number';
+      fetchRef = forge == 'gitlab'
+          ? 'refs/merge-requests/$number/head'
+          : 'refs/pull/$number/head';
+    } else {
+      final selected = source.branchName ?? source.refName;
+      if (selected == null || selected.isEmpty) {
+        throw const _WorkspaceRequestException(
+          'branchName or refName is required',
+          'branch_required',
+        );
+      }
+      branch = selected;
     }
     final created = await git.createWorktree(
       project.rootPath,
@@ -752,6 +793,9 @@ final class WorkspaceV2Service {
       baseRef: source.action == WorktreeCreateAction.branchOff
           ? source.refName ?? source.baseBranch
           : null,
+      worktreeSlug: source.worktreeSlug,
+      requireExistingBranch: checkoutBranch,
+      fetchRef: fetchRef,
     );
     final workspace = createPersistedWorkspaceRecord(
       workspaceId: await _uniqueWorkspaceId(),
@@ -770,6 +814,38 @@ final class WorkspaceV2Service {
     );
     await registries.workspaces.upsert(workspace);
     return (workspace, project);
+  }
+
+  (String?, int)? _changeRequestSource(WorktreeWorkspaceCreateSource source) {
+    final raw = source.checkoutSource;
+    if (raw != null) {
+      final kind = raw['kind'];
+      if (kind != 'change_request' && kind != 'github_pr') {
+        throw const _WorkspaceRequestException(
+          'checkoutSource.kind must be change_request',
+          'invalid_checkout_source',
+        );
+      }
+      final number = raw['number'];
+      if (number is! num ||
+          number != number.roundToDouble() ||
+          number.toInt() <= 0) {
+        throw const _WorkspaceRequestException(
+          'checkoutSource.number must be a positive integer',
+          'invalid_checkout_source',
+        );
+      }
+      final forge = raw['forge'];
+      if (forge != null && (forge is! String || forge.trim().isEmpty)) {
+        throw const _WorkspaceRequestException(
+          'checkoutSource.forge must be a non-empty string',
+          'invalid_checkout_source',
+        );
+      }
+      return (forge == null ? null : (forge as String).trim(), number.toInt());
+    }
+    final legacy = source.githubPrNumber;
+    return legacy == null ? null : ('github', legacy);
   }
 
   Future<PersistedProjectRecord> _resolveProject({
@@ -1127,19 +1203,37 @@ final class WorkspaceV2Service {
     String? removedProjectId,
     bool forceWorktree = false,
   }) async {
-    if (workspace.isPaseoOwnedWorktree &&
-        workspace.worktreeRoot != null &&
-        await registries.workspaces.activeWorktreeReferenceCount(
-              workspace.worktreeRoot!,
-            ) ==
-            1) {
-      await git.archiveWorktree(workspace.worktreeRoot!, force: forceWorktree);
-    }
-    await registries.workspaces.archive(
-      workspace.workspaceId,
-      archivedAt,
-      removedProjectId: removedProjectId,
+    final normalizedCwd = p.normalize(p.absolute(workspace.cwd));
+    final hasActiveSibling = (await registries.workspaces.list()).any(
+      (candidate) =>
+          candidate.workspaceId != workspace.workspaceId &&
+          candidate.archivedAt == null &&
+          p.equals(p.normalize(p.absolute(candidate.cwd)), normalizedCwd),
     );
+    final stoppedSnapshot = !hasActiveSibling
+        ? await _stopGitSnapshot(workspace.cwd)
+        : false;
+    try {
+      if (workspace.isPaseoOwnedWorktree &&
+          workspace.worktreeRoot != null &&
+          await registries.workspaces.activeWorktreeReferenceCount(
+                workspace.worktreeRoot!,
+              ) ==
+              1) {
+        await git.archiveWorktree(
+          workspace.worktreeRoot!,
+          force: forceWorktree,
+        );
+      }
+      await registries.workspaces.archive(
+        workspace.workspaceId,
+        archivedAt,
+        removedProjectId: removedProjectId,
+      );
+    } catch (_) {
+      if (stoppedSnapshot) _ensureGitSnapshot(workspace);
+      rethrow;
+    }
   }
 
   String _promptTitle(String prompt) {
@@ -1219,6 +1313,19 @@ final class WorkspaceV2Service {
       });
     }
     backend.setBaseRef(cwd, workspace.baseBranch);
+  }
+
+  Future<bool> _stopGitSnapshot(String cwd) async {
+    final normalized = p.normalize(p.absolute(cwd));
+    final subscription = _gitSubscriptions.remove(normalized);
+    if (subscription == null) return false;
+    final unsubscribeAndWait = subscription.unsubscribeAndWait;
+    if (unsubscribeAndWait == null) {
+      subscription.unsubscribe();
+    } else {
+      await unsubscribeAndWait();
+    }
+    return true;
   }
 
   Future<void> _emitGitSnapshotUpdate(String cwd) async {
