@@ -10610,10 +10610,12 @@
     },
     {
       "id": "source-unit:packages/protocol/src/tool-name-normalization.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/tool_name_normalization.dart",
+      "evidence": [
+        "packages/protocol/test/tool_name_normalization_test.dart"
+      ],
+      "notes": "Normalization, tokenization, leaf extraction, speak detection, conservative namespace classification, Paseo namespace recognition, and external-tool classification match the frozen contract."
     },
     {
       "id": "source-unit:packages/protocol/src/validation/ws-outbound-schema-metadata.ts",
@@ -12924,24 +12926,30 @@
     },
     {
       "id": "source-unit:packages/server/src/server/voice-config.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/voice_config.dart",
+      "evidence": [
+        "packages/daemon/test/voice/voice_config_test.dart"
+      ],
+      "notes": "Voice prompt block replacement, spoken-input wrapping, and stdio MCP bridge config match the frozen behavior; user-facing product naming intentionally uses Tinyrack."
     },
     {
       "id": "source-unit:packages/server/src/server/voice-permission-policy.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/voice_permission_policy.dart",
+      "evidence": [
+        "packages/daemon/test/voice/voice_permission_policy_test.dart"
+      ],
+      "notes": "Voice auto-approval accepts only tool-kind requests whose normalized leaf name is speak across direct, dot, and MCP double-underscore provider conventions."
     },
     {
       "id": "source-unit:packages/server/src/server/voice-types.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/voice_types.dart",
+      "evidence": [
+        "packages/daemon/test/voice/voice_permission_policy_test.dart"
+      ],
+      "notes": "Dart handler, abort-signal, and caller-context contracts preserve speak text, caller identity, cancellation, child labels, cwd lock, custom-cwd policy, and voice-tool enablement."
     },
     {
       "id": "source-unit:packages/server/src/server/web-ui.ts",

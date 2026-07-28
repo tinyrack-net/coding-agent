@@ -58,6 +58,7 @@ export 'src/terminal/terminal_input_mode.dart';
 export 'src/terminal/terminal_key_input.dart';
 export 'src/terminal/terminal_snapshot.dart';
 export 'src/terminal/terminal_profiles.dart';
+export 'src/tool_name_normalization.dart';
 export 'src/schedule/cadence.dart';
 export 'src/schedule/cron_expression.dart';
 
