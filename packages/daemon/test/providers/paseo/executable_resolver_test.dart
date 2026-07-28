@@ -57,6 +57,93 @@ void main() {
     },
   );
 
+  test('POSIX resolution probes literal and PATH candidates', () async {
+    const executable = '/opt/bin/claude';
+    final probes = <String>[];
+    final resolver = ExecutableResolver(
+      environment: const {'PATH': '/missing:/opt/bin'},
+      isWindows: false,
+      exists: (path) => path == executable,
+      probe: (path) async {
+        probes.add(path);
+        return path == executable;
+      },
+    );
+
+    expect(await resolver.find(executable), executable);
+    expect(await resolver.find('claude'), executable);
+    expect(probes, [executable, executable]);
+  });
+
+  test(
+    'Windows literal resolution probes only existing .exe/.cmd candidates',
+    () async {
+      final literal = p.join(temp.path, 'codex');
+      final command = File('$literal.cmd')..writeAsStringSync('@echo off\r\n');
+      final probes = <String>[];
+      final resolver = ExecutableResolver(
+        environment: const {},
+        isWindows: true,
+        probe: (path) async {
+          probes.add(path);
+          return true;
+        },
+      );
+
+      expect(await resolver.find(literal), command.path);
+      expect(probes, [command.path]);
+
+      probes.clear();
+      expect(await resolver.find(p.join(temp.path, 'missing')), isNull);
+      expect(probes, isEmpty);
+    },
+  );
+
+  test('Windows skips a broken .exe and returns the later .cmd', () async {
+    final executable = File(p.join(temp.path, 'tool.exe'))
+      ..writeAsStringSync('');
+    final command = File(p.join(temp.path, 'tool.cmd'))
+      ..writeAsStringSync('@echo off\r\n');
+    final resolver = ExecutableResolver(
+      environment: {'PATH': temp.path, 'PATHEXT': '.EXE;.CMD'},
+      isWindows: true,
+      probe: (path) async => path.toLowerCase() == command.path.toLowerCase(),
+    );
+
+    expect(
+      (await resolver.find('tool'))?.toLowerCase(),
+      command.path.toLowerCase(),
+    );
+    expect(executable.existsSync(), isTrue);
+  });
+
+  test(
+    'Windows finds generic WinGet portable executables outside PATH',
+    () async {
+      final package = Directory(
+        p.join(
+          temp.path,
+          'Microsoft',
+          'WinGet',
+          'Packages',
+          'Anthropic.ClaudeCode_abc',
+        ),
+      )..createSync(recursive: true);
+      final executable = File(p.join(package.path, 'claude.exe'))
+        ..writeAsStringSync('fake');
+      final resolver = ExecutableResolver(
+        environment: {
+          'PATH': p.join(temp.path, 'empty'),
+          'LOCALAPPDATA': temp.path,
+        },
+        isWindows: true,
+        probe: (path) async => path == executable.path,
+      );
+
+      expect(await resolver.find('claude'), executable.path);
+    },
+  );
+
   test(
     'findCodex prefers PATH then uses Microsoft Store package fallback',
     () async {
@@ -121,6 +208,40 @@ void main() {
     },
   );
 
+  test('executableExists preserves frozen Windows literal extensions', () {
+    final command = p.join(temp.path, 'codex');
+    final executable = File('$command.cmd')..writeAsStringSync('x');
+
+    expect(executableExists(command, isWindows: true), executable.path);
+    expect(
+      executableExists(
+        command,
+        isWindows: true,
+        exists: (path) => path == '$command.ps1',
+      ),
+      isNull,
+    );
+    expect(
+      executableExists(
+        '/usr/local/bin/codex',
+        isWindows: false,
+        exists: (path) => path == '/usr/local/bin/codex',
+      ),
+      '/usr/local/bin/codex',
+    );
+  });
+
+  test(
+    'default platform dependencies resolve the running Dart executable',
+    () async {
+      final resolver = ExecutableResolver();
+
+      expect(resolver.exists(Platform.resolvedExecutable), isNotNull);
+      expect(await resolver.find(Platform.resolvedExecutable), isNotNull);
+      expect(executableExists(Platform.resolvedExecutable), isNotNull);
+    },
+  );
+
   test(
     'probeExecutable accepts a real binary and rejects a missing one',
     () async {
@@ -131,4 +252,96 @@ void main() {
       );
     },
   );
+
+  test(
+    'probeExecutable accepts a started non-zero command and rejects a directory',
+    () async {
+      final command = File(p.join(temp.path, 'non-zero.cmd'))
+        ..writeAsStringSync('@echo off\r\nexit /b 7\r\n');
+      final directory = Directory(p.join(temp.path, 'directory'))..createSync();
+
+      expect(await probeExecutable(command.path), isTrue);
+      expect(await probeExecutable(directory.path), isFalse);
+    },
+  );
+
+  group('Windows command quoting', () {
+    test('quotes paths and arguments with spaces exactly once', () {
+      expect(
+        quoteWindowsCommand(
+          r'C:\Program Files\Anthropic\claude.exe',
+          isWindows: true,
+        ),
+        r'"C:\Program Files\Anthropic\claude.exe"',
+      );
+      expect(
+        quoteWindowsArgument(
+          r'"C:\Program Files\Anthropic\cli.js"',
+          isWindows: true,
+        ),
+        r'"C:\Program Files\Anthropic\cli.js"',
+      );
+      expect(
+        quoteWindowsCommand(r'C:\nvm4w\nodejs\codex', isWindows: true),
+        r'C:\nvm4w\nodejs\codex',
+      );
+    });
+
+    test('escapes cmd metacharacters without corrupting percent atoms', () {
+      expect(
+        quoteWindowsCommand('feature&bugfix', isWindows: true),
+        'feature^&bugfix',
+      );
+      expect(
+        quoteWindowsCommand('feature|bugfix', isWindows: true),
+        'feature^|bugfix',
+      );
+      expect(quoteWindowsCommand('100%', isWindows: true), '100%');
+      expect(
+        quoteWindowsCommand(
+          '--format=%(refname)%09%(committerdate:unix)',
+          isWindows: true,
+        ),
+        '--format=%^(refname^)%09%^(committerdate:unix^)',
+      );
+      expect(
+        quoteWindowsCommand('build&(test|deploy)!<output>', isWindows: true),
+        'build^&^(test^|deploy^)^!^<output^>',
+      );
+    });
+
+    test('quotes after escaping and leaves non-Windows values unchanged', () {
+      expect(
+        quoteWindowsCommand(
+          r'C:\Program Files\My Tool&Stuff\run 100%.cmd',
+          isWindows: true,
+        ),
+        r'"C:\Program Files\My Tool^&Stuff\run 100%.cmd"',
+      );
+      expect(
+        quoteWindowsArgument('/usr/local/bin/claude code', isWindows: false),
+        '/usr/local/bin/claude code',
+      );
+    });
+
+    test('applies Windows quote and backslash escaping rules', () {
+      expect(quoteWindowsArgument('"', isWindows: true), '""');
+      expect(
+        quoteWindowsArgument('say "hello"', isWindows: true),
+        r'"say \"hello\""',
+      );
+      expect(
+        quoteWindowsArgument('C:\\Program Files\\', isWindows: true),
+        '"C:\\Program Files\\\\"',
+      );
+      expect(
+        quoteWindowsArgument('C:\\path\\\\"name"', isWindows: true),
+        r'"C:\path\\\\\"name\""',
+      );
+      expect(
+        quoteWindowsArgument('C:\\path\\file', isWindows: true),
+        r'C:\path\file',
+      );
+    });
+  });
 }

@@ -10711,19 +10711,24 @@
     },
     {
       "id": "source-unit:packages/server/src/executable-resolution/executable-resolution.ts",
-      "status": "partial",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/executable_resolver.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo/executable_resolver_test.dart",
+        "packages/daemon/test/providers/paseo/provider_catalog_registry_test.dart",
+        "packages/daemon/test/providers/paseo/codex_agent_client_test.dart",
+        "packages/daemon/test/providers/paseo/claude_agent_client_test.dart"
+      ],
+      "notes": "Matches frozen POSIX literal/PATH probing and Windows literal, PATHEXT, WinGet portable, and Codex Microsoft Store fallback resolution. Candidates are deduplicated and existence-checked before a two-second --version probe; any started process, including non-zero exit or timeout, is accepted. Targeted resolver smoke passed three concurrent independent runs with 128/132 covered lines, and provider catalog/Codex/Claude boundary tests passed."
+    },
+    {
+      "id": "source-unit:packages/server/src/executable-resolution/windows.ts",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/providers/paseo/executable_resolver.dart",
       "evidence": [
         "packages/daemon/test/providers/paseo/executable_resolver_test.dart"
       ],
-      "notes": null
-    },
-    {
-      "id": "source-unit:packages/server/src/executable-resolution/windows.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "notes": "Matches frozen .exe/.cmd literal fallback, case-insensitive Windows environment lookup, cmd metacharacter escaping, percent preservation, and Windows quote/backslash rules."
     },
     {
       "id": "source-unit:packages/server/src/server/agent-attention-policy.ts",
