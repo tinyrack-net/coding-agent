@@ -12787,31 +12787,42 @@
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/worker-bytes.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/local/worker_bytes.dart",
+      "evidence": [
+        "packages/daemon/test/voice/local_worker_protocol_test.dart"
+      ],
+      "notes": "Process-local byte copies and lossless base64 JSON framing preserve sliced-buffer boundaries without sharing mutable storage."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/worker-client.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/local/worker_client.dart; packages/daemon/lib/src/voice/local/worker_process_transport.dart",
+      "evidence": [
+        "packages/daemon/test/voice/local_worker_client_test.dart",
+        "packages/daemon/test/voice/local_worker_process_transport_test.dart"
+      ],
+      "notes": "Lazy process start, coalesced session connection, typed request/response dispatch, STT/TTS/VAD adapters, byte and event forwarding, request timeouts, concurrent write backpressure, stderr diagnostics, crash propagation, intentional shutdown, idle release, and respawn are ported."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/worker-process.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/voice/local/worker_process_transport.dart",
+      "evidence": [
+        "packages/daemon/test/voice/local_worker_process_transport_test.dart",
+        "packages/daemon/test/fixtures/local_speech_echo_worker.dart"
+      ],
+      "notes": "Tinyrack worker command resolution, separate-process lifecycle, ordered JSON-lines transport, concurrent write backpressure, stderr and malformed-output propagation, and packaged/development executable selection are ported. The production Sherpa request dispatcher, engine caches, session tracking, and native cleanup remain."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/worker-protocol.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/local/worker_protocol.dart; packages/daemon/lib/src/voice/local/worker_transport.dart",
+      "evidence": [
+        "packages/daemon/test/voice/local_worker_protocol_test.dart",
+        "packages/daemon/test/voice/local_worker_client_test.dart"
+      ],
+      "notes": "All frozen request, response, session, transcription, TTS, config, event, error, and required-sample-rate variants use validated Dart discriminated models with lossless JSON boundaries."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/openai/config.ts",
