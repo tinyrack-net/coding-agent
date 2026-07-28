@@ -12591,9 +12591,11 @@
     },
     {
       "id": "source-unit:packages/server/src/server/session/voice/voice-turn-controller.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/voice_turn_controller.dart",
+      "evidence": [
+        "packages/daemon/test/voice/voice_turn_controller_test.dart"
+      ],
       "notes": null
     },
     {
