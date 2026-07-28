@@ -182,10 +182,8 @@ void main() {
         'method': 'tools/list',
         'params': <String, Object?>{},
       }, bearer: 'daemon-password');
-      final tools = (_result(listed)['tools']! as List)
-          .cast<Map>()
-          .map((tool) => tool['name'])
-          .toSet();
+      final listedTools = (_result(listed)['tools']! as List).cast<Map>();
+      final tools = listedTools.map((tool) => tool['name']).toSet();
       expect(tools, {
         'create_workspace',
         'list_workspaces',
@@ -195,6 +193,11 @@ void main() {
         'list_workspace_scripts',
         'start_workspace_script',
         'stop_workspace_script',
+        'list_terminals',
+        'create_terminal',
+        'kill_terminal',
+        'capture_terminal',
+        'send_terminal_keys',
         'list_agents',
         'get_agent_status',
         'send_agent_prompt',
@@ -210,6 +213,22 @@ void main() {
         'list_models',
         'inspect_provider',
       });
+      final captureTerminalTool = listedTools.singleWhere(
+        (tool) => tool['name'] == 'capture_terminal',
+      );
+      expect((captureTerminalTool['outputSchema']! as Map)['required'], [
+        'terminalId',
+        'lines',
+        'totalLines',
+      ]);
+      final listTerminalsTool = listedTools.singleWhere(
+        (tool) => tool['name'] == 'list_terminals',
+      );
+      expect(
+        ((listTerminalsTool['outputSchema']! as Map)['properties']! as Map)
+            .keys,
+        ['terminals'],
+      );
 
       final status = await _post(endpoint, {
         'jsonrpc': '2.0',
@@ -518,6 +537,24 @@ void main() {
       );
 
       final topLevelEndpoint = endpoint.replace(queryParameters: const {});
+      expect(
+        await _callError(
+          topLevelEndpoint,
+          mcpAuthToken,
+          'list_terminals',
+          const {},
+        ),
+        contains('cwd is required'),
+      );
+      expect(
+        await _callError(
+          topLevelEndpoint,
+          mcpAuthToken,
+          'kill_terminal',
+          const {'terminalId': 'missing-terminal-id'},
+        ),
+        contains('Terminal missing-terminal-id not found'),
+      );
       final renamed = await _call(
         topLevelEndpoint,
         mcpAuthToken,
@@ -580,6 +617,54 @@ void main() {
         (stoppedScript['script']! as Map)['terminalId'],
         runningScript['terminalId'],
       );
+
+      final topLevelTerminal = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'create_terminal',
+        {'cwd': otherDirectory.path, 'name': '  Top-level terminal  '},
+      );
+      expect(topLevelTerminal['name'], 'Top-level terminal');
+      expect(topLevelTerminal['cwd'], otherDirectory.path);
+      final topLevelTerminalId = topLevelTerminal['id']! as String;
+      final topLevelTerminalRecord = handle.terminals.listV2().singleWhere(
+        (terminal) => terminal['id'] == topLevelTerminalId,
+      );
+      expect(
+        topLevelTerminalRecord['workspaceId'],
+        isNot(workspaceB['workspaceId']),
+      );
+      final workspacesAfterTerminal = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'list_workspaces',
+        const {},
+      );
+      final topLevelTerminalWorkspace =
+          (workspacesAfterTerminal['workspaces']! as List)
+              .cast<Map>()
+              .singleWhere(
+                (workspace) =>
+                    workspace['workspaceId'] ==
+                    topLevelTerminalRecord['workspaceId'],
+              );
+      expect(topLevelTerminalWorkspace['cwd'], otherDirectory.path);
+      final listedTopLevelTerminals =
+          (await _call(topLevelEndpoint, mcpAuthToken, 'list_terminals', {
+                'cwd': otherDirectory.path,
+              }))['terminals']!
+              as List;
+      expect(
+        listedTopLevelTerminals.cast<Map>().map((terminal) => terminal['id']),
+        contains(topLevelTerminalId),
+      );
+      expect(
+        await _call(topLevelEndpoint, mcpAuthToken, 'kill_terminal', {
+          'terminalId': topLevelTerminalId,
+        }),
+        {'success': true},
+      );
+      await _waitUntil(() => !handle.terminals.contains(topLevelTerminalId));
 
       final sourceRepo = Directory(
         '${home.path}${Platform.pathSeparator}source-repo',
@@ -676,6 +761,73 @@ void main() {
       );
       expect(renamedFromCaller['workspaceId'], workspaceA['workspaceId']);
       expect(renamedFromCaller['title'], 'Caller workspace');
+      final terminalChild = Directory(
+        '${home.path}${Platform.pathSeparator}terminal-child',
+      )..createSync();
+      final scopedTerminal = await _call(
+        scopedEndpoint,
+        mcpAuthToken,
+        'create_terminal',
+        {'cwd': 'terminal-child', 'name': '  Scoped terminal  '},
+      );
+      final scopedTerminalId = scopedTerminal['id']! as String;
+      expect(scopedTerminal['name'], 'Scoped terminal');
+      expect(scopedTerminal['cwd'], terminalChild.path);
+      expect(
+        handle.terminals.listV2().singleWhere(
+          (terminal) => terminal['id'] == scopedTerminalId,
+        )['workspaceId'],
+        workspaceA['workspaceId'],
+      );
+      final listedScopedTerminals =
+          (await _call(
+                scopedEndpoint,
+                mcpAuthToken,
+                'list_terminals',
+                const {},
+              ))['terminals']!
+              as List;
+      expect(
+        listedScopedTerminals.cast<Map>().map((terminal) => terminal['id']),
+        contains(scopedTerminalId),
+      );
+      final listedAllTerminals =
+          (await _call(topLevelEndpoint, mcpAuthToken, 'list_terminals', const {
+                'all': true,
+              }))['terminals']!
+              as List;
+      expect(
+        listedAllTerminals.cast<Map>().map((terminal) => terminal['id']),
+        contains(scopedTerminalId),
+      );
+      await _call(scopedEndpoint, mcpAuthToken, 'send_terminal_keys', {
+        'terminalId': scopedTerminalId,
+        'keys': 'echo PASEO_MCP_TERMINAL',
+        'literal': true,
+      });
+      await _call(scopedEndpoint, mcpAuthToken, 'send_terminal_keys', {
+        'terminalId': scopedTerminalId,
+        'keys': 'Enter',
+      });
+      final capturedTerminal = await _waitForTerminalText(
+        scopedEndpoint,
+        mcpAuthToken,
+        scopedTerminalId,
+        'PASEO_MCP_TERMINAL',
+      );
+      expect(capturedTerminal['terminalId'], scopedTerminalId);
+      expect(capturedTerminal['totalLines'], greaterThan(0));
+      expect(
+        (capturedTerminal['lines']! as List).cast<String>().join('\n'),
+        contains('PASEO_MCP_TERMINAL'),
+      );
+      expect(
+        await _call(scopedEndpoint, mcpAuthToken, 'kill_terminal', {
+          'terminalId': scopedTerminalId,
+        }),
+        {'success': true},
+      );
+      await _waitUntil(() => !handle.terminals.contains(scopedTerminalId));
       final crossWorkspaceChild =
           await _call(scopedEndpoint, mcpAuthToken, 'create_agent', {
             'title': 'Cross workspace child',
@@ -760,6 +912,45 @@ Future<Map<String, Object?>> _call(
     fail('MCP tool $name failed: ${result['content']}');
   }
   return Map<String, Object?>.from(result['structuredContent']! as Map);
+}
+
+Future<String> _callError(
+  Uri endpoint,
+  String bearer,
+  String name,
+  Map<String, Object?> arguments,
+) async {
+  final response = await _post(endpoint, {
+    'jsonrpc': '2.0',
+    'id': name,
+    'method': 'tools/call',
+    'params': {'name': name, 'arguments': arguments},
+  }, bearer: bearer);
+  final result = _result(response);
+  expect(result['isError'], isTrue);
+  final content = (result['content']! as List).single as Map;
+  return content['text']! as String;
+}
+
+Future<Map<String, Object?>> _waitForTerminalText(
+  Uri endpoint,
+  String bearer,
+  String terminalId,
+  String expected,
+) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 5));
+  while (true) {
+    final capture = await _call(endpoint, bearer, 'capture_terminal', {
+      'terminalId': terminalId,
+      'scrollback': true,
+    });
+    final lines = (capture['lines']! as List).cast<String>();
+    if (lines.any((line) => line.contains(expected))) return capture;
+    if (DateTime.now().isAfter(deadline)) {
+      fail('Timed out waiting for terminal output containing $expected');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+  }
 }
 
 Future<void> _waitUntil(bool Function() predicate) async {

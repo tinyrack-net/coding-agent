@@ -56,6 +56,16 @@ final class AgentMcpTools {
         return _startWorkspaceScript(arguments);
       case 'stop_workspace_script':
         return _stopWorkspaceScript(arguments);
+      case 'list_terminals':
+        return _listTerminals(arguments, callerAgentId);
+      case 'create_terminal':
+        return _createTerminal(arguments, callerAgentId);
+      case 'kill_terminal':
+        return _killTerminal(arguments);
+      case 'capture_terminal':
+        return _captureTerminal(arguments);
+      case 'send_terminal_keys':
+        return _sendTerminalKeys(arguments);
       case 'list_agents':
         return _listAgents(arguments, callerAgentId);
       case 'get_agent_status':
@@ -204,6 +214,115 @@ final class AgentMcpTools {
       scriptName: _requiredString(arguments, 'scriptName'),
     );
     return {'script': script.toJson()};
+  }
+
+  Map<String, Object?> _listTerminals(
+    Map<String, Object?> arguments,
+    String? callerAgentId,
+  ) {
+    final all = _optionalBool(arguments, 'all') ?? false;
+    if (all) _optionalTrimmedString(arguments, 'cwd');
+    final terminals = all
+        ? _terminals.listV2()
+        : _terminals.listV2(cwd: _resolveScopedCwd(arguments, callerAgentId));
+    return {
+      'terminals': [
+        for (final terminal in terminals) _terminalSummary(terminal),
+      ],
+    };
+  }
+
+  Future<Map<String, Object?>> _createTerminal(
+    Map<String, Object?> arguments,
+    String? callerAgentId,
+  ) async {
+    final cwd = _resolveScopedCwd(arguments, callerAgentId);
+    final caller = callerAgentId == null
+        ? null
+        : _requireCallerAgent(callerAgentId);
+    final workspaceId =
+        caller?.workspaceId ??
+        (await _workspaceService().createAutomationWorkspace(
+          DirectoryWorkspaceCreateSource(path: cwd),
+        )).workspaceId;
+    final created = _terminals.create(
+      cwd: cwd,
+      workspaceId: workspaceId,
+      name: _optionalTrimmedString(arguments, 'name'),
+    );
+    final terminalId = created['terminalId']! as String;
+    final terminal = _terminals.listV2().singleWhere(
+      (candidate) => candidate['id'] == terminalId,
+    );
+    return _terminalSummary(terminal);
+  }
+
+  Map<String, Object?> _killTerminal(Map<String, Object?> arguments) {
+    final terminalId = _requiredRawString(arguments, 'terminalId');
+    _requireTerminal(terminalId);
+    _terminals.kill(terminalId);
+    return {'success': true};
+  }
+
+  Map<String, Object?> _captureTerminal(Map<String, Object?> arguments) {
+    final terminalId = _requiredRawString(arguments, 'terminalId');
+    _requireTerminal(terminalId);
+    final start = _optionalLineIndex(arguments, 'start');
+    final end = _optionalLineIndex(arguments, 'end');
+    final scrollback = _optionalBool(arguments, 'scrollback') ?? false;
+    final capture = _terminals.capture(
+      terminalId,
+      start: scrollback ? 0 : start,
+      end: end,
+      stripAnsi: _optionalBool(arguments, 'stripAnsi') ?? true,
+    );
+    return {
+      'terminalId': terminalId,
+      'lines': capture.lines,
+      'totalLines': capture.totalLines,
+    };
+  }
+
+  Map<String, Object?> _sendTerminalKeys(Map<String, Object?> arguments) {
+    final terminalId = _requiredRawString(arguments, 'terminalId');
+    _requireTerminal(terminalId);
+    final literal = _optionalBool(arguments, 'literal') ?? false;
+    _terminals.sendInput(
+      terminalId,
+      _resolveTerminalKeyToken(_requiredRawString(arguments, 'keys'), literal),
+    );
+    return {'success': true};
+  }
+
+  String _resolveScopedCwd(
+    Map<String, Object?> arguments,
+    String? callerAgentId,
+  ) {
+    final requested = _optionalTrimmedString(arguments, 'cwd');
+    if (callerAgentId != null) {
+      final caller = _requireCallerAgent(callerAgentId);
+      return requested == null
+          ? caller.cwd
+          : _resolvePathFromBase(caller.cwd, requested);
+    }
+    if (requested == null) {
+      throw const FormatException('cwd is required');
+    }
+    return _expandUserPath(requested);
+  }
+
+  AgentSummary _requireCallerAgent(String callerAgentId) {
+    final caller = _manager.get(callerAgentId);
+    if (caller == null || caller.archivedAt != null) {
+      throw StateError('Parent agent $callerAgentId not found');
+    }
+    return caller;
+  }
+
+  void _requireTerminal(String terminalId) {
+    if (!_terminals.contains(terminalId)) {
+      throw StateError('Terminal $terminalId not found');
+    }
   }
 
   Future<Map<String, Object?>> _createWorkspace(
@@ -900,6 +1019,61 @@ bool _sameOrDescendant(String parent, String candidate) {
       p.isWithin(normalizedRoot, normalizedChild);
 }
 
+Map<String, Object?> _terminalSummary(Map<String, Object?> terminal) => {
+  'id': terminal['id'],
+  'name': terminal['name'],
+  'cwd': terminal['cwd'],
+};
+
+int? _optionalLineIndex(Map<String, Object?> values, String key) {
+  if (!values.containsKey(key)) return null;
+  final value = values[key];
+  if (value is! num) throw FormatException('$key must be a number');
+  return value.toInt();
+}
+
+String _expandUserPath(String value) {
+  final trimmed = value.trim();
+  if (trimmed == '~' || trimmed.startsWith('~/') || trimmed.startsWith(r'~\')) {
+    final home =
+        Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        Directory.current.path;
+    final suffix = trimmed.length == 1 ? '' : trimmed.substring(2);
+    return p.normalize(p.absolute(p.join(home, suffix)));
+  }
+  return p.normalize(p.absolute(trimmed));
+}
+
+String _resolvePathFromBase(String baseCwd, String requestedPath) {
+  final trimmed = requestedPath.trim();
+  if (trimmed == '~' ||
+      trimmed.startsWith('~/') ||
+      trimmed.startsWith(r'~\') ||
+      p.isAbsolute(trimmed)) {
+    return _expandUserPath(trimmed);
+  }
+  return p.normalize(p.absolute(p.join(baseCwd, trimmed)));
+}
+
+String _resolveTerminalKeyToken(String key, bool literal) {
+  if (literal) return key;
+  return switch (key) {
+    'Enter' => '\r',
+    'Tab' => '\t',
+    'Escape' => '\u001b',
+    'Space' => ' ',
+    'BSpace' => '\u007f',
+    'C-c' => '\u0003',
+    'C-d' => '\u0004',
+    'C-z' => '\u001a',
+    'C-l' => '\u000c',
+    'C-a' => '\u0001',
+    'C-e' => '\u0005',
+    _ => key,
+  };
+}
+
 String curateAgentActivity(List<TimelineItem> items) {
   final lines = <String>[];
   for (final entry in projectTimelineRows([
@@ -973,10 +1147,23 @@ String _requiredString(Map<String, Object?> values, String key) {
   return value.trim();
 }
 
+String _requiredRawString(Map<String, Object?> values, String key) {
+  final value = values[key];
+  if (value is! String) throw FormatException('$key is required');
+  return value;
+}
+
 String? _nullableString(Map<String, Object?> values, String key) {
   final value = values[key];
   if (value == null) return null;
   if (value is! String) throw FormatException('$key must be a string or null');
+  return value.trim().isEmpty ? null : value.trim();
+}
+
+String? _optionalTrimmedString(Map<String, Object?> values, String key) {
+  if (!values.containsKey(key)) return null;
+  final value = values[key];
+  if (value is! String) throw FormatException('$key must be a string');
   return value.trim().isEmpty ? null : value.trim();
 }
 
@@ -996,6 +1183,13 @@ Map<String, Object?>? _optionalMap(Map<String, Object?> values, String key) {
 bool? _nullableBool(Map<String, Object?> values, String key) {
   final value = values[key];
   if (value == null) return null;
+  if (value is! bool) throw FormatException('$key must be a boolean');
+  return value;
+}
+
+bool? _optionalBool(Map<String, Object?> values, String key) {
+  if (!values.containsKey(key)) return null;
+  final value = values[key];
   if (value is! bool) throw FormatException('$key must be a boolean');
   return value;
 }

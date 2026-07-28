@@ -11741,15 +11741,16 @@
     {
       "id": "source-unit:packages/server/src/server/agent/tools/paseo-tools.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/workspace/workspace_scripts_service.dart; packages/daemon/lib/src/git/git_service.dart",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/workspace/workspace_scripts_service.dart; packages/daemon/lib/src/terminal/terminal_manager.dart; packages/daemon/lib/src/git/git_service.dart",
       "evidence": [
         "packages/daemon/test/agent_mcp_tools_test.dart",
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
         "packages/daemon/test/workspace/workspace_v2_service_test.dart",
         "packages/daemon/test/workspace/workspace_scripts_service_test.dart",
+        "packages/daemon/test/terminal_manager_test.dart",
         "packages/daemon/test/git_service_test.dart"
       ],
-      "notes": "The runtime MCP catalog includes canonical create, list, rename, and archive workspace orchestration, create-agent orchestration, and list, start, and stop workspace-script operations in addition to agent, permission, and provider tools. Workspace resolution, lifecycle errors, script terminal ownership, checkout placement, initial prompts, parentage, notifications, and workspace-scoped teardown are covered. Terminal, schedule, heartbeat, browser, voice, and remaining mutation tools are pending."
+      "notes": "The runtime MCP catalog includes canonical workspace create/list/rename/archive, create-agent, workspace-script list/start/stop, and terminal list/create/kill/capture/send-key operations in addition to agent, permission, and provider tools. Terminal cwd scoping, fresh top-level workspace minting, caller workspace ownership, special key tokens, capture, errors, script lifecycle, checkout placement, parentage, notifications, and workspace teardown are covered. Schedule, heartbeat, browser, voice, and remaining mutation tools are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tools/types.ts",
@@ -12200,10 +12201,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/path-utils.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart",
+      "evidence": [
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+      ],
+      "notes": "MCP terminal paths expand home and absolute paths, resolve agent-relative cwd values, and compare descendant paths with Windows case folding. A shared standalone assertAbsolutePath utility and consolidation of remaining duplicate path helpers are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/persisted-config.ts",
@@ -13505,16 +13508,17 @@
     {
       "id": "source-unit:packages/server/src/terminal/terminal-manager.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/terminal/terminal_manager.dart; packages/daemon/lib/src/terminal/terminal_rpc.dart; packages/daemon/lib/src/terminal/terminal_activity_tracker.dart; packages/daemon/lib/src/terminal/terminal_v2_service.dart; packages/app/lib/state/terminal_providers.dart",
+      "implementation": "packages/daemon/lib/src/terminal/terminal_manager.dart; packages/daemon/lib/src/terminal/terminal_rpc.dart; packages/daemon/lib/src/terminal/terminal_activity_tracker.dart; packages/daemon/lib/src/terminal/terminal_v2_service.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/app/lib/state/terminal_providers.dart",
       "evidence": [
         "packages/daemon/test/terminal_manager_test.dart",
         "packages/daemon/test/terminal_rpc_test.dart",
         "packages/daemon/test/terminal_v2_service_test.dart",
         "packages/daemon/test/terminal_activity_route_test.dart",
         "packages/daemon/test/terminal_attention_broadcast_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
         "packages/app/test/terminal_pane_test.dart"
       ],
-      "notes": "Workspace-owned create/list, PTY argv streaming, v2 metadata, headless structured snapshots, restore modes, directory subscriptions, one-byte slot allocation, binary input/resize, activity, rename, attention broadcasts, and longest-root worktree runtime environment inheritance are implemented. Profiles, persistent process restoration, tabs/splits, and remaining manager surface are incomplete."
+      "notes": "Workspace-owned create/list, PTY argv streaming, v2 metadata, headless snapshots, restore modes, directory subscriptions, one-byte slots, binary input/resize, activity, rename, attention broadcasts, inherited runtime environment, and the frozen MCP list/create/kill/capture/send-key surface are implemented. Profiles, persistent process restoration, tabs/splits, and remaining manager surface are incomplete."
     },
     {
       "id": "source-unit:packages/server/src/terminal/terminal-output-coalescer.ts",

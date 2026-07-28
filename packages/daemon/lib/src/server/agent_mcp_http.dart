@@ -291,6 +291,140 @@ final class AgentMcpHttpHandler {
       },
     },
     {
+      'name': 'list_terminals',
+      'title': 'List terminals',
+      'description':
+          'List terminals for a working directory or across all working '
+          'directories.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'cwd': {'type': 'string'},
+          'all': {'type': 'boolean'},
+        },
+        'additionalProperties': false,
+      },
+      'outputSchema': {
+        'type': 'object',
+        'properties': {
+          'terminals': {
+            'type': 'array',
+            'items': {
+              'type': 'object',
+              'properties': {
+                'id': {'type': 'string'},
+                'name': {'type': 'string'},
+                'cwd': {'type': 'string'},
+              },
+              'required': ['id', 'name', 'cwd'],
+              'additionalProperties': false,
+            },
+          },
+        },
+        'required': ['terminals'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'create_terminal',
+      'title': 'Create terminal',
+      'description': 'Create a terminal session for a working directory.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'cwd': {'type': 'string'},
+          'name': {'type': 'string'},
+        },
+        'additionalProperties': false,
+      },
+      'outputSchema': {
+        'type': 'object',
+        'properties': {
+          'id': {'type': 'string'},
+          'name': {'type': 'string'},
+          'cwd': {'type': 'string'},
+        },
+        'required': ['id', 'name', 'cwd'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'kill_terminal',
+      'title': 'Kill terminal',
+      'description': 'Kill an existing terminal session.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'terminalId': {'type': 'string'},
+        },
+        'required': ['terminalId'],
+        'additionalProperties': false,
+      },
+      'outputSchema': {
+        'type': 'object',
+        'properties': {
+          'success': {'type': 'boolean'},
+        },
+        'required': ['success'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'capture_terminal',
+      'title': 'Capture terminal',
+      'description':
+          'Capture plain-text terminal output lines from a terminal session.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'terminalId': {'type': 'string'},
+          'start': {'type': 'number'},
+          'end': {'type': 'number'},
+          'scrollback': {'type': 'boolean'},
+          'stripAnsi': {'type': 'boolean', 'default': true},
+        },
+        'required': ['terminalId'],
+        'additionalProperties': false,
+      },
+      'outputSchema': {
+        'type': 'object',
+        'properties': {
+          'terminalId': {'type': 'string'},
+          'lines': {
+            'type': 'array',
+            'items': {'type': 'string'},
+          },
+          'totalLines': {'type': 'integer', 'minimum': 0},
+        },
+        'required': ['terminalId', 'lines', 'totalLines'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'send_terminal_keys',
+      'title': 'Send terminal keys',
+      'description':
+          'Send literal text or special key tokens to a terminal session.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'terminalId': {'type': 'string'},
+          'keys': {'type': 'string'},
+          'literal': {'type': 'boolean'},
+        },
+        'required': ['terminalId', 'keys'],
+        'additionalProperties': false,
+      },
+      'outputSchema': {
+        'type': 'object',
+        'properties': {
+          'success': {'type': 'boolean'},
+        },
+        'required': ['success'],
+        'additionalProperties': false,
+      },
+    },
+    {
       'name': 'list_agents',
       'title': 'List agents',
       'description': 'List active or archived coding agents.',
