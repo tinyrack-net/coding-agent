@@ -1923,10 +1923,12 @@
     },
     {
       "id": "source-unit:packages/app/src/assets/acp-provider-icons.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/assets/acp_provider_icons.dart;tool/sync_paseo_provider_icons.cjs",
+      "evidence": [
+        "packages/app/test/provider_icon_test.dart"
+      ],
+      "notes": "All 38 frozen Paseo 0.2.0 SVG assets are vendored by a deterministic sync tool; every ACP catalog icon is parsed and rendered in Flutter tests."
     },
     {
       "id": "source-unit:packages/app/src/assistant-file-links/index.ts",
@@ -3026,21 +3028,23 @@
     },
     {
       "id": "source-unit:packages/app/src/components/provider-icon-name.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/widgets/provider_icon.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/providers/provider_icon_name.dart;packages/protocol/lib/src/provider_icon_names.dart",
       "evidence": [
-        "packages/app/test/provider_icon_test.dart"
+        "packages/app/test/provider_icon_test.dart",
+        "packages/protocol/test/provider_icon_names_test.dart"
       ],
-      "notes": "Built-in provider names and the custom-provider fallback are mapped; catalog icon-name recognition remains."
+      "notes": "Built-in, known catalog/terminal, and bot fallback resolution follows exact case-sensitive Paseo set membership."
     },
     {
       "id": "source-unit:packages/app/src/components/provider-icons.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/widgets/provider_icon.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/provider_icon.dart;packages/app/lib/assets/acp_provider_icons.dart;packages/app/lib/providers/provider_icon_name.dart",
       "evidence": [
-        "packages/app/test/provider_icon_test.dart"
+        "packages/app/test/provider_icon_test.dart",
+        "packages/app/test/command_center_dialog_test.dart"
       ],
-      "notes": "Frozen built-in provider marks and custom fallback are rendered; ACP catalog SVG assets remain."
+      "notes": "Built-in, ACP catalog, missing-catalog, and unknown custom provider rendering matches the frozen component behavior."
     },
     {
       "id": "source-unit:packages/app/src/components/provider-settings-host.tsx",
@@ -10472,11 +10476,12 @@
     {
       "id": "source-unit:packages/protocol/src/provider-icon-names.ts",
       "status": "verified",
-      "implementation": "packages/protocol/lib/src/terminal/terminal_profiles.dart",
+      "implementation": "packages/protocol/lib/src/provider_icon_names.dart;packages/protocol/lib/src/terminal/terminal_profiles.dart",
       "evidence": [
+        "packages/protocol/test/provider_icon_names_test.dart",
         "packages/protocol/test/terminal_contracts_test.dart"
       ],
-      "notes": null
+      "notes": "The ordered built-in, ACP, terminal-profile, and combined name lists exactly match Paseo 0.2.0 and are shared by terminal and app consumers."
     },
     {
       "id": "source-unit:packages/protocol/src/provider-manifest.ts",

@@ -1,11 +1,13 @@
+import 'package:agent_protocol/agent_protocol.dart';
+import 'package:coding_agent_app/assets/acp_provider_icons.dart';
+import 'package:coding_agent_app/providers/provider_icon_name.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 /// Provider glyph used by Paseo surfaces.
 ///
-/// Built-in provider paths are copied from the frozen Paseo 0.2.0 icon
-/// components. ACP catalog assets are tracked separately and currently use
-/// the same bot fallback as unknown custom providers.
+/// Built-in provider paths and ACP catalog assets are copied from the frozen
+/// Paseo 0.2.0 icon components and catalog.
 class ProviderIcon extends StatelessWidget {
   const ProviderIcon({
     super.key,
@@ -20,21 +22,38 @@ class ProviderIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final normalized = provider.trim().toLowerCase();
-    if (normalized == 'kiro') {
-      return Icon(FluentIcons.package, size: size, color: color);
-    }
-    final svg = _builtinProviderSvgs[normalized];
-    if (svg == null) {
-      return Icon(FluentIcons.robot, size: size, color: color);
-    }
-    return SvgPicture.string(
-      svg,
-      width: size,
-      height: size,
-      colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-    );
+    final resolved = resolveProviderIconName(provider);
+    return switch (resolved.kind) {
+      ProviderIconNameKind.builtin when resolved.id == 'kiro' => Icon(
+        FluentIcons.package,
+        size: size,
+        color: color,
+      ),
+      ProviderIconNameKind.builtin => _svgIcon(
+        _builtinProviderSvgs[resolved.id]!,
+      ),
+      ProviderIconNameKind.catalog => switch (acpProviderIconNames.contains(
+            resolved.id,
+          )
+          ? acpProviderIconSvgs[resolved.id]
+          : null) {
+        final svg? => _svgIcon(svg),
+        null => Icon(FluentIcons.robot, size: size, color: color),
+      },
+      ProviderIconNameKind.bot => Icon(
+        FluentIcons.robot,
+        size: size,
+        color: color,
+      ),
+    };
   }
+
+  Widget _svgIcon(String svg) => SvgPicture.string(
+    svg,
+    width: size,
+    height: size,
+    colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+  );
 }
 
 const _builtinProviderSvgs = <String, String>{
