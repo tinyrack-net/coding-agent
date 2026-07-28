@@ -134,6 +134,7 @@ final class WorkspaceV2Service {
   Future<PersistedWorkspaceRecord> createAutomationWorkspace(
     WorkspaceCreateSource source, {
     String? title,
+    Map<String, Object?>? firstAgentContext,
   }) async {
     final (workspace, project) = await switch (source) {
       DirectoryWorkspaceCreateSource directory => _createDirectory(
@@ -148,7 +149,15 @@ final class WorkspaceV2Service {
     _ensureGitSnapshot(workspace);
     final setup = workspaceSetup;
     if (source is WorktreeWorkspaceCreateSource && setup != null) {
-      unawaited(_runWorkspaceSetup(setup, workspace, project));
+      if (firstAgentContext == null) {
+        unawaited(_runWorkspaceSetup(setup, workspace, project));
+      } else {
+        _pendingAgentBootstraps[workspace.workspaceId] = _PendingAgentBootstrap(
+          setup: setup,
+          workspace: workspace,
+          project: project,
+        );
+      }
     }
     return workspace;
   }

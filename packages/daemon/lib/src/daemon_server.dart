@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import 'agent/agent_manager.dart';
+import 'agent/create_agent_lifecycle_dispatch.dart';
 import 'agent/create_agent_mode.dart';
 import 'agent/create_agent_title.dart';
 import 'agent/agent_store.dart';
@@ -239,6 +240,7 @@ Future<DaemonServerHandle> startDaemonServer({
 
   late final WsServer server;
   late final WorkspaceV2Service workspaceV2;
+  late final CreateAgentLifecycleDispatch createAgentLifecycle;
   late final WorkspaceRegistries workspaceRegistries;
   late final ScheduleService schedules;
   final voiceBridge = VoiceBridgeRegistry();
@@ -406,7 +408,21 @@ Future<DaemonServerHandle> startDaemonServer({
       final clientMessageId = payload['clientMessageId'] as String?;
       final images = AgentPromptImage.normalizeList(payload['images']);
       final attachments = AgentAttachment.normalizeList(payload['attachments']);
+      String? createdWorkspaceId;
+      String? createdAgentId;
       try {
+        final lifecycleFields = CreateAgentLifecycleFields.fromJson(payload);
+        final createdWorkspace = await createAgentLifecycle
+            .createWorktreeForRequest(
+              cwd: cwd,
+              target: lifecycleFields.worktree,
+              initialPrompt: initialPrompt ?? '',
+              hasLegacyGitOptions: payload['git'] != null,
+            );
+        createdWorkspaceId = createdWorkspace?.workspaceId;
+        final resolvedCwd = createdWorkspace?.cwd ?? cwd;
+        final resolvedWorkspaceId =
+            createdWorkspace?.workspaceId ?? workspaceId;
         final provider =
             (payload['provider'] as String?) ?? ProviderId.openai.name;
         final parentAgentId = payload['parentAgentId'] as String?;
@@ -416,7 +432,7 @@ Future<DaemonServerHandle> startDaemonServer({
         final resolvedModeId = await paseoProviderCatalog
             .resolveCreateAgentMode(
               AgentCreateModeRequest(
-                cwd: cwd,
+                cwd: resolvedCwd,
                 targetProvider: provider,
                 requestedMode: payload['modeId'] as String?,
                 parent: parent == null
@@ -429,8 +445,18 @@ Future<DaemonServerHandle> startDaemonServer({
           configTitle: payload['title'] as String?,
           initialPrompt: initialPrompt,
         );
+        final rawLabels = payload['labels'];
+        if (rawLabels != null &&
+            (rawLabels is! Map ||
+                rawLabels.keys.any((key) => key is! String) ||
+                rawLabels.values.any((value) => value is! String))) {
+          throw const FormatException('labels must contain string values');
+        }
+        final labels = rawLabels == null
+            ? const <String, String>{}
+            : Map<String, String>.from(rawLabels as Map);
         final agent = await manager.createAgent(
-          cwd: cwd,
+          cwd: resolvedCwd,
           provider: provider,
           model: (payload['model'] as String?) ?? '',
           mode: _parseMode(payload['mode']),
@@ -443,11 +469,22 @@ Future<DaemonServerHandle> startDaemonServer({
               ? Map<String, Object?>.from(payload['mcpServers']! as Map)
               : const {},
           title: titles.provisionalTitle,
-          workspaceId: workspaceId,
-          projectPath: payload['projectPath'] as String?,
-          branch: payload['branch'] as String?,
-          isWorktree: payload['isWorktree'] == true,
+          workspaceId: resolvedWorkspaceId,
+          projectPath:
+              createdWorkspace?.mainRepoRoot ??
+              payload['projectPath'] as String?,
+          branch: createdWorkspace?.branch ?? payload['branch'] as String?,
+          isWorktree:
+              createdWorkspace?.isPaseoOwnedWorktree ??
+              payload['isWorktree'] == true,
           parentAgentId: parentAgentId,
+          labels: labels,
+        );
+        createdAgentId = agent.agentId;
+        createAgentLifecycle.registerAutoArchiveIfRequested(
+          autoArchive: lifecycleFields.autoArchive,
+          agentId: agent.agentId,
+          createdWorkspaceId: createdWorkspaceId,
         );
         Future<void> startInitialPrompt() => manager.prompt(
           agent.agentId,
@@ -471,6 +508,10 @@ Future<DaemonServerHandle> startDaemonServer({
         return {'agent': agent.toJson()};
       } catch (_) {
         await workspaceV2.cancelAgentContinuation(workspaceId);
+        await createAgentLifecycle.cleanupCreatedWorktreeAfterFailedAgentCreate(
+          createdWorkspaceId: createdWorkspaceId,
+          createdAgentId: createdAgentId,
+        );
         rethrow;
       }
     })
@@ -805,6 +846,26 @@ Future<DaemonServerHandle> startDaemonServer({
     listTerminalContributions: terminals.listActivityContributions,
     broadcast: (message, connectionIds) =>
         server.broadcastV2(message, connectionIds: connectionIds),
+  );
+  createAgentLifecycle = CreateAgentLifecycleDispatch(
+    manager: manager,
+    workspaces: workspaceV2,
+    archiveWorkspace: (workspaceId) async {
+      await manager.archiveWorkspaceAgents(workspaceId);
+      final terminalIds = [
+        for (final terminal in terminals.listV2(workspaceId: workspaceId))
+          terminal['id']! as String,
+      ];
+      for (final terminalId in terminalIds) {
+        try {
+          await terminals.killAndWait(terminalId);
+        } on Object {
+          // Owned-content teardown is best effort before durable archival.
+        }
+      }
+      await workspaceV2.archiveAutomationWorkspace(workspaceId);
+    },
+    log: log,
   );
   final terminalV2 = TerminalV2Service(
     terminals: terminals,

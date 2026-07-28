@@ -405,6 +405,222 @@ void main() {
     },
     timeout: const Timeout(Duration(seconds: 30)),
   );
+
+  test(
+    'agent create couples worktree bootstrap and one-shot auto-archive',
+    () async {
+      final temp = Directory.systemTemp.createTempSync(
+        'daemon-agent-create-lifecycle-',
+      );
+      addTearDown(() async {
+        for (var attempt = 0; attempt < 20 && temp.existsSync(); attempt++) {
+          try {
+            await temp.delete(recursive: true);
+          } on FileSystemException {
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+          }
+        }
+      });
+      final repository = Directory(
+        '${temp.path}${Platform.pathSeparator}repository',
+      )..createSync();
+      await File(
+        '${repository.path}${Platform.pathSeparator}tracked.txt',
+      ).writeAsString('initial');
+      await _git(['init', '-b', 'main'], repository.path);
+      await _git(['add', '.'], repository.path);
+      await _git([
+        '-c',
+        'user.name=Test',
+        '-c',
+        'user.email=test@example.com',
+        'commit',
+        '-m',
+        'initial',
+      ], repository.path);
+      final client = _Client();
+      final handle = await startDaemonServer(
+        paths: DaemonPaths(dataDir: temp.path),
+        host: '127.0.0.1',
+        port: 0,
+        dataDir: temp.path,
+        agentClients: {'test': client},
+        log: (_) {},
+      );
+      addTearDown(handle.stop);
+      final channel = WebSocketChannel.connect(
+        Uri.parse('ws://127.0.0.1:${handle.server.port}/ws'),
+      );
+      await channel.ready;
+      addTearDown(channel.sink.close);
+      final frames = channel.stream
+          .where((frame) => frame is String)
+          .map((frame) => jsonDecode(frame as String) as Map<String, Object?>)
+          .asBroadcastStream();
+      channel.sink.add(
+        jsonEncode(
+          const WebSocketHello(
+            clientId: 'create-lifecycle-e2e',
+            clientType: WebSocketClientType.cli,
+            protocolVersion: paseoWebSocketProtocolVersion,
+          ).toJson(),
+        ),
+      );
+      await frames.firstWhere((frame) => frame['status'] == 'server_info');
+
+      final responseFuture = frames.firstWhere(
+        (frame) =>
+            frame['type'] == 'session' &&
+            (frame['message'] as Map?)?['type'] == 'agent.create.response' &&
+            (frame['message'] as Map?)?['requestId'] == 'direct-create',
+      );
+      channel.sink.add(
+        jsonEncode({
+          'type': 'session',
+          'message': RpcRequest(
+            type: MessageTypes.agentCreateRequest,
+            requestId: 'direct-create',
+            payload: {
+              'cwd': repository.path,
+              'provider': 'test',
+              'model': 'fake',
+              'mode': 'normal',
+              'initialPrompt': 'Implement direct lifecycle',
+              'worktree': {
+                'mode': 'branch-off',
+                'newBranch': 'direct-lifecycle',
+                'base': 'main',
+              },
+              'autoArchive': true,
+            },
+          ).toJson(),
+        }),
+      );
+      final response =
+          RpcFrame.fromJson(
+                Map<String, Object?>.from(
+                  (await responseFuture)['message'] as Map,
+                ),
+              )
+              as RpcResponse;
+      expect(response.error, isNull);
+      final agent = AgentSummary.fromJson(
+        response.payload['agent'] as Map<String, Object?>,
+      );
+      expect(agent.workspaceId, isNotNull);
+      expect(agent.cwd, isNot(repository.path));
+      expect(Directory(agent.cwd).existsSync(), isTrue);
+      expect(agent.branch, 'direct-lifecycle');
+      expect(agent.isWorktree, isTrue);
+      await _waitUntil(
+        () => handle.manager
+            .fetchTimeline(agent.agentId)
+            .items
+            .whereType<UserMessageItem>()
+            .isNotEmpty,
+      );
+      expect(client.sessions, hasLength(1));
+
+      client.sessions.single.emit(const TurnCompleted());
+      client.sessions.single.emit(const TurnCompleted());
+      await _waitUntil(
+        () =>
+            handle.manager.get(agent.agentId)?.archivedAt != null &&
+            !Directory(agent.cwd).existsSync(),
+      );
+
+      expect(handle.manager.get(agent.agentId)?.archivedAt, isNotNull);
+      expect(handle.terminals.listV2(workspaceId: agent.workspaceId), isEmpty);
+
+      final failedResponseFuture = frames.firstWhere(
+        (frame) =>
+            frame['type'] == 'session' &&
+            (frame['message'] as Map?)?['type'] == 'agent.create.response' &&
+            (frame['message'] as Map?)?['requestId'] == 'failed-create',
+      );
+      channel.sink.add(
+        jsonEncode({
+          'type': 'session',
+          'message': RpcRequest(
+            type: MessageTypes.agentCreateRequest,
+            requestId: 'failed-create',
+            payload: {
+              'cwd': repository.path,
+              'provider': 'missing-provider',
+              'model': 'fake',
+              'mode': 'normal',
+              'worktree': {
+                'mode': 'branch-off',
+                'newBranch': 'failed-create',
+                'base': 'main',
+              },
+            },
+          ).toJson(),
+        }),
+      );
+      final failedResponse =
+          RpcFrame.fromJson(
+                Map<String, Object?>.from(
+                  (await failedResponseFuture)['message'] as Map,
+                ),
+              )
+              as RpcResponse;
+      expect(failedResponse.error, isNotNull);
+      expect(
+        Directory(
+          '${temp.path}${Platform.pathSeparator}worktrees'
+          '${Platform.pathSeparator}failed-create',
+        ).existsSync(),
+        isFalse,
+      );
+
+      final conflictResponseFuture = frames.firstWhere(
+        (frame) =>
+            frame['type'] == 'session' &&
+            (frame['message'] as Map?)?['type'] == 'agent.create.response' &&
+            (frame['message'] as Map?)?['requestId'] == 'conflicting-create',
+      );
+      channel.sink.add(
+        jsonEncode({
+          'type': 'session',
+          'message': RpcRequest(
+            type: MessageTypes.agentCreateRequest,
+            requestId: 'conflicting-create',
+            payload: {
+              'cwd': repository.path,
+              'provider': 'test',
+              'model': 'fake',
+              'mode': 'normal',
+              'git': <String, Object?>{},
+              'worktree': {
+                'mode': 'branch-off',
+                'newBranch': 'conflicting-create',
+              },
+            },
+          ).toJson(),
+        }),
+      );
+      final conflictResponse =
+          RpcFrame.fromJson(
+                Map<String, Object?>.from(
+                  (await conflictResponseFuture)['message'] as Map,
+                ),
+              )
+              as RpcResponse;
+      expect(
+        conflictResponse.error?.message,
+        contains('worktree cannot be combined with git options'),
+      );
+      expect(
+        Directory(
+          '${temp.path}${Platform.pathSeparator}worktrees'
+          '${Platform.pathSeparator}conflicting-create',
+        ).existsSync(),
+        isFalse,
+      );
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
 }
 
 Future<void> _git(List<String> args, String cwd) async {
@@ -425,6 +641,8 @@ Future<void> _waitUntil(bool Function() predicate) async {
 }
 
 final class _Client implements AgentClient {
+  final sessions = <_Session>[];
+
   @override
   Future<AgentSession> createSession({
     required String cwd,
@@ -436,7 +654,11 @@ final class _Client implements AgentClient {
     String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
-  }) async => _Session();
+  }) async {
+    final session = _Session();
+    sessions.add(session);
+    return session;
+  }
 }
 
 final class _Session implements AgentSession {
@@ -453,4 +675,6 @@ final class _Session implements AgentSession {
 
   @override
   Future<void> prompt(String text) async {}
+
+  void emit(ProviderEvent event) => _events.add(event);
 }

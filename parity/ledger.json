@@ -10892,10 +10892,16 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent-lifecycle-dispatch.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/create_agent.dart; packages/daemon/lib/src/agent/create_agent_lifecycle_dispatch.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/daemon_server.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "evidence": [
+        "packages/protocol/test/create_agent_message_test.dart",
+        "packages/daemon/test/agent/create_agent_lifecycle_dispatch_test.dart",
+        "packages/daemon/test/agent_manager_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
+        "packages/daemon/test/daemon_agent_continuation_e2e_test.dart"
+      ],
+      "notes": "Matches frozen branch-off, checkout-branch, and checkout-PR request targets; worktree versus legacy git exclusion; first-agent-coupled setup; terminal turn completion, failure, and cancellation triggers; self-releasing one-shot auto-archive; cancellation waiting; workspace-scoped teardown; and failed agent-create worktree cleanup. The 110-test targeted boundary passed once and then passed in three concurrent independent processes with --concurrency=8 (330 repeated tests) without flakes."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent-mode.ts",

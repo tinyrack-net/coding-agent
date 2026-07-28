@@ -35,8 +35,16 @@ typedef AgentAttentionBroadcast =
       AgentAttentionReason reason,
       String timestamp,
     );
+typedef AgentStreamSubscriber = void Function(AgentStreamPayload payload);
 typedef AgentClientResolver = AgentClient? Function(String provider);
 typedef AgentProviderIdsResolver = Iterable<String> Function();
+
+final class _AgentStreamSubscription {
+  const _AgentStreamSubscription({required this.subscriber, this.agentId});
+
+  final AgentStreamSubscriber subscriber;
+  final String? agentId;
+}
 
 final class AgentRuntime {
   AgentRuntime({
@@ -155,6 +163,7 @@ class AgentManager {
   AgentAttentionBroadcast? onAttention;
 
   final Map<String, AgentRuntime> _runtimes = {};
+  final Set<_AgentStreamSubscription> _streamSubscribers = {};
   final Map<String, List<Completer<void>>> _stateWaiters = {};
   final Map<String, Future<void>> _providerSessionImportMutations = {};
   String? _mcpBaseUrl;
@@ -172,6 +181,18 @@ class AgentManager {
 
   void setAppendSystemPrompt(String? prompt) {
     _appendSystemPrompt = prompt ?? '';
+  }
+
+  void Function() subscribeStream(
+    AgentStreamSubscriber subscriber, {
+    String? agentId,
+  }) {
+    final subscription = _AgentStreamSubscription(
+      subscriber: subscriber,
+      agentId: agentId,
+    );
+    _streamSubscribers.add(subscription);
+    return () => _streamSubscribers.remove(subscription);
   }
 
   String? get mcpAuthToken => _mcpAuthToken;
@@ -1432,6 +1453,7 @@ class AgentManager {
       }
     }
     _stateWaiters.clear();
+    _streamSubscribers.clear();
     for (final runtime in _runtimes.values) {
       await runtime.sessionSub?.cancel();
       await runtime.session?.dispose();
@@ -1732,16 +1754,20 @@ class AgentManager {
   void _onTimelineItem(String agentId, int epoch, int seq, TimelineItem item) {
     final runtime = _runtimes[agentId];
     if (runtime?.internal != true) {
-      onStream?.call(
-        AgentStreamPayload(
-          agentId: agentId,
-          epoch: epoch,
-          seq: seq,
-          item: item,
-          provider: runtime?.summary.provider ?? 'codex',
-          timestamp: DateTime.now().toUtc().toIso8601String(),
-        ),
+      final payload = AgentStreamPayload(
+        agentId: agentId,
+        epoch: epoch,
+        seq: seq,
+        item: item,
+        provider: runtime?.summary.provider ?? 'codex',
+        timestamp: DateTime.now().toUtc().toIso8601String(),
       );
+      onStream?.call(payload);
+      for (final subscription in _streamSubscribers.toList(growable: false)) {
+        if (subscription.agentId == null || subscription.agentId == agentId) {
+          subscription.subscriber(payload);
+        }
+      }
     }
     if (runtime != null) _persist(runtime);
   }
