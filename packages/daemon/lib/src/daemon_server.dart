@@ -10,6 +10,7 @@ import 'agent/agent_manager.dart';
 import 'agent/agent_store.dart';
 import 'agent/timeline_projection.dart';
 import 'agent/timeline_store.dart';
+import 'agent/runtime_mcp_config.dart';
 import 'forge/forge_action_service.dart';
 import 'forge/checkout_pr_status_service.dart';
 import 'forge/forge_check_details_service.dart';
@@ -36,6 +37,7 @@ import 'providers/paseo/provider_manifest.dart';
 import 'providers/provider_registry.dart';
 import 'server/rpc_router.dart';
 import 'server/agent_attention_policy.dart';
+import 'server/agent_mcp_http.dart';
 import 'server/agent_directory_pager.dart';
 import 'server/agent_directory_subscription.dart';
 import 'server/agent_project_placement.dart';
@@ -138,6 +140,7 @@ Future<DaemonServerHandle> startDaemonServer({
 }) async {
   log ??= (msg) => stdout.writeln('${DateTime.now().toIso8601String()} $msg');
   final startedAt = DateTime.now();
+  final agentMcpAuthToken = const Uuid().v4();
 
   final lock = PidLock(paths.lockFile);
   try {
@@ -246,6 +249,8 @@ Future<DaemonServerHandle> startDaemonServer({
               )
               .map((definition) => definition.id)
         : null,
+    mcpAuthToken: agentMcpAuthToken,
+    injectMcpIntoAgents: configStore.config.injectMcpIntoAgents,
     store: AgentStore(dataDir: dataDir),
     onStream: (payload) => server.broadcast(
       RpcEvent(type: MessageTypes.agentStreamEvent, payload: payload.toJson()),
@@ -687,6 +692,11 @@ Future<DaemonServerHandle> startDaemonServer({
     publicStaticHandler: PublicStaticHandler(staticDir).call,
     fileDownloadHandler: FileDownloadHandler(downloadTokens).call,
     serviceProxyHandler: serviceProxyHttp.call,
+    agentMcpHandler: AgentMcpHttpHandler(
+      manager: manager,
+      capabilityToken: agentMcpAuthToken,
+      passwordHash: passwordHash,
+    ).call,
     webUiHandler: DaemonWebUi(
       enabled: webUiEnabled,
       distDir: webUiDistDir,
@@ -799,7 +809,12 @@ Future<DaemonServerHandle> startDaemonServer({
       );
     },
   );
+  String? agentMcpBaseUrl;
   final stopConfigBroadcast = configStore.onChange((config) {
+    manager.configureRuntimeMcp(
+      baseUrl: agentMcpBaseUrl,
+      injectIntoAgents: config.injectMcpIntoAgents,
+    );
     server.broadcastV2({
       'type': 'status',
       'message': DaemonConfigChangedStatus(config: config).toJson(),
@@ -1161,6 +1176,20 @@ Future<DaemonServerHandle> startDaemonServer({
 
   try {
     await server.start(host: host, port: port);
+    final mcpHost = switch (host) {
+      '0.0.0.0' || '::' => '127.0.0.1',
+      _ => host,
+    };
+    agentMcpBaseUrl = Uri(
+      scheme: 'http',
+      host: mcpHost,
+      port: server.port,
+      path: agentMcpPath,
+    ).toString();
+    manager.configureRuntimeMcp(
+      baseUrl: agentMcpBaseUrl,
+      injectIntoAgents: configStore.config.injectMcpIntoAgents,
+    );
     if (serviceProxyStandalone != null) {
       await serviceProxyStandalone.start(
         parseServiceProxyListenTarget(serviceProxyListen!),

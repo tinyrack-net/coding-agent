@@ -15,6 +15,7 @@ import '../server/rpc_router.dart';
 import '../utils/path_identity.dart';
 import 'agent_store.dart';
 import 'provider_subagent_store.dart';
+import 'runtime_mcp_config.dart';
 import 'timeline_store.dart';
 
 typedef PermissionRequestedBroadcast =
@@ -107,11 +108,17 @@ class AgentManager {
     this.onPermissionRequested,
     this.onPermissionResolved,
     this.onAttention,
+    String? mcpBaseUrl,
+    String? mcpAuthToken,
+    bool injectMcpIntoAgents = false,
     void Function(ProviderSubagentUpdate update)? onProviderSubagentUpdate,
   }) : _clients = clients,
        _clientResolver = clientResolver,
        _providerIdsResolver = providerIdsResolver,
        _store = store,
+       _mcpBaseUrl = mcpBaseUrl,
+       _mcpAuthToken = mcpAuthToken,
+       _injectMcpIntoAgents = injectMcpIntoAgents,
        broker = broker ?? PermissionBroker(),
        providerSubagents = ProviderSubagentStore(
          onUpdate: onProviderSubagentUpdate,
@@ -134,6 +141,19 @@ class AgentManager {
   final Map<String, AgentRuntime> _runtimes = {};
   final Map<String, List<Completer<void>>> _stateWaiters = {};
   final Map<String, Future<void>> _providerSessionImportMutations = {};
+  String? _mcpBaseUrl;
+  final String? _mcpAuthToken;
+  bool _injectMcpIntoAgents;
+
+  void configureRuntimeMcp({
+    required String? baseUrl,
+    required bool injectIntoAgents,
+  }) {
+    _mcpBaseUrl = baseUrl;
+    _injectMcpIntoAgents = injectIntoAgents;
+  }
+
+  String? get mcpAuthToken => _mcpAuthToken;
 
   /// Restore persisted agents (sessions are recreated lazily on next prompt).
   Future<void> load() async {
@@ -152,7 +172,7 @@ class AgentManager {
         ),
         archived: record.archived,
         internal: record.internal,
-        mcpServers: record.mcpServers,
+        mcpServers: stripInternalAgentMcpServers(record.mcpServers),
       );
       runtime.timeline.onItem = _onTimelineItem;
       _runtimes[record.summary.agentId] = runtime;
@@ -607,7 +627,7 @@ class AgentManager {
       ),
       timeline: TimelineStore(agentId: agentId),
       internal: internal,
-      mcpServers: Map.unmodifiable(mcpServers),
+      mcpServers: Map.unmodifiable(stripInternalAgentMcpServers(mcpServers)),
     );
     runtime.timeline.onItem = _onTimelineItem;
     _runtimes[agentId] = runtime;
@@ -642,6 +662,14 @@ class AgentManager {
         "Provider '${runtime.summary.provider}' is no longer configured",
       );
     }
+    final launchMcpServers = _injectMcpIntoAgents
+        ? withRuntimeTinyrackMcpServer(
+            storedMcpServers: runtime.mcpServers,
+            agentId: runtime.summary.agentId,
+            mcpBaseUrl: _mcpBaseUrl,
+            mcpAuthToken: _mcpAuthToken,
+          )
+        : stripInternalAgentMcpServers(runtime.mcpServers);
     final session = client is McpAgentClient
         ? await client.createSessionWithMcp(
             cwd: runtime.summary.cwd,
@@ -652,7 +680,7 @@ class AgentManager {
             featureValues: runtime.summary.featureValues,
             sessionId: runtime.summary.sessionId,
             initialHistory: runtime.timeline.snapshot(),
-            mcpServers: runtime.mcpServers,
+            mcpServers: launchMcpServers,
           )
         : await client.createSession(
             cwd: runtime.summary.cwd,

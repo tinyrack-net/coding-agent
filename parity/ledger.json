@@ -10931,10 +10931,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/mcp-server.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/ws_server.dart",
+      "evidence": [
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+      ],
+      "notes": "Stateless Streamable-HTTP-compatible initialize, ping, tools/list, tools/call, method guard, callerAgentId scoping, and endpoint-local authorization are implemented. The complete frozen tool catalog and remaining MCP transport conformance cases are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/mcp-shared.ts",
@@ -11656,10 +11658,14 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/runtime-mcp-config.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/agent/runtime_mcp_config.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/daemon_server.dart",
+      "evidence": [
+        "packages/daemon/test/agent/runtime_mcp_config_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/daemon/test/daemon_custom_acp_e2e_test.dart"
+      ],
+      "notes": "Frozen stored-versus-launch separation, stale internal server stripping, current daemon URL and callerAgentId injection, per-run bearer capability, live config toggle, provider projection, and non-persistence are verified. The injected server key uses the required Tinyrack product identity."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/structured-generation-providers.ts",
@@ -11716,10 +11722,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tools/paseo-tools.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart",
+      "evidence": [
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+      ],
+      "notes": "The MCP catalog currently exposes the frozen list_agents, get_agent_status, send_agent_prompt, and archive_agent tools with structured results. Remaining frozen workspace, provider, permission, schedule, heartbeat, terminal, script, browser, voice, and mutation tools are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tools/types.ts",
@@ -11751,12 +11759,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/auth.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/server/daemon_auth.dart",
       "evidence": [
-        "packages/daemon/test/daemon_auth_test.dart"
+        "packages/daemon/test/daemon_auth_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
       ],
-      "notes": "HTTP and WS daemon-password parity implemented; MCP capability-token authorization remains"
+      "notes": "HTTP and WS daemon-password behavior, frozen bypass paths, and endpoint-local Agent MCP authorization by per-run capability token or valid daemon password are verified."
     },
     {
       "id": "source-unit:packages/server/src/server/auto-archive-on-merge/archive-if-safe.ts",
@@ -11775,16 +11784,17 @@
     {
       "id": "source-unit:packages/server/src/server/bootstrap.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/ws_server.dart; packages/daemon/lib/src/server/terminal_activity_route.dart; packages/daemon/lib/src/server/web_ui.dart; packages/daemon/lib/src/server/trusted_proxies.dart; packages/daemon/lib/src/server/public_static.dart; packages/daemon/lib/src/server/file_transfer_service.dart",
+      "implementation": "packages/daemon/lib/src/server/ws_server.dart; packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/terminal_activity_route.dart; packages/daemon/lib/src/server/web_ui.dart; packages/daemon/lib/src/server/trusted_proxies.dart; packages/daemon/lib/src/server/public_static.dart; packages/daemon/lib/src/server/file_transfer_service.dart",
       "evidence": [
         "packages/daemon/test/ws_server_test.dart",
         "packages/daemon/test/terminal_activity_route_test.dart",
         "packages/daemon/test/web_ui_test.dart",
         "packages/daemon/test/trusted_proxies_test.dart",
         "packages/daemon/test/public_static_test.dart",
-        "packages/daemon/test/daemon_file_transfer_e2e_test.dart"
+        "packages/daemon/test/daemon_file_transfer_e2e_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
       ],
-      "notes": "Health, status, CORS, auth, Host validation, trusted proxy handling, WS mounting, daemon-served Web UI, Express-compatible /public static files, single-use file downloads, and loopback token-authenticated terminal activity route are implemented; remaining API, MCP, service-proxy, and automation routes pending."
+      "notes": "Health, status, CORS, auth, Host validation, trusted proxy handling, WS mounting, daemon-served Web UI, Express-compatible /public static files, single-use file downloads, loopback terminal activity, and the stateless Agent MCP route are implemented; remaining API, full MCP tool catalog, service-proxy, and automation routes are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/browser-tools/broker.ts",

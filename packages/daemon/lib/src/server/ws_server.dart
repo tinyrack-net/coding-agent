@@ -56,6 +56,7 @@ class WsServer {
     this.webUiHandler,
     this.fileDownloadHandler,
     this.serviceProxyHandler,
+    this.agentMcpHandler,
     this.runtimeMetricsFlushInterval = const Duration(seconds: 60),
     RuntimeMetricsClock? runtimeMetricsClock,
     String? serverId,
@@ -83,6 +84,7 @@ class WsServer {
   final OptionalHttpHandler? webUiHandler;
   final OptionalHttpHandler? fileDownloadHandler;
   final OptionalHttpHandler? serviceProxyHandler;
+  final AdditionalHttpHandler? agentMcpHandler;
 
   /// Invoked for every decoded binary terminal frame from an authenticated
   /// connection (M5). Malformed frames are dropped.
@@ -161,6 +163,13 @@ class WsServer {
       if (request.url.path == 'api/files/download') {
         final response = await fileDownloadHandler?.call(request);
         return response ?? Response.notFound('Not found', headers: corsHeaders);
+      }
+      if (request.url.path == 'mcp/agents') {
+        final route = agentMcpHandler;
+        if (route == null) {
+          return Response.notFound('Not found', headers: corsHeaders);
+        }
+        return route(request);
       }
 
       final isV2Path = request.url.path == 'ws';

@@ -39,5 +39,47 @@ void main() {
       expect(shouldBypassBearerAuth('POST', '/mcp/agents'), isTrue);
       expect(shouldBypassBearerAuth('GET', '/api/status'), isFalse);
     });
+
+    test('authorizes agent MCP with capability or daemon password', () {
+      final hash = hashDaemonPassword('correct-password');
+      expect(
+        isAgentMcpRequestAuthorized(
+          capabilityToken: 'cap-token',
+          authorizationHeader: 'Bearer anything',
+        ),
+        isTrue,
+      );
+      expect(
+        isAgentMcpRequestAuthorized(
+          capabilityToken: 'cap-token',
+          passwordHash: hash,
+          authorizationHeader: 'Bearer cap-token',
+        ),
+        isTrue,
+      );
+      expect(
+        isAgentMcpRequestAuthorized(
+          capabilityToken: 'cap-token',
+          passwordHash: hash,
+          authorizationHeader: 'Bearer correct-password',
+        ),
+        isTrue,
+      );
+      expect(
+        isAgentMcpRequestAuthorized(
+          capabilityToken: 'cap-token',
+          passwordHash: hash,
+          authorizationHeader: 'Bearer wrong-token',
+        ),
+        isFalse,
+      );
+      expect(
+        isAgentMcpRequestAuthorized(
+          capabilityToken: 'cap-token',
+          passwordHash: hash,
+        ),
+        isFalse,
+      );
+    });
   });
 }

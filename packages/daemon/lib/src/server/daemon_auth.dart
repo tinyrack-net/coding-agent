@@ -25,6 +25,25 @@ bool isBearerTokenValid({String? passwordHash, String? token}) {
   }
 }
 
+bool isAgentMcpRequestAuthorized({
+  required String capabilityToken,
+  String? passwordHash,
+  String? authorizationHeader,
+}) {
+  final token = extractHttpBearerToken(authorizationHeader);
+  if (token != null && _constantTimeEquals(token, capabilityToken)) return true;
+  return isBearerTokenValid(passwordHash: passwordHash, token: token);
+}
+
+bool _constantTimeEquals(String left, String right) {
+  if (left.length != right.length) return false;
+  var difference = 0;
+  for (var index = 0; index < left.length; index++) {
+    difference |= left.codeUnitAt(index) ^ right.codeUnitAt(index);
+  }
+  return difference == 0;
+}
+
 String? extractHttpBearerToken(String? value) {
   if (value == null) return null;
   final parts = value.trim().split(RegExp(r'\s+'));

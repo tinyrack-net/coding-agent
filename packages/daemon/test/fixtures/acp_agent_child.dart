@@ -24,6 +24,8 @@ bool get expectClientRuntime =>
     Platform.environment['ACP_FIXTURE_EXPECT_CLIENT_RUNTIME'] == 'true';
 bool get expectNoMcp =>
     Platform.environment['ACP_FIXTURE_EXPECT_NO_MCP'] == 'true';
+bool get expectRuntimeMcp =>
+    Platform.environment['ACP_FIXTURE_EXPECT_RUNTIME_MCP'] == 'true';
 bool get exerciseClientRuntime =>
     Platform.environment['ACP_FIXTURE_EXERCISE_CLIENT_RUNTIME'] == 'true';
 
@@ -385,7 +387,8 @@ void main() {
         }
         if (expectClientRuntime &&
             Platform.environment['NO_BROWSER'] != 'true') {
-          if (mcpServers is! List || mcpServers.length != 2) {
+          final expectedLength = expectRuntimeMcp ? 3 : 2;
+          if (mcpServers is! List || mcpServers.length != expectedLength) {
             send({
               'jsonrpc': '2.0',
               'id': id,
@@ -393,8 +396,13 @@ void main() {
             });
             return;
           }
-          final stdio = map(mcpServers[0]);
-          final http = map(mcpServers[1]);
+          final projected = mcpServers.map(map).toList(growable: false);
+          final stdio = projected.singleWhere(
+            (server) => server['name'] == 'local',
+          );
+          final http = projected.singleWhere(
+            (server) => server['name'] == 'remote',
+          );
           if (stdio['name'] != 'local' ||
               stdio['command'] != 'dart' ||
               (stdio['args'] as List).join(' ') != 'run server.dart' ||
@@ -409,6 +417,31 @@ void main() {
               'error': {'code': -32602, 'message': 'invalid MCP projection'},
             });
             return;
+          }
+          if (expectRuntimeMcp) {
+            final runtime = projected.singleWhere(
+              (server) => server['name'] == 'tinyrack',
+            );
+            final runtimeUrl = Uri.tryParse('${runtime['url']}');
+            final headers = runtime['headers'] as List?;
+            if (runtime['type'] != 'http' ||
+                runtimeUrl?.path != '/mcp/agents' ||
+                runtimeUrl?.queryParameters['callerAgentId']?.isEmpty !=
+                    false ||
+                headers == null ||
+                headers.length != 1 ||
+                map(headers.single)['name'] != 'Authorization' ||
+                !'${map(headers.single)['value']}'.startsWith('Bearer ')) {
+              send({
+                'jsonrpc': '2.0',
+                'id': id,
+                'error': {
+                  'code': -32602,
+                  'message': 'invalid runtime MCP projection',
+                },
+              });
+              return;
+            }
           }
         }
         if (exerciseClientRuntime) {

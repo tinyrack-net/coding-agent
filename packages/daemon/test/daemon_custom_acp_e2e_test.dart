@@ -37,6 +37,7 @@ void main() {
       });
       DaemonConfigStore(home: home.path).patch(
         MutableDaemonConfigPatch(
+          injectMcpIntoAgents: true,
           providers: {
             'fixture-acp': MutableDaemonProviderConfig(
               extra: {
@@ -46,6 +47,7 @@ void main() {
                 'env': const {
                   'ACP_FIXTURE_ENV': 'configured',
                   'ACP_FIXTURE_EXPECT_CLIENT_RUNTIME': 'true',
+                  'ACP_FIXTURE_EXPECT_RUNTIME_MCP': 'true',
                 },
                 'params': const {
                   'supportsMcpServers': true,
