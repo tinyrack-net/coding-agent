@@ -2,6 +2,17 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('abort request matches the frozen type-only shape', () {
+    expect(
+      AbortRequestMessage.fromJson(const {'type': 'abort_request'}).toJson(),
+      {'type': 'abort_request'},
+    );
+    expect(
+      () => AbortRequestMessage.fromJson(const {'type': 'wrong'}),
+      throwsFormatException,
+    );
+  });
+
   test('audio played message matches the frozen top-level shape', () {
     const message = AudioPlayedMessage(id: 'audio-id:0');
 

@@ -60,6 +60,7 @@ import 'server/relay_transport.dart';
 import 'server/terminal_activity_route.dart';
 import 'server/trusted_proxies.dart';
 import 'server/web_ui.dart';
+import 'server/voice_session_v2_service.dart';
 import 'server/ws_server.dart';
 import 'schedule/schedule_agent_runner.dart';
 import 'schedule/schedule_service.dart';
@@ -81,6 +82,10 @@ import 'workspace/workspace_setup_service.dart';
 import 'workspace/worktree_terminal_bootstrap_service.dart';
 import 'workspace/workspace_v2_service.dart';
 import 'voice/voice_bridge_registry.dart';
+import 'voice/speech_provider.dart';
+import 'voice/speech_readiness.dart';
+import 'voice/turn_detection_provider.dart';
+import 'voice/voice_session.dart';
 
 class DaemonServerHandle {
   DaemonServerHandle({
@@ -138,6 +143,14 @@ Future<DaemonServerHandle> startDaemonServer({
   String appBaseUrl = defaultTinyrackAppBaseUrl,
   AgentHookInstallOptions hookInstallOptions = const AgentHookInstallOptions(),
   Map<String, AgentClient>? agentClients,
+  TextToSpeechResolver? resolveVoiceTts,
+  SpeechToTextResolver? resolveVoiceStt,
+  SpeechToTextResolver? resolveDictationStt,
+  TurnDetectionResolver? resolveVoiceTurnDetection,
+  SpeechReadinessSnapshot Function()? getSpeechReadiness,
+  SpeechLogger? speechLogger,
+  String sttLanguage = 'en',
+  String dictationLanguage = 'en',
   Duration agentMcpWaitTimeout = const Duration(seconds: 30),
   void Function(String)? log,
   void Function()? onShutdownRequested,
@@ -803,6 +816,21 @@ Future<DaemonServerHandle> startDaemonServer({
     featureResolver: manager.listFeatures,
     onSnapshotChanged: (update) => server.broadcastV2(update.toJson()),
   );
+  final voiceSessions = VoiceSessionV2Service(
+    createHost: (connection) =>
+        _DaemonVoiceSessionHost(manager: manager, connection: connection),
+    resolveTts: resolveVoiceTts ?? () => null,
+    resolveStt: resolveVoiceStt ?? () => null,
+    resolveDictationStt: resolveDictationStt,
+    resolveTurnDetection: resolveVoiceTurnDetection ?? () => null,
+    voiceBridge: voiceBridge,
+    getSpeechReadiness: getSpeechReadiness,
+    logger: speechLogger ?? const NullSpeechLogger(),
+    sttLanguage: sttLanguage,
+    dictationLanguage: dictationLanguage,
+    environment: Platform.environment,
+    cwd: paths.dataDir,
+  );
   final hubRelationships = HubRelationshipController(
     home: paths.dataDir,
     serverId: serverId,
@@ -833,6 +861,9 @@ Future<DaemonServerHandle> startDaemonServer({
     });
   });
   server.onV2SessionMessage = (connection, message) async {
+    if (await voiceSessions.handle(connection, message)) {
+      return v2HandledNoResponse;
+    }
     if (message['type'] == 'client_heartbeat') {
       _recordClientHeartbeat(connection, message);
       final presence = connection.clientPresence;
@@ -1131,6 +1162,7 @@ Future<DaemonServerHandle> startDaemonServer({
       terminals.handleFrame(connection.id, frame);
   server.onFileTransferFrame = fileTransfers.handleFrame;
   server.onConnectionClosed = (connection) {
+    unawaited(voiceSessions.onConnectionClosed(connection));
     agentDirectorySubscriptions.remove(connection.id);
     terminals.onConnectionClosed(connection.id);
     terminalV2.onConnectionClosed(connection.id);
@@ -1149,6 +1181,7 @@ Future<DaemonServerHandle> startDaemonServer({
     stopConfigBroadcast();
     scriptHealth.stop();
     schedules.stop();
+    await voiceSessions.dispose();
     voiceBridge.clear();
     workspaceScripts.dispose();
     await workspaceGitObserverBackend.disposeAndWait();
@@ -1839,6 +1872,61 @@ bool broadcastTerminalAttention({
     );
   }
   return plan.shouldPush;
+}
+
+final class _DaemonVoiceSessionHost implements VoiceSessionHost {
+  const _DaemonVoiceSessionHost({
+    required this.manager,
+    required this.connection,
+  });
+
+  final AgentManager manager;
+  final Connection connection;
+
+  @override
+  void emit(Map<String, Object?> message) {
+    connection.sendJson({'type': 'session', 'message': message});
+  }
+
+  @override
+  Future<VoiceSessionAgent> loadAgent(String agentId) async {
+    await manager.ensureLoaded(agentId);
+    final agent = manager.get(agentId, includeArchived: false);
+    if (agent == null) throw StateError('Agent not found: $agentId');
+    return VoiceSessionAgent(
+      id: agent.agentId,
+      systemPrompt: agent.systemPrompt,
+    );
+  }
+
+  @override
+  Future<VoiceSessionAgent> reloadAgentSession(
+    String agentId,
+    VoiceSessionAgentOverrides overrides,
+  ) async {
+    final agent = await manager.reloadAgentSession(
+      agentId,
+      systemPrompt: overrides.systemPrompt,
+    );
+    return VoiceSessionAgent(
+      id: agent.agentId,
+      systemPrompt: agent.systemPrompt,
+    );
+  }
+
+  @override
+  Future<void> sendSpokenInput(String agentId, String text) =>
+      manager.prompt(agentId, text);
+
+  @override
+  Future<void> interruptAgentIfRunning(String agentId) async {
+    if (manager.hasActiveAgentRun(agentId)) {
+      await manager.interrupt(agentId);
+    }
+  }
+
+  @override
+  bool hasActiveAgentRun(String? agentId) => manager.hasActiveAgentRun(agentId);
 }
 
 AgentMode _parseMode(Object? raw) {

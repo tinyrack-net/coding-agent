@@ -19,6 +19,19 @@ final class AudioPlayedMessage {
   Map<String, Object?> toJson() => {'type': type, 'id': id};
 }
 
+final class AbortRequestMessage {
+  const AbortRequestMessage();
+
+  static const type = 'abort_request';
+
+  factory AbortRequestMessage.fromJson(Map<String, Object?> json) {
+    _expectType(json, type);
+    return const AbortRequestMessage();
+  }
+
+  Map<String, Object?> toJson() => const {'type': type};
+}
+
 final class VoiceAudioChunkMessage {
   const VoiceAudioChunkMessage({
     required this.audio,

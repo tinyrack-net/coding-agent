@@ -12432,7 +12432,7 @@
     {
       "id": "source-unit:packages/server/src/server/session.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/daemon_server.dart; packages/daemon/lib/src/server/ws_server.dart; packages/daemon/lib/src/server/agent_directory_pager.dart; packages/daemon/lib/src/server/agent_directory_subscription.dart; packages/daemon/lib/src/server/agent_project_placement.dart; packages/daemon/lib/src/server/provider_visibility.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/protocol/lib/src/messages/agent_directory.dart",
+      "implementation": "packages/daemon/lib/src/daemon_server.dart; packages/daemon/lib/src/server/ws_server.dart; packages/daemon/lib/src/server/voice_session_v2_service.dart; packages/daemon/lib/src/server/agent_directory_pager.dart; packages/daemon/lib/src/server/agent_directory_subscription.dart; packages/daemon/lib/src/server/agent_project_placement.dart; packages/daemon/lib/src/server/provider_visibility.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/protocol/lib/src/messages/agent_directory.dart; packages/protocol/lib/src/messages/voice.dart",
       "evidence": [
         "packages/daemon/test/workspace/workspace_v2_service_test.dart",
         "packages/daemon/test/daemon_v2_workspace_e2e_test.dart",
@@ -12441,9 +12441,12 @@
         "packages/daemon/test/agent_directory_subscription_test.dart",
         "packages/daemon/test/agent_project_placement_test.dart",
         "packages/daemon/test/provider_visibility_test.dart",
+        "packages/daemon/test/voice/voice_session_v2_service_test.dart",
+        "packages/daemon/test/daemon_voice_session_e2e_test.dart",
+        "packages/protocol/test/voice_messages_test.dart",
         "packages/app/test/daemon_client_v2_e2e_test.dart"
       ],
-      "notes": "Native v2 session dispatch covers project and workspace lifecycle, active and historical agent directories with exact opaque paging, authoritative placement, client-version provider visibility, response-ordered bootstrap update buffering/deduplication, and single-agent lookup plus temporary v1 fallback. Internal-agent exclusion and remaining session messages are pending."
+      "notes": "Native v2 session dispatch covers project and workspace lifecycle, active and historical agent directories with exact opaque paging, authoritative placement, client-version provider visibility, response-ordered bootstrap update buffering/deduplication, single-agent lookup, and connection-scoped routing and cleanup for all eight frozen voice/dictation control messages plus temporary v1 fallback. Internal-agent exclusion and remaining session messages are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/session/agent-config/agent-config-session.ts",
@@ -12842,10 +12845,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/speech/speech-runtime.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/server/voice_session_v2_service.dart; packages/daemon/lib/src/voice/speech_readiness.dart",
+      "evidence": [
+        "packages/daemon/test/voice/voice_session_v2_service_test.dart",
+        "packages/daemon/test/daemon_voice_session_e2e_test.dart"
+      ],
+      "notes": "The session boundary derives frozen ready, turn_detection_unavailable, stt_unavailable, and tts_unavailable states before agent mutation and accepts an injected full readiness snapshot. Provider selection, local model lifecycle, downloads, and runtime configuration remain."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/speech-types.ts",
@@ -13820,10 +13826,13 @@
     },
     {
       "id": "wire-message:abort_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/voice.dart; packages/daemon/lib/src/server/voice_session_v2_service.dart",
+      "evidence": [
+        "packages/protocol/test/voice_messages_test.dart",
+        "packages/daemon/test/voice/voice_session_v2_service_test.dart"
+      ],
+      "notes": "Exact type-only frozen wire shape and connection-scoped voice-session routing are verified."
     },
     {
       "id": "wire-message:agent_permission_request",
@@ -14915,10 +14924,14 @@
     },
     {
       "id": "wire-message:set_voice_mode_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/voice.dart; packages/daemon/lib/src/server/voice_session_v2_service.dart; packages/daemon/lib/src/daemon_server.dart",
+      "evidence": [
+        "packages/protocol/test/voice_messages_test.dart",
+        "packages/daemon/test/voice/voice_session_v2_service_test.dart",
+        "packages/daemon/test/daemon_voice_session_e2e_test.dart"
+      ],
+      "notes": "Typed frozen response including readiness rejection metadata is verified over the real daemon v2 WebSocket, including agent reload and disconnect restoration."
     },
     {
       "id": "wire-message:shutdown_server_request",
