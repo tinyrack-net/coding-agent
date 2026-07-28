@@ -10915,7 +10915,7 @@
         "packages/daemon/test/daemon_agent_continuation_e2e_test.dart",
         "packages/daemon/test/agent_store_test.dart"
       ],
-      "notes": "Matches frozen explicit-mode validation and diagnostics, same-provider inheritance, cross-provider refusal including unknown/no-mode semantics, unattended target-mode bridging, and explicit-mode precedence across direct, MCP, and scheduled creation. AgentStore now serializes same-agent atomic writes with unique temporary files after the parallel boundary exposed a Windows rename race. The 33-test targeted boundary passed once and then passed in three concurrent independent processes with --concurrency=8 (99 repeated tests) without flakes."
+      "notes": "Matches frozen explicit-mode validation and diagnostics, same-provider inheritance, cross-provider refusal including unknown/no-mode semantics, unattended target-mode bridging, and explicit-mode precedence across direct, MCP, and scheduled creation. Provider create resolution now returns normalized mode and feature values atomically so direct and MCP creation cannot discard provider policy; OpenCode full-access and auto_accept behavior is covered. AgentStore serializes same-agent atomic writes with unique temporary files after the parallel boundary exposed a Windows rename race. The latest 25-test create-config boundary passed once and then passed in three concurrent independent processes with --concurrency=8 (75 repeated tests) without flakes."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent-title.ts",
@@ -10933,14 +10933,17 @@
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent/create.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/create_agent_intent.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/create_agent_intent.dart; packages/daemon/lib/src/agent/create_agent_mode.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/daemon_server.dart",
       "evidence": [
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
         "packages/daemon/test/agent/create_agent_intent_test.dart",
+        "packages/daemon/test/agent/create_agent_mode_test.dart",
+        "packages/daemon/test/providers/paseo/provider_catalog_registry_test.dart",
+        "packages/daemon/test/daemon_agent_continuation_e2e_test.dart",
         "packages/daemon/test/workspace/workspace_v2_service_test.dart",
         "packages/daemon/test/agent_manager_test.dart"
       ],
-      "notes": "Canonical MCP create_agent requires provider/model and initialPrompt, resolves top-level or caller/explicit workspace placement, preserves cross-workspace parentage and labels, starts immediately, and applies Paseo background/wait/notification defaults. Frozen hidden legacy relationship/workspace and flat placement shapes now normalize current, existing, directory, branch-off, checkout-branch, and checkout-PR targets without changing the advertised schema; detached ownership, caller cwd policy/default labels, coupled worktree setup continuation, prompt dispatch, and pre-agent failure cleanup are wired. Strict unknown-key/schema rejection, exact auto-generated worktree naming, and remaining provider create-config lifecycle edge cases are pending. The 108-test targeted boundary passed once and then passed in three concurrent independent processes with --concurrency=8 (324 repeated tests) without flakes."
+      "notes": "Canonical MCP create_agent requires provider/model and initialPrompt, resolves top-level or caller/explicit workspace placement, preserves cross-workspace parentage and labels, starts immediately, and applies Paseo background/wait/notification defaults. Frozen hidden legacy relationship/workspace and flat placement shapes normalize current, existing, directory, branch-off, checkout-branch, and checkout-PR targets without changing the advertised schema; detached ownership, caller cwd policy/default labels, coupled worktree setup continuation, prompt dispatch, and pre-agent failure cleanup are wired. Shared provider create-config resolution now applies resolver-returned mode and features to both MCP and direct RPC creation, including OpenCode full-access normalization and feature-carried unattended inheritance. Strict unknown-key/schema rejection, exact auto-generated worktree naming, provider-only internal model selection, and prompt-failure mode parity remain. The latest 25-test create-config boundary passed once and then passed in three concurrent independent processes with --concurrency=8 (75 repeated tests) without flakes."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent/intent.ts",
@@ -11109,7 +11112,7 @@
         "packages/daemon/test/providers/paseo/generic_acp_agent_client_test.dart",
         "packages/daemon/test/daemon_custom_acp_e2e_test.dart"
       ],
-      "notes": "Workspace-scoped ACP model/mode/config probes are cached by normalized cwd and provider configuration, forced refresh replaces the cache, and failures remain isolated to one provider entry. The full asynchronous loading snapshot manager, stale-load suppression across config generations, diagnostics, warm-up, and builtin provider catalog probing remain."
+      "notes": "Workspace-scoped ACP model/mode/config probes are cached by normalized cwd and provider configuration, forced refresh replaces the cache, and failures remain isolated to one provider entry. Create-config resolution now returns provider-normalized mode and features together and reduces parent agents to provider, mode, and feature-aware unattended state. The full asynchronous loading snapshot manager, stale-load suppression across config generations, diagnostics, warm-up, ready-provider enforcement, and builtin provider catalog probing remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/provider-subagents/store.ts",
@@ -11554,10 +11557,15 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/opencode-agent.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart; packages/daemon/lib/src/providers/paseo/provider_manifest.dart; packages/daemon/lib/src/daemon_server.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo/provider_catalog_registry_test.dart",
+        "packages/daemon/test/providers/paseo/provider_manifest_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/daemon/test/daemon_agent_continuation_e2e_test.dart"
+      ],
+      "notes": "Frozen create-config policy is implemented: legacy full-access maps to build plus auto_accept, unattended creation injects auto_accept only when the caller did not specify it, same-provider unattended mode inheritance is retained, cross-provider unattended creation leaves the mode unset, and parent auto_accept participates in unattended classification. The OpenCode server/session runtime, permissions, history, commands, rewind, and remaining provider behavior are still pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/opencode/paths.ts",

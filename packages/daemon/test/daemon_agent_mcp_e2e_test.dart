@@ -121,7 +121,7 @@ void main() {
         host: '127.0.0.1',
         port: 0,
         passwordHash: passwordHash,
-        agentClients: {'fixture': client},
+        agentClients: {'fixture': client, 'opencode': client},
         agentMcpWaitTimeout: const Duration(milliseconds: 30),
         log: (_) {},
       );
@@ -918,6 +918,42 @@ void main() {
       expect(autonomousSummary.labels, {'surface': 'automation'});
       expect(autonomousSummary.thinkingOptionId, 'high');
       expect(autonomousSummary.featureValues, {'fast': true});
+
+      final legacyOpenCode = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'create_agent',
+        {
+          'title': 'OpenCode legacy full access',
+          'provider': 'opencode/fixture-model',
+          'workspaceId': workspaceB['workspaceId'],
+          'settings': {
+            'modeId': 'full-access',
+            'features': {'auto_accept': false, 'custom': 'kept'},
+          },
+          'initialPrompt': 'Normalize provider create settings',
+          'background': true,
+        },
+      );
+      final legacyOpenCodeSession = client.sessions.last;
+      final legacyOpenCodeSummary = handle.manager.get(
+        legacyOpenCode['agentId']! as String,
+      )!;
+      expect(legacyOpenCodeSummary.currentModeId, 'build');
+      expect(legacyOpenCodeSummary.featureValues, {
+        'auto_accept': true,
+        'custom': 'kept',
+      });
+      await pumpEventQueue();
+      expect(legacyOpenCodeSession.prompts, [
+        'Normalize provider create settings',
+      ]);
+      expect(
+        await _call(topLevelEndpoint, mcpAuthToken, 'archive_agent', {
+          'agentId': legacyOpenCode['agentId'],
+        }),
+        {'success': true},
+      );
 
       final workspaceParent = await handle.manager.createAgent(
         cwd: home.path,

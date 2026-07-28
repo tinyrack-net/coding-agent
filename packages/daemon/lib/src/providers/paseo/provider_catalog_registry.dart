@@ -122,6 +122,22 @@ final class PaseoProviderCatalogRegistry {
   }
 
   Future<String?> resolveCreateAgentMode(AgentCreateModeRequest request) async {
+    final resolved = await resolveCreateAgentConfig(
+      AgentCreateConfigRequest(
+        cwd: request.cwd,
+        targetProvider: request.targetProvider,
+        requestedMode: request.requestedMode,
+        featureValues: const {},
+        parent: request.parent,
+        unattended: request.unattended,
+      ),
+    );
+    return resolved.modeId;
+  }
+
+  Future<ResolvedAgentCreateConfig> resolveCreateAgentConfig(
+    AgentCreateConfigRequest request,
+  ) async {
     final providerDefinition = definition(request.targetProvider);
     List<String>? availableModes;
     String? targetUnattendedMode;
@@ -143,14 +159,88 @@ final class PaseoProviderCatalogRegistry {
         }
       }
     }
-    return resolveAndValidateCreateAgentMode(
-      requestedMode: request.requestedMode,
-      targetProvider: request.targetProvider,
-      parent: request.parent,
-      unattended: request.unattended,
+    return _resolveProviderCreateAgentConfig(
+      request,
       availableModes: availableModes,
       targetUnattendedMode: targetUnattendedMode,
     );
+  }
+
+  ResolvedAgentCreateConfig _resolveProviderCreateAgentConfig(
+    AgentCreateConfigRequest request, {
+    required List<String>? availableModes,
+    required String? targetUnattendedMode,
+  }) {
+    if (request.targetProvider == 'opencode') {
+      return _resolveOpenCodeCreateAgentConfig(
+        request,
+        availableModes: availableModes,
+      );
+    }
+    return ResolvedAgentCreateConfig(
+      modeId: resolveAndValidateCreateAgentMode(
+        requestedMode: request.requestedMode,
+        targetProvider: request.targetProvider,
+        parent: request.parent,
+        unattended: request.unattended,
+        availableModes: availableModes,
+        targetUnattendedMode: targetUnattendedMode,
+      ),
+      featureValues: Map.unmodifiable(request.featureValues),
+    );
+  }
+
+  ResolvedAgentCreateConfig _resolveOpenCodeCreateAgentConfig(
+    AgentCreateConfigRequest request, {
+    required List<String>? availableModes,
+  }) {
+    const legacyFullAccessMode = 'full-access';
+    const buildMode = 'build';
+    const autoAcceptFeature = 'auto_accept';
+    final legacyFullAccess = request.requestedMode == legacyFullAccessMode;
+    final unattended =
+        request.unattended || request.parent?.isUnattended == true;
+    final inheritsUnattended = request.requestedMode == null && unattended;
+    final inheritedMode =
+        inheritsUnattended && request.parent?.provider == request.targetProvider
+        ? request.parent?.modeId
+        : null;
+    final requestedMode = legacyFullAccess
+        ? buildMode
+        : request.requestedMode ?? inheritedMode;
+    final featureValues = <String, Object?>{...request.featureValues};
+    if (legacyFullAccess ||
+        (unattended && !featureValues.containsKey(autoAcceptFeature))) {
+      featureValues[autoAcceptFeature] = true;
+    }
+    if (inheritsUnattended && requestedMode == null) {
+      return ResolvedAgentCreateConfig(
+        modeId: null,
+        featureValues: Map.unmodifiable(featureValues),
+      );
+    }
+    return ResolvedAgentCreateConfig(
+      modeId: resolveAndValidateCreateAgentMode(
+        requestedMode: requestedMode,
+        targetProvider: request.targetProvider,
+        parent: request.parent,
+        unattended: unattended,
+        availableModes: availableModes,
+        targetUnattendedMode: null,
+      ),
+      featureValues: Map.unmodifiable(featureValues),
+    );
+  }
+
+  bool isCreateAgentConfigUnattended({
+    required String provider,
+    required String? modeId,
+    required Map<String, Object?> featureValues,
+  }) {
+    if (provider == 'opencode' && featureValues['auto_accept'] == true) {
+      return true;
+    }
+    return isCreateAgentModeUnattended(provider: provider, modeId: modeId);
   }
 
   bool isCreateAgentModeUnattended({
@@ -173,9 +263,10 @@ final class PaseoProviderCatalogRegistry {
       AgentCreateModeParent(
         provider: parent.provider,
         modeId: parent.currentModeId,
-        isUnattended: isCreateAgentModeUnattended(
+        isUnattended: isCreateAgentConfigUnattended(
           provider: parent.provider,
           modeId: parent.currentModeId,
+          featureValues: parent.featureValues,
         ),
       );
 

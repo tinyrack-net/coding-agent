@@ -874,11 +874,12 @@ final class AgentMcpTools {
     String? createdAgentId;
     late final AgentSummary agent;
     try {
-      final resolvedModeId = await _providerCatalog.resolveCreateAgentMode(
-        AgentCreateModeRequest(
+      final resolvedConfig = await _providerCatalog.resolveCreateAgentConfig(
+        AgentCreateConfigRequest(
           cwd: intent.cwd,
           targetProvider: provider,
           requestedMode: modeId,
+          featureValues: features,
           parent: caller == null
               ? null
               : _providerCatalog.createAgentModeParent(caller),
@@ -889,10 +890,10 @@ final class AgentMcpTools {
         cwd: intent.cwd,
         provider: provider,
         model: model,
-        mode: _agentMode(resolvedModeId),
-        modeId: resolvedModeId,
+        mode: _agentMode(resolvedConfig.modeId),
+        modeId: resolvedConfig.modeId,
         thinkingOptionId: thinkingOptionId,
-        featureValues: features,
+        featureValues: resolvedConfig.featureValues,
         title: title,
         workspaceId: intent.workspaceId,
         projectPath: workspace.mainRepoRoot,

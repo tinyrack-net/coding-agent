@@ -211,6 +211,88 @@ void main() {
   );
 
   test(
+    'normalizes OpenCode create mode and feature policy before agent launch',
+    () async {
+      final openCode = PaseoProviderManifest.find('opencode')!;
+      final catalog = PaseoProviderCatalogRegistry(
+        definitions: [openCode],
+        commandResolver: (_) async => '/bin/opencode',
+      );
+
+      final legacy = await catalog.resolveCreateAgentConfig(
+        const AgentCreateConfigRequest(
+          cwd: '.',
+          targetProvider: 'opencode',
+          requestedMode: 'full-access',
+          featureValues: {'auto_accept': false, 'custom': 'kept'},
+          parent: null,
+          unattended: false,
+        ),
+      );
+      expect(legacy.modeId, 'build');
+      expect(legacy.featureValues, {'auto_accept': true, 'custom': 'kept'});
+
+      final inherited = await catalog.resolveCreateAgentConfig(
+        const AgentCreateConfigRequest(
+          cwd: '.',
+          targetProvider: 'opencode',
+          requestedMode: null,
+          featureValues: {},
+          parent: AgentCreateModeParent(
+            provider: 'claude',
+            modeId: 'bypassPermissions',
+            isUnattended: true,
+          ),
+          unattended: false,
+        ),
+      );
+      expect(inherited.modeId, isNull);
+      expect(inherited.featureValues, {'auto_accept': true});
+
+      final explicit = await catalog.resolveCreateAgentConfig(
+        const AgentCreateConfigRequest(
+          cwd: '.',
+          targetProvider: 'opencode',
+          requestedMode: 'plan',
+          featureValues: {'auto_accept': false},
+          parent: null,
+          unattended: true,
+        ),
+      );
+      expect(explicit.modeId, 'plan');
+      expect(explicit.featureValues, {'auto_accept': false});
+    },
+  );
+
+  test('treats OpenCode auto_accept as unattended parent state', () {
+    final catalog = PaseoProviderCatalogRegistry(
+      definitions: [PaseoProviderManifest.find('opencode')!],
+    );
+    const parent = AgentSummary(
+      agentId: 'parent',
+      title: 'Parent',
+      cwd: '.',
+      provider: 'opencode',
+      model: 'model',
+      mode: AgentMode.normal,
+      runState: AgentRunState.idle,
+      createdAtMs: 0,
+      currentModeId: 'plan',
+      featureValues: {'auto_accept': true},
+    );
+
+    expect(catalog.createAgentModeParent(parent).isUnattended, isTrue);
+    expect(
+      catalog.isCreateAgentConfigUnattended(
+        provider: 'opencode',
+        modeId: 'plan',
+        featureValues: const {'auto_accept': false},
+      ),
+      isFalse,
+    );
+  });
+
+  test(
     'rebuilds custom ACP providers and builtin overrides from config',
     () async {
       var config = MutableDaemonConfig(

@@ -26,6 +26,34 @@ final class AgentCreateModeRequest {
   final bool unattended;
 }
 
+final class AgentCreateConfigRequest {
+  const AgentCreateConfigRequest({
+    required this.cwd,
+    required this.targetProvider,
+    required this.requestedMode,
+    required this.featureValues,
+    required this.parent,
+    required this.unattended,
+  });
+
+  final String cwd;
+  final String targetProvider;
+  final String? requestedMode;
+  final Map<String, Object?> featureValues;
+  final AgentCreateModeParent? parent;
+  final bool unattended;
+}
+
+final class ResolvedAgentCreateConfig {
+  const ResolvedAgentCreateConfig({
+    required this.modeId,
+    required this.featureValues,
+  });
+
+  final String? modeId;
+  final Map<String, Object?> featureValues;
+}
+
 typedef AgentCreateModeResolver =
     Future<String?> Function(AgentCreateModeRequest request);
 

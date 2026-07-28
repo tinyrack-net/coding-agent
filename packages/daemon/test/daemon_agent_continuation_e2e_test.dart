@@ -444,7 +444,7 @@ void main() {
         host: '127.0.0.1',
         port: 0,
         dataDir: temp.path,
-        agentClients: {'test': client},
+        agentClients: {'test': client, 'opencode': client},
         log: (_) {},
       );
       addTearDown(handle.stop);
@@ -618,6 +618,46 @@ void main() {
         ).existsSync(),
         isFalse,
       );
+
+      final providerPolicyResponseFuture = frames.firstWhere(
+        (frame) =>
+            frame['type'] == 'session' &&
+            (frame['message'] as Map?)?['type'] == 'agent.create.response' &&
+            (frame['message'] as Map?)?['requestId'] == 'provider-policy',
+      );
+      channel.sink.add(
+        jsonEncode({
+          'type': 'session',
+          'message': RpcRequest(
+            type: MessageTypes.agentCreateRequest,
+            requestId: 'provider-policy',
+            payload: {
+              'cwd': repository.path,
+              'provider': 'opencode',
+              'model': 'fake',
+              'mode': 'normal',
+              'modeId': 'full-access',
+              'features': {'auto_accept': false, 'custom': 'kept'},
+            },
+          ).toJson(),
+        }),
+      );
+      final providerPolicyResponse =
+          RpcFrame.fromJson(
+                Map<String, Object?>.from(
+                  (await providerPolicyResponseFuture)['message'] as Map,
+                ),
+              )
+              as RpcResponse;
+      expect(providerPolicyResponse.error, isNull);
+      final providerPolicyAgent = AgentSummary.fromJson(
+        providerPolicyResponse.payload['agent'] as Map<String, Object?>,
+      );
+      expect(providerPolicyAgent.currentModeId, 'build');
+      expect(providerPolicyAgent.featureValues, {
+        'auto_accept': true,
+        'custom': 'kept',
+      });
     },
     timeout: const Timeout(Duration(seconds: 30)),
   );

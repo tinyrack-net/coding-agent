@@ -429,12 +429,16 @@ Future<DaemonServerHandle> startDaemonServer({
         final parent = parentAgentId == null
             ? null
             : manager.get(parentAgentId);
-        final resolvedModeId = await paseoProviderCatalog
-            .resolveCreateAgentMode(
-              AgentCreateModeRequest(
+        final requestedFeatures = payload['features'] is Map
+            ? Map<String, Object?>.from(payload['features']! as Map)
+            : const <String, Object?>{};
+        final resolvedConfig = await paseoProviderCatalog
+            .resolveCreateAgentConfig(
+              AgentCreateConfigRequest(
                 cwd: resolvedCwd,
                 targetProvider: provider,
                 requestedMode: payload['modeId'] as String?,
+                featureValues: requestedFeatures,
                 parent: parent == null
                     ? null
                     : paseoProviderCatalog.createAgentModeParent(parent),
@@ -460,11 +464,9 @@ Future<DaemonServerHandle> startDaemonServer({
           provider: provider,
           model: (payload['model'] as String?) ?? '',
           mode: _parseMode(payload['mode']),
-          modeId: resolvedModeId,
+          modeId: resolvedConfig.modeId,
           thinkingOptionId: payload['thinkingOptionId'] as String?,
-          featureValues: payload['features'] is Map
-              ? Map<String, Object?>.from(payload['features']! as Map)
-              : const {},
+          featureValues: resolvedConfig.featureValues,
           mcpServers: payload['mcpServers'] is Map
               ? Map<String, Object?>.from(payload['mcpServers']! as Map)
               : const {},
