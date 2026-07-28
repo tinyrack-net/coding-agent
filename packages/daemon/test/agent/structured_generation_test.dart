@@ -3,6 +3,92 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('structured response retries invalid JSON with frozen prompt', () async {
+    final prompts = <String>[];
+    final responses = ['not json', '{"title":"ok"}'];
+    final result = await getStructuredAgentResponse(
+      caller: (prompt) async {
+        prompts.add(prompt);
+        return responses[prompts.length - 1];
+      },
+      prompt: 'Provide a title',
+      jsonSchema: const {
+        'type': 'object',
+        'required': ['title'],
+        'properties': {
+          'title': {'type': 'string'},
+        },
+      },
+      validate: (value) =>
+          value['title'] is String ? null : 'title: must be a string',
+    );
+    expect(result, {'title': 'ok'});
+    expect(prompts, hasLength(2));
+    expect(prompts.last, contains('Previous response was invalid'));
+    expect(prompts.last, contains('Invalid JSON'));
+  });
+
+  test('structured response preserves final validation evidence', () async {
+    await expectLater(
+      getStructuredAgentResponse(
+        caller: (_) async => '{"count":"nope"}',
+        prompt: 'Provide a count',
+        jsonSchema: const {
+          'type': 'object',
+          'required': ['count'],
+        },
+        validate: (value) =>
+            value['count'] is num ? null : 'count: must be a number',
+        maxRetries: 1,
+      ),
+      throwsA(
+        isA<StructuredAgentResponseError>()
+            .having(
+              (error) => error.lastResponse,
+              'lastResponse',
+              '{"count":"nope"}',
+            )
+            .having(
+              (error) => error.validationErrors,
+              'validationErrors',
+              contains('count: must be a number'),
+            ),
+      ),
+    );
+  });
+
+  test('extracts the first valid balanced JSON snippet', () async {
+    final result = await getStructuredAgentResponse(
+      caller: (_) async => 'prefix {broken} then {"value":42} suffix',
+      prompt: 'Provide a value',
+      jsonSchema: const {'type': 'object'},
+      maxRetries: 0,
+    );
+    expect(result, {'value': 42});
+  });
+
+  test(
+    'validates raw JSON schema fields before accepting a response',
+    () async {
+      final responses = ['{"name":123}', '{"name":"ok"}'];
+      var call = 0;
+      final result = await getStructuredAgentResponse(
+        caller: (_) async => responses[call++],
+        prompt: 'Provide a name',
+        jsonSchema: const {
+          'type': 'object',
+          'required': ['name'],
+          'additionalProperties': false,
+          'properties': {
+            'name': {'type': 'string'},
+          },
+        },
+      );
+      expect(result, {'name': 'ok'});
+      expect(call, 2);
+    },
+  );
+
   test('fully configured providers do not load a catalog', () async {
     var loads = 0;
     final providers = await resolveStructuredGenerationProviders(

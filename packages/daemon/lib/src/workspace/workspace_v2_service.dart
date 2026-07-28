@@ -9,6 +9,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
 
 import '../agent/create_agent_title.dart';
+import '../agent/structured_generation.dart';
 import '../git/git_runner.dart';
 import '../git/git_service.dart';
 import '../git/worktree_metadata.dart';
@@ -104,6 +105,7 @@ final class WorkspaceV2Service {
         FetchWorkspacesRequest.fromJson(message),
       ),
       'workspace.create.request' => _create(
+        connection,
         WorkspaceCreateRequest.fromJson(message),
       ),
       OpenProjectRequest.type => openProject(
@@ -144,6 +146,7 @@ final class WorkspaceV2Service {
     WorkspaceCreateSource source, {
     String? title,
     Map<String, Object?>? firstAgentContext,
+    StructuredGenerationSelection? currentSelection,
   }) async {
     final (workspace, project) = await switch (source) {
       DirectoryWorkspaceCreateSource directory => _createDirectory(
@@ -155,7 +158,11 @@ final class WorkspaceV2Service {
         title,
       ),
     };
-    workspaceAutoName?.schedule(workspace, firstAgentContext);
+    workspaceAutoName?.schedule(
+      workspace,
+      firstAgentContext,
+      currentSelection: currentSelection,
+    );
     _ensureGitSnapshot(workspace);
     final setup = workspaceSetup;
     if (source is WorktreeWorkspaceCreateSource && setup != null) {
@@ -476,7 +483,10 @@ final class WorkspaceV2Service {
     ).toJson();
   }
 
-  Future<Map<String, Object?>> _create(WorkspaceCreateRequest request) async {
+  Future<Map<String, Object?>> _create(
+    Connection connection,
+    WorkspaceCreateRequest request,
+  ) async {
     try {
       final title = resolveCreateAgentTitles(
         configTitle: request.title,
@@ -492,7 +502,11 @@ final class WorkspaceV2Service {
         WorktreeWorkspaceCreateSource source => _createWorktree(source, title),
       };
       final (workspace, project) = await created;
-      workspaceAutoName?.schedule(workspace, request.firstAgentContext);
+      workspaceAutoName?.schedule(
+        workspace,
+        request.firstAgentContext,
+        currentSelection: _focusedSelection(connection, workspace.cwd),
+      );
       _ensureGitSnapshot(workspace);
       final setup = workspaceSetup;
       if (request.source is WorktreeWorkspaceCreateSource && setup != null) {
@@ -535,6 +549,27 @@ final class WorkspaceV2Service {
         errorCode: 'git_error',
       ).toJson();
     }
+  }
+
+  StructuredGenerationSelection? _focusedSelection(
+    Connection connection,
+    String cwd,
+  ) {
+    final focusedAgentId = connection.clientPresence.focusedAgentId;
+    if (focusedAgentId == null) return null;
+    final agent = _listAgents()
+        .where(
+          (candidate) =>
+              candidate.agentId == focusedAgentId &&
+              areEquivalentPaths(candidate.cwd, cwd),
+        )
+        .firstOrNull;
+    if (agent == null) return null;
+    return StructuredGenerationSelection(
+      provider: agent.provider,
+      model: agent.model,
+      thinkingOptionId: agent.thinkingOptionId,
+    );
   }
 
   /// Starts Paseo's agent-continuation bootstrap only after the agent exists,

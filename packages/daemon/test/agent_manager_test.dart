@@ -301,11 +301,35 @@ void main() {
 
       expect(await future, {'title': 'Fixed'});
       expect(session.prompts, hasLength(2));
-      expect(session.prompts.last, contains('previous response did not match'));
+      expect(session.prompts.last, contains('Previous response was invalid'));
       expect(session.disposed, isTrue);
       expect(manager.list(), isEmpty);
     },
   );
+
+  test('structured generation reports unavailable fallback attempts', () async {
+    await expectLater(
+      generateStructuredAgentResponseWithFallback(
+        manager: manager,
+        cwd: tempDir.path,
+        providers: const [
+          StructuredGenerationProvider(
+            provider: 'missing',
+            model: 'missing-model',
+          ),
+        ],
+        prompt: 'Generate metadata.',
+        jsonSchema: const {'type': 'object'},
+      ),
+      throwsA(
+        isA<StructuredAgentFallbackError>().having(
+          (error) => error.attempts.single.available,
+          'available',
+          isFalse,
+        ),
+      ),
+    );
+  });
 
   tearDown(() async {
     await manager.dispose();

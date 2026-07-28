@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:agent_daemon/src/git/git_service.dart';
 import 'package:agent_daemon/src/git/worktree_metadata.dart';
+import 'package:agent_daemon/src/agent/structured_generation.dart';
 import 'package:agent_daemon/src/workspace/workspace_auto_name.dart';
 import 'package:agent_daemon/src/workspace/workspace_registry.dart';
 import 'package:agent_daemon/src/workspace/worktree_branch_name_generator.dart';
@@ -22,12 +23,26 @@ void main() {
     expect(prompt, endsWith('<user-prompt>\nFix race\n</user-prompt>'));
   });
 
+  test('reads frozen nested paseo.json metadata instructions', () async {
+    final directory = Directory.systemTemp.createTempSync(
+      'workspace-metadata-style-',
+    );
+    addTearDown(() => directory.deleteSync(recursive: true));
+    File(p.join(directory.path, 'paseo.json')).writeAsStringSync('''
+{"metadataGeneration":{"title":{"instructions":"Project title style"},"branchName":{"instructions":"Project branch style"}}}
+''');
+    final styles = await resolveWorktreeMetadataStyles(directory.path);
+    expect(styles.$1, 'Project title style');
+    expect(styles.$2, 'Project branch style');
+  });
+
   late Directory temp;
   late String worktree;
   late WorkspaceRegistries registries;
   late _FakeGit git;
   late PersistedWorkspaceRecord workspace;
   late int generations;
+  late List<(String, String)> mutations;
 
   setUp(() async {
     temp = Directory.systemTemp.createTempSync('workspace-auto-name-');
@@ -57,6 +72,7 @@ void main() {
     );
     await registries.workspaces.upsert(workspace);
     generations = 0;
+    mutations = [];
   });
 
   tearDown(() => temp.deleteSync(recursive: true));
@@ -67,10 +83,11 @@ void main() {
   }) => WorkspaceAutoName(
     workspaces: registries.workspaces,
     git: git,
-    generate: (seed, cwd) async {
+    generate: (seed, cwd, currentSelection) async {
       generations++;
       return GeneratedWorkspaceName(title: title, branch: branch);
     },
+    notifyGitMutation: (cwd, mutation) async => mutations.add((cwd, mutation)),
     now: () => DateTime.utc(2026, 7, 29),
   );
 
@@ -80,9 +97,10 @@ void main() {
     final updated = (await registries.workspaces.get('wks_1'))!;
     expect(updated.title, 'Stabilize test concurrency');
     expect(updated.branch, 'stabilize-test-concurrency');
-    expect(updated.displayName, 'stabilize-test-concurrency');
+    expect(updated.displayName, 'swift-otter');
     expect(git.branch, 'stabilize-test-concurrency');
     expect(generations, 1);
+    expect(mutations, [(worktree, 'rename-branch')]);
     expect(
       readWorktreeMetadata(worktree)!.firstAgentBranchAutoName?['status'],
       'attempted',
@@ -115,6 +133,90 @@ void main() {
     final updated = (await registries.workspaces.get('wks_1'))!;
     expect(updated.title, 'My title');
     expect(updated.branch, 'stabilize-test-concurrency');
+  });
+
+  test('keeps generated title when the generated branch is invalid', () async {
+    await service(
+      branch: 'Invalid Branch',
+    ).run(workspace, {'prompt': 'Fix the flaky test'});
+    final updated = (await registries.workspaces.get('wks_1'))!;
+    expect(updated.title, 'Stabilize test concurrency');
+    expect(updated.branch, 'swift-otter');
+    expect(git.branch, 'swift-otter');
+    expect(mutations, isEmpty);
+  });
+
+  test('forwards the focused provider selection to generation', () async {
+    StructuredGenerationSelection? observed;
+    final autoName = WorkspaceAutoName(
+      workspaces: registries.workspaces,
+      git: git,
+      generate: (seed, cwd, currentSelection) async {
+        observed = currentSelection;
+        return const GeneratedWorkspaceName(
+          title: 'Focused provider title',
+          branch: 'focused-provider-title',
+        );
+      },
+    );
+    await autoName.run(
+      workspace,
+      {'prompt': 'Fix the flaky test'},
+      currentSelection: const StructuredGenerationSelection(
+        provider: 'codex',
+        model: 'gpt-5.4',
+        thinkingOptionId: 'low',
+      ),
+    );
+    expect(observed?.provider, 'codex');
+    expect(observed?.model, 'gpt-5.4');
+    expect(observed?.thinkingOptionId, 'low');
+  });
+
+  test('marks attempted when generation returns no result', () async {
+    final autoName = WorkspaceAutoName(
+      workspaces: registries.workspaces,
+      git: git,
+      generate: (seed, cwd, currentSelection) async => null,
+    );
+    await autoName.run(workspace, {'prompt': 'Fix the flaky test'});
+    expect(git.branch, 'swift-otter');
+    expect(
+      readWorktreeMetadata(worktree)!.firstAgentBranchAutoName?['status'],
+      'attempted',
+    );
+  });
+
+  test('does not rename when the branch changes during generation', () async {
+    final autoName = WorkspaceAutoName(
+      workspaces: registries.workspaces,
+      git: git,
+      generate: (seed, cwd, currentSelection) async {
+        git.branch = 'manual-during-generation';
+        return const GeneratedWorkspaceName(
+          title: 'Generated title',
+          branch: 'generated-branch',
+        );
+      },
+    );
+    await autoName.run(workspace, {'prompt': 'Fix the flaky test'});
+    final updated = (await registries.workspaces.get('wks_1'))!;
+    expect(git.branch, 'manual-during-generation');
+    expect(updated.branch, 'swift-otter');
+    expect(updated.title, 'Generated title');
+  });
+
+  test('stops after fifty occupied branch candidates', () async {
+    git.existing.add('stabilize-test-concurrency');
+    for (var suffix = 2; suffix <= 50; suffix++) {
+      git.existing.add('stabilize-test-concurrency-$suffix');
+    }
+    await service().run(workspace, {'prompt': 'Fix the flaky test'});
+    final updated = (await registries.workspaces.get('wks_1'))!;
+    expect(git.branch, 'swift-otter');
+    expect(updated.branch, 'swift-otter');
+    expect(updated.title, 'Stabilize test concurrency');
+    expect(mutations, isEmpty);
   });
 }
 

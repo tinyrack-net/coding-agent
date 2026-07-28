@@ -5,13 +5,16 @@ import 'dart:io';
 import 'package:agent_daemon/src/git/git_runner.dart';
 import 'package:agent_daemon/src/git/git_service.dart';
 import 'package:agent_daemon/src/git/worktree_metadata.dart';
+import 'package:agent_daemon/src/agent/structured_generation.dart';
 import 'package:agent_daemon/src/forge/forge_cli.dart';
 import 'package:agent_daemon/src/forge/forge_resolver.dart';
 import 'package:agent_daemon/src/forge/workspace_forge_status_service.dart';
 import 'package:agent_daemon/src/server/connection.dart';
+import 'package:agent_daemon/src/server/agent_attention_policy.dart';
 import 'package:agent_daemon/src/terminal/terminal_manager.dart';
 import 'package:agent_daemon/src/workspace/polling_workspace_git_backend.dart';
 import 'package:agent_daemon/src/workspace/workspace_registry.dart';
+import 'package:agent_daemon/src/workspace/workspace_auto_name.dart';
 import 'package:agent_daemon/src/workspace/workspace_setup_service.dart';
 import 'package:agent_daemon/src/workspace/workspace_v2_service.dart';
 import 'package:agent_daemon/src/workspace/worktree_terminal_bootstrap_service.dart';
@@ -75,6 +78,7 @@ void main() {
     Map<String, Object?>? checkoutSource,
     int? githubPrNumber,
     String? worktreeSlug,
+    Map<String, Object?>? firstAgentContext,
   }) async => WorkspaceCreateResponse.fromJson(
     (await service.handle(
       connection,
@@ -91,6 +95,7 @@ void main() {
           githubPrNumber: githubPrNumber,
           worktreeSlug: worktreeSlug,
         ),
+        firstAgentContext: firstAgentContext,
       ).toJson(),
     ))!,
   );
@@ -446,6 +451,69 @@ void main() {
         });
       },
     );
+
+    test('uses the focused same-cwd agent for metadata generation', () async {
+      final observed = Completer<StructuredGenerationSelection?>();
+      final autoName = WorkspaceAutoName(
+        workspaces: registries.workspaces,
+        git: git,
+        generate: (seed, cwd, currentSelection) async {
+          observed.complete(currentSelection);
+          return const GeneratedWorkspaceName(
+            title: 'Focused selection title',
+            branch: 'focused-selection-title',
+          );
+        },
+      );
+      agents.add(
+        AgentSummary(
+          agentId: 'focused-agent',
+          title: 'Focused',
+          cwd: projectDirectory.path,
+          provider: 'codex',
+          model: 'gpt-5.4',
+          mode: AgentMode.normal,
+          runState: AgentRunState.idle,
+          createdAtMs: 1,
+          thinkingOptionId: 'low',
+        ),
+      );
+      connection.clientPresence = const ClientPresenceState(
+        appVisible: true,
+        lastActivityAtMs: 1,
+        focusedAgentId: 'focused-agent',
+        focusedTerminalId: null,
+      );
+      service = WorkspaceV2Service(
+        registries: registries,
+        git: git,
+        listAgents: () => agents,
+        broadcast: (message, ids) => broadcasts.add((message, ids)),
+        workspaceIdFactory: () => 'wks_${nextWorkspaceId++}',
+        worktreeSlugFactory: () => 'dazzling-yak',
+        workspaceAutoName: autoName,
+      );
+      final response = WorkspaceCreateResponse.fromJson(
+        (await service.handle(
+          connection,
+          WorkspaceCreateRequest(
+            requestId: 'focused-selection',
+            source: DirectoryWorkspaceCreateSource(path: projectDirectory.path),
+            firstAgentContext: const {'prompt': 'Fix focused flow'},
+          ).toJson(),
+        ))!,
+      );
+      expect(response.error, isNull);
+      final selection = await observed.future;
+      expect(selection?.provider, 'codex');
+      expect(selection?.model, 'gpt-5.4');
+      expect(selection?.thinkingOptionId, 'low');
+      await _waitUntil(
+        () async =>
+            (await registries.workspaces.get(response.workspace!.id))?.title ==
+            'Focused selection title',
+      );
+    });
 
     test(
       'explicit branch supplies the managed slug when slug is omitted',
@@ -2191,6 +2259,16 @@ final class _FakeGitService extends GitService {
 
   @override
   Future<String> currentBranch(String projectPath) async => branch;
+
+  @override
+  Future<bool> localBranchExists(String projectPath, String name) async =>
+      false;
+
+  @override
+  Future<String> renameCurrentBranch(String projectPath, String name) async {
+    branch = name;
+    return branch;
+  }
 
   @override
   Future<String> resolveDefaultBranch(String projectPath) async =>

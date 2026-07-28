@@ -986,11 +986,18 @@ void main() {
         '--show-current',
       ], legacyWorktreeSummary.cwd);
       expect(placeholderBranch, matches(RegExp(r'^[a-z]+-[a-z]+$')));
+      await _waitUntil(
+        () =>
+            readWorktreeMetadata(
+              legacyWorktreeSummary.cwd,
+            )?.firstAgentBranchAutoName?['status'] ==
+            'attempted',
+      );
       expect(
         readWorktreeMetadata(
           legacyWorktreeSummary.cwd,
         )?.firstAgentBranchAutoName,
-        {'status': 'pending', 'placeholderBranchName': placeholderBranch},
+        containsPair('placeholderBranchName', placeholderBranch),
       );
       await pumpEventQueue();
       expect(legacyWorktreeSession.prompts, [

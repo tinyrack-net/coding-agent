@@ -41,16 +41,21 @@ final class WorktreeBranchNameGenerator {
   final List<MutableStructuredGenerationProvider> Function()
   _configuredProviders;
 
-  Future<GeneratedWorkspaceName?> call(String seed, String cwd) async {
+  Future<GeneratedWorkspaceName?> call(
+    String seed,
+    String cwd,
+    StructuredGenerationSelection? currentSelection,
+  ) async {
     try {
       final providers = await resolveStructuredGenerationProviders(
         cwd: cwd,
         configured: _configuredProviders(),
+        currentSelection: currentSelection,
         loadSnapshot: ({required cwd, required wait}) =>
             providerCatalog.snapshot(cwd: cwd, force: wait),
       );
       if (providers.isEmpty) return null;
-      final styles = await _metadataStyles(cwd);
+      final styles = await resolveWorktreeMetadataStyles(cwd);
       final response = await generateStructuredAgentResponseWithFallback(
         manager: manager,
         cwd: cwd,
@@ -79,9 +84,8 @@ final class WorktreeBranchNameGenerator {
           }
           if (branch is! String ||
               branch.trim().isEmpty ||
-              branch.trim().length > 100 ||
-              !validateBranchSlug(branch.trim()).valid) {
-            return 'branch must be a valid branch name of at most 100 characters';
+              branch.trim().length > 100) {
+            return 'branch must be a non-empty string of at most 100 characters';
           }
           return null;
         },
@@ -93,8 +97,7 @@ final class WorktreeBranchNameGenerator {
           title.length > 80 ||
           branch == null ||
           branch.isEmpty ||
-          branch.length > 100 ||
-          !validateBranchSlug(branch).valid) {
+          branch.length > 100) {
         return null;
       }
       return GeneratedWorkspaceName(title: title, branch: branch);
@@ -126,7 +129,7 @@ Return JSON only with fields 'title' and 'branch'.
 
 $seed''';
 
-Future<(String, String)> _metadataStyles(String cwd) async {
+Future<(String, String)> resolveWorktreeMetadataStyles(String cwd) async {
   try {
     final root = await _repositoryRoot(cwd);
     final file = File(p.join(root, 'paseo.json'));

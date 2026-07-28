@@ -10815,12 +10815,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-response-loop.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/agent/structured_generation.dart; packages/daemon/lib/src/agent/agent_manager.dart",
       "evidence": [
         "packages/daemon/test/agent/structured_generation_test.dart; packages/daemon/test/agent_manager_test.dart"
       ],
-      "notes": "Transient internal agents, provider fallback, JSON extraction, schema-guided retry, cleanup, and non-persistence are implemented. Dedicated fake-provider retry and aggregate-error evidence remains."
+      "notes": "Matches frozen transient-agent response loop: base and retry prompts, JSON extraction, recursive schema validation, custom validation, bounded retries, final validation evidence, provider-attempt aggregation, cleanup, and non-persistence."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-run-state.ts",
@@ -11760,12 +11760,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/structured-generation-providers.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/agent/structured_generation.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/agent/structured_generation.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart",
       "evidence": [
-        "packages/daemon/test/agent/structured_generation_test.dart"
+        "packages/daemon/test/agent/structured_generation_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart"
       ],
-      "notes": "Configured provider resolution, no-snapshot fully explicit fast path, wait fallback, preferred model order, thinking defaults, readiness filtering, and deduplication are implemented. Current composer selection fallback remains."
+      "notes": "Matches frozen configured fast path, snapshot wait fallback, default/provider/current-selection ordering, model and thinking selection, readiness filtering, metadata overrides, and deduplication."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/stt-debug.ts",
@@ -13204,12 +13204,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/workspace-auto-name.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/workspace/workspace_auto_name.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/daemon_server.dart",
       "evidence": [
-        "packages/daemon/test/workspace/workspace_auto_name_test.dart"
+        "packages/daemon/test/workspace/workspace_auto_name_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
       ],
-      "notes": "First-agent worktree and directory auto-name scheduling, guarded title persistence, pending/attempted state, user branch/title protection, collision suffixing, and asynchronous failure isolation are implemented. Git mutation notification parity and live-provider E2E evidence remain."
+      "notes": "Matches frozen first-agent scheduling, pending/attempted transition, root resolution, focused selection, guarded title persistence, invalid/generated branch handling, user edits, 50 collision candidates, current-branch recheck, registry merge, and rename-branch mutation notification."
     },
     {
       "id": "source-unit:packages/server/src/server/workspace-bootstrap-dedupe.ts",
@@ -13351,7 +13351,7 @@
       "evidence": [
         "packages/daemon/test/agent/structured_generation_test.dart; packages/daemon/test/workspace/workspace_auto_name_test.dart"
       ],
-      "notes": "Frozen metadata prompt contract, JSON schema, provider fallback, retry validation, branch validation, and paseo.json style overrides are implemented. Live provider smoke remains."
+      "notes": "Frozen default prompt, JSON schema, nested paseo.json instruction overrides, provider fallback, retry validation, and title/branch output are implemented. Real provider smoke remains before verification."
     },
     {
       "id": "source-unit:packages/server/src/server/worktree-core.ts",

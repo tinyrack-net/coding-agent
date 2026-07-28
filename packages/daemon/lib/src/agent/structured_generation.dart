@@ -34,6 +34,57 @@ typedef ProviderSnapshotLoader =
       required bool wait,
     });
 
+typedef StructuredAgentCaller = Future<String> Function(String prompt);
+
+final class StructuredAgentResponseError implements Exception {
+  const StructuredAgentResponseError({
+    required this.lastResponse,
+    required this.validationErrors,
+  });
+
+  final String lastResponse;
+  final List<String> validationErrors;
+
+  @override
+  String toString() => 'Agent response did not match the required JSON schema';
+}
+
+final class StructuredGenerationAttempt {
+  const StructuredGenerationAttempt({
+    required this.provider,
+    required this.model,
+    required this.available,
+    required this.error,
+  });
+
+  final String provider;
+  final String? model;
+  final bool available;
+  final String? error;
+}
+
+final class StructuredAgentFallbackError implements Exception {
+  const StructuredAgentFallbackError(this.attempts);
+
+  final List<StructuredGenerationAttempt> attempts;
+
+  @override
+  String toString() {
+    if (attempts.isEmpty) {
+      return 'Structured generation failed for all providers';
+    }
+    final summary = attempts
+        .map((attempt) {
+          final model = attempt.model == null ? '' : ' (${attempt.model})';
+          final state = attempt.available ? 'failed' : 'unavailable';
+          final error = attempt.error == null ? '' : ' (${attempt.error})';
+          return '${attempt.provider}$model: $state$error';
+        })
+        .join('; ');
+    return 'Structured generation failed for all providers: $summary';
+  }
+}
+
 const _preferredModels = <({String substring, String? thinkingOptionId})>[
   (substring: 'haiku', thinkingOptionId: null),
   (substring: 'gpt-5.4-mini', thinkingOptionId: 'low'),
@@ -227,9 +278,20 @@ Future<Map<String, Object?>?> generateStructuredAgentResponseWithFallback({
   String? Function(Map<String, Object?> value)? validate,
   int maxRetries = 2,
 }) async {
-  Object? lastError;
+  if (providers.isEmpty) throw const StructuredAgentFallbackError([]);
+  final attempts = <StructuredGenerationAttempt>[];
   for (final provider in providers) {
-    if (!manager.isProviderAvailable(provider.provider)) continue;
+    if (!manager.isProviderAvailable(provider.provider)) {
+      attempts.add(
+        StructuredGenerationAttempt(
+          provider: provider.provider,
+          model: provider.model,
+          available: false,
+          error: null,
+        ),
+      );
+      continue;
+    }
     String? agentId;
     try {
       final agent = await manager.createAgent(
@@ -242,52 +304,190 @@ Future<Map<String, Object?>?> generateStructuredAgentResponseWithFallback({
         internal: true,
       );
       agentId = agent.agentId;
-      var request =
-          '$prompt\n\nYou must respond with JSON only that matches this JSON '
-          'Schema:\n${jsonEncode(jsonSchema)}';
-      for (var attempt = 0; attempt <= maxRetries; attempt++) {
-        final output = (await manager.runAndWait(agentId, request)).output;
+      return await getStructuredAgentResponse(
+        caller: (request) async =>
+            (await manager.runAndWait(agentId!, request)).output ?? '',
+        prompt: prompt,
+        jsonSchema: jsonSchema,
+        validate: validate,
+        maxRetries: maxRetries,
+      );
+    } on Object catch (error) {
+      attempts.add(
+        StructuredGenerationAttempt(
+          provider: provider.provider,
+          model: provider.model,
+          available: true,
+          error: error.toString(),
+        ),
+      );
+    } finally {
+      if (agentId != null) {
         try {
-          if (output == null) throw const FormatException('empty response');
-          final decoded = jsonDecode(_extractJson(output));
-          if (decoded is! Map) {
-            throw const FormatException('response must be an object');
-          }
-          final value = Map<String, Object?>.from(decoded);
-          final validationError = validate?.call(value);
-          if (validationError != null) throw FormatException(validationError);
-          return value;
-        } on Object catch (error) {
-          if (attempt == maxRetries) rethrow;
-          request =
-              '$prompt\n\nThe previous response did not match the required '
-              'JSON schema: $error\nRespond again with JSON only that matches '
-              'this JSON Schema:\n${jsonEncode(jsonSchema)}';
+          await manager.discardInternalAgent(agentId);
+        } on Object {
+          // Cleanup must not hide the provider attempt that triggered it.
         }
       }
-    } on Object catch (error) {
-      lastError = error;
-    } finally {
-      if (agentId != null) await manager.discardInternalAgent(agentId);
     }
   }
-  if (lastError != null) throw StateError('$lastError');
-  return null;
+  throw StructuredAgentFallbackError(List.unmodifiable(attempts));
 }
+
+Future<Map<String, Object?>> getStructuredAgentResponse({
+  required StructuredAgentCaller caller,
+  required String prompt,
+  required Map<String, Object?> jsonSchema,
+  String? Function(Map<String, Object?> value)? validate,
+  int maxRetries = 2,
+}) async {
+  final basePrompt = [
+    prompt.trim(),
+    '',
+    'You must respond with JSON only that matches this JSON Schema:',
+    const JsonEncoder.withIndent('  ').convert(jsonSchema),
+  ].join('\n');
+  var attemptPrompt = basePrompt;
+  var lastResponse = '';
+  var lastErrors = <String>[];
+  for (var attempt = 0; attempt <= maxRetries; attempt++) {
+    final response = await caller(attemptPrompt);
+    lastResponse = response;
+    Object? decoded;
+    try {
+      decoded = jsonDecode(_extractJson(response));
+    } on Object catch (error) {
+      lastErrors = ['Invalid JSON: $error'];
+      if (attempt == maxRetries) break;
+      attemptPrompt = _retryPrompt(basePrompt, lastErrors);
+      continue;
+    }
+    if (decoded is! Map) {
+      lastErrors = ['(root): response must be an object'];
+    } else {
+      final value = Map<String, Object?>.from(decoded);
+      lastErrors = _validateJsonSchema(value, jsonSchema);
+      final validationError = validate?.call(value);
+      if (validationError != null) lastErrors.add(validationError);
+      if (lastErrors.isEmpty) return value;
+    }
+    if (attempt == maxRetries) break;
+    attemptPrompt = _retryPrompt(basePrompt, lastErrors);
+  }
+  throw StructuredAgentResponseError(
+    lastResponse: lastResponse,
+    validationErrors: List.unmodifiable(lastErrors),
+  );
+}
+
+List<String> _validateJsonSchema(
+  Object? value,
+  Map<String, Object?> schema, [
+  String path = '(root)',
+]) {
+  final errors = <String>[];
+  final type = schema['type'];
+  final typeMatches = switch (type) {
+    'object' => value is Map,
+    'array' => value is List,
+    'string' => value is String,
+    'number' => value is num,
+    'integer' => value is int,
+    'boolean' => value is bool,
+    _ => true,
+  };
+  if (!typeMatches) {
+    return ['$path: must be $type'];
+  }
+  if (value is String) {
+    final minLength = schema['minLength'];
+    final maxLength = schema['maxLength'];
+    if (minLength is int && value.length < minLength) {
+      errors.add('$path: must NOT have fewer than $minLength characters');
+    }
+    if (maxLength is int && value.length > maxLength) {
+      errors.add('$path: must NOT have more than $maxLength characters');
+    }
+  }
+  final allowed = schema['enum'];
+  if (allowed is List && !allowed.contains(value)) {
+    errors.add('$path: must be equal to one of the allowed values');
+  }
+  if (value is Map) {
+    final properties = schema['properties'] is Map
+        ? Map<String, Object?>.from(schema['properties']! as Map)
+        : const <String, Object?>{};
+    final required = schema['required'] is List
+        ? (schema['required']! as List).whereType<String>()
+        : const Iterable<String>.empty();
+    for (final key in required) {
+      if (!value.containsKey(key))
+        errors.add('$path: must have required property $key');
+    }
+    if (schema['additionalProperties'] == false) {
+      for (final key in value.keys.whereType<String>()) {
+        if (!properties.containsKey(key)) {
+          errors.add('$path: must NOT have additional property $key');
+        }
+      }
+    }
+    for (final entry in properties.entries) {
+      if (!value.containsKey(entry.key) || entry.value is! Map) continue;
+      errors.addAll(
+        _validateJsonSchema(
+          value[entry.key],
+          Map<String, Object?>.from(entry.value! as Map),
+          path == '(root)' ? entry.key : '$path.${entry.key}',
+        ),
+      );
+    }
+  }
+  if (value is List && schema['items'] is Map) {
+    final itemSchema = Map<String, Object?>.from(schema['items']! as Map);
+    for (var index = 0; index < value.length; index++) {
+      errors.addAll(
+        _validateJsonSchema(value[index], itemSchema, '$path.$index'),
+      );
+    }
+  }
+  return errors;
+}
+
+String _retryPrompt(String basePrompt, List<String> errors) => [
+  basePrompt,
+  '',
+  'Previous response was invalid with validation errors:',
+  if (errors.isEmpty)
+    '- Unknown validation error'
+  else
+    ...errors.map((e) => '- $e'),
+  '',
+  'Respond again with JSON only that matches the schema.',
+].join('\n');
 
 String _extractJson(String response) {
   final fenced = RegExp(
-    r'```(?:json)?\s*([\s\S]*?)```',
+    r'```(?:json)?\s*\n([\s\S]*?)\n```',
     caseSensitive: false,
   ).firstMatch(response);
   if (fenced != null) return fenced.group(1)!.trim();
-  final start = response.indexOf(RegExp(r'[\{\[]'));
-  if (start < 0) return response.trim();
+  final source = response.trim();
+  for (var start = 0; start < source.length; start++) {
+    if (source[start] != '{' && source[start] != '[') continue;
+    final candidate = _balancedJsonCandidate(source, start);
+    if (candidate != null) return candidate;
+  }
+  return source;
+}
+
+String? _balancedJsonCandidate(String source, int start) {
+  final open = source[start];
+  final close = open == '{' ? '}' : ']';
   var depth = 0;
   var inString = false;
   var escaped = false;
-  for (var index = start; index < response.length; index++) {
-    final char = response[index];
+  for (var index = start; index < source.length; index++) {
+    final char = source[index];
     if (inString) {
       if (escaped) {
         escaped = false;
@@ -300,12 +500,20 @@ String _extractJson(String response) {
     }
     if (char == '"') {
       inString = true;
-    } else if (char == '{' || char == '[') {
+    } else if (char == open) {
       depth++;
-    } else if (char == '}' || char == ']') {
+    } else if (char == close) {
       depth--;
-      if (depth == 0) return response.substring(start, index + 1);
+      if (depth == 0) {
+        final candidate = source.substring(start, index + 1).trim();
+        try {
+          jsonDecode(candidate);
+          return candidate;
+        } on Object {
+          return null;
+        }
+      }
     }
   }
-  return response.trim();
+  return null;
 }

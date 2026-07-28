@@ -4,6 +4,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 
 import '../agent/create_agent_title.dart';
 import '../agent/first_agent_context.dart';
+import '../agent/structured_generation.dart';
 import '../git/git_service.dart';
 import '../git/worktree_metadata.dart';
 import 'workspace_registry.dart';
@@ -11,12 +12,18 @@ import 'workspace_registry.dart';
 final class GeneratedWorkspaceName {
   const GeneratedWorkspaceName({required this.title, required this.branch});
 
-  final String title;
-  final String branch;
+  final String? title;
+  final String? branch;
 }
 
 typedef WorkspaceAutoNameGenerator =
-    Future<GeneratedWorkspaceName?> Function(String seed, String cwd);
+    Future<GeneratedWorkspaceName?> Function(
+      String seed,
+      String cwd,
+      StructuredGenerationSelection? currentSelection,
+    );
+typedef WorkspaceGitMutationNotifier =
+    Future<void> Function(String cwd, String mutation);
 
 final class FirstAgentBranchAutoNameResult {
   const FirstAgentBranchAutoNameResult({
@@ -36,23 +43,31 @@ final class WorkspaceAutoName {
     required this.workspaces,
     required this.git,
     required WorkspaceAutoNameGenerator generate,
+    WorkspaceGitMutationNotifier? notifyGitMutation,
     DateTime Function()? now,
   }) : _generate = generate,
+       _notifyGitMutation = notifyGitMutation,
        _now = now ?? DateTime.now;
 
   final FileBackedWorkspaceRegistry workspaces;
   final GitService git;
   final WorkspaceAutoNameGenerator _generate;
+  final WorkspaceGitMutationNotifier? _notifyGitMutation;
   final DateTime Function() _now;
 
   void schedule(
     PersistedWorkspaceRecord workspace,
-    Map<String, Object?>? firstAgentContext,
-  ) {
+    Map<String, Object?>? firstAgentContext, {
+    StructuredGenerationSelection? currentSelection,
+  }) {
     unawaited(
       Future<void>(() async {
         try {
-          await run(workspace, firstAgentContext);
+          await run(
+            workspace,
+            firstAgentContext,
+            currentSelection: currentSelection,
+          );
         } catch (_) {
           // Metadata generation is best effort and must never fail creation.
         }
@@ -62,25 +77,32 @@ final class WorkspaceAutoName {
 
   Future<void> run(
     PersistedWorkspaceRecord workspace,
-    Map<String, Object?>? firstAgentContext,
-  ) async {
+    Map<String, Object?>? firstAgentContext, {
+    StructuredGenerationSelection? currentSelection,
+  }) async {
     final seed = buildAgentBranchNameSeed(firstAgentContext);
     if (seed == null) return;
     GeneratedWorkspaceName? generated;
-    final isWorktree =
-        workspace.isPaseoOwnedWorktree && workspace.worktreeRoot != null;
+    final isWorktree = workspace.kind == PersistedWorkspaceKind.worktree;
+    final worktreeRoot = workspace.worktreeRoot ?? workspace.cwd;
     FirstAgentBranchAutoNameResult? branchResult;
     if (isWorktree) {
       branchResult = await attemptFirstAgentBranchAutoName(
-        workspace.worktreeRoot!,
+        worktreeRoot,
         seed,
-        generate: () async =>
-            generated ??= await _generate(seed, workspace.cwd),
+        generate: () async => generated ??= await _generate(
+          seed,
+          workspace.cwd,
+          currentSelection,
+        ),
       );
     }
-    generated ??= await _generate(seed, workspace.cwd);
+    generated ??= await _generate(seed, workspace.cwd, currentSelection);
     final name = generated;
-    if (name == null) return;
+    final generatedTitle = name?.title?.trim();
+    if (name == null || generatedTitle == null || generatedTitle.isEmpty) {
+      return;
+    }
     final current = await workspaces.get(workspace.workspaceId);
     if (current == null) return;
     final provisionalTitle = resolveFirstAgentPromptTitle(firstAgentContext);
@@ -89,15 +111,16 @@ final class WorkspaceAutoName {
     final renamedBranch = branchResult?.renamed == true
         ? branchResult!.branch
         : null;
-    if (!mayReplaceTitle && renamedBranch == null) return;
     await workspaces.upsert(
       current.copyWith(
-        title: mayReplaceTitle ? name.title : current.title,
+        title: mayReplaceTitle ? generatedTitle : current.title,
         branch: renamedBranch ?? current.branch,
-        displayName: renamedBranch ?? current.displayName,
         updatedAt: _now().toUtc().toIso8601String(),
       ),
     );
+    if (branchResult?.renamed == true) {
+      await _notifyGitMutation?.call(worktreeRoot, 'rename-branch');
+    }
   }
 
   Future<FirstAgentBranchAutoNameResult> attemptFirstAgentBranchAutoName(
@@ -137,7 +160,7 @@ final class WorkspaceAutoName {
       attemptedAt: _now(),
     );
     final generated = await generate();
-    final desired = generated?.branch.trim();
+    final desired = generated?.branch?.trim();
     if (desired == null ||
         desired == placeholder ||
         !validateBranchSlug(desired).valid) {

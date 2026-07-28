@@ -848,6 +848,11 @@ Future<DaemonServerHandle> startDaemonServer({
     workspaces: workspaceRegistries.workspaces,
     git: gitService,
     generate: branchNameGenerator.call,
+    notifyGitMutation: (cwd, mutation) async {
+      if (mutation == 'rename-branch') {
+        await workspaceGitObserverBackend.refreshNow(cwd);
+      }
+    },
   );
   workspaceV2 = WorkspaceV2Service(
     registries: workspaceRegistries,
