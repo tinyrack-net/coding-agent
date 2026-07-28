@@ -12793,12 +12793,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/speech/speech-provider.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/voice/speech_provider.dart",
       "evidence": [
-        "packages/daemon/test/voice/tts_manager_test.dart"
+        "packages/daemon/test/voice/tts_manager_test.dart",
+        "packages/daemon/test/voice/speech_provider_contract_test.dart"
       ],
-      "notes": "TextToSpeechProvider and destroyable SpeechStreamResult are ported. Speech-to-text provider, transcription result, and provider lifecycle contracts remain."
+      "notes": "Logprob and transcription results, committed/transcript streaming events, PCM16 session lifecycle, typed event streams, provider identity and creation parameters, TextToSpeechProvider, and destroyable SpeechStreamResult are ported."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/speech-runtime.ts",
@@ -12809,10 +12810,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/speech/speech-types.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/speech_types.dart",
+      "evidence": [
+        "packages/daemon/test/voice/speech_provider_contract_test.dart"
+      ],
+      "notes": "The openai/local provider ID schema and per-feature dictation STT, voice turn detection, voice STT, and voice TTS requested-provider contracts preserve explicit and optional enabled state."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/turn-detection-provider.ts",
