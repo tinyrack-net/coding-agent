@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
@@ -514,6 +515,11 @@ final class DaemonCliSocketClient {
   final WebSocket _socket;
   final StreamIterator<dynamic> _frames;
   final ServerInfoStatus serverInfo;
+  final Map<Object?, Completer<Map<String, Object?>>> _responses = {};
+  final Queue<Map<String, Object?>> _events = Queue();
+  final Queue<Completer<Map<String, Object?>>> _eventWaiters = Queue();
+  late final Future<void> _pump;
+  var _closed = false;
 
   static Future<DaemonCliSocketClient> connect(
     DaemonRuntimeConfig config, {
@@ -557,16 +563,28 @@ final class DaemonCliSocketClient {
         allowEnvelope: false,
       ),
     );
-    return DaemonCliSocketClient._(socket, frames, serverInfo);
+    final client = DaemonCliSocketClient._(socket, frames, serverInfo);
+    client._pump = client._pumpFrames();
+    return client;
   }
 
-  Future<Map<String, Object?>> request(Map<String, Object?> request) async {
-    await send(request);
+  Future<Map<String, Object?>> request(
+    Map<String, Object?> request, {
+    Duration timeout = terminalDaemonRpcTimeout,
+  }) async {
     final requestId = request['requestId'];
-    final response = await _nextMessage(_frames, (message) {
-      final payload = message['payload'];
-      return payload is Map && payload['requestId'] == requestId;
-    });
+    final responseCompleter = Completer<Map<String, Object?>>();
+    if (_responses.containsKey(requestId)) {
+      throw StateError('Duplicate CLI request ID: $requestId');
+    }
+    _responses[requestId] = responseCompleter;
+    late final Map<String, Object?> response;
+    try {
+      await send(request);
+      response = await responseCompleter.future.timeout(timeout);
+    } finally {
+      _responses.remove(requestId);
+    }
     if (response['type'] == 'rpc_error') {
       final payload = response['payload'];
       throw StateError(
@@ -580,6 +598,13 @@ final class DaemonCliSocketClient {
     return payload.cast<String, Object?>();
   }
 
+  Future<Map<String, Object?>> nextSessionMessage() {
+    if (_events.isNotEmpty) return Future.value(_events.removeFirst());
+    final completer = Completer<Map<String, Object?>>();
+    _eventWaiters.add(completer);
+    return completer.future;
+  }
+
   Future<void> send(Map<String, Object?> message) async {
     _socket.add(jsonEncode({'type': 'session', 'message': message}));
     // `terminal_input` intentionally has no response. Yield once so dart:io
@@ -588,8 +613,54 @@ final class DaemonCliSocketClient {
   }
 
   Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
     await _frames.cancel();
     await _socket.close();
+    await _pump;
+  }
+
+  Future<void> _pumpFrames() async {
+    try {
+      while (await _frames.moveNext()) {
+        final frame = _frames.current;
+        if (frame is! String) continue;
+        final decoded = jsonDecode(frame);
+        if (decoded is! Map) continue;
+        final message = Map<String, Object?>.from(decoded);
+        final candidate =
+            message['type'] == 'session' && message['message'] is Map
+            ? Map<String, Object?>.from(message['message'] as Map)
+            : message;
+        final payload = candidate['payload'];
+        final requestId = payload is Map ? payload['requestId'] : null;
+        final response = _responses[requestId];
+        if (response != null && !response.isCompleted) {
+          response.complete(candidate);
+        } else if (_eventWaiters.isNotEmpty) {
+          _eventWaiters.removeFirst().complete(candidate);
+        } else {
+          _events.add(candidate);
+        }
+      }
+    } on Object catch (error, stackTrace) {
+      _completePendingWithError(error, stackTrace);
+    } finally {
+      _completePendingWithError(
+        StateError('Daemon closed during CLI request'),
+        StackTrace.current,
+      );
+    }
+  }
+
+  void _completePendingWithError(Object error, StackTrace stackTrace) {
+    for (final response in _responses.values) {
+      if (!response.isCompleted) response.completeError(error, stackTrace);
+    }
+    while (_eventWaiters.isNotEmpty) {
+      final waiter = _eventWaiters.removeFirst();
+      if (!waiter.isCompleted) waiter.completeError(error, stackTrace);
+    }
   }
 }
 
@@ -597,8 +668,9 @@ Future<Map<String, Object?>> _nextMessage(
   StreamIterator<dynamic> frames,
   bool Function(Map<String, Object?> message) predicate, {
   bool allowEnvelope = true,
+  Duration timeout = terminalDaemonRpcTimeout,
 }) async {
-  final deadline = DateTime.now().add(terminalDaemonRpcTimeout);
+  final deadline = DateTime.now().add(timeout);
   while (DateTime.now().isBefore(deadline)) {
     final remaining = deadline.difference(DateTime.now());
     if (!await frames.moveNext().timeout(remaining)) {

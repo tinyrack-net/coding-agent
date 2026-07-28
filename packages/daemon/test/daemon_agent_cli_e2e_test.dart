@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_daemon/src/agent/agent_store.dart';
 import 'package:agent_daemon/src/agent/timeline_store.dart';
 import 'package:agent_daemon/src/cli/agent_command.dart';
+import 'package:agent_daemon/src/cli/agent_logs_command.dart';
 import 'package:agent_daemon/src/daemon_server.dart';
 import 'package:agent_daemon/src/workspace/workspace_registry.dart';
 import 'package:agent_protocol/agent_protocol.dart';
@@ -43,18 +45,34 @@ void main() {
       status: PermissionStatus.pending,
       detail: PlainTextDetail(label: 'Command', text: 'git status'),
     );
+    const userMessage = UserMessageItem(id: 'user-item', text: 'Fix it');
+    const assistantMessage = AssistantMessageItem(
+      id: 'assistant-item',
+      text: 'Done',
+      complete: true,
+    );
     final store = AgentStore(dataDir: home.path);
     await store.save(
       const PersistedAgent(
         summary: active,
         archived: false,
         epoch: 2,
-        lastSeq: 1,
-        items: [permission],
+        lastSeq: 3,
+        items: [userMessage, assistantMessage, permission],
         rows: [
           TimelineRow(
             seq: 1,
             timestamp: '2026-07-29T12:00:01.000Z',
+            item: userMessage,
+          ),
+          TimelineRow(
+            seq: 2,
+            timestamp: '2026-07-29T12:00:02.000Z',
+            item: assistantMessage,
+          ),
+          TimelineRow(
+            seq: 3,
+            timestamp: '2026-07-29T12:00:03.000Z',
             item: permission,
           ),
         ],
@@ -183,7 +201,66 @@ void main() {
       {'id': 'permission-1', 'tool': 'Bash'},
     ]);
     expect(detail['ParentAgentId'], 'parent-agent');
+
+    final logs = StringBuffer();
+    expect(
+      await runAgentLogsCommand(
+        arguments: [
+          active.agentId,
+          '--tail',
+          '2',
+          '--filter',
+          'text',
+          '--host',
+          host,
+        ],
+        environment: const {},
+        writeOutput: logs.write,
+      ),
+      0,
+    );
+    expect(logs.toString(), '[User] Fix it\nDone\n');
+
+    final followed = StringBuffer();
+    final followErrors = StringBuffer();
+    final stop = StreamController<void>();
+    final follow = runAgentLogsCommand(
+      arguments: [active.agentId, '--follow', '--tail', '1', '--host', host],
+      environment: const {},
+      stopSignals: stop.stream,
+      writeOutput: followed.write,
+      writeError: followErrors.write,
+    );
+    await _waitFor(
+      () => followed.toString().contains('Following logs (last 1 entry'),
+    );
+    expect(
+      handle.manager.upsertTimelineItem(
+        active.agentId,
+        const ErrorItem(id: 'live-error', message: 'live boom'),
+      ),
+      isTrue,
+    );
+    await _waitFor(
+      () => followed.toString().contains('[Error] live boom'),
+      debug: () => 'output=${followed.toString()} errors=$followErrors',
+    );
+    stop.add(null);
+    await stop.close();
+    expect(await follow, 0);
+    expect(followErrors.toString(), isEmpty);
   });
+}
+
+Future<void> _waitFor(
+  bool Function() predicate, {
+  String Function()? debug,
+}) async {
+  for (var attempt = 0; attempt < 100; attempt++) {
+    if (predicate()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  fail('condition was not reached${debug == null ? '' : ': ${debug()}'}');
 }
 
 Future<void> _deleteDirectoryEventually(Directory directory) async {

@@ -1851,34 +1851,71 @@ String _resolveTerminalKeyToken(String key, bool literal) {
   };
 }
 
-String curateAgentActivity(List<TimelineItem> items) {
-  final lines = <String>[];
-  for (final entry in projectTimelineRows([
+String curateAgentActivity(List<TimelineItem> items, {int? maxItems}) {
+  final projected = projectTimelineRows([
     for (var index = 0; index < items.length; index++)
       TimelineRow(seq: index + 1, timestamp: '', item: items[index]),
-  ], projected: true)) {
-    switch (entry.item) {
+  ], projected: true).map((entry) => entry.item).toList(growable: false);
+  final recent = maxItems != null && maxItems > 0 && projected.length > maxItems
+      ? projected.sublist(projected.length - maxItems)
+      : projected;
+  final lines = <String>[];
+  var messageBuffer = '';
+  var thoughtBuffer = '';
+
+  void appendText(String text, {required bool thought}) {
+    final normalized = text.trim();
+    if (normalized.isEmpty) return;
+    if (thought) {
+      thoughtBuffer = thoughtBuffer.isEmpty
+          ? normalized
+          : '$thoughtBuffer\n$normalized';
+    } else {
+      messageBuffer = messageBuffer.isEmpty
+          ? normalized
+          : '$messageBuffer\n$normalized';
+    }
+  }
+
+  void flushBuffers() {
+    if (messageBuffer.trim().isNotEmpty) lines.add(messageBuffer.trim());
+    if (thoughtBuffer.trim().isNotEmpty) {
+      lines.add('[Thought] ${thoughtBuffer.trim()}');
+    }
+    messageBuffer = '';
+    thoughtBuffer = '';
+  }
+
+  for (final item in recent) {
+    switch (item) {
       case UserMessageItem(:final text):
-        if (text.trim().isNotEmpty) lines.add('[User] ${text.trim()}');
+        flushBuffers();
+        lines.add('[User] ${text.trim()}');
       case AssistantMessageItem(:final text):
-        if (text.trim().isNotEmpty) lines.add(text.trim());
+        appendText(text, thought: false);
       case ReasoningItem(:final text):
-        if (text.trim().isNotEmpty) lines.add('[Thought] ${text.trim()}');
+        appendText(text, thought: true);
       case ToolCallItem(:final toolName, :final detail):
+        flushBuffers();
         lines.add(_toolSummary(toolName, detail));
       case TodoItem(:final items):
-        lines.add(
-          '[Tasks]\n${items.map((item) => '- [${item.completed ? 'x' : ' '}] ${item.text}').join('\n')}',
-        );
+        flushBuffers();
+        lines.add('[Tasks]');
+        for (final item in items) {
+          lines.add('- [${item.completed ? 'x' : ' '}] ${item.text}');
+        }
       case ErrorItem(:final message):
+        flushBuffers();
         lines.add('[Error] $message');
       case CompactionItem():
+        flushBuffers();
         lines.add('[Compacted]');
       default:
         break;
     }
   }
-  return lines.isEmpty ? 'No activity to display.' : lines.join('\n\n');
+  flushBuffers();
+  return lines.isEmpty ? 'No activity to display.' : lines.join('\n');
 }
 
 String _toolSummary(String toolName, ToolCallDetail detail) {

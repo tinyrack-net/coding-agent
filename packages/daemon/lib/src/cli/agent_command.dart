@@ -799,5 +799,6 @@ String _agentHelp(String? action) => switch (action) {
         'Manage agents (advanced operations)\n\n'
         'Commands:\n'
         '  ls       List agents\n'
-        '  inspect  Show detailed information about an agent\n',
+        '  inspect  Show detailed information about an agent\n'
+        '  logs     View agent activity/timeline\n',
 };

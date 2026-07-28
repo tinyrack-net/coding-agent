@@ -28,12 +28,12 @@ void main() {
 
       expect(
         result,
-        '[User] Fix it\n\n'
-        '[Thought] Checking\n\n'
-        '[Read] lib/main.dart\n\n'
-        '[Tasks]\n- [x] Inspect\n- [ ] Patch\n\n'
-        'Done\n\n'
-        '[Error] boom\n\n'
+        '[User] Fix it\n'
+        '[Thought] Checking\n'
+        '[Read] lib/main.dart\n'
+        '[Tasks]\n- [x] Inspect\n- [ ] Patch\n'
+        'Done\n'
+        '[Error] boom\n'
         '[Compacted]',
       );
     });
@@ -56,6 +56,17 @@ void main() {
           ),
         ]),
         '[Shell] dart test',
+      );
+    });
+
+    test('buffers message chunks and truncates projected activity', () {
+      expect(
+        curateAgentActivity(const [
+          AssistantMessageItem(id: 'a1', text: 'one', complete: false),
+          AssistantMessageItem(id: 'a2', text: 'two', complete: true),
+          ErrorItem(id: 'e', message: 'boom'),
+        ], maxItems: 1),
+        '[Error] boom',
       );
     });
   });
