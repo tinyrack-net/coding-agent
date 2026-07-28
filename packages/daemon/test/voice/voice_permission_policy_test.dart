@@ -12,6 +12,9 @@ final class _Signal implements VoiceAbortSignal {
 
   @override
   Future<void> get onAbort => Completer<void>().future;
+
+  @override
+  void Function() addAbortListener(void Function() listener) => () {};
 }
 
 void main() {

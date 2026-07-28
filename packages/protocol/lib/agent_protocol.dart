@@ -38,6 +38,7 @@ export 'src/messages/workspace_v2.dart';
 export 'src/messages/workspace_setup.dart';
 export 'src/messages/open_project.dart';
 export 'src/messages/workspace_scripts.dart';
+export 'src/messages/voice.dart';
 export 'src/messages/provider.dart';
 export 'src/messages/provider_v2.dart';
 export 'src/messages/provider_features.dart';
