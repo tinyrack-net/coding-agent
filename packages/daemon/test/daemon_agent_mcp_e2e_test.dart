@@ -1131,9 +1131,45 @@ void main() {
         childSummary.labels[paseoParentAgentIdLabel],
         workspaceParent.agentId,
       );
+      final detachedChild = await _call(
+        scopedEndpoint,
+        mcpAuthToken,
+        'create_agent',
+        {
+          'title': 'Detached workspace child',
+          'provider': 'fixture/fixture-model',
+          'workspaceId': workspaceB['workspaceId'],
+          'relationship': {'kind': 'detached'},
+          'labels': {
+            'surface': 'detached',
+            paseoParentAgentIdLabel: 'spoofed-parent',
+          },
+          'initialPrompt': 'Work independently',
+        },
+      );
+      final detachedChildSession = client.sessions.last;
+      expect(detachedChild['guidance'], isNull);
+      final detachedSummary = handle.manager.get(
+        detachedChild['agentId']! as String,
+      )!;
+      expect(detachedSummary.workspaceId, workspaceB['workspaceId']);
+      expect(detachedSummary.parentAgentId, isNull);
+      expect(detachedSummary.currentModeId, 'full-access');
+      expect(detachedSummary.labels, {'surface': 'detached'});
+      expect(
+        await _callError(topLevelEndpoint, mcpAuthToken, 'create_agent', {
+          'title': 'Invalid root subagent',
+          'provider': 'fixture/fixture-model',
+          'workspaceId': workspaceB['workspaceId'],
+          'relationship': {'kind': 'subagent'},
+          'initialPrompt': 'Cannot attach without a caller',
+        }),
+        contains('relationship subagent requires an agent-scoped tool session'),
+      );
       await pumpEventQueue();
       expect(autonomousSession.prompts, ['Start automation']);
       expect(crossWorkspaceChildSession.prompts, ['Work elsewhere']);
+      expect(detachedChildSession.prompts, ['Work independently']);
 
       final archivedWorkspace = await _call(
         endpoint,
@@ -1152,6 +1188,10 @@ void main() {
         handle.manager
             .get(crossWorkspaceChild['agentId']! as String)
             ?.archivedAt,
+        isNull,
+      );
+      expect(
+        handle.manager.get(detachedChild['agentId']! as String)?.archivedAt,
         isNull,
       );
     },

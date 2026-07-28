@@ -10927,18 +10927,23 @@
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent/create.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/create_agent_intent.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart",
       "evidence": [
-        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/daemon/test/agent/create_agent_intent_test.dart"
       ],
-      "notes": "Canonical MCP create_agent requires provider/model and initialPrompt, resolves top-level or caller/explicit workspace placement, preserves cross-workspace parentage and labels, starts immediately, and applies Paseo background/wait/notification defaults. Legacy nested shapes, detached creation, coupled worktree creation, and the remaining provider lifecycle edge cases are pending."
+      "notes": "Canonical MCP create_agent requires provider/model and initialPrompt, resolves top-level or caller/explicit workspace placement, preserves cross-workspace parentage and labels, supports legacy detached creation without parent ownership or spoofed labels, starts immediately, and applies Paseo background/wait/notification defaults. Legacy nested workspace shapes, coupled worktree creation, and the remaining provider lifecycle edge cases are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent/intent.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/agent/create_agent_intent.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart",
+      "evidence": [
+        "packages/daemon/test/agent/create_agent_intent_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/daemon/test/agent_manager_test.dart"
+      ],
+      "notes": "Matches frozen explicit-workspace placement without parentage loss, caller-workspace defaulting without creation, top-level workspace creation, default/user/parent label precedence, caller-without-workspace failure, and legacy detached parent-label stripping. The hidden legacy relationship shape is accepted without changing the canonical advertised MCP schema. The 54-test targeted boundary passed once and then passed in three concurrent independent processes with --concurrency=8 (162 repeated tests) without flakes."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/dictation-debug.ts",

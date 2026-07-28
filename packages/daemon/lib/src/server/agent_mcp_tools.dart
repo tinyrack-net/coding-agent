@@ -5,6 +5,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
 
 import '../agent/agent_manager.dart';
+import '../agent/create_agent_intent.dart';
 import '../agent/create_agent_mode.dart';
 import '../agent/timeline_projection.dart';
 import '../agent/timeline_store.dart';
@@ -830,33 +831,46 @@ final class AgentMcpTools {
     }
     final workspaces = _workspaceService();
     final explicitWorkspaceId = _nullableString(arguments, 'workspaceId');
-    late final PersistedWorkspaceRecord workspace;
-    if (explicitWorkspaceId != null) {
-      workspace = await workspaces.requireActiveAutomationWorkspace(
-        explicitWorkspaceId,
-      );
-    } else if (caller != null) {
-      final callerWorkspaceId = caller.workspaceId;
-      if (callerWorkspaceId == null) {
-        throw StateError(
-          'Caller agent $callerAgentId does not belong to a workspace',
+    final intent = await resolveCreateAgentIntent(
+      explicitWorkspaceId: explicitWorkspaceId,
+      caller: caller == null
+          ? null
+          : CreateAgentCaller(
+              id: caller.agentId,
+              cwd: caller.cwd,
+              workspaceId: caller.workspaceId,
+            ),
+      labels: labelsRaw.cast<String, String>(),
+      resolveWorkspace: (workspaceId) async {
+        final workspace = await workspaces.requireActiveAutomationWorkspace(
+          workspaceId,
         );
-      }
-      workspace = await workspaces.requireActiveAutomationWorkspace(
-        callerWorkspaceId,
-      );
-    } else {
-      workspace = await workspaces.createAutomationWorkspace(
-        DirectoryWorkspaceCreateSource(path: Directory.current.path),
-      );
-    }
+        return CreateAgentPlacement(
+          workspaceId: workspace.workspaceId,
+          cwd: workspace.cwd,
+        );
+      },
+      createWorkspace: () async {
+        final workspace = await workspaces.createAutomationWorkspace(
+          DirectoryWorkspaceCreateSource(path: Directory.current.path),
+        );
+        return CreateAgentPlacement(
+          workspaceId: workspace.workspaceId,
+          cwd: workspace.cwd,
+        );
+      },
+      legacyDetached: _resolveLegacyDetached(arguments, callerAgentId),
+    );
+    final workspace = await workspaces.requireActiveAutomationWorkspace(
+      intent.workspaceId,
+    );
     final requestedBackground = _nullableBool(arguments, 'background') ?? false;
     final background = callerAgentId != null || requestedBackground;
     final notifyOnFinish =
         _nullableBool(arguments, 'notifyOnFinish') ?? callerAgentId != null;
     final resolvedModeId = await _providerCatalog.resolveCreateAgentMode(
       AgentCreateModeRequest(
-        cwd: workspace.cwd,
+        cwd: intent.cwd,
         targetProvider: provider,
         requestedMode: modeId,
         parent: caller == null
@@ -866,7 +880,7 @@ final class AgentMcpTools {
       ),
     );
     final agent = await _manager.createAgent(
-      cwd: workspace.cwd,
+      cwd: intent.cwd,
       provider: provider,
       model: model,
       mode: _agentMode(resolvedModeId),
@@ -874,17 +888,21 @@ final class AgentMcpTools {
       thinkingOptionId: thinkingOptionId,
       featureValues: features,
       title: title,
-      workspaceId: workspace.workspaceId,
+      workspaceId: intent.workspaceId,
       projectPath: workspace.mainRepoRoot,
       branch: workspace.branch,
       isWorktree: workspace.isPaseoOwnedWorktree,
-      parentAgentId: callerAgentId,
-      labels: labelsRaw.cast<String, String>(),
+      parentAgentId: intent.parentAgentId,
+      labels: intent.labels,
       initialPrompt: initialPrompt,
     );
-    final shouldNotify = callerAgentId != null && background && notifyOnFinish;
+    final notificationParentId = intent.parentAgentId;
+    final shouldNotify =
+        notificationParentId != null && background && notifyOnFinish;
     if (shouldNotify) {
-      unawaited(_notifyCallerWhenAgentStops(agent.agentId, callerAgentId));
+      unawaited(
+        _notifyCallerWhenAgentStops(agent.agentId, notificationParentId),
+      );
     }
     if (!background) {
       final waited = await _waitForAgent(agent.agentId);
@@ -1521,6 +1539,23 @@ String? _nullableString(Map<String, Object?> values, String key) {
   if (value == null) return null;
   if (value is! String) throw FormatException('$key must be a string or null');
   return value.trim().isEmpty ? null : value.trim();
+}
+
+bool _resolveLegacyDetached(
+  Map<String, Object?> arguments,
+  String? callerAgentId,
+) {
+  if (!arguments.containsKey('relationship')) return false;
+  final relationship = _requiredMap(arguments, 'relationship');
+  final kind = _requiredString(relationship, 'kind');
+  return switch (kind) {
+    'detached' => true,
+    'subagent' when callerAgentId != null => false,
+    'subagent' => throw StateError(
+      'relationship subagent requires an agent-scoped tool session',
+    ),
+    _ => throw FormatException('Unknown agent relationship: $kind'),
+  };
 }
 
 String? _optionalTrimmedString(Map<String, Object?> values, String key) {
