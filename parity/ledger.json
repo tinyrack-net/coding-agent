@@ -7173,7 +7173,7 @@
         "packages/app/test/daemon_client_test.dart",
         "packages/app/test/daemon_client_v2_e2e_test.dart"
       ],
-      "notes": "Per-server agent/workspace/timeline replicas, native paginated fetch_agents hydration, native timeline/turn/permission streams, typed agent/workspace/project directory deltas, snapshot buffering, cleanup, and stale-refresh protection are implemented. Remaining session domains include empty projects, archived/history agents, full snapshot permission/capability ownership, focus/file-explorer state, exact filtered subscription epochs, and durable replica persistence."
+      "notes": "Per-server agent/workspace/timeline replicas, native paginated fetch_agents hydration, native timeline/turn/permission streams, typed agent/workspace/project directory deltas, snapshot buffering, cleanup, stale-refresh protection, and live server_info capability replacement are implemented. Remaining session domains include empty projects, archived/history agents, full snapshot permission/capability ownership, focus/file-explorer state, exact filtered subscription epochs, and durable replica persistence."
     },
     {
       "id": "source-unit:packages/app/src/stores/sidebar-collapsed-sections-store/index.ts",
@@ -11840,7 +11840,7 @@
     {
       "id": "source-unit:packages/server/src/server/bootstrap.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/ws_server.dart; packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/terminal_activity_route.dart; packages/daemon/lib/src/server/web_ui.dart; packages/daemon/lib/src/server/trusted_proxies.dart; packages/daemon/lib/src/server/public_static.dart; packages/daemon/lib/src/server/file_transfer_service.dart",
+      "implementation": "packages/daemon/lib/src/server/ws_server.dart; packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/terminal_activity_route.dart; packages/daemon/lib/src/server/web_ui.dart; packages/daemon/lib/src/server/trusted_proxies.dart; packages/daemon/lib/src/server/public_static.dart; packages/daemon/lib/src/server/file_transfer_service.dart; packages/daemon/lib/src/voice/speech_runtime.dart; packages/daemon/lib/src/server/daemon_config.dart; packages/daemon/bin/daemon.dart",
       "evidence": [
         "packages/daemon/test/ws_server_test.dart",
         "packages/daemon/test/terminal_activity_route_test.dart",
@@ -11848,9 +11848,12 @@
         "packages/daemon/test/trusted_proxies_test.dart",
         "packages/daemon/test/public_static_test.dart",
         "packages/daemon/test/daemon_file_transfer_e2e_test.dart",
-        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/daemon/test/voice/speech_runtime_test.dart",
+        "packages/daemon/test/daemon_voice_session_e2e_test.dart",
+        "packages/daemon/test/daemon_config_test.dart"
       ],
-      "notes": "Health, status, CORS, auth, Host validation, trusted proxy handling, WS mounting, daemon-served Web UI, Express-compatible /public static files, single-use file downloads, loopback terminal activity, and the stateless Agent MCP route are implemented; remaining API, full MCP tool catalog, service-proxy, and automation routes are pending."
+      "notes": "Health, status, CORS, auth, Host validation, trusted proxy handling, WS mounting, daemon-served Web UI, Express-compatible /public static files, single-use file downloads, loopback terminal activity, the stateless Agent MCP route, and post-listen speech runtime start plus shutdown cleanup are implemented; remaining API, full MCP tool catalog, service-proxy, and automation routes are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/browser-tools/broker.ts",
@@ -12846,12 +12849,16 @@
     {
       "id": "source-unit:packages/server/src/server/speech/speech-runtime.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/voice_session_v2_service.dart; packages/daemon/lib/src/voice/speech_readiness.dart",
+      "implementation": "packages/daemon/lib/src/voice/speech_runtime.dart; packages/daemon/lib/src/voice/speech_readiness.dart; packages/daemon/lib/src/server/voice_session_v2_service.dart; packages/daemon/lib/src/server/ws_server.dart; packages/daemon/lib/src/server/daemon_config.dart",
       "evidence": [
+        "packages/daemon/test/voice/speech_runtime_test.dart",
         "packages/daemon/test/voice/voice_session_v2_service_test.dart",
-        "packages/daemon/test/daemon_voice_session_e2e_test.dart"
+        "packages/daemon/test/daemon_voice_session_e2e_test.dart",
+        "packages/daemon/test/ws_server_test.dart",
+        "packages/daemon/test/daemon_config_test.dart",
+        "packages/app/test/daemon_client_v2_e2e_test.dart"
       ],
-      "notes": "The session boundary derives frozen ready, turn_detection_unavailable, stt_unavailable, and tts_unavailable states before agent mutation and accepts an injected full readiness snapshot. Provider selection, local model lifecycle, downloads, and runtime configuration remain."
+      "notes": "Frozen provider enablement, language config, component and aggregate readiness, listener deduplication, async reconciliation, missing-model download/in-progress/failure states, 3-second monitoring, cleanup, server capability projection, and post-listen daemon lifecycle are ported with 98.67% targeted line coverage. Concrete local model catalog/downloader/worker services and OpenAI STT/TTS providers remain."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/speech-types.ts",
@@ -13024,14 +13031,17 @@
     {
       "id": "source-unit:packages/server/src/server/websocket-server.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/ws_server.dart; packages/daemon/lib/src/voice/voice_bridge_registry.dart",
+      "implementation": "packages/daemon/lib/src/server/ws_server.dart; packages/daemon/lib/src/voice/voice_bridge_registry.dart; packages/daemon/lib/src/voice/speech_runtime.dart",
       "evidence": [
         "packages/daemon/test/ws_server_test.dart",
         "packages/daemon/test/websocket_runtime_metrics_test.dart",
         "packages/daemon/test/voice/voice_bridge_registry_test.dart",
-        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/daemon/test/voice/speech_runtime_test.dart",
+        "packages/daemon/test/daemon_voice_session_e2e_test.dart",
+        "packages/app/test/daemon_client_v2_e2e_test.dart"
       ],
-      "notes": "Hello, server_info, auth, close codes, session bridge, explicitly ordered per-connection frame dispatch, awaited binary file-transfer routing, 60-second runtime metrics flush, final snapshot, request latency, event-loop delay sampling, and per-agent voice speak-handler/caller-context registry lifecycle are implemented; retained sessions, the audio voice session, and the full message surface remain pending."
+      "notes": "Hello, server_info including deduplicated live speech capability updates, auth, close codes, session bridge, explicitly ordered per-connection frame dispatch, awaited binary file-transfer routing, 60-second runtime metrics flush, final snapshot, request latency, event-loop delay sampling, and per-agent voice speak-handler/caller-context registry lifecycle are implemented; retained sessions and the remaining message surface are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/websocket/runtime-metrics.ts",

@@ -174,6 +174,21 @@ void main() {
 
       expect(client.currentState, DaemonConnectionState.connected);
       expect(client.serverHello?.daemonVersion, daemonVersion);
+      final serverInfoUpdate = client.serverInfoUpdates.first.timeout(
+        const Duration(seconds: 5),
+      );
+      handle.server.updateServerCapabilities(const {
+        'voice': {
+          'dictation': {'enabled': false, 'reason': 'Disabled'},
+          'voice': {'enabled': true, 'reason': ''},
+        },
+      });
+      final updatedInfo = await serverInfoUpdate;
+      expect(updatedInfo.capabilities, client.serverInfo?.capabilities);
+      expect(((updatedInfo.capabilities['voice'] as Map)['dictation'] as Map), {
+        'enabled': false,
+        'reason': 'Disabled',
+      });
       expect(
         (await client.request(
           MessageTypes.providerListRequest,

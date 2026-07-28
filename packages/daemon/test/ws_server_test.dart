@@ -212,6 +212,58 @@ void main() {
     },
   );
 
+  test('v2 server_info publishes deduplicated speech capabilities', () async {
+    const ready = {
+      'voice': {
+        'dictation': {'enabled': true, 'reason': ''},
+        'voice': {'enabled': true, 'reason': ''},
+      },
+    };
+    server.updateServerCapabilities(ready);
+    final channel = WebSocketChannel.connect(
+      Uri.parse('ws://127.0.0.1:${server.port}/ws'),
+    );
+    await channel.ready;
+    final frames = channel.stream
+        .map((frame) => jsonDecode(frame as String) as Map<String, Object?>)
+        .asBroadcastStream();
+    channel.sink.add(
+      jsonEncode(
+        const WebSocketHello(
+          clientId: 'speech-capabilities',
+          clientType: WebSocketClientType.cli,
+          protocolVersion: paseoWebSocketProtocolVersion,
+        ).toJson(),
+      ),
+    );
+    final initial = await frames.firstWhere(
+      (frame) => frame['status'] == 'server_info',
+    );
+    expect(initial['capabilities'], ready);
+
+    server.updateServerCapabilities(ready);
+    server.updateServerCapabilities(const {
+      'voice': {
+        'dictation': {'enabled': false, 'reason': 'Disabled'},
+        'voice': {'enabled': true, 'reason': ''},
+      },
+    });
+    final changed = await frames.firstWhere(
+      (frame) => frame['status'] == 'server_info',
+    );
+    expect(((changed['capabilities'] as Map)['voice'] as Map)['dictation'], {
+      'enabled': false,
+      'reason': 'Disabled',
+    });
+
+    server.updateServerCapabilities(null);
+    final cleared = await frames.firstWhere(
+      (frame) => frame['status'] == 'server_info',
+    );
+    expect(cleared, isNot(contains('capabilities')));
+    await channel.sink.close();
+  });
+
   test('v2 session response runs its post-send flush in wire order', () async {
     server.onV2SessionMessage = (connection, message) {
       if (message['type'] != 'snapshot.request') return null;

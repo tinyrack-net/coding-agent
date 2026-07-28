@@ -108,6 +108,7 @@ class WsServer {
   Timer? _runtimeMetricsTimer;
   Timer? _eventLoopDelayTimer;
   Map<String, Object?>? _lastRuntimeMetricsSnapshot;
+  Map<String, Object?> _serverCapabilities = const {};
   final Stopwatch _uptime = Stopwatch()..start();
 
   Future<void> start({required String host, required int port}) async {
@@ -457,6 +458,34 @@ class WsServer {
     return (connection?.authenticated ?? false) ? connection : null;
   }
 
+  void updateServerCapabilities(Map<String, Object?>? capabilities) {
+    final next = Map<String, Object?>.unmodifiable(capabilities ?? const {});
+    if (jsonEncode(_serverCapabilities) == jsonEncode(next)) return;
+    _serverCapabilities = next;
+    final status = _serverInfoStatus();
+    for (final connection in _connections.values) {
+      if (connection.authenticated) connection.sendJson(status);
+    }
+  }
+
+  Map<String, Object?> _serverInfoStatus() => ServerInfoStatus(
+    serverId: serverId,
+    hostname: Platform.localHostname,
+    version: daemonVersion,
+    desktopManaged: desktopManaged,
+    capabilities: _serverCapabilities,
+    features: const {
+      'providersSnapshot': true,
+      'importSessionWorkspaceTarget': true,
+      'daemonStatusRpc': true,
+      'daemonDiagnostics': true,
+      'hubRelationshipManagement': true,
+      'terminal-restore-modes': true,
+      'workspaceFileEditing': true,
+      'workspaceRecovery': true,
+    },
+  ).toJson();
+
   Future<void> _onFrame(Connection connection, dynamic frame) async {
     if (frame is! String) {
       await _onBinary(connection, frame);
@@ -552,24 +581,7 @@ class WsServer {
           ..clientCapabilities = hello.capabilities;
         _runtimeMetrics.incrementCounter('helloNew');
         _helloTimers.remove(connection.id)?.cancel();
-        connection.sendJson(
-          ServerInfoStatus(
-            serverId: serverId,
-            hostname: Platform.localHostname,
-            version: daemonVersion,
-            desktopManaged: desktopManaged,
-            features: const {
-              'providersSnapshot': true,
-              'importSessionWorkspaceTarget': true,
-              'daemonStatusRpc': true,
-              'daemonDiagnostics': true,
-              'hubRelationshipManagement': true,
-              'terminal-restore-modes': true,
-              'workspaceFileEditing': true,
-              'workspaceRecovery': true,
-            },
-          ).toJson(),
-        );
+        connection.sendJson(_serverInfoStatus());
       } on FormatException {
         _runtimeMetrics.incrementCounter('validationFailed');
         await connection.close(4002, 'Invalid hello');

@@ -14,6 +14,15 @@ final class SpeechReadinessState {
   final String message;
   final bool retryable;
   final List<String> missingModelIds;
+
+  Map<String, Object?> toJson() => {
+    'enabled': enabled,
+    'available': available,
+    'reasonCode': reasonCode,
+    'message': message,
+    'retryable': retryable,
+    'missingModelIds': List<String>.from(missingModelIds),
+  };
 }
 
 final class SpeechReadinessSnapshot {
@@ -36,4 +45,14 @@ final class SpeechReadinessSnapshot {
   final SpeechReadinessState realtimeVoice;
   final SpeechReadinessState dictation;
   final SpeechReadinessState voiceFeature;
+
+  Map<String, Object?> toJson() => {
+    'generatedAt': generatedAt,
+    'requiredLocalModelIds': List<String>.from(requiredLocalModelIds),
+    'missingLocalModelIds': List<String>.from(missingLocalModelIds),
+    'download': {'inProgress': downloadInProgress, 'error': downloadError},
+    'realtimeVoice': realtimeVoice.toJson(),
+    'dictation': dictation.toJson(),
+    'voiceFeature': voiceFeature.toJson(),
+  };
 }

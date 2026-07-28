@@ -78,6 +78,7 @@ class DaemonClient {
       StreamController<WorkspaceSetupProgress>.broadcast();
   final _providersSnapshotUpdates =
       StreamController<ProvidersSnapshotUpdate>.broadcast();
+  final _serverInfoUpdates = StreamController<ServerInfoStatus>.broadcast();
   final _terminalFrames = StreamController<TerminalFrame>.broadcast();
   final _state = StreamController<DaemonConnectionState>.broadcast();
   final Map<String, Completer<DaemonConfigResponse>> _daemonConfigPending = {};
@@ -105,6 +106,7 @@ class DaemonClient {
       _workspaceSetupProgress.stream;
   Stream<ProvidersSnapshotUpdate> get providersSnapshotUpdates =>
       _providersSnapshotUpdates.stream;
+  Stream<ServerInfoStatus> get serverInfoUpdates => _serverInfoUpdates.stream;
 
   /// Decoded binary terminal frames (output/snapshot) from the daemon.
   Stream<TerminalFrame> get terminalFrames => _terminalFrames.stream;
@@ -167,10 +169,11 @@ class DaemonClient {
           ).toJson(),
         ),
       );
-      final info = await serverInfoPending.future.timeout(
+      final handshakeInfo = await serverInfoPending.future.timeout(
         const Duration(seconds: 15),
       );
       _serverInfoPending = null;
+      final info = serverInfo ?? handshakeInfo;
       final parsed = ServerHello(
         daemonVersion: info.version ?? '0.0.0',
         protocolVersion: paseoWebSocketProtocolVersion,
@@ -181,6 +184,7 @@ class DaemonClient {
         // user must update the daemon or the app, retrying won't help.
         rejectedHello = parsed;
         serverHello = null;
+        serverInfo = null;
         _channel = null;
         _setState(DaemonConnectionState.versionMismatch);
         channel.sink.close(1000);
@@ -810,9 +814,20 @@ class DaemonClient {
     }
     if (envelope['status'] == 'server_info') {
       try {
-        _serverInfoPending?.complete(ServerInfoStatus.fromJson(envelope));
+        final info = ServerInfoStatus.fromJson(envelope);
+        serverInfo = info;
+        final pending = _serverInfoPending;
+        if (pending != null && !pending.isCompleted) {
+          pending.complete(info);
+        } else if (_current == DaemonConnectionState.connected) {
+          serverInfo = info;
+          _serverInfoUpdates.add(info);
+        }
       } catch (error, stack) {
-        _serverInfoPending?.completeError(error, stack);
+        final pending = _serverInfoPending;
+        if (pending != null && !pending.isCompleted) {
+          pending.completeError(error, stack);
+        }
       }
       return;
     }
@@ -1000,6 +1015,7 @@ class DaemonClient {
     _directoryUpdateEvents.close();
     _workspaceSetupProgress.close();
     _providersSnapshotUpdates.close();
+    _serverInfoUpdates.close();
     _daemonConfigChanges.close();
     _terminalFrames.close();
     _state.close();

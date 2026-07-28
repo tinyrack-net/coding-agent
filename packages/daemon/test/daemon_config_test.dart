@@ -83,6 +83,64 @@ void main() {
     expect(config.logFormat, 'json');
   });
 
+  test('loads frozen speech provider and language configuration', () {
+    _writeConfig(home, {
+      'version': 1,
+      'speech': {
+        'providers': {
+          'dictationStt': {
+            'provider': 'openai',
+            'explicit': true,
+            'enabled': false,
+          },
+        },
+        'sttLanguages': {'voice': 'ko', 'dictation': 'ja'},
+      },
+    });
+
+    final config = loadDaemonRuntimeConfig(home: home.path, environment: {});
+
+    expect(config.speech.providers.dictationStt.provider.wireName, 'openai');
+    expect(config.speech.providers.dictationStt.enabled, isFalse);
+    expect(config.speech.providers.voiceStt.provider.wireName, 'local');
+    expect(config.speech.providers.voiceStt.explicit, isFalse);
+    expect(config.speech.voiceSttLanguage, 'ko');
+    expect(config.speech.dictationSttLanguage, 'ja');
+  });
+
+  test('speech config defaults and malformed boundaries match Paseo', () {
+    final defaults = loadDaemonRuntimeConfig(
+      home: home.path,
+      environment: {},
+    ).speech;
+    expect(defaults.providers.voiceTts.enabled, isTrue);
+    expect(defaults.voiceSttLanguage, 'en');
+    expect(defaults.dictationSttLanguage, 'en');
+
+    for (final speech in [
+      <String, Object?>{'providers': false},
+      <String, Object?>{
+        'providers': {
+          'voiceStt': {'provider': 'invalid', 'explicit': true},
+        },
+      },
+      <String, Object?>{
+        'providers': {
+          'voiceStt': {'provider': 'local', 'explicit': 'yes'},
+        },
+      },
+      <String, Object?>{
+        'sttLanguages': {'voice': ' '},
+      },
+    ]) {
+      _writeConfig(home, {'version': 1, 'speech': speech});
+      expect(
+        () => loadDaemonRuntimeConfig(home: home.path, environment: {}),
+        throwsFormatException,
+      );
+    }
+  });
+
   test('applies CLI over env over persisted precedence', () {
     _writeConfig(home, {
       'version': 1,

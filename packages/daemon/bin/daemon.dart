@@ -78,6 +78,10 @@ Future<void> _run(
 
   DaemonServerHandle handle;
   try {
+    final speechService = SpeechRuntime(
+      config: config.speech,
+      reconcile: () async => const SpeechRuntimeReconciliation(),
+    );
     handle = await startDaemonServer(
       paths: paths,
       host: host,
@@ -96,6 +100,7 @@ Future<void> _run(
       enableTerminalAgentHooks: config.enableTerminalAgentHooks,
       relayConfig: config.relay,
       appBaseUrl: config.appBaseUrl,
+      speechService: speechService,
       log: log,
       onShutdownRequested: () async {
         await flushLog();

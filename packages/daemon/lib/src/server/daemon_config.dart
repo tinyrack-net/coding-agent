@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'daemon_auth.dart';
 import 'hostnames.dart';
 import 'trusted_proxies.dart';
+import '../voice/speech_runtime.dart';
 
 const defaultTinyrackListen = '127.0.0.1:6868';
 const defaultTinyrackRelayEndpoint = 'relay.tinyrack.dev:443';
@@ -60,6 +61,7 @@ class DaemonRuntimeConfig {
     required this.logLevel,
     required this.logFormat,
     required this.enableTerminalAgentHooks,
+    this.speech = const SpeechRuntimeConfig(),
     this.auth,
   });
 
@@ -76,6 +78,7 @@ class DaemonRuntimeConfig {
   final String logLevel;
   final String logFormat;
   final bool enableTerminalAgentHooks;
+  final SpeechRuntimeConfig speech;
   final DaemonAuthConfig? auth;
 
   String get host {
@@ -130,6 +133,7 @@ DaemonRuntimeConfig loadDaemonRuntimeConfig({
   final webUi = _map(features['webUi'], 'features.webUi');
   final app = _map(persisted['app'], 'app');
   final log = _map(persisted['log'], 'log');
+  final speech = _map(persisted['speech'], 'speech');
   final hub = _parseHubUrl(env['TINYRACK_HUB_URL']);
   final optionalServiceProxyLayers =
       _booleanEnv(env['TINYRACK_SERVICE_PROXY_ENABLED']) ??
@@ -252,6 +256,7 @@ DaemonRuntimeConfig loadDaemonRuntimeConfig({
         _booleanEnv(env['TINYRACK_ENABLE_TERMINAL_AGENT_HOOKS']) ??
         _bool(daemon['enableTerminalAgentHooks']) ??
         false,
+    speech: SpeechRuntimeConfig.fromJson(speech),
     auth: authConfig,
   );
   config.host;

@@ -10,4 +10,5 @@ export 'src/server/daemon_identity.dart';
 export 'src/server/pairing_offer.dart';
 export 'src/server/pairing_qr.dart';
 export 'src/server/relay_transport.dart';
+export 'src/voice/speech_runtime.dart';
 export 'src/workspace/workspace_setup_service.dart';

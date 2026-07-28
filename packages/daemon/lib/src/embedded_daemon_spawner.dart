@@ -7,6 +7,7 @@ import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 
 import 'daemon_server.dart';
 import 'server/daemon_config.dart';
+import 'voice/speech_runtime.dart';
 
 void _embeddedDaemonIsolateEntryPoint(Map<String, Object?> config) async {
   final dataDir = config['dataDir'] as String?;
@@ -31,6 +32,10 @@ void _embeddedDaemonIsolateEntryPoint(Map<String, Object?> config) async {
   }
 
   try {
+    final speechService = SpeechRuntime(
+      config: runtimeConfig.speech,
+      reconcile: () async => const SpeechRuntimeReconciliation(),
+    );
     await startDaemonServer(
       paths: paths,
       host: host,
@@ -48,6 +53,7 @@ void _embeddedDaemonIsolateEntryPoint(Map<String, Object?> config) async {
       enableTerminalAgentHooks: runtimeConfig.enableTerminalAgentHooks,
       relayConfig: runtimeConfig.relay,
       appBaseUrl: runtimeConfig.appBaseUrl,
+      speechService: speechService,
       log: log,
     );
   } catch (e) {

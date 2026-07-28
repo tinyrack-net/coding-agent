@@ -84,6 +84,7 @@ import 'workspace/workspace_v2_service.dart';
 import 'voice/voice_bridge_registry.dart';
 import 'voice/speech_provider.dart';
 import 'voice/speech_readiness.dart';
+import 'voice/speech_runtime.dart';
 import 'voice/turn_detection_provider.dart';
 import 'voice/voice_session.dart';
 
@@ -148,6 +149,7 @@ Future<DaemonServerHandle> startDaemonServer({
   SpeechToTextResolver? resolveDictationStt,
   TurnDetectionResolver? resolveVoiceTurnDetection,
   SpeechReadinessSnapshot Function()? getSpeechReadiness,
+  SpeechService? speechService,
   SpeechLogger? speechLogger,
   String sttLanguage = 'en',
   String dictationLanguage = 'en',
@@ -819,18 +821,30 @@ Future<DaemonServerHandle> startDaemonServer({
   final voiceSessions = VoiceSessionV2Service(
     createHost: (connection) =>
         _DaemonVoiceSessionHost(manager: manager, connection: connection),
-    resolveTts: resolveVoiceTts ?? () => null,
-    resolveStt: resolveVoiceStt ?? () => null,
-    resolveDictationStt: resolveDictationStt,
-    resolveTurnDetection: resolveVoiceTurnDetection ?? () => null,
+    resolveTts: speechService?.resolveTts ?? resolveVoiceTts ?? () => null,
+    resolveStt: speechService?.resolveStt ?? resolveVoiceStt ?? () => null,
+    resolveDictationStt:
+        speechService?.resolveDictationStt ?? resolveDictationStt,
+    resolveTurnDetection:
+        speechService?.resolveTurnDetection ??
+        resolveVoiceTurnDetection ??
+        () => null,
     voiceBridge: voiceBridge,
-    getSpeechReadiness: getSpeechReadiness,
+    getSpeechReadiness: speechService?.getReadiness ?? getSpeechReadiness,
     logger: speechLogger ?? const NullSpeechLogger(),
-    sttLanguage: sttLanguage,
-    dictationLanguage: dictationLanguage,
+    sttLanguage: speechService?.resolveSttLanguage() ?? sttLanguage,
+    dictationLanguage:
+        speechService?.resolveDictationSttLanguage() ?? dictationLanguage,
     environment: Platform.environment,
     cwd: paths.dataDir,
   );
+  final stopSpeechReadiness =
+      speechService?.onReadinessChange(
+        (snapshot) => server.updateServerCapabilities(
+          buildSpeechServerCapabilities(snapshot),
+        ),
+      ) ??
+      () {};
   final hubRelationships = HubRelationshipController(
     home: paths.dataDir,
     serverId: serverId,
@@ -1181,7 +1195,9 @@ Future<DaemonServerHandle> startDaemonServer({
     stopConfigBroadcast();
     scriptHealth.stop();
     schedules.stop();
+    stopSpeechReadiness();
     await voiceSessions.dispose();
+    speechService?.stop();
     voiceBridge.clear();
     workspaceScripts.dispose();
     await workspaceGitObserverBackend.disposeAndWait();
@@ -1262,6 +1278,7 @@ Future<DaemonServerHandle> startDaemonServer({
   lock.startHeartbeat();
 
   log('daemon listening on ws://$host:${server.port}');
+  speechService?.start();
   scriptHealth.start();
   await schedules.start();
   await hubRelationships.start();

@@ -9,6 +9,7 @@ import 'package:agent_daemon/src/providers/agent_client.dart';
 import 'package:agent_daemon/src/providers/agent_session.dart';
 import 'package:agent_daemon/src/providers/provider_event.dart';
 import 'package:agent_daemon/src/voice/speech_provider.dart';
+import 'package:agent_daemon/src/voice/speech_runtime.dart';
 import 'package:agent_daemon/src/voice/turn_detection_provider.dart';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
@@ -45,18 +46,27 @@ void main() {
     final client = _VoiceClient();
     final detector = _TurnProvider();
     final stt = _SttProvider();
+    var speechCleanupCalls = 0;
+    final speech = SpeechRuntime(
+      reconcile: () async => SpeechRuntimeReconciliation(
+        turnDetection: detector,
+        voiceStt: stt,
+        voiceTts: _TtsProvider(),
+        dictationStt: stt,
+        cleanup: () => speechCleanupCalls += 1,
+      ),
+    );
     final handle = await startDaemonServer(
       paths: DaemonPaths(dataDir: home.path),
       dataDir: home.path,
       host: '127.0.0.1',
       port: 0,
       agentClients: {'fake': client},
-      resolveVoiceTts: () => _TtsProvider(),
-      resolveVoiceStt: () => stt,
-      resolveVoiceTurnDetection: () => detector,
+      speechService: speech,
       log: (_) {},
     );
     addTearDown(handle.stop);
+    await speech.ready;
 
     final channel = WebSocketChannel.connect(
       Uri.parse('ws://127.0.0.1:${handle.server.port}/ws'),
@@ -75,7 +85,15 @@ void main() {
         ).toJson(),
       ),
     );
-    await frames.firstWhere((frame) => frame['status'] == 'server_info');
+    final serverInfo = await frames.firstWhere(
+      (frame) => frame['status'] == 'server_info',
+    );
+    expect(serverInfo['capabilities'], {
+      'voice': {
+        'dictation': {'enabled': true, 'reason': ''},
+        'voice': {'enabled': true, 'reason': ''},
+      },
+    });
 
     final responseFuture = frames.firstWhere(
       (frame) =>
@@ -114,6 +132,8 @@ void main() {
     expect(detector.sessions.single.closed, isTrue);
     expect(stt.sessions.single.closed, isTrue);
     expect(client.systemPrompts.last, contains('voice mode is now off'));
+    await handle.stop();
+    expect(speechCleanupCalls, 1);
   });
 }
 
