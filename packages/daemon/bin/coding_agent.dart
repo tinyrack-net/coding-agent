@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:agent_daemon/src/cli/pair_command.dart';
 import 'package:agent_daemon/src/cli/agent_import_command.dart';
+import 'package:agent_daemon/src/cli/agent_command.dart';
 import 'package:agent_daemon/src/cli/hub_command.dart';
 import 'package:agent_daemon/src/cli/provider_command.dart';
 import 'package:agent_daemon/src/cli/schedule_command.dart';
@@ -22,6 +23,15 @@ Future<void> main(List<String> arguments) async {
       arguments[0] == 'agent' &&
       arguments[1] == 'import') {
     exitCode = await runAgentImportCommand(arguments: arguments.sublist(2));
+    return;
+  }
+  if (arguments.isNotEmpty && arguments[0] == 'agent') {
+    exitCode = await runAgentCommand(arguments: arguments.sublist(1));
+    return;
+  }
+  if (arguments.isNotEmpty &&
+      (arguments[0] == 'ls' || arguments[0] == 'inspect')) {
+    exitCode = await runAgentCommand(arguments: arguments);
     return;
   }
   if (arguments.length >= 2 &&
@@ -91,6 +101,8 @@ Future<void> main(List<String> arguments) async {
     'Usage: coding-agent daemon pair [--home <path>] [--json]\n'
     '       coding-agent import --provider <provider> <id> [options]\n'
     '       coding-agent agent import --provider <provider> <id> [options]\n'
+    '       coding-agent agent <ls|inspect> ...\n'
+    '       coding-agent <ls|inspect> ...\n'
     '       coding-agent hub connect --url <url> --token <token> '
     '[--home <path>] [--json]\n'
     '       coding-agent hub status [--home <path>] [--json]\n'

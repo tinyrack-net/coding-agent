@@ -1048,6 +1048,7 @@ Future<DaemonServerHandle> startDaemonServer({
     if (agentTimelineResponse != null) return agentTimelineResponse;
     final agentResponse = await _handlePaseoFetchAgent(
       manager,
+      paseoProviderCatalog,
       workspaceRegistries,
       connection,
       message,
@@ -1645,6 +1646,7 @@ Map<String, Object?>? _handlePaseoTimelineFetch(
 
 Future<Map<String, Object?>?> _handlePaseoFetchAgent(
   AgentManager manager,
+  PaseoProviderCatalogRegistry providerCatalog,
   WorkspaceRegistries registries,
   Connection connection,
   Map<String, Object?> message,
@@ -1659,15 +1661,37 @@ Future<Map<String, Object?>?> _handlePaseoFetchAgent(
         'Agent not found: ${agent.agentId}',
       );
     }
-    final snapshot = agent.copyWith(
+    final timeline = manager.fetchCanonicalTimeline(agent.agentId);
+    final snapshot = timeline.agent.copyWith(
       providerUnavailable: !manager.isProviderAvailable(agent.provider),
     );
-    return FetchAgentResponse(
-      requestId: request.requestId,
-      agent: snapshot,
-      project: await buildAgentProjectPlacement(snapshot, registries),
-      error: null,
-    ).toJson();
+    final providerDefinition = providerCatalog.definition(agent.provider);
+    return {
+      'type': FetchAgentResponse.type,
+      'payload': {
+        'requestId': request.requestId,
+        'agent': PaseoAgentSnapshotCodec.encode(
+          snapshot,
+          pendingPermissions: timeline.rows
+              .map((row) => row.item)
+              .whereType<PermissionItem>(),
+          capabilities: providerDefinition?.capabilities,
+          features: paseoProviderFeaturesFor(snapshot),
+          availableModes: providerDefinition == null
+              ? null
+              : [
+                  for (final mode in providerDefinition.modes)
+                    mode.mode.toJson(),
+                ],
+          currentModeId: providerDefinition == null
+              ? snapshot.currentModeId
+              : _snapshotCurrentModeId(snapshot, providerDefinition),
+          providerUnavailable: providerDefinition == null,
+        ),
+        'project': await buildAgentProjectPlacement(snapshot, registries),
+        'error': null,
+      },
+    };
   } on RpcException catch (error) {
     return FetchAgentResponse(
       requestId: request.requestId,
