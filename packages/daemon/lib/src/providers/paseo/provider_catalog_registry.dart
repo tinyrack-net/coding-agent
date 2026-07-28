@@ -162,6 +162,9 @@ PaseoProviderDefinition _applyOverride(
     commandArgs: command == null
         ? definition.commandArgs
         : command.skip(1).toList(growable: false),
+    environment: _stringMap(override.extra['env']) ?? definition.environment,
+    providerParams:
+        _objectMap(override.extra['params']) ?? definition.providerParams,
     enabledByDefault: override.enabled ?? definition.enabledByDefault,
     defaultModeId: definition.defaultModeId,
     modes: definition.modes,
@@ -182,16 +185,23 @@ PaseoProviderDefinition _customDefinition(
   if (command == null) {
     throw StateError("ACP provider '$id' requires a command");
   }
+  final providerParams = _objectMap(config.extra['params']) ?? const {};
+  final supportsMcpServers = providerParams['supportsMcpServers'];
   return PaseoProviderDefinition(
     id: id,
     label: _string(config.extra['label']) ?? id,
     description: _string(config.extra['description']) ?? 'Custom ACP provider',
     command: command.first,
     commandArgs: command.skip(1).toList(growable: false),
+    environment: _stringMap(config.extra['env']) ?? const {},
+    providerParams: providerParams,
     enabledByDefault: config.enabled ?? true,
     defaultModeId: null,
     modes: const [],
-    capabilities: paseoAcpCapabilities,
+    capabilities: {
+      ...paseoAcpCapabilities,
+      if (supportsMcpServers is bool) 'supportsMcpServers': supportsMcpServers,
+    },
     source: 'custom',
   );
 }
@@ -206,4 +216,18 @@ List<String>? _command(Object? value) {
     return null;
   }
   return value.cast<String>();
+}
+
+Map<String, String>? _stringMap(Object? value) {
+  if (value is! Map ||
+      value.keys.any((key) => key is! String) ||
+      value.values.any((entry) => entry is! String)) {
+    return null;
+  }
+  return Map.unmodifiable(value.cast<String, String>());
+}
+
+Map<String, Object?>? _objectMap(Object? value) {
+  if (value is! Map || value.keys.any((key) => key is! String)) return null;
+  return Map.unmodifiable(value.cast<String, Object?>());
 }

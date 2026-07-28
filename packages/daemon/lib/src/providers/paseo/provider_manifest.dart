@@ -112,6 +112,8 @@ final class PaseoProviderDefinition {
     required this.modes,
     this.capabilities = _storedCapabilities,
     this.commandArgs = const [],
+    this.environment = const {},
+    this.providerParams = const {},
     this.enabledByDefault = true,
     this.source = 'builtin',
   });
@@ -121,6 +123,8 @@ final class PaseoProviderDefinition {
   final String description;
   final String command;
   final List<String> commandArgs;
+  final Map<String, String> environment;
+  final Map<String, Object?> providerParams;
   final bool enabledByDefault;
   final String source;
   final String? defaultModeId;

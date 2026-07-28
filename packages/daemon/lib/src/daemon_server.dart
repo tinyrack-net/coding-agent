@@ -29,6 +29,7 @@ import 'providers/native/openai_compatible_backend.dart';
 import 'providers/native/provider_catalog.dart';
 import 'providers/paseo/codex_agent_client.dart';
 import 'providers/paseo/claude_agent_client.dart';
+import 'providers/paseo/generic_acp_agent_client.dart';
 import 'providers/paseo/provider_catalog_registry.dart';
 import 'providers/paseo/provider_catalog_v2_service.dart';
 import 'providers/paseo/provider_manifest.dart';
@@ -188,6 +189,9 @@ Future<DaemonServerHandle> startDaemonServer({
       entry.id: OpenAiCompatibleBackend(catalogEntry: entry),
   };
   final registry = ProviderRegistry(credentials, nativeBackends);
+  final paseoProviderCatalog = PaseoProviderCatalogRegistry(
+    configResolver: () => configStore.config,
+  );
 
   late final WsServer server;
   late final WorkspaceV2Service workspaceV2;
@@ -207,6 +211,35 @@ Future<DaemonServerHandle> startDaemonServer({
               credentials: credentials,
             ),
         },
+    clientResolver: agentClients == null
+        ? (provider) {
+            final definition = paseoProviderCatalog.definition(provider);
+            if (definition == null ||
+                !definition.enabledByDefault ||
+                (definition.source != 'custom' && definition.id != 'copilot')) {
+              return null;
+            }
+            return GenericAcpAgentClient(
+              provider: definition.id,
+              command: definition.command,
+              commandArgs: definition.commandArgs,
+              environment: definition.environment,
+              providerParams: definition.providerParams,
+              resolveCommand: () =>
+                  paseoProviderCatalog.resolveCommand(definition),
+            );
+          }
+        : null,
+    providerIdsResolver: agentClients == null
+        ? () => paseoProviderCatalog.definitions
+              .where(
+                (definition) =>
+                    definition.enabledByDefault &&
+                    (definition.source == 'custom' ||
+                        definition.id == 'copilot'),
+              )
+              .map((definition) => definition.id)
+        : null,
     store: AgentStore(dataDir: dataDir),
     onStream: (payload) => server.broadcast(
       RpcEvent(type: MessageTypes.agentStreamEvent, payload: payload.toJson()),
@@ -733,9 +766,6 @@ Future<DaemonServerHandle> startDaemonServer({
     targetAgentExists: (agentId) =>
         manager.list().any((agent) => agent.agentId == agentId),
   );
-  final paseoProviderCatalog = PaseoProviderCatalogRegistry(
-    configResolver: () => configStore.config,
-  );
   final agentCommands = AgentCommandsService(manager);
   final providerCatalogV2 = ProviderCatalogV2Service(
     registry: paseoProviderCatalog,
@@ -806,7 +836,11 @@ Future<DaemonServerHandle> startDaemonServer({
         },
       };
     }
-    final agentTimelineResponse = _handlePaseoTimelineFetch(manager, message);
+    final agentTimelineResponse = _handlePaseoTimelineFetch(
+      manager,
+      paseoProviderCatalog,
+      message,
+    );
     if (agentTimelineResponse != null) return agentTimelineResponse;
     final agentResponse = await _handlePaseoFetchAgent(
       manager,
@@ -1193,6 +1227,7 @@ String _importAgentErrorMessage(Object error) => switch (error) {
 
 Map<String, Object?>? _handlePaseoTimelineFetch(
   AgentManager manager,
+  PaseoProviderCatalogRegistry providerCatalog,
   Map<String, Object?> message,
 ) {
   if (message['type'] != 'fetch_agent_timeline_request') return null;
@@ -1250,7 +1285,7 @@ Map<String, Object?>? _handlePaseoTimelineFetch(
         cursorSeq != null &&
         rows.isNotEmpty &&
         cursorSeq < minSeq - 1;
-    final providerDefinition = PaseoProviderManifest.find(
+    final providerDefinition = providerCatalog.definition(
       snapshot.agent.provider,
     );
 

@@ -264,6 +264,52 @@ void main() {
     title: 'Test',
   );
 
+  test(
+    'resolves provider clients dynamically from the daemon config surface',
+    () async {
+      await manager.dispose();
+      final dynamicClient = MockAgentClient();
+      var configured = true;
+      manager = AgentManager(
+        clients: const {},
+        clientResolver: (provider) =>
+            configured && provider == 'custom-acp' ? dynamicClient : null,
+        providerIdsResolver: () =>
+            configured ? const ['custom-acp'] : const <String>[],
+        store: AgentStore(dataDir: tempDir.path),
+      );
+
+      expect(manager.isProviderAvailable('custom-acp'), isTrue);
+      final created = await manager.createAgent(
+        cwd: tempDir.path,
+        provider: 'custom-acp',
+        model: '',
+        mode: AgentMode.normal,
+        title: 'Dynamic ACP',
+      );
+      expect(created.provider, 'custom-acp');
+      expect(dynamicClient.sessions, hasLength(1));
+
+      configured = false;
+      expect(manager.isProviderAvailable('custom-acp'), isFalse);
+      await expectLater(
+        manager.createAgent(
+          cwd: tempDir.path,
+          provider: 'custom-acp',
+          model: '',
+          mode: AgentMode.normal,
+        ),
+        throwsA(
+          isA<RpcException>().having(
+            (error) => error.error.message,
+            'message',
+            contains('unsupported provider "custom-acp"'),
+          ),
+        ),
+      );
+    },
+  );
+
   test('imports provider history and serializes duplicate handles', () async {
     client.nextRestoredHistory = const [
       UserMessageItem(id: 'user-1', text: 'Imported prompt'),

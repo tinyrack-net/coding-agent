@@ -119,6 +119,8 @@ void main() {
               'label': 'Amp',
               'description': 'ACP wrapper',
               'command': ['amp-acp', '--stdio'],
+              'env': {'AMP_LOG': 'info'},
+              'params': {'supportsMcpServers': false},
             },
           ),
         },
@@ -140,7 +142,12 @@ void main() {
       expect(custom?.source, 'custom');
       expect(custom?.command, 'amp-acp');
       expect(custom?.commandArgs, ['--stdio']);
-      expect(custom?.capabilities, paseoAcpCapabilities);
+      expect(custom?.environment, {'AMP_LOG': 'info'});
+      expect(custom?.providerParams, {'supportsMcpServers': false});
+      expect(custom?.capabilities, {
+        ...paseoAcpCapabilities,
+        'supportsMcpServers': false,
+      });
 
       final first = await catalog.snapshot();
       expect(first.map((entry) => entry.provider), ['ready', 'amp-acp']);

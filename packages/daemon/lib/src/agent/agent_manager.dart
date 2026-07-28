@@ -32,6 +32,8 @@ typedef AgentAttentionBroadcast =
       AgentAttentionReason reason,
       String timestamp,
     );
+typedef AgentClientResolver = AgentClient? Function(String provider);
+typedef AgentProviderIdsResolver = Iterable<String> Function();
 
 final class AgentRuntime {
   AgentRuntime({
@@ -95,6 +97,8 @@ class AgentManager {
   AgentManager({
     required Map<String, AgentClient> clients,
     required AgentStore store,
+    AgentClientResolver? clientResolver,
+    AgentProviderIdsResolver? providerIdsResolver,
     PermissionBroker? broker,
     this.onStream,
     this.onState,
@@ -103,6 +107,8 @@ class AgentManager {
     this.onAttention,
     void Function(ProviderSubagentUpdate update)? onProviderSubagentUpdate,
   }) : _clients = clients,
+       _clientResolver = clientResolver,
+       _providerIdsResolver = providerIdsResolver,
        _store = store,
        broker = broker ?? PermissionBroker(),
        providerSubagents = ProviderSubagentStore(
@@ -110,6 +116,8 @@ class AgentManager {
        );
 
   final Map<String, AgentClient> _clients;
+  final AgentClientResolver? _clientResolver;
+  final AgentProviderIdsResolver? _providerIdsResolver;
   final AgentStore _store;
   final PermissionBroker broker;
   final ProviderSubagentStore providerSubagents;
@@ -153,7 +161,7 @@ class AgentManager {
       if (!r.internal && (!r.archived || includeArchived)) r.summary,
   ];
 
-  bool isProviderAvailable(String provider) => _clients.containsKey(provider);
+  bool isProviderAvailable(String provider) => _clientFor(provider) != null;
 
   Future<List<AgentSlashCommand>> listCommands({
     required String agentId,
@@ -174,7 +182,7 @@ class AgentManager {
     }
     final model = draftConfig.model?.trim();
     if (model == null || model.isEmpty) return const [];
-    final client = _clients[draftConfig.provider];
+    final client = _clientFor(draftConfig.provider);
     if (client == null) {
       throw StateError(
         "Provider '${draftConfig.provider}' is not available. "
@@ -210,7 +218,7 @@ class AgentManager {
   ) async {
     final model = draftConfig.model?.trim();
     if (model == null || model.isEmpty) return const [];
-    final client = _clients[draftConfig.provider];
+    final client = _clientFor(draftConfig.provider);
     if (client == null) {
       throw StateError(
         "Provider '${draftConfig.provider}' is not available. "
@@ -244,11 +252,11 @@ class AgentManager {
     String? cwd,
   }) async {
     final results = <ManagedImportableProviderSession>[];
-    for (final entry in _clients.entries) {
-      if (providerFilter != null && !providerFilter.contains(entry.key)) {
+    for (final provider in _providerIds) {
+      if (providerFilter != null && !providerFilter.contains(provider)) {
         continue;
       }
-      final client = entry.value;
+      final client = _clientFor(provider);
       if (client is! ImportableAgentClient) continue;
       final importableClient = client as ImportableAgentClient;
       try {
@@ -258,7 +266,7 @@ class AgentManager {
         results.addAll(
           sessions.map(
             (session) => ManagedImportableProviderSession(
-              provider: entry.key,
+              provider: provider,
               session: session,
             ),
           ),
@@ -325,7 +333,7 @@ class AgentManager {
     required String workspaceId,
     required Map<String, String> labels,
   }) async {
-    if (!_clients.containsKey(provider)) {
+    if (_clientFor(provider) == null) {
       throw StateError('unsupported provider "$provider"');
     }
     final matches = [
@@ -560,11 +568,12 @@ class AgentManager {
     List<AgentAttachment> attachments = const [],
     bool internal = false,
   }) async {
-    final client = _clients[provider];
+    final client = _clientFor(provider);
     if (client == null) {
       throw RpcException(
         RpcErrorCodes.invalidPayload,
-        'unsupported provider "$provider" (supported: ${_clients.keys.join(', ')})',
+        'unsupported provider "$provider" '
+        '(supported: ${_providerIds.join(', ')})',
       );
     }
     if (parentAgentId != null) {
@@ -622,7 +631,12 @@ class AgentManager {
   }
 
   Future<void> _startSession(AgentRuntime runtime) async {
-    final client = _clients[runtime.summary.provider]!;
+    final client = _clientFor(runtime.summary.provider);
+    if (client == null) {
+      throw StateError(
+        "Provider '${runtime.summary.provider}' is no longer configured",
+      );
+    }
     final session = await client.createSession(
       cwd: runtime.summary.cwd,
       model: runtime.summary.model,
@@ -655,6 +669,14 @@ class AgentManager {
       );
     }
   }
+
+  AgentClient? _clientFor(String provider) =>
+      _clients[provider] ?? _clientResolver?.call(provider);
+
+  List<String> get _providerIds => {
+    ..._clients.keys,
+    ...?_providerIdsResolver?.call(),
+  }.toList(growable: false);
 
   Future<void> prompt(
     String agentId,
