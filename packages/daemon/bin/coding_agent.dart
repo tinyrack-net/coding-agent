@@ -7,6 +7,7 @@ import 'package:agent_daemon/src/cli/agent_import_command.dart';
 import 'package:agent_daemon/src/cli/hub_command.dart';
 import 'package:agent_daemon/src/cli/provider_command.dart';
 import 'package:agent_daemon/src/cli/schedule_command.dart';
+import 'package:agent_daemon/src/cli/script_command.dart';
 import 'package:agent_daemon/src/cli/terminal_command.dart';
 import 'package:agent_daemon/src/cli/workspace_command.dart';
 import 'package:agent_daemon/src/cli/worktree_command.dart';
@@ -54,6 +55,10 @@ Future<void> main(List<String> arguments) async {
     exitCode = await runScheduleCommand(arguments: arguments.sublist(1));
     return;
   }
+  if (arguments.isNotEmpty && arguments[0] == 'script') {
+    exitCode = await runScriptCommand(arguments: arguments.sublist(1));
+    return;
+  }
   if (arguments.isNotEmpty && arguments[0] == 'provider') {
     exitCode = await runProviderCommand(arguments: arguments.sublist(1));
     return;
@@ -92,6 +97,7 @@ Future<void> main(List<String> arguments) async {
     '       coding-agent hub disconnect [--force] [--home <path>] [--json]\n'
     '       coding-agent schedule <create|ls|inspect|logs|pause|resume|'
     'delete|run-once|update> ...\n'
+    '       coding-agent script <ls|start|stop> ...\n'
     '       coding-agent provider <ls|models> ...\n'
     '       coding-agent workspace <create|ls|archive> ...\n'
     '       coding-agent worktree <create|ls|archive> ...\n'

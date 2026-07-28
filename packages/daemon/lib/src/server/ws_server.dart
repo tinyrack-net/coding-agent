@@ -483,6 +483,7 @@ class WsServer {
       'terminal-restore-modes': true,
       'workspaceFileEditing': true,
       'workspaceRecovery': true,
+      'workspaceScriptManagement': true,
     },
   ).toJson();
 

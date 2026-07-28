@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_daemon/src/daemon_server.dart';
+import 'package:agent_daemon/src/cli/script_command.dart';
 import 'package:agent_daemon/src/workspace/workspace_registry.dart';
 import 'package:agent_daemon/src/workspace/service_proxy_standalone.dart';
 import 'package:agent_protocol/agent_protocol.dart';
@@ -13,9 +14,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 void main() {
   test('workspace script list, start, status, and stop cross daemon PTY', () async {
     final home = Directory.systemTemp.createTempSync('daemon-scripts-e2e-');
-    addTearDown(() {
-      if (home.existsSync()) home.deleteSync(recursive: true);
-    });
+    addTearDown(() => _deleteDirectoryEventually(home));
     final workspace = Directory(p.join(home.path, 'workspace'))..createSync();
     final portSocket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final servicePort = portSocket.port;
@@ -84,6 +83,27 @@ void main() {
       ),
     );
     await frames.firstWhere((frame) => frame['status'] == 'server_info');
+
+    final cliOutput = StringBuffer();
+    expect(
+      await runScriptCommand(
+        arguments: [
+          'ls',
+          '--workspace',
+          'workspace',
+          '--host',
+          '127.0.0.1:${handle.server.port}',
+          '--json',
+        ],
+        environment: const {},
+        writeOutput: cliOutput.write,
+      ),
+      0,
+    );
+    expect(
+      (jsonDecode(cliOutput.toString()) as List<dynamic>).single['scriptName'],
+      'hold',
+    );
 
     Future<Map<String, Object?>> request(
       WorkspaceScriptRequest request,
@@ -198,5 +218,62 @@ void main() {
     final removed = await removedRequest.close();
     expect(removed.statusCode, 404);
     expect(await utf8.decoder.bind(removed).join(), '404 Not Found');
+
+    final cliStarted = StringBuffer();
+    expect(
+      await runScriptCommand(
+        arguments: [
+          'start',
+          'hold',
+          '--workspace',
+          'workspace',
+          '--host',
+          '127.0.0.1:${handle.server.port}',
+          '--json',
+        ],
+        environment: const {},
+        writeOutput: cliStarted.write,
+      ),
+      0,
+    );
+    expect(
+      (jsonDecode(cliStarted.toString()) as Map<String, dynamic>)['lifecycle'],
+      'running',
+    );
+
+    final cliStopped = StringBuffer();
+    expect(
+      await runScriptCommand(
+        arguments: [
+          'stop',
+          'hold',
+          '--workspace',
+          'workspace',
+          '--host',
+          '127.0.0.1:${handle.server.port}',
+          '--json',
+        ],
+        environment: const {},
+        writeOutput: cliStopped.write,
+      ),
+      0,
+    );
+    expect(
+      (jsonDecode(cliStopped.toString()) as Map<String, dynamic>)['lifecycle'],
+      'stopped',
+    );
   });
+}
+
+Future<void> _deleteDirectoryEventually(Directory directory) async {
+  for (var attempt = 0; attempt < 40; attempt++) {
+    if (!directory.existsSync()) return;
+    try {
+      await directory.delete(recursive: true);
+      return;
+    } on PathAccessException {
+      if (attempt == 39) rethrow;
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+  }
 }

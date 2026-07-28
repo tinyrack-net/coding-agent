@@ -362,18 +362,20 @@ void main() {
         'payload': {'seq': 1},
       };
 
+      final canonicalEnvelopeFuture = canonicalFrames.firstWhere(
+        (frame) => frame['type'] == 'session',
+      );
+      final legacyEnvelopeFuture = legacyFrames.firstWhere(
+        (frame) => frame['type'] == 'session',
+      );
       server.broadcast(
         legacy,
         v2Message: canonical,
         legacyV2Capability: 'tinyrackLegacyTimelineV1',
       );
 
-      final canonicalEnvelope = await canonicalFrames.firstWhere(
-        (frame) => frame['type'] == 'session',
-      );
-      final legacyEnvelope = await legacyFrames.firstWhere(
-        (frame) => frame['type'] == 'session',
-      );
+      final canonicalEnvelope = await canonicalEnvelopeFuture;
+      final legacyEnvelope = await legacyEnvelopeFuture;
       expect(canonicalEnvelope['message'], canonical);
       expect(
         (legacyEnvelope['message'] as Map<String, Object?>)['type'],

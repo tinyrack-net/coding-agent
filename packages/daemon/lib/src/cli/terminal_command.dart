@@ -509,10 +509,11 @@ final class _TerminalCommandException implements Exception {
 }
 
 final class DaemonCliSocketClient {
-  DaemonCliSocketClient._(this._socket, this._frames);
+  DaemonCliSocketClient._(this._socket, this._frames, this.serverInfo);
 
   final WebSocket _socket;
   final StreamIterator<dynamic> _frames;
+  final ServerInfoStatus serverInfo;
 
   static Future<DaemonCliSocketClient> connect(
     DaemonRuntimeConfig config, {
@@ -549,12 +550,14 @@ final class DaemonCliSocketClient {
         ).toJson(),
       ),
     );
-    await _nextMessage(
-      frames,
-      (message) => message['status'] == 'server_info',
-      allowEnvelope: false,
+    final serverInfo = ServerInfoStatus.fromJson(
+      await _nextMessage(
+        frames,
+        (message) => message['status'] == 'server_info',
+        allowEnvelope: false,
+      ),
     );
-    return DaemonCliSocketClient._(socket, frames);
+    return DaemonCliSocketClient._(socket, frames, serverInfo);
   }
 
   Future<Map<String, Object?>> request(Map<String, Object?> request) async {

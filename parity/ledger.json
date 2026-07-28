@@ -583,24 +583,33 @@
     },
     {
       "id": "cli-command:script-ls",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/script_command.dart; packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/server/ws_server.dart",
+      "evidence": [
+        "packages/daemon/test/cli/script_command_test.dart",
+        "packages/daemon/test/daemon_workspace_scripts_e2e_test.dart"
+      ],
+      "notes": "Frozen workspace selection, capability gate, wire requests, output modes, structured errors, and real daemon list/start/stop flow verified in three concurrent smoke lanes."
     },
     {
       "id": "cli-command:script-start",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/script_command.dart; packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/server/ws_server.dart",
+      "evidence": [
+        "packages/daemon/test/cli/script_command_test.dart",
+        "packages/daemon/test/daemon_workspace_scripts_e2e_test.dart"
+      ],
+      "notes": "Frozen workspace selection, capability gate, wire requests, output modes, structured errors, and real daemon list/start/stop flow verified in three concurrent smoke lanes."
     },
     {
       "id": "cli-command:script-stop",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/script_command.dart; packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/server/ws_server.dart",
+      "evidence": [
+        "packages/daemon/test/cli/script_command_test.dart",
+        "packages/daemon/test/daemon_workspace_scripts_e2e_test.dart"
+      ],
+      "notes": "Frozen workspace selection, capability gate, wire requests, output modes, structured errors, and real daemon list/start/stop flow verified in three concurrent smoke lanes."
     },
     {
       "id": "cli-command:terminal-capture",
@@ -9291,45 +9300,63 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/script/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/script_command.dart; packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/server/ws_server.dart",
+      "evidence": [
+        "packages/daemon/test/cli/script_command_test.dart",
+        "packages/daemon/test/daemon_workspace_scripts_e2e_test.dart"
+      ],
+      "notes": "Frozen workspace selection, capability gate, wire requests, output modes, structured errors, and real daemon list/start/stop flow verified in three concurrent smoke lanes."
     },
     {
       "id": "source-unit:packages/cli/src/commands/script/ls.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/script_command.dart; packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/server/ws_server.dart",
+      "evidence": [
+        "packages/daemon/test/cli/script_command_test.dart",
+        "packages/daemon/test/daemon_workspace_scripts_e2e_test.dart"
+      ],
+      "notes": "Frozen workspace selection, capability gate, wire requests, output modes, structured errors, and real daemon list/start/stop flow verified in three concurrent smoke lanes."
     },
     {
       "id": "source-unit:packages/cli/src/commands/script/schema.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/script_command.dart; packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/server/ws_server.dart",
+      "evidence": [
+        "packages/daemon/test/cli/script_command_test.dart",
+        "packages/daemon/test/daemon_workspace_scripts_e2e_test.dart"
+      ],
+      "notes": "Frozen workspace selection, capability gate, wire requests, output modes, structured errors, and real daemon list/start/stop flow verified in three concurrent smoke lanes."
     },
     {
       "id": "source-unit:packages/cli/src/commands/script/shared.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/script_command.dart; packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/server/ws_server.dart",
+      "evidence": [
+        "packages/daemon/test/cli/script_command_test.dart",
+        "packages/daemon/test/daemon_workspace_scripts_e2e_test.dart"
+      ],
+      "notes": "Frozen workspace selection, capability gate, wire requests, output modes, structured errors, and real daemon list/start/stop flow verified in three concurrent smoke lanes."
     },
     {
       "id": "source-unit:packages/cli/src/commands/script/start.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/script_command.dart; packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/server/ws_server.dart",
+      "evidence": [
+        "packages/daemon/test/cli/script_command_test.dart",
+        "packages/daemon/test/daemon_workspace_scripts_e2e_test.dart"
+      ],
+      "notes": "Frozen workspace selection, capability gate, wire requests, output modes, structured errors, and real daemon list/start/stop flow verified in three concurrent smoke lanes."
     },
     {
       "id": "source-unit:packages/cli/src/commands/script/stop.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/script_command.dart; packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/server/ws_server.dart",
+      "evidence": [
+        "packages/daemon/test/cli/script_command_test.dart",
+        "packages/daemon/test/daemon_workspace_scripts_e2e_test.dart"
+      ],
+      "notes": "Frozen workspace selection, capability gate, wire requests, output modes, structured errors, and real daemon list/start/stop flow verified in three concurrent smoke lanes."
     },
     {
       "id": "source-unit:packages/cli/src/commands/speech/index.ts",
