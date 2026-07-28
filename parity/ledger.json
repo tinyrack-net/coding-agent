@@ -10514,12 +10514,12 @@
     },
     {
       "id": "source-unit:packages/protocol/src/schedule/cron-expression.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/protocol/lib/src/schedule/cron_expression.dart",
       "evidence": [
         "packages/protocol/test/schedule_test.dart"
       ],
-      "notes": null
+      "notes": "Five-field parsing, lists, wildcard steps, inclusive ranges, bounds, exact frozen validation messages, and matcher behavior are ported."
     },
     {
       "id": "source-unit:packages/protocol/src/schedule/rpc-schemas.ts",
@@ -12345,12 +12345,14 @@
     },
     {
       "id": "source-unit:packages/server/src/server/schedule/cron.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/schedule/schedule_cron.dart",
       "evidence": [
-        "packages/daemon/test/schedule/schedule_cron_test.dart"
+        "packages/daemon/test/schedule/schedule_cron_test.dart",
+        "packages/daemon/test/schedule/schedule_service_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Rolling intervals, next-minute UTC matching, weekdays, IANA wall-clock scheduling, winter and summer offsets, distinct fall-back matches, one-year search bounds, and exact cadence validation errors match the frozen implementation."
     },
     {
       "id": "source-unit:packages/server/src/server/schedule/service.ts",
