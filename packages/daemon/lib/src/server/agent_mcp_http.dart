@@ -4,6 +4,8 @@ import 'package:shelf/shelf.dart';
 
 import '../agent/agent_manager.dart';
 import '../providers/paseo/provider_catalog_registry.dart';
+import '../terminal/terminal_manager.dart';
+import '../workspace/workspace_v2_service.dart';
 import 'agent_mcp_tools.dart';
 import 'daemon_auth.dart';
 
@@ -11,12 +13,16 @@ final class AgentMcpHttpHandler {
   AgentMcpHttpHandler({
     required AgentManager manager,
     required PaseoProviderCatalogRegistry providerCatalog,
+    required WorkspaceV2Service Function() workspaceService,
+    required TerminalManager terminals,
     required String capabilityToken,
     String? passwordHash,
     Duration agentWaitTimeout = const Duration(seconds: 30),
   }) : _toolsHost = AgentMcpTools(
          manager: manager,
          providerCatalog: providerCatalog,
+         workspaceService: workspaceService,
+         terminals: terminals,
          agentWaitTimeout: agentWaitTimeout,
        ),
        _capabilityToken = capabilityToken,
@@ -132,6 +138,93 @@ final class AgentMcpHttpHandler {
   }
 
   static const _tools = <Map<String, Object?>>[
+    {
+      'name': 'create_workspace',
+      'title': 'Create workspace',
+      'description':
+          'Create a workspace using an existing local checkout or a new '
+          'Tinyrack-managed worktree.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'isolation': {
+            'type': 'string',
+            'enum': ['local', 'worktree'],
+          },
+          'path': {'type': 'string'},
+          'projectId': {'type': 'string'},
+          'title': {'type': 'string', 'minLength': 1},
+          'mode': {
+            'type': 'string',
+            'enum': ['branch-off', 'checkout-branch', 'checkout-pr'],
+          },
+          'worktreeSlug': {'type': 'string', 'minLength': 1},
+          'branchName': {'type': 'string', 'minLength': 1},
+          'baseBranch': {'type': 'string', 'minLength': 1},
+          'branch': {'type': 'string', 'minLength': 1},
+          'prNumber': {'type': 'integer', 'minimum': 1},
+          'forge': {'type': 'string', 'minLength': 1},
+        },
+        'required': ['isolation'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'list_workspaces',
+      'title': 'List workspaces',
+      'description': 'List active workspaces.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': <String, Object?>{},
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'archive_workspace',
+      'title': 'Archive workspace',
+      'description': 'Archive a workspace and everything it owns.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'workspaceId': {'type': 'string', 'minLength': 1},
+        },
+        'required': ['workspaceId'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'create_agent',
+      'title': 'Create agent',
+      'description':
+          'Create an agent with a provider/model pair and start its initial '
+          'prompt immediately.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'title': {'type': 'string', 'minLength': 1, 'maxLength': 60},
+          'provider': {'type': 'string', 'minLength': 3},
+          'workspaceId': {'type': 'string'},
+          'labels': {
+            'type': 'object',
+            'additionalProperties': {'type': 'string'},
+          },
+          'settings': {
+            'type': 'object',
+            'properties': {
+              'modeId': {'type': 'string'},
+              'thinkingOptionId': {'type': 'string'},
+              'features': {'type': 'object'},
+            },
+            'additionalProperties': false,
+          },
+          'initialPrompt': {'type': 'string', 'minLength': 1},
+          'background': {'type': 'boolean'},
+          'notifyOnFinish': {'type': 'boolean'},
+        },
+        'required': ['title', 'provider', 'initialPrompt'],
+        'additionalProperties': false,
+      },
+    },
     {
       'name': 'list_agents',
       'title': 'List agents',

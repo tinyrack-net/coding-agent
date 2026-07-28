@@ -32,6 +32,16 @@ final class ImportWorkspaceResult<T> {
   final PersistedWorkspaceRecord? createdWorkspace;
 }
 
+final class AutomationWorkspaceArchiveResult {
+  const AutomationWorkspaceArchiveResult({
+    required this.workspaceId,
+    required this.removedDirectory,
+  });
+
+  final String workspaceId;
+  final bool removedDirectory;
+}
+
 final class WorkspaceV2Service {
   WorkspaceV2Service({
     required this.registries,
@@ -113,6 +123,66 @@ final class WorkspaceV2Service {
       ),
       _ => null,
     };
+  }
+
+  /// Creates a workspace for the daemon MCP automation surface.
+  ///
+  /// This deliberately shares the native v2 creation path so project
+  /// ownership, worktree metadata, setup, and registry broadcasts cannot drift
+  /// between the UI and unattended agents.
+  Future<PersistedWorkspaceRecord> createAutomationWorkspace(
+    WorkspaceCreateSource source, {
+    String? title,
+  }) async {
+    final (workspace, project) = await switch (source) {
+      DirectoryWorkspaceCreateSource directory => _createDirectory(
+        directory,
+        title,
+      ),
+      WorktreeWorkspaceCreateSource worktree => _createWorktree(
+        worktree,
+        title,
+      ),
+    };
+    _ensureGitSnapshot(workspace);
+    final setup = workspaceSetup;
+    if (source is WorktreeWorkspaceCreateSource && setup != null) {
+      unawaited(_runWorkspaceSetup(setup, workspace, project));
+    }
+    return workspace;
+  }
+
+  Future<List<PersistedWorkspaceRecord>>
+  listActiveAutomationWorkspaces() async => [
+    for (final workspace in await registries.workspaces.list())
+      if (workspace.archivedAt == null) workspace,
+  ];
+
+  Future<PersistedWorkspaceRecord> requireActiveAutomationWorkspace(
+    String workspaceId,
+  ) async {
+    final workspace = await registries.workspaces.get(workspaceId);
+    if (workspace == null || workspace.archivedAt != null) {
+      throw StateError('Workspace not found: $workspaceId');
+    }
+    return workspace;
+  }
+
+  /// Archives only the requested workspace record. Its owned agents and
+  /// terminals are torn down by the MCP boundary before this call.
+  Future<AutomationWorkspaceArchiveResult> archiveAutomationWorkspace(
+    String workspaceId,
+  ) async {
+    final workspace = await requireActiveAutomationWorkspace(workspaceId);
+    final ownedPath = workspace.isPaseoOwnedWorktree
+        ? workspace.worktreeRoot
+        : null;
+    final existed = ownedPath != null && Directory(ownedPath).existsSync();
+    await _archiveWorkspace(workspace, archivedAt: _timestamp());
+    return AutomationWorkspaceArchiveResult(
+      workspaceId: workspaceId,
+      removedDirectory: existed && !Directory(ownedPath).existsSync(),
+    );
   }
 
   /// Runs a provider-session import in the exact workspace placement used by

@@ -187,6 +187,10 @@ void main() {
           .map((tool) => tool['name'])
           .toSet();
       expect(tools, {
+        'create_workspace',
+        'list_workspaces',
+        'archive_workspace',
+        'create_agent',
         'list_agents',
         'get_agent_status',
         'send_agent_prompt',
@@ -457,6 +461,130 @@ void main() {
         title: 'No MCP fixture',
       );
       expect(client.mcpCalls.last, isEmpty);
+
+      final workspaceA = await _call(
+        endpoint,
+        mcpAuthToken,
+        'create_workspace',
+        {'isolation': 'local', 'path': home.path, 'title': 'MCP workspace A'},
+      );
+      final otherDirectory = Directory(
+        '${home.path}${Platform.pathSeparator}other',
+      )..createSync();
+      final workspaceB = await _call(
+        endpoint,
+        mcpAuthToken,
+        'create_workspace',
+        {
+          'isolation': 'local',
+          'path': otherDirectory.path,
+          'title': 'MCP workspace B',
+        },
+      );
+      expect(workspaceA, {
+        'workspaceId': isA<String>(),
+        'projectId': isA<String>(),
+        'cwd': home.path,
+        'isolation': 'local',
+        'kind': 'directory',
+        'title': 'MCP workspace A',
+      });
+      final workspaceList = await _call(
+        endpoint,
+        mcpAuthToken,
+        'list_workspaces',
+        const {},
+      );
+      expect(
+        (workspaceList['workspaces']! as List).cast<Map>().map(
+          (workspace) => workspace['workspaceId'],
+        ),
+        containsAll([workspaceA['workspaceId'], workspaceB['workspaceId']]),
+      );
+
+      final topLevelEndpoint = endpoint.replace(queryParameters: const {});
+      final autonomous = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'create_agent',
+        {
+          'title': 'Automation fixture',
+          'provider': 'fixture/fixture-model',
+          'workspaceId': workspaceA['workspaceId'],
+          'labels': {'surface': 'automation'},
+          'settings': {
+            'modeId': 'plan',
+            'thinkingOptionId': 'high',
+            'features': {'fast': true},
+          },
+          'initialPrompt': 'Start automation',
+          'background': true,
+        },
+      );
+      expect(autonomous['type'], 'fixture');
+      expect(autonomous['workspaceId'], workspaceA['workspaceId']);
+      expect(autonomous['currentModeId'], 'plan');
+      final autonomousSummary = handle.manager.get(
+        autonomous['agentId']! as String,
+      )!;
+      expect(autonomousSummary.labels, {'surface': 'automation'});
+      expect(autonomousSummary.thinkingOptionId, 'high');
+      expect(autonomousSummary.featureValues, {'fast': true});
+
+      final workspaceParent = await handle.manager.createAgent(
+        cwd: home.path,
+        provider: 'fixture',
+        model: 'fixture-model',
+        mode: AgentMode.normal,
+        title: 'Workspace parent',
+        workspaceId: workspaceA['workspaceId']! as String,
+      );
+      final scopedEndpoint = endpoint.replace(
+        queryParameters: {'callerAgentId': workspaceParent.agentId},
+      );
+      final crossWorkspaceChild =
+          await _call(scopedEndpoint, mcpAuthToken, 'create_agent', {
+            'title': 'Cross workspace child',
+            'provider': 'fixture/fixture-model',
+            'workspaceId': workspaceB['workspaceId'],
+            'initialPrompt': 'Work elsewhere',
+            'notifyOnFinish': false,
+          });
+      expect(crossWorkspaceChild['guidance'], isNull);
+      final childSummary = handle.manager.get(
+        crossWorkspaceChild['agentId']! as String,
+      )!;
+      expect(childSummary.workspaceId, workspaceB['workspaceId']);
+      expect(childSummary.parentAgentId, workspaceParent.agentId);
+      expect(
+        childSummary.labels[paseoParentAgentIdLabel],
+        workspaceParent.agentId,
+      );
+      await pumpEventQueue();
+      expect(client.sessions[client.sessions.length - 3].prompts, [
+        'Start automation',
+      ]);
+      expect(client.sessions.last.prompts, ['Work elsewhere']);
+
+      final archivedWorkspace = await _call(
+        endpoint,
+        mcpAuthToken,
+        'archive_workspace',
+        {'workspaceId': workspaceA['workspaceId']},
+      );
+      expect(archivedWorkspace['workspaceId'], workspaceA['workspaceId']);
+      expect((archivedWorkspace['archivedAgentIds']! as List).toSet(), {
+        autonomous['agentId'],
+        workspaceParent.agentId,
+      });
+      expect(archivedWorkspace['removedDirectory'], isFalse);
+      expect(home.existsSync(), isTrue);
+      expect(
+        handle.manager
+            .get(crossWorkspaceChild['agentId']! as String)
+            ?.archivedAt,
+        isNull,
+      );
     },
   );
 }
@@ -493,9 +621,11 @@ Future<Map<String, Object?>> _call(
     'method': 'tools/call',
     'params': {'name': name, 'arguments': arguments},
   }, bearer: bearer);
-  return Map<String, Object?>.from(
-    _result(response)['structuredContent']! as Map,
-  );
+  final result = _result(response);
+  if (result['structuredContent'] is! Map) {
+    fail('MCP tool $name failed: ${result['content']}');
+  }
+  return Map<String, Object?>.from(result['structuredContent']! as Map);
 }
 
 Future<void> _waitUntil(bool Function() predicate) async {

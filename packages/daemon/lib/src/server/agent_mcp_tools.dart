@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
@@ -7,17 +8,26 @@ import '../agent/agent_manager.dart';
 import '../agent/timeline_projection.dart';
 import '../agent/timeline_store.dart';
 import '../providers/paseo/provider_catalog_registry.dart';
+import '../terminal/terminal_manager.dart';
+import '../workspace/workspace_registry.dart';
+import '../workspace/workspace_v2_service.dart';
 
 final class AgentMcpTools {
   AgentMcpTools({
     required AgentManager manager,
     required PaseoProviderCatalogRegistry providerCatalog,
+    required WorkspaceV2Service Function() workspaceService,
+    required TerminalManager terminals,
     this.agentWaitTimeout = const Duration(seconds: 30),
   }) : _manager = manager,
-       _providerCatalog = providerCatalog;
+       _providerCatalog = providerCatalog,
+       _workspaceService = workspaceService,
+       _terminals = terminals;
 
   final AgentManager _manager;
   final PaseoProviderCatalogRegistry _providerCatalog;
+  final WorkspaceV2Service Function() _workspaceService;
+  final TerminalManager _terminals;
   final Duration agentWaitTimeout;
 
   Future<Map<String, Object?>> execute(
@@ -26,6 +36,14 @@ final class AgentMcpTools {
     String? callerAgentId,
   ) async {
     switch (name) {
+      case 'create_workspace':
+        return _createWorkspace(arguments, callerAgentId);
+      case 'list_workspaces':
+        return _listWorkspaces();
+      case 'archive_workspace':
+        return _archiveWorkspace(arguments);
+      case 'create_agent':
+        return _createAgent(arguments, callerAgentId);
       case 'list_agents':
         return _listAgents(arguments, callerAgentId);
       case 'get_agent_status':
@@ -113,6 +131,217 @@ final class AgentMcpTools {
       default:
         throw StateError('Unknown tool: $name');
     }
+  }
+
+  Future<Map<String, Object?>> _createWorkspace(
+    Map<String, Object?> arguments,
+    String? callerAgentId,
+  ) async {
+    final isolation = _requiredString(arguments, 'isolation');
+    if (isolation != 'local' && isolation != 'worktree') {
+      throw const FormatException('isolation must be local or worktree');
+    }
+    final caller = callerAgentId == null ? null : _manager.get(callerAgentId);
+    if (callerAgentId != null && caller == null) {
+      throw StateError('Caller agent $callerAgentId not found');
+    }
+    final path = _nullableString(arguments, 'path') ?? caller?.cwd;
+    final projectId = _nullableString(arguments, 'projectId');
+    final title = _nullableString(arguments, 'title');
+    final workspaces = _workspaceService();
+    late final PersistedWorkspaceRecord workspace;
+    if (isolation == 'local') {
+      _requireAbsent(arguments, const [
+        'mode',
+        'worktreeSlug',
+        'branchName',
+        'baseBranch',
+        'branch',
+        'prNumber',
+        'forge',
+      ], 'Worktree options require isolation worktree');
+      workspace = await workspaces.createAutomationWorkspace(
+        DirectoryWorkspaceCreateSource(
+          path: path ?? p.current,
+          projectId: projectId,
+        ),
+        title: title,
+      );
+    } else {
+      final mode = _nullableString(arguments, 'mode') ?? 'branch-off';
+      if (!const {
+        'branch-off',
+        'checkout-branch',
+        'checkout-pr',
+      }.contains(mode)) {
+        throw const FormatException(
+          'mode must be branch-off, checkout-branch, or checkout-pr',
+        );
+      }
+      final worktreeSlug = _nullableString(arguments, 'worktreeSlug');
+      final branchName = _nullableString(arguments, 'branchName');
+      final baseBranch = _nullableString(arguments, 'baseBranch');
+      final branch = _nullableString(arguments, 'branch');
+      if (mode == 'checkout-pr') {
+        _boundedInt(arguments, 'prNumber', 0, 1, 0x7fffffff);
+        throw UnsupportedError(
+          'checkout-pr workspace creation is not implemented yet',
+        );
+      }
+      if (mode == 'checkout-branch' && branch == null) {
+        throw const FormatException(
+          'branch is required for checkout-branch mode',
+        );
+      }
+      workspace = await workspaces.createAutomationWorkspace(
+        WorktreeWorkspaceCreateSource(
+          cwd: path ?? (projectId == null ? p.current : null),
+          projectId: projectId,
+          action: mode == 'branch-off'
+              ? WorktreeCreateAction.branchOff
+              : WorktreeCreateAction.checkout,
+          refName: mode == 'checkout-branch' ? branch : baseBranch,
+          baseBranch: baseBranch,
+          branchName: mode == 'checkout-branch'
+              ? branch
+              : branchName ?? worktreeSlug ?? 'worktree',
+          worktreeSlug: worktreeSlug,
+        ),
+        title: title,
+      );
+    }
+    return _workspaceSummary(workspace);
+  }
+
+  Future<Map<String, Object?>> _listWorkspaces() async => {
+    'workspaces': [
+      for (final workspace
+          in await _workspaceService().listActiveAutomationWorkspaces())
+        _workspaceSummary(workspace),
+    ],
+  };
+
+  Future<Map<String, Object?>> _archiveWorkspace(
+    Map<String, Object?> arguments,
+  ) async {
+    final workspaceId = _requiredString(arguments, 'workspaceId');
+    await _workspaceService().requireActiveAutomationWorkspace(workspaceId);
+    final archivedAgentIds = await _manager.archiveWorkspaceAgents(workspaceId);
+    final terminalIds = [
+      for (final terminal in _terminals.listV2(workspaceId: workspaceId))
+        terminal['id']! as String,
+    ];
+    for (final terminalId in terminalIds) {
+      try {
+        await _terminals.killAndWait(terminalId);
+      } on Object {
+        // Paseo treats owned-content teardown as best effort and still
+        // archives the durable workspace record.
+      }
+    }
+    final result = await _workspaceService().archiveAutomationWorkspace(
+      workspaceId,
+    );
+    return {
+      'workspaceId': workspaceId,
+      'archivedAgentIds': archivedAgentIds,
+      'removedDirectory': result.removedDirectory,
+    };
+  }
+
+  Future<Map<String, Object?>> _createAgent(
+    Map<String, Object?> arguments,
+    String? callerAgentId,
+  ) async {
+    final title = _requiredString(arguments, 'title');
+    if (title.length > 60) {
+      throw const FormatException('title must be at most 60 characters');
+    }
+    final providerPair = _requiredString(arguments, 'provider');
+    final separator = providerPair.indexOf('/');
+    if (separator <= 0 || separator == providerPair.length - 1) {
+      throw const FormatException('provider must be <provider>/<model>');
+    }
+    final provider = providerPair.substring(0, separator);
+    final model = providerPair.substring(separator + 1);
+    final initialPrompt = _requiredString(arguments, 'initialPrompt');
+    final settings = _optionalMap(arguments, 'settings') ?? const {};
+    final labelsRaw = _optionalMap(arguments, 'labels') ?? const {};
+    if (labelsRaw.values.any((value) => value is! String)) {
+      throw const FormatException('labels must contain string values');
+    }
+    final features = _optionalMap(settings, 'features') ?? const {};
+    final modeId = _nullableString(settings, 'modeId');
+    final thinkingOptionId = _nullableString(settings, 'thinkingOptionId');
+    final caller = callerAgentId == null ? null : _manager.get(callerAgentId);
+    if (callerAgentId != null && caller == null) {
+      throw StateError('Caller agent $callerAgentId not found');
+    }
+    final workspaces = _workspaceService();
+    final explicitWorkspaceId = _nullableString(arguments, 'workspaceId');
+    late final PersistedWorkspaceRecord workspace;
+    if (explicitWorkspaceId != null) {
+      workspace = await workspaces.requireActiveAutomationWorkspace(
+        explicitWorkspaceId,
+      );
+    } else if (caller != null) {
+      final callerWorkspaceId = caller.workspaceId;
+      if (callerWorkspaceId == null) {
+        throw StateError(
+          'Caller agent $callerAgentId does not belong to a workspace',
+        );
+      }
+      workspace = await workspaces.requireActiveAutomationWorkspace(
+        callerWorkspaceId,
+      );
+    } else {
+      workspace = await workspaces.createAutomationWorkspace(
+        DirectoryWorkspaceCreateSource(path: Directory.current.path),
+      );
+    }
+    final requestedBackground = _nullableBool(arguments, 'background') ?? false;
+    final background = callerAgentId != null || requestedBackground;
+    final notifyOnFinish =
+        _nullableBool(arguments, 'notifyOnFinish') ?? callerAgentId != null;
+    final agent = await _manager.createAgent(
+      cwd: workspace.cwd,
+      provider: provider,
+      model: model,
+      mode: _agentMode(modeId),
+      modeId: modeId,
+      thinkingOptionId: thinkingOptionId,
+      featureValues: features,
+      title: title,
+      workspaceId: workspace.workspaceId,
+      projectPath: workspace.mainRepoRoot,
+      branch: workspace.branch,
+      isWorktree: workspace.isPaseoOwnedWorktree,
+      parentAgentId: callerAgentId,
+      labels: labelsRaw.cast<String, String>(),
+      initialPrompt: initialPrompt,
+    );
+    final shouldNotify = callerAgentId != null && background && notifyOnFinish;
+    if (shouldNotify) {
+      unawaited(_notifyCallerWhenAgentStops(agent.agentId, callerAgentId));
+    }
+    if (!background) {
+      final waited = await _waitForAgent(agent.agentId);
+      final snapshot = _snapshot(agent.agentId);
+      return _createdAgentResult(
+        snapshot,
+        lastMessage: waited['lastMessage'],
+        permission: waited['permission'],
+      );
+    }
+    final snapshot = _snapshot(agent.agentId);
+    return _createdAgentResult(
+      snapshot,
+      guidance: shouldNotify
+          ? 'You will get notified when the created agent finishes, errors, '
+                'or needs permission. Do not poll for status; continue with '
+                'other work until the notification arrives.'
+          : null,
+    );
   }
 
   Future<Map<String, Object?>> _waitForAgent(String agentId) async {
@@ -481,6 +710,48 @@ Map<String, Object?> _providerSummary(ProviderSnapshotEntry entry) => {
   if (entry.error != null) 'error': entry.error,
 };
 
+Map<String, Object?> _workspaceSummary(PersistedWorkspaceRecord workspace) => {
+  'workspaceId': workspace.workspaceId,
+  'projectId': workspace.projectId,
+  'cwd': workspace.cwd,
+  'isolation': workspace.kind == PersistedWorkspaceKind.worktree
+      ? 'worktree'
+      : 'local',
+  'kind': workspace.kind.wireName,
+  'title': workspace.title,
+};
+
+Map<String, Object?> _createdAgentResult(
+  Map<String, Object?> snapshot, {
+  Object? lastMessage,
+  Object? permission,
+  String? guidance,
+}) => {
+  'agentId': snapshot['id'],
+  'type': snapshot['provider'],
+  'status': snapshot['status'],
+  'cwd': snapshot['cwd'],
+  if (snapshot['workspaceId'] != null) 'workspaceId': snapshot['workspaceId'],
+  'currentModeId': snapshot['currentModeId'],
+  'availableModes': snapshot['availableModes'],
+  'lastMessage': lastMessage,
+  'permission': permission,
+  if (guidance != null) 'guidance': guidance,
+};
+
+AgentMode _agentMode(String? modeId) => switch (modeId) {
+  'plan' ||
+  'read-only' ||
+  'https://agentclientprotocol.com/protocol/session-modes#plan' =>
+    AgentMode.plan,
+  'full-access' ||
+  'fullAccess' ||
+  'bypassPermissions' ||
+  'allow-all' ||
+  'full' => AgentMode.fullAccess,
+  _ => AgentMode.normal,
+};
+
 Map<String, Object?> _listItem(Map<String, Object?> snapshot) => {
   'id': snapshot['id'],
   'shortId': (snapshot['id']! as String).substring(
@@ -666,4 +937,14 @@ int _boundedInt(
     throw FormatException('$key must be between $minimum and $maximum');
   }
   return integer;
+}
+
+void _requireAbsent(
+  Map<String, Object?> values,
+  List<String> keys,
+  String message,
+) {
+  if (keys.any((key) => values.containsKey(key) && values[key] != null)) {
+    throw FormatException(message);
+  }
 }

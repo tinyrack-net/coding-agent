@@ -598,6 +598,7 @@ class AgentManager {
     String? branch,
     bool isWorktree = false,
     String? parentAgentId,
+    Map<String, String> labels = const {},
     String? initialPrompt,
     String? clientMessageId,
     List<AgentPromptImage> images = const [],
@@ -633,6 +634,10 @@ class AgentManager {
         branch: branch,
         isWorktree: isWorktree,
         parentAgentId: parentAgentId,
+        labels: Map.unmodifiable({
+          ...labels,
+          if (parentAgentId != null) paseoParentAgentIdLabel: parentAgentId,
+        }),
         thinkingOptionId: thinkingOptionId,
         currentModeId: modeId,
         featureValues: featureValues,
@@ -1108,6 +1113,21 @@ class AgentManager {
     await _store.flush();
   }
 
+  /// Archives agents owned by one workspace without crossing workspace
+  /// boundaries through parent/subagent relationships.
+  Future<List<String>> archiveWorkspaceAgents(String workspaceId) async {
+    final matches = [
+      for (final runtime in _runtimes.values)
+        if (!runtime.archived && runtime.summary.workspaceId == workspaceId)
+          runtime,
+    ];
+    for (final runtime in matches) {
+      await _archiveOne(runtime);
+    }
+    await _store.flush();
+    return [for (final runtime in matches) runtime.summary.agentId];
+  }
+
   Future<void> _archiveTree(AgentRuntime runtime) async {
     final children = [
       for (final candidate in _runtimes.values)
@@ -1119,6 +1139,11 @@ class AgentManager {
       await _archiveTree(child);
     }
 
+    await _archiveOne(runtime);
+  }
+
+  Future<void> _archiveOne(AgentRuntime runtime) async {
+    if (runtime.archived) return;
     runtime.archived = true;
     runtime.summary = runtime.summary.copyWith(
       runState: AgentRunState.closed,

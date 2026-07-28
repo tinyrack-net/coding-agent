@@ -10897,10 +10897,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent/create.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "evidence": [
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+      ],
+      "notes": "Canonical MCP create_agent requires provider/model and initialPrompt, resolves top-level or caller/explicit workspace placement, preserves cross-workspace parentage and labels, starts immediately, and applies Paseo background/wait/notification defaults. Legacy nested shapes, detached creation, coupled worktree creation, and the remaining provider lifecycle edge cases are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent/intent.ts",
@@ -11739,13 +11741,13 @@
     {
       "id": "source-unit:packages/server/src/server/agent/tools/paseo-tools.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart",
       "evidence": [
         "packages/daemon/test/agent_mcp_tools_test.dart",
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
-        "packages/daemon/test/permission_broker_test.dart"
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart"
       ],
-      "notes": "The runtime MCP catalog exposes frozen agent list/status/prompt/cancel/archive/kill/update/activity/mode, permission, and provider discovery tools. Prompt background/blocking defaults, 30-second timeout results, finish notifications, compact lists, full snapshots, and structured permission responses are covered. Workspace, schedule, heartbeat, terminal, script, browser, voice, and remaining mutation tools are pending."
+      "notes": "The runtime MCP catalog now includes canonical create/list/archive workspace and create-agent orchestration in addition to the verified agent, permission, and provider tools. Local workspace ownership, immediate initial prompts, blocking/background behavior, parent labels, cross-workspace subagents, notifications, and workspace-scoped agent/terminal teardown are covered. Checkout-PR workspaces plus schedule, heartbeat, terminal, script, browser, voice, and remaining mutation tools are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tools/types.ts",
@@ -12965,10 +12967,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/workspace-archive-service.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "evidence": [
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart"
+      ],
+      "notes": "MCP archive_workspace now scopes teardown by workspaceId, archives only agents owned by that workspace, kills owned terminals, preserves cross-workspace children and local directories, and removes a final Tinyrack-owned worktree while retaining shared references. Teardown hooks and full failure-isolation parity remain pending."
     },
     {
       "id": "source-unit:packages/server/src/server/workspace-auto-name.ts",
