@@ -12733,17 +12733,22 @@
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/sherpa/silero-vad-provider.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/voice/silero_vad_provider.dart",
+      "evidence": [
+        "packages/daemon/test/voice/turn_detection_test.dart"
+      ],
+      "notes": "Model deployment with non-empty reuse, empty/missing copy, logging, local provider identity, config forwarding, logger scoping, and session construction are ported. Bundled asset path resolution and a production Sherpa native backend factory remain."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/sherpa/silero-vad-session.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/voice/silero_vad_session.dart",
+      "evidence": [
+        "packages/daemon/test/voice/turn_detection_test.dart",
+        "packages/daemon/test/voice/audio_test.dart"
+      ],
+      "notes": "Frozen defaults and native backend config, PCM16-to-Float32 windowing, confirming/speaking/ending state transitions, confirmation and silence timing, resume, flush force/discard, reset/close, disconnected and backend errors, and bounded sample buffering are ported behind an injectable backend. The production Sherpa ONNX native adapter remains."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/worker-bytes.ts",
@@ -12836,10 +12841,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/speech/turn-detection-provider.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/turn_detection_provider.dart",
+      "evidence": [
+        "packages/daemon/test/voice/turn_detection_test.dart"
+      ],
+      "notes": "Provider identity and logger-scoped session creation plus required PCM16 sample rate, connect, append, flush, reset, close, speech-started, speech-stopped, and error event contracts are represented as typed Dart streams."
     },
     {
       "id": "source-unit:packages/server/src/server/test-utils/class-mocks.ts",
