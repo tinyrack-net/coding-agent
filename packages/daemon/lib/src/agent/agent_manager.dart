@@ -973,6 +973,20 @@ class AgentManager {
     return runtime.summary;
   }
 
+  Future<AgentSummary> setLabels(
+    String agentId,
+    Map<String, String> labels,
+  ) async {
+    final runtime = _runtime(agentId);
+    runtime.summary = runtime.summary.copyWith(
+      labels: {...runtime.summary.labels, ...labels},
+    );
+    _persist(runtime);
+    await _store.flush();
+    _broadcastState(runtime);
+    return runtime.summary;
+  }
+
   Future<void> archive(String agentId) async {
     final runtime = _runtime(agentId);
     await _archiveTree(runtime);

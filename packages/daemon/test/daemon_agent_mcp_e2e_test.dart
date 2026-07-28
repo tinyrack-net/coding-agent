@@ -30,6 +30,8 @@ final class _McpSession implements AgentSession {
 
   @override
   Future<void> dispose() => _events.close();
+
+  void emit(ProviderEvent event) => _events.add(event);
 }
 
 final class _McpClient implements AgentClient, McpAgentClient {
@@ -132,6 +134,7 @@ void main() {
         'http://127.0.0.1:${handle.server.port}/mcp/agents'
         '?callerAgentId=${created.agentId}',
       );
+      final mcpAuthToken = handle.manager.mcpAuthToken!;
       final unauthorized = await _post(endpoint, {
         'jsonrpc': '2.0',
         'id': 1,
@@ -145,7 +148,7 @@ void main() {
         'id': 2,
         'method': 'initialize',
         'params': {'protocolVersion': '2025-03-26'},
-      }, bearer: handle.manager.mcpAuthToken);
+      }, bearer: mcpAuthToken);
       expect(initialized.statusCode, 200);
       expect(_result(initialized)['serverInfo'], {
         'name': 'agent-mcp',
@@ -166,7 +169,16 @@ void main() {
         'list_agents',
         'get_agent_status',
         'send_agent_prompt',
+        'cancel_agent',
         'archive_agent',
+        'update_agent',
+        'get_agent_activity',
+        'set_agent_mode',
+        'list_pending_permissions',
+        'respond_to_permission',
+        'list_providers',
+        'list_models',
+        'inspect_provider',
       });
 
       final status = await _post(endpoint, {
@@ -181,12 +193,102 @@ void main() {
       final structured = Map<String, Object?>.from(
         _result(status)['structuredContent']! as Map,
       );
-      expect(structured['status'], created.runState.name);
-      expect((structured['snapshot'] as Map)['agentId'], created.agentId);
+      expect(structured['status'], 'initializing');
+      expect((structured['snapshot'] as Map)['id'], created.agentId);
+
+      final updated = await _call(endpoint, mcpAuthToken, 'update_agent', {
+        'agentId': created.agentId,
+        'name': 'Renamed fixture',
+        'labels': {'surface': 'mcp'},
+      });
+      expect(updated, {'success': true});
+      expect(handle.manager.get(created.agentId)?.title, 'Renamed fixture');
+      expect(handle.manager.get(created.agentId)?.labels, {'surface': 'mcp'});
+      final agentList = await _call(
+        endpoint,
+        mcpAuthToken,
+        'list_agents',
+        const {},
+      );
+      final compactAgent = (agentList['agents']! as List).single as Map;
+      expect(compactAgent['id'], created.agentId);
+      expect(compactAgent['shortId'], created.agentId.substring(0, 7));
+      expect(compactAgent['title'], 'Renamed fixture');
+      expect(compactAgent['labels'], {'surface': 'mcp'});
+
+      final prompted = await _call(
+        endpoint,
+        mcpAuthToken,
+        'send_agent_prompt',
+        {'agentId': created.agentId, 'prompt': 'Inspect the workspace'},
+      );
+      expect(prompted['success'], true);
+      expect(prompted['status'], 'running');
+      expect(client.sessions.single.prompts, ['Inspect the workspace']);
+
+      final activity = await _call(
+        endpoint,
+        mcpAuthToken,
+        'get_agent_activity',
+        {'agentId': created.agentId},
+      );
+      expect(activity['agentId'], created.agentId);
+      expect(activity['content'], contains('[User] Inspect the workspace'));
+
+      PermissionDecision? permissionDecision;
+      client.sessions.single.emit(
+        PermissionRequested(
+          permissionId: 'permission-1',
+          toolName: 'Write',
+          detail: const WriteDetail(path: 'README.md'),
+          respond: (decision, {String? message}) async {
+            permissionDecision = decision;
+          },
+        ),
+      );
+      await pumpEventQueue();
+      final pendingPermissions = await _call(
+        endpoint,
+        mcpAuthToken,
+        'list_pending_permissions',
+        const {},
+      );
+      final pending =
+          (pendingPermissions['permissions']! as List).single as Map;
+      expect(pending['agentId'], created.agentId);
+      expect((pending['request'] as Map)['id'], 'permission-1');
+      expect((pending['request'] as Map)['name'], 'Write');
+
+      final permissionResponse = await _call(
+        endpoint,
+        mcpAuthToken,
+        'respond_to_permission',
+        {
+          'agentId': created.agentId,
+          'requestId': 'permission-1',
+          'response': {'behavior': 'allow'},
+        },
+      );
+      expect(permissionResponse, {'success': true});
+      expect(permissionDecision, PermissionDecision.allow);
+
+      final cancelled = await _call(endpoint, mcpAuthToken, 'cancel_agent', {
+        'agentId': created.agentId,
+      });
+      expect(cancelled, {'success': true});
+      expect(client.sessions.single.interrupted, true);
+
+      final providerList = await _call(
+        endpoint,
+        mcpAuthToken,
+        'list_providers',
+        const {},
+      );
+      expect(providerList['providers'], isNotEmpty);
 
       final getResponse = await http.get(
         endpoint,
-        headers: {'Authorization': 'Bearer ${handle.manager.mcpAuthToken}'},
+        headers: {'Authorization': 'Bearer $mcpAuthToken'},
       );
       expect(getResponse.statusCode, 405);
       await handle.manager.archive(created.agentId);
@@ -229,4 +331,21 @@ Map<String, Object?> _result(http.Response response) {
   final body = jsonDecode(response.body) as Map<String, Object?>;
   expect(body['error'], isNull);
   return Map<String, Object?>.from(body['result']! as Map);
+}
+
+Future<Map<String, Object?>> _call(
+  Uri endpoint,
+  String bearer,
+  String name,
+  Map<String, Object?> arguments,
+) async {
+  final response = await _post(endpoint, {
+    'jsonrpc': '2.0',
+    'id': name,
+    'method': 'tools/call',
+    'params': {'name': name, 'arguments': arguments},
+  }, bearer: bearer);
+  return Map<String, Object?>.from(
+    _result(response)['structuredContent']! as Map,
+  );
 }

@@ -694,6 +694,7 @@ Future<DaemonServerHandle> startDaemonServer({
     serviceProxyHandler: serviceProxyHttp.call,
     agentMcpHandler: AgentMcpHttpHandler(
       manager: manager,
+      providerCatalog: paseoProviderCatalog,
       capabilityToken: agentMcpAuthToken,
       passwordHash: passwordHash,
     ).call,

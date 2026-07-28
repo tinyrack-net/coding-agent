@@ -10734,10 +10734,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/activity-curator.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart",
+      "evidence": [
+        "packages/daemon/test/agent_mcp_tools_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+      ],
+      "notes": "Core frozen activity projection and curation are ported for user, assistant, thought, tool, task, error, compaction, projected-limit counts, and empty output. Fork-context attachment and the remaining provider-specific summaries are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-archive.ts",
@@ -10954,10 +10957,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/permission-response.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/permission/permission_broker.dart",
+      "evidence": [
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+      ],
+      "notes": "MCP permission requests are projected from canonical pending timeline items and allow/deny responses complete through the broker. selectedActionId, updatedInput, updatedPermissions, deny message, and interrupt semantics remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/prompt-attachments.ts",
@@ -11723,11 +11728,12 @@
     {
       "id": "source-unit:packages/server/src/server/agent/tools/paseo-tools.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart",
       "evidence": [
+        "packages/daemon/test/agent_mcp_tools_test.dart",
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
       ],
-      "notes": "The MCP catalog currently exposes the frozen list_agents, get_agent_status, send_agent_prompt, and archive_agent tools with structured results. Remaining frozen workspace, provider, permission, schedule, heartbeat, terminal, script, browser, voice, and mutation tools are pending."
+      "notes": "The runtime MCP catalog now exposes frozen agent list/status/prompt/cancel/archive/update/activity/mode, pending permission response, and provider list/model/inspect tools with compact list items and full snapshots. Blocking prompt waits, finish notifications, kill, full permission response options, and the remaining workspace, schedule, heartbeat, terminal, script, browser, and voice tools are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tools/types.ts",

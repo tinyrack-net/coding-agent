@@ -3,20 +3,26 @@ import 'dart:convert';
 import 'package:shelf/shelf.dart';
 
 import '../agent/agent_manager.dart';
+import '../providers/paseo/provider_catalog_registry.dart';
+import 'agent_mcp_tools.dart';
 import 'daemon_auth.dart';
 
 final class AgentMcpHttpHandler {
   AgentMcpHttpHandler({
     required AgentManager manager,
+    required PaseoProviderCatalogRegistry providerCatalog,
     required String capabilityToken,
     String? passwordHash,
-  }) : _manager = manager,
+  }) : _toolsHost = AgentMcpTools(
+         manager: manager,
+         providerCatalog: providerCatalog,
+       ),
        _capabilityToken = capabilityToken,
        _passwordHash = passwordHash;
 
   static const protocolVersion = '2025-03-26';
 
-  final AgentManager _manager;
+  final AgentMcpTools _toolsHost;
   final String _capabilityToken;
   final String? _passwordHash;
 
@@ -94,7 +100,11 @@ final class AgentMcpHttpHandler {
         : Map<String, Object?>.from(rawArguments as Map);
     final callerAgentId = requestUrl.queryParameters['callerAgentId'];
     try {
-      final structured = await _executeTool(name, arguments, callerAgentId);
+      final structured = await _toolsHost.execute(
+        name,
+        arguments,
+        callerAgentId,
+      );
       return _rpcResult(id, {
         'content': [
           {'type': 'text', 'text': jsonEncode(structured)},
@@ -108,44 +118,6 @@ final class AgentMcpHttpHandler {
         ],
         'isError': true,
       });
-    }
-  }
-
-  Future<Map<String, Object?>> _executeTool(
-    String name,
-    Map<String, Object?> arguments,
-    String? callerAgentId,
-  ) async {
-    switch (name) {
-      case 'list_agents':
-        final includeArchived = arguments['includeArchived'] as bool? ?? false;
-        final explicitCwd = arguments['cwd'] as String?;
-        final callerCwd = callerAgentId == null
-            ? null
-            : _manager.get(callerAgentId)?.cwd;
-        final cwd = explicitCwd ?? callerCwd;
-        final agents = _manager
-            .list(includeArchived: includeArchived)
-            .where((agent) => cwd == null || agent.cwd == cwd)
-            .map((agent) => agent.toJson())
-            .toList(growable: false);
-        return {'agents': agents};
-      case 'get_agent_status':
-        final agentId = _requiredString(arguments, 'agentId');
-        final agent = _manager.get(agentId);
-        if (agent == null) throw StateError('Agent $agentId not found');
-        return {'status': agent.runState.name, 'snapshot': agent.toJson()};
-      case 'send_agent_prompt':
-        final agentId = _requiredString(arguments, 'agentId');
-        final prompt = _requiredString(arguments, 'prompt');
-        await _manager.prompt(agentId, prompt);
-        return {'agentId': agentId, 'accepted': true};
-      case 'archive_agent':
-        final agentId = _requiredString(arguments, 'agentId');
-        await _manager.archive(agentId);
-        return {'agentId': agentId, 'archived': true};
-      default:
-        throw StateError('Unknown tool: $name');
     }
   }
 
@@ -167,6 +139,12 @@ final class AgentMcpHttpHandler {
         'properties': {
           'cwd': {'type': 'string'},
           'includeArchived': {'type': 'boolean'},
+          'sinceHours': {'type': 'integer', 'minimum': 1, 'maximum': 720},
+          'statuses': {
+            'type': 'array',
+            'items': {'type': 'string'},
+          },
+          'limit': {'type': 'integer', 'minimum': 1, 'maximum': 200},
         },
         'additionalProperties': false,
       },
@@ -193,8 +171,25 @@ final class AgentMcpHttpHandler {
         'properties': {
           'agentId': {'type': 'string'},
           'prompt': {'type': 'string'},
+          'sessionMode': {'type': 'string'},
+          'background': {'type': 'boolean'},
+          'notifyOnFinish': {'type': 'boolean'},
         },
         'required': ['agentId', 'prompt'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'cancel_agent',
+      'title': 'Cancel agent run',
+      'description':
+          "Abort the agent's current run but keep the agent alive for future tasks.",
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'agentId': {'type': 'string'},
+        },
+        'required': ['agentId'],
         'additionalProperties': false,
       },
     },
@@ -208,6 +203,119 @@ final class AgentMcpHttpHandler {
           'agentId': {'type': 'string'},
         },
         'required': ['agentId'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'update_agent',
+      'title': 'Update agent',
+      'description': 'Update an agent name, labels, and/or runtime settings.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'agentId': {'type': 'string'},
+          'name': {'type': 'string'},
+          'labels': {
+            'type': 'object',
+            'additionalProperties': {'type': 'string'},
+          },
+          'settings': {'type': 'object'},
+        },
+        'required': ['agentId'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'get_agent_activity',
+      'title': 'Get agent activity',
+      'description':
+          'Return recent agent timeline entries as a curated summary.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'agentId': {'type': 'string'},
+          'limit': {'type': 'integer', 'minimum': 0},
+        },
+        'required': ['agentId'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'set_agent_mode',
+      'title': 'Set agent session mode',
+      'description': "Switch the agent's session mode.",
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'agentId': {'type': 'string'},
+          'modeId': {'type': 'string'},
+        },
+        'required': ['agentId', 'modeId'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'list_pending_permissions',
+      'title': 'List pending permissions',
+      'description':
+          'Return all pending permission requests across all agents.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': <String, Object?>{},
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'respond_to_permission',
+      'title': 'Respond to permission',
+      'description': 'Approve or deny a pending permission request.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'agentId': {'type': 'string'},
+          'requestId': {'type': 'string'},
+          'response': {'type': 'object'},
+        },
+        'required': ['agentId', 'requestId', 'response'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'list_providers',
+      'title': 'List providers',
+      'description':
+          'List configured agent providers, availability, and their modes.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': <String, Object?>{},
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'list_models',
+      'title': 'List models',
+      'description': 'List models for an agent provider.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'provider': {'type': 'string'},
+        },
+        'required': ['provider'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'inspect_provider',
+      'title': 'Inspect provider',
+      'description': 'Inspect compact provider capabilities.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'provider': {'type': 'string'},
+          'cwd': {'type': 'string'},
+          'settings': {'type': 'object'},
+        },
+        'required': ['provider'],
         'additionalProperties': false,
       },
     },
