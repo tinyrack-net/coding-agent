@@ -4,6 +4,17 @@ import 'package:agent_daemon/src/voice/audio.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('builds frozen PCM16 mono WAV header and round-trips audio', () {
+    final pcm = _pcm16([0, 1000, -1000]);
+    final wav = pcm16MonoToWav(pcm, 24000);
+    final parsed = parsePcm16MonoWav(wav);
+
+    expect(parsed.sampleRate, 24000);
+    expect(parsed.pcm16, pcm);
+    expect(() => pcm16MonoToWav(const [1], 24000), throwsFormatException);
+    expect(() => pcm16MonoToWav(const [], 0), throwsArgumentError);
+  });
+
   test('parses PCM16 mono WAV chunks including padded unknown chunks', () {
     final pcm = _pcm16([0, 1000, -1000]);
     final wav = _wav(

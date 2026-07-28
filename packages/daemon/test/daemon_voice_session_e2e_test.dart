@@ -8,11 +8,16 @@ import 'package:agent_daemon/src/daemon_server.dart';
 import 'package:agent_daemon/src/providers/agent_client.dart';
 import 'package:agent_daemon/src/providers/agent_session.dart';
 import 'package:agent_daemon/src/providers/provider_event.dart';
+import 'package:agent_daemon/src/voice/openai/config.dart';
+import 'package:agent_daemon/src/voice/openai/runtime.dart';
 import 'package:agent_daemon/src/voice/speech_provider.dart';
 import 'package:agent_daemon/src/voice/speech_runtime.dart';
+import 'package:agent_daemon/src/voice/speech_types.dart';
 import 'package:agent_daemon/src/voice/turn_detection_provider.dart';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:test/test.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -134,6 +139,135 @@ void main() {
     expect(client.systemPrompts.last, contains('voice mode is now off'));
     await handle.stop();
     expect(speechCleanupCalls, 1);
+  });
+
+  test('OpenAI dictation crosses the real WebSocket daemon boundary', () async {
+    final home = Directory.systemTemp.createTempSync('daemon-openai-voice-');
+    addTearDown(() {
+      if (home.existsSync()) home.deleteSync(recursive: true);
+    });
+    var requests = 0;
+    final speech = createOpenAiSpeechRuntime(
+      runtimeConfig: const SpeechRuntimeConfig(
+        providers: RequestedSpeechProviders(
+          dictationStt: RequestedSpeechProvider(
+            provider: SpeechProviderId.openai,
+            explicit: true,
+          ),
+          voiceTurnDetection: RequestedSpeechProvider(
+            provider: SpeechProviderId.local,
+            explicit: false,
+            enabled: false,
+          ),
+          voiceStt: RequestedSpeechProvider(
+            provider: SpeechProviderId.local,
+            explicit: false,
+            enabled: false,
+          ),
+          voiceTts: RequestedSpeechProvider(
+            provider: SpeechProviderId.local,
+            explicit: false,
+            enabled: false,
+          ),
+        ),
+      ),
+      openAiConfig: const OpenAiSpeechConfig(
+        stt: OpenAiSttConfig(apiKey: 'test-key'),
+      ),
+      client: MockClient((request) async {
+        requests += 1;
+        expect(request.url.path, '/v1/audio/transcriptions');
+        return http.Response('{"text":"dictated over websocket"}', 200);
+      }),
+    );
+    final handle = await startDaemonServer(
+      paths: DaemonPaths(dataDir: home.path),
+      dataDir: home.path,
+      host: '127.0.0.1',
+      port: 0,
+      speechService: speech,
+      log: (_) {},
+    );
+    addTearDown(handle.stop);
+    await speech.ready;
+
+    final channel = WebSocketChannel.connect(
+      Uri.parse('ws://127.0.0.1:${handle.server.port}/ws'),
+    );
+    addTearDown(channel.sink.close);
+    await channel.ready;
+    final frames = channel.stream
+        .where((frame) => frame is String)
+        .map((frame) => jsonDecode(frame as String) as Map<String, Object?>)
+        .asBroadcastStream();
+    channel.sink.add(
+      jsonEncode(
+        const WebSocketHello(
+          clientId: 'openai-dictation-e2e',
+          clientType: WebSocketClientType.cli,
+          protocolVersion: paseoWebSocketProtocolVersion,
+        ).toJson(),
+      ),
+    );
+    final serverInfo = await frames.firstWhere(
+      (frame) => frame['status'] == 'server_info',
+    );
+    expect(((serverInfo['capabilities'] as Map)['voice'] as Map)['dictation'], {
+      'enabled': true,
+      'reason': '',
+    });
+
+    void send(Object message) {
+      channel.sink.add(
+        jsonEncode({
+          'type': 'session',
+          'message': (message as dynamic).toJson(),
+        }),
+      );
+    }
+
+    Future<Map<String, Object?>> nextAck(int sequence) => frames
+        .firstWhere(
+          (frame) =>
+              frame['type'] == 'session' &&
+              (frame['message'] as Map?)?['type'] == 'dictation_stream_ack' &&
+              (((frame['message'] as Map)['payload'] as Map)['ackSeq']) ==
+                  sequence,
+        )
+        .then((frame) => (frame['message'] as Map).cast<String, Object?>());
+
+    final started = nextAck(-1);
+    send(
+      const DictationStreamStartMessage(
+        dictationId: 'openai-d1',
+        format: 'audio/pcm;rate=24000;bits=16',
+      ),
+    );
+    await started;
+    final chunkAccepted = nextAck(0);
+    send(
+      DictationStreamChunkMessage(
+        dictationId: 'openai-d1',
+        seq: 0,
+        audio: base64Encode(Uint8List.fromList([0xe8, 0x03, 0x18, 0xfc])),
+        format: 'audio/pcm;rate=24000;bits=16',
+      ),
+    );
+    await chunkAccepted;
+    final resultFuture = frames.firstWhere(
+      (frame) =>
+          frame['type'] == 'session' &&
+          (frame['message'] as Map?)?['type'] == 'dictation_stream_final',
+    );
+    send(
+      const DictationStreamFinishMessage(dictationId: 'openai-d1', finalSeq: 0),
+    );
+    final result = ((await resultFuture)['message'] as Map)
+        .cast<String, Object?>();
+
+    expect((result['payload'] as Map)['text'], 'dictated over websocket');
+    expect(requests, 1);
+    await channel.sink.close();
   });
 }
 

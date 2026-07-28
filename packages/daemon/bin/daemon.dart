@@ -78,9 +78,11 @@ Future<void> _run(
 
   DaemonServerHandle handle;
   try {
-    final speechService = SpeechRuntime(
-      config: config.speech,
-      reconcile: () async => const SpeechRuntimeReconciliation(),
+    final speechLogger = CallbackSpeechLogger(log);
+    final speechService = createOpenAiSpeechRuntime(
+      runtimeConfig: config.speech,
+      openAiConfig: config.openAiSpeech,
+      logger: speechLogger,
     );
     handle = await startDaemonServer(
       paths: paths,

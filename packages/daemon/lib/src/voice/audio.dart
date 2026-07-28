@@ -8,6 +8,39 @@ final class ParsedPcm16MonoWav {
   final Uint8List pcm16;
 }
 
+Uint8List pcm16MonoToWav(List<int> pcm16, int sampleRate) {
+  if (sampleRate <= 0) {
+    throw ArgumentError.value(sampleRate, 'sampleRate', 'must be positive');
+  }
+  if (pcm16.length.isOdd) {
+    throw const FormatException('PCM16 data length must be even');
+  }
+  const headerSize = 44;
+  const channels = 1;
+  const bitsPerSample = 16;
+  final wav = Uint8List(headerSize + pcm16.length);
+  final bytes = ByteData.sublistView(wav);
+  void ascii(int offset, String value) {
+    wav.setRange(offset, offset + value.length, value.codeUnits);
+  }
+
+  ascii(0, 'RIFF');
+  bytes.setUint32(4, 36 + pcm16.length, Endian.little);
+  ascii(8, 'WAVE');
+  ascii(12, 'fmt ');
+  bytes.setUint32(16, 16, Endian.little);
+  bytes.setUint16(20, 1, Endian.little);
+  bytes.setUint16(22, channels, Endian.little);
+  bytes.setUint32(24, sampleRate, Endian.little);
+  bytes.setUint32(28, sampleRate * channels * 2, Endian.little);
+  bytes.setUint16(32, channels * 2, Endian.little);
+  bytes.setUint16(34, bitsPerSample, Endian.little);
+  ascii(36, 'data');
+  bytes.setUint32(40, pcm16.length, Endian.little);
+  wav.setRange(headerSize, wav.length, pcm16);
+  return wav;
+}
+
 ParsedPcm16MonoWav parsePcm16MonoWav(Uint8List buffer) {
   if (_ascii(buffer, 0, 4) != 'RIFF' || _ascii(buffer, 8, 12) != 'WAVE') {
     throw const FormatException('Invalid WAV header');

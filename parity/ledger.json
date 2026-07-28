@@ -12803,31 +12803,42 @@
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/openai/config.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/openai/config.dart",
+      "evidence": [
+        "packages/daemon/test/voice/openai_speech_config_test.dart",
+        "packages/daemon/test/daemon_config_test.dart"
+      ],
+      "notes": "Paseo 0.2.0 endpoint precedence, trimming, feature options, validation, and endpoint independence ported."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/openai/runtime.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/openai/runtime.dart",
+      "evidence": [
+        "packages/daemon/test/voice/openai_speech_runtime_test.dart",
+        "packages/daemon/test/daemon_voice_session_e2e_test.dart"
+      ],
+      "notes": "Selected OpenAI services fill missing slots without replacing existing services; production daemon and embedded runtime are wired."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/openai/stt.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/openai/stt.dart",
+      "evidence": [
+        "packages/daemon/test/voice/openai_speech_provider_test.dart",
+        "packages/daemon/test/daemon_voice_session_e2e_test.dart"
+      ],
+      "notes": "24 kHz PCM lifecycle, multipart transcription, prompt, logprobs, confidence, segment ordering, and errors ported."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/openai/tts.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/openai/tts.dart",
+      "evidence": [
+        "packages/daemon/test/voice/openai_speech_provider_test.dart"
+      ],
+      "notes": "Streaming speech request, model, voice, response format, empty input, endpoint, and error behavior ported."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/speech-config-resolver.ts",
@@ -12849,16 +12860,17 @@
     {
       "id": "source-unit:packages/server/src/server/speech/speech-runtime.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/voice/speech_runtime.dart; packages/daemon/lib/src/voice/speech_readiness.dart; packages/daemon/lib/src/server/voice_session_v2_service.dart; packages/daemon/lib/src/server/ws_server.dart; packages/daemon/lib/src/server/daemon_config.dart",
+      "implementation": "packages/daemon/lib/src/voice/speech_runtime.dart; packages/daemon/lib/src/voice/speech_readiness.dart; packages/daemon/lib/src/voice/openai/runtime.dart; packages/daemon/lib/src/server/voice_session_v2_service.dart; packages/daemon/lib/src/server/ws_server.dart; packages/daemon/lib/src/server/daemon_config.dart",
       "evidence": [
         "packages/daemon/test/voice/speech_runtime_test.dart",
+        "packages/daemon/test/voice/openai_speech_runtime_test.dart",
         "packages/daemon/test/voice/voice_session_v2_service_test.dart",
         "packages/daemon/test/daemon_voice_session_e2e_test.dart",
         "packages/daemon/test/ws_server_test.dart",
         "packages/daemon/test/daemon_config_test.dart",
         "packages/app/test/daemon_client_v2_e2e_test.dart"
       ],
-      "notes": "Frozen provider enablement, language config, component and aggregate readiness, listener deduplication, async reconciliation, missing-model download/in-progress/failure states, 3-second monitoring, cleanup, server capability projection, and post-listen daemon lifecycle are ported with 98.67% targeted line coverage. Concrete local model catalog/downloader/worker services and OpenAI STT/TTS providers remain."
+      "notes": "Frozen provider enablement, language config, readiness, listener deduplication, async reconciliation, model download states, 3-second monitoring, cleanup, server capability projection, post-listen lifecycle, and concrete OpenAI STT/TTS reconciliation are ported. Concrete local model catalog/downloader/worker services remain."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/speech-types.ts",

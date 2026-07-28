@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'daemon_auth.dart';
 import 'hostnames.dart';
 import 'trusted_proxies.dart';
+import '../voice/openai/config.dart';
 import '../voice/speech_runtime.dart';
 
 const defaultTinyrackListen = '127.0.0.1:6868';
@@ -62,6 +63,7 @@ class DaemonRuntimeConfig {
     required this.logFormat,
     required this.enableTerminalAgentHooks,
     this.speech = const SpeechRuntimeConfig(),
+    this.openAiSpeech,
     this.auth,
   });
 
@@ -79,6 +81,7 @@ class DaemonRuntimeConfig {
   final String logFormat;
   final bool enableTerminalAgentHooks;
   final SpeechRuntimeConfig speech;
+  final OpenAiSpeechConfig? openAiSpeech;
   final DaemonAuthConfig? auth;
 
   String get host {
@@ -192,6 +195,7 @@ DaemonRuntimeConfig loadDaemonRuntimeConfig({
     ),
     parseHostnamesEnv(cliHostnames),
   ]);
+  final speechConfig = SpeechRuntimeConfig.fromJson(speech);
   final config = DaemonRuntimeConfig(
     home: resolvedHome,
     listen:
@@ -256,7 +260,12 @@ DaemonRuntimeConfig loadDaemonRuntimeConfig({
         _booleanEnv(env['TINYRACK_ENABLE_TERMINAL_AGENT_HOOKS']) ??
         _bool(daemon['enableTerminalAgentHooks']) ??
         false,
-    speech: SpeechRuntimeConfig.fromJson(speech),
+    speech: speechConfig,
+    openAiSpeech: resolveOpenAiSpeechConfig(
+      environment: env,
+      persisted: persisted,
+      providers: speechConfig.providers,
+    ),
     auth: authConfig,
   );
   config.host;

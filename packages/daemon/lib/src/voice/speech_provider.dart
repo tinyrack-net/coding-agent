@@ -28,6 +28,39 @@ final class NullSpeechLogger implements SpeechLogger {
   void warning(String message, {Map<String, Object?> fields = const {}}) {}
 }
 
+final class CallbackSpeechLogger implements SpeechLogger {
+  CallbackSpeechLogger(this._write, {Map<String, Object?> context = const {}})
+    : _context = Map.unmodifiable(context);
+
+  final void Function(String message) _write;
+  final Map<String, Object?> _context;
+
+  @override
+  SpeechLogger child(Map<String, Object?> context) =>
+      CallbackSpeechLogger(_write, context: {..._context, ...context});
+
+  @override
+  void debug(String message, {Map<String, Object?> fields = const {}}) =>
+      _log('debug', message, fields);
+
+  @override
+  void error(String message, {Map<String, Object?> fields = const {}}) =>
+      _log('error', message, fields);
+
+  @override
+  void info(String message, {Map<String, Object?> fields = const {}}) =>
+      _log('info', message, fields);
+
+  @override
+  void warning(String message, {Map<String, Object?> fields = const {}}) =>
+      _log('warning', message, fields);
+
+  void _log(String level, String message, Map<String, Object?> fields) {
+    final details = {..._context, ...fields};
+    _write('[$level] $message${details.isEmpty ? '' : ' $details'}');
+  }
+}
+
 final class LogprobToken {
   const LogprobToken({required this.token, required this.logprob, this.bytes});
 

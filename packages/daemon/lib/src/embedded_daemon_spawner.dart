@@ -7,7 +7,8 @@ import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 
 import 'daemon_server.dart';
 import 'server/daemon_config.dart';
-import 'voice/speech_runtime.dart';
+import 'voice/openai/runtime.dart';
+import 'voice/speech_provider.dart';
 
 void _embeddedDaemonIsolateEntryPoint(Map<String, Object?> config) async {
   final dataDir = config['dataDir'] as String?;
@@ -32,9 +33,10 @@ void _embeddedDaemonIsolateEntryPoint(Map<String, Object?> config) async {
   }
 
   try {
-    final speechService = SpeechRuntime(
-      config: runtimeConfig.speech,
-      reconcile: () async => const SpeechRuntimeReconciliation(),
+    final speechService = createOpenAiSpeechRuntime(
+      runtimeConfig: runtimeConfig.speech,
+      openAiConfig: runtimeConfig.openAiSpeech,
+      logger: CallbackSpeechLogger(log),
     );
     await startDaemonServer(
       paths: paths,

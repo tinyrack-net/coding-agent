@@ -108,6 +108,34 @@ void main() {
     expect(config.speech.dictationSttLanguage, 'ja');
   });
 
+  test('resolves frozen OpenAI speech config into daemon runtime', () {
+    _writeConfig(home, {
+      'version': 1,
+      'speech': {
+        'providers': {
+          'dictationStt': {'provider': 'openai', 'explicit': true},
+          'voiceStt': {'provider': 'openai', 'explicit': true},
+          'voiceTts': {'provider': 'openai', 'explicit': true},
+        },
+      },
+      'providers': {
+        'openai': {
+          'stt': {'apiKey': 'saved-stt', 'baseUrl': 'https://stt.test/v1'},
+        },
+      },
+    });
+
+    final config = loadDaemonRuntimeConfig(
+      home: home.path,
+      environment: const {'OPENAI_TTS_API_KEY': 'env-tts', 'TTS_VOICE': 'nova'},
+    );
+
+    expect(config.openAiSpeech?.stt?.apiKey, 'saved-stt');
+    expect(config.openAiSpeech?.stt?.baseUrl, 'https://stt.test/v1');
+    expect(config.openAiSpeech?.tts?.apiKey, 'env-tts');
+    expect(config.openAiSpeech?.tts?.voice, 'nova');
+  });
+
   test('speech config defaults and malformed boundaries match Paseo', () {
     final defaults = loadDaemonRuntimeConfig(
       home: home.path,
