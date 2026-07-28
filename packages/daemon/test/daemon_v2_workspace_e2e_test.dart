@@ -583,6 +583,63 @@ void main() {
       );
       expect(restored.accepted, isTrue);
 
+      final gitProject = Directory(
+        '${temp.path}${Platform.pathSeparator}git-project',
+      )..createSync();
+      await _git(gitProject.path, ['init', '-b', 'main']);
+      await _git(gitProject.path, ['config', 'user.email', 'test@example.com']);
+      await _git(gitProject.path, ['config', 'user.name', 'Test User']);
+      File(
+        '${gitProject.path}${Platform.pathSeparator}README.md',
+      ).writeAsStringSync('fixture\n');
+      await _git(gitProject.path, ['add', 'README.md']);
+      await _git(gitProject.path, ['commit', '-m', 'fixture']);
+
+      final legacyCreated = CreatePaseoWorktreeResponse.fromJson(
+        await request(
+          CreatePaseoWorktreeRequest(
+            requestId: 'legacy-worktree-create',
+            cwd: gitProject.path,
+            worktreeSlug: 'feature-e2e',
+            refName: 'main',
+            action: 'branch-off',
+          ).toJson(),
+          CreatePaseoWorktreeResponse.type,
+        ),
+      );
+      expect(legacyCreated.error, isNull);
+      expect(legacyCreated.workspace?['name'], 'feature-e2e');
+      final legacyPath =
+          legacyCreated.workspace!['workspaceDirectory']! as String;
+      expect(Directory(legacyPath).existsSync(), isTrue);
+
+      final legacyList = PaseoWorktreeListResponse.fromJson(
+        await request(
+          const PaseoWorktreeListRequest(
+            requestId: 'legacy-worktree-list',
+          ).toJson(),
+          PaseoWorktreeListResponse.type,
+        ),
+      );
+      expect(
+        legacyList.worktrees.map((worktree) => worktree.worktreePath),
+        contains(legacyPath),
+      );
+
+      final legacyArchive = PaseoWorktreeArchiveResponse.fromJson(
+        await request(
+          PaseoWorktreeArchiveRequest(
+            requestId: 'legacy-worktree-archive',
+            worktreePath: legacyPath,
+            scope: 'worktree',
+          ).toJson(),
+          PaseoWorktreeArchiveResponse.type,
+        ),
+      );
+      expect(legacyArchive.success, isTrue);
+      expect(legacyArchive.error, isNull);
+      expect(Directory(legacyPath).existsSync(), isFalse);
+
       final projectsOnDisk =
           jsonDecode(
                 await File(
@@ -597,11 +654,25 @@ void main() {
                 ).readAsString(),
               )
               as List;
-      expect(projectsOnDisk, hasLength(1));
-      expect(workspacesOnDisk, hasLength(1));
-      expect((workspacesOnDisk.single as Map)['archivedAt'], isNull);
+      expect(projectsOnDisk, hasLength(2));
+      expect(workspacesOnDisk, hasLength(2));
+      expect(
+        workspacesOnDisk.where((entry) => (entry as Map)['archivedAt'] == null),
+        hasLength(1),
+      );
+      expect(
+        workspacesOnDisk.where((entry) => (entry as Map)['archivedAt'] != null),
+        hasLength(1),
+      );
     },
   );
+}
+
+Future<void> _git(String cwd, List<String> arguments) async {
+  final result = await Process.run('git', arguments, workingDirectory: cwd);
+  if (result.exitCode != 0) {
+    throw StateError('git ${arguments.join(' ')} failed: ${result.stderr}');
+  }
 }
 
 Map<String, Object?> _sessionMessage(Map<String, Object?> frame) {

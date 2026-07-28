@@ -26,6 +26,8 @@ import 'worktree_terminal_bootstrap_service.dart';
 
 typedef WorkspaceV2Broadcast =
     void Function(Map<String, Object?> message, Set<String> connectionIds);
+typedef WorkspaceOwnedContentArchiver =
+    Future<List<String>> Function(String workspaceId);
 
 final class ImportWorkspaceResult<T> {
   const ImportWorkspaceResult({
@@ -60,6 +62,7 @@ final class WorkspaceV2Service {
     this.terminalBootstrap,
     this.workspaceAutoName,
     bool Function(String agentId, TimelineItem item)? appendAgentTimeline,
+    WorkspaceOwnedContentArchiver? archiveOwnedContent,
     String Function()? workspaceIdFactory,
     String Function()? worktreeSlugFactory,
     DateTime Function()? now,
@@ -68,6 +71,7 @@ final class WorkspaceV2Service {
        _listTerminalContributions =
            listTerminalContributions ?? _noTerminalContributions,
        _appendAgentTimeline = appendAgentTimeline ?? _ignoreAgentTimeline,
+       _archiveOwnedContent = archiveOwnedContent ?? _noArchivedAgents,
        _workspaceIdFactory = workspaceIdFactory ?? generateWorkspaceId,
        _worktreeSlugFactory =
            worktreeSlugFactory ?? generateMnemonicWorktreeSlug,
@@ -87,6 +91,7 @@ final class WorkspaceV2Service {
   final Iterable<TerminalWorkspaceContribution> Function()
   _listTerminalContributions;
   final bool Function(String agentId, TimelineItem item) _appendAgentTimeline;
+  final WorkspaceOwnedContentArchiver _archiveOwnedContent;
   final String Function() _workspaceIdFactory;
   final String Function() _worktreeSlugFactory;
   final DateTime Function() _now;
@@ -107,6 +112,16 @@ final class WorkspaceV2Service {
       'workspace.create.request' => _create(
         connection,
         WorkspaceCreateRequest.fromJson(message),
+      ),
+      CreatePaseoWorktreeRequest.type => _createPaseoWorktree(
+        connection,
+        CreatePaseoWorktreeRequest.fromJson(message),
+      ),
+      PaseoWorktreeListRequest.type => _listPaseoWorktrees(
+        PaseoWorktreeListRequest.fromJson(message),
+      ),
+      PaseoWorktreeArchiveRequest.type => _archivePaseoWorktree(
+        PaseoWorktreeArchiveRequest.fromJson(message),
       ),
       OpenProjectRequest.type => openProject(
         OpenProjectRequest.fromJson(message),
@@ -550,6 +565,189 @@ final class WorkspaceV2Service {
       ).toJson();
     }
   }
+
+  Future<Map<String, Object?>> _createPaseoWorktree(
+    Connection connection,
+    CreatePaseoWorktreeRequest request,
+  ) async {
+    final action = request.action == 'checkout'
+        ? WorktreeCreateAction.checkout
+        : WorktreeCreateAction.branchOff;
+    final response = await _create(
+      connection,
+      WorkspaceCreateRequest(
+        requestId: request.requestId,
+        firstAgentContext: request.firstAgentContext,
+        source: WorktreeWorkspaceCreateSource(
+          cwd: request.cwd,
+          projectId: request.projectId,
+          action: action,
+          refName: action == WorktreeCreateAction.checkout
+              ? request.refName
+              : null,
+          baseBranch: action == WorktreeCreateAction.branchOff
+              ? request.refName
+              : null,
+          branchName: action == WorktreeCreateAction.branchOff
+              ? request.worktreeSlug
+              : null,
+          checkoutSource: request.checkoutSource,
+          githubPrNumber: request.githubPrNumber,
+          worktreeSlug: request.worktreeSlug,
+        ),
+      ),
+    );
+    final payload = (response['payload']! as Map).cast<String, Object?>();
+    return CreatePaseoWorktreeResponse(
+      requestId: request.requestId,
+      workspace: payload['workspace'] is Map
+          ? (payload['workspace']! as Map).cast<String, Object?>()
+          : null,
+      error: payload['error'] as String?,
+      errorCode: payload['errorCode'] as String?,
+      setupTerminalId: payload['setupTerminalId'] as String?,
+    ).toJson();
+  }
+
+  Future<Map<String, Object?>> _listPaseoWorktrees(
+    PaseoWorktreeListRequest request,
+  ) async {
+    try {
+      final filterRoot = request.repoRoot ?? request.cwd;
+      final records = [
+        for (final workspace in await registries.workspaces.list())
+          if (workspace.archivedAt == null &&
+              workspace.kind == PersistedWorkspaceKind.worktree &&
+              workspace.isPaseoOwnedWorktree &&
+              workspace.worktreeRoot != null &&
+              (filterRoot == null ||
+                  (workspace.mainRepoRoot != null &&
+                      areEquivalentPaths(workspace.mainRepoRoot!, filterRoot))))
+            workspace,
+      ];
+      final byRoot = <String, PersistedWorkspaceRecord>{};
+      for (final workspace in records) {
+        final root = p.normalize(p.absolute(workspace.worktreeRoot!));
+        final existing = byRoot[root];
+        if (existing == null ||
+            workspace.createdAt.compareTo(existing.createdAt) < 0) {
+          byRoot[root] = workspace;
+        }
+      }
+      final worktrees = [
+        for (final entry in byRoot.entries)
+          PaseoWorktreeDescriptor(
+            worktreePath: entry.key,
+            createdAt: entry.value.createdAt,
+            branchName: entry.value.branch,
+          ),
+      ]..sort((left, right) => left.worktreePath.compareTo(right.worktreePath));
+      return PaseoWorktreeListResponse(
+        requestId: request.requestId,
+        worktrees: worktrees,
+        error: null,
+      ).toJson();
+    } on Object catch (error) {
+      return PaseoWorktreeListResponse(
+        requestId: request.requestId,
+        worktrees: const [],
+        error: {'code': 'UNKNOWN', 'message': _errorMessage(error, '$error')},
+      ).toJson();
+    }
+  }
+
+  Future<Map<String, Object?>> _archivePaseoWorktree(
+    PaseoWorktreeArchiveRequest request,
+  ) async {
+    final active = [
+      for (final workspace in await registries.workspaces.list())
+        if (workspace.archivedAt == null &&
+            workspace.kind == PersistedWorkspaceKind.worktree)
+          workspace,
+    ];
+    PersistedWorkspaceRecord? selected;
+    if (request.workspaceId != null) {
+      selected = active
+          .where((workspace) => workspace.workspaceId == request.workspaceId)
+          .firstOrNull;
+    } else if (request.worktreePath != null) {
+      selected = active
+          .where(
+            (workspace) => areEquivalentPaths(
+              workspace.worktreeRoot ?? workspace.cwd,
+              request.worktreePath!,
+            ),
+          )
+          .firstOrNull;
+    } else if (request.repoRoot != null && request.branchName != null) {
+      selected = active
+          .where(
+            (workspace) =>
+                workspace.branch == request.branchName &&
+                workspace.mainRepoRoot != null &&
+                areEquivalentPaths(workspace.mainRepoRoot!, request.repoRoot!),
+          )
+          .firstOrNull;
+    }
+    if (selected == null) {
+      return _worktreeArchiveError(
+        request.requestId,
+        'WORKTREE_NOT_FOUND',
+        'Worktree not found',
+      );
+    }
+    final root = selected.worktreeRoot ?? selected.cwd;
+    final candidates = request.scope == 'worktree'
+        ? [
+            for (final workspace in active)
+              if (areEquivalentPaths(
+                workspace.worktreeRoot ?? workspace.cwd,
+                root,
+              ))
+                workspace,
+          ]
+        : [selected];
+    try {
+      if (selected.isPaseoOwnedWorktree) {
+        final dirty = await git.uncommittedPaths(root);
+        if (dirty.isNotEmpty) {
+          return _worktreeArchiveError(
+            request.requestId,
+            'DIRTY_WORKTREE',
+            'worktree has uncommitted changes: ${dirty.join(', ')}',
+          );
+        }
+      }
+      final removedAgents = <String>[];
+      for (final workspace in candidates) {
+        removedAgents.addAll(await _archiveOwnedContent(workspace.workspaceId));
+        await _archiveWorkspace(workspace, archivedAt: _timestamp());
+      }
+      return PaseoWorktreeArchiveResponse(
+        requestId: request.requestId,
+        success: true,
+        removedAgents: removedAgents,
+        error: null,
+      ).toJson();
+    } on Object catch (error) {
+      return _worktreeArchiveError(
+        request.requestId,
+        'WORKTREE_ARCHIVE_FAILED',
+        _errorMessage(error, 'Failed to archive worktree'),
+      );
+    }
+  }
+
+  Map<String, Object?> _worktreeArchiveError(
+    String requestId,
+    String code,
+    String message,
+  ) => PaseoWorktreeArchiveResponse(
+    requestId: requestId,
+    success: false,
+    removedAgents: const [],
+    error: {'code': code, 'message': message},
+  ).toJson();
 
   StructuredGenerationSelection? _focusedSelection(
     Connection connection,
@@ -1616,6 +1814,8 @@ final class WorkspaceV2Service {
 Iterable<AgentSummary> _noAgents() => const <AgentSummary>[];
 
 bool _ignoreAgentTimeline(String _, TimelineItem __) => false;
+
+Future<List<String>> _noArchivedAgents(String _) async => const [];
 
 Iterable<TerminalWorkspaceContribution> _noTerminalContributions() =>
     const <TerminalWorkspaceContribution>[];

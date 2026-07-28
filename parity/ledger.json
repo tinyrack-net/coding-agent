@@ -681,31 +681,39 @@
     },
     {
       "id": "cli-command:worktree-archive",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/worktree_compat.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/protocol/test/worktree_compat_test.dart; packages/daemon/test/cli/worktree_command_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Frozen name-or-branch resolution, worktree scope archive, removed-agent projection, and structured errors are implemented."
     },
     {
       "id": "cli-command:worktree-create",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/worktree_compat.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/protocol/test/worktree_compat_test.dart; packages/daemon/test/cli/worktree_command_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Frozen required mode, branch-off/new-branch/base, checkout-branch, checkout-pr validation, daemon request, structured errors, and output are implemented."
     },
     {
       "id": "cli-command:worktree-create-input",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/worktree_compat.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/protocol/test/worktree_compat_test.dart; packages/daemon/test/cli/worktree_command_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Frozen create input builder and MISSING/INVALID mode, branch, and PR error codes are implemented."
     },
     {
       "id": "cli-command:worktree-ls",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/worktree_compat.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/protocol/test/worktree_compat_test.dart; packages/daemon/test/cli/worktree_command_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Frozen agent join, managed-home filtering, path shortening, worktree projection, and output schema are implemented."
     },
     {
       "id": "keyboard-action:agent.interrupt",
@@ -9457,38 +9465,48 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/worktree/archive.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/worktree_compat.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/protocol/test/worktree_compat_test.dart; packages/daemon/test/cli/worktree_command_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Frozen list-first name/branch resolution and scope worktree archive flow are implemented."
     },
     {
       "id": "source-unit:packages/cli/src/commands/worktree/create-input.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/worktree_compat.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/protocol/test/worktree_compat_test.dart; packages/daemon/test/cli/worktree_command_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Frozen worktree creation mode builder and validation contract are implemented."
     },
     {
       "id": "source-unit:packages/cli/src/commands/worktree/create.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/worktree_compat.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/protocol/test/worktree_compat_test.dart; packages/daemon/test/cli/worktree_command_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Frozen worktree create daemon flow and NAME, BRANCH, PATH result schema are implemented."
     },
     {
       "id": "source-unit:packages/cli/src/commands/worktree/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/worktree_compat.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/protocol/test/worktree_compat_test.dart; packages/daemon/test/cli/worktree_command_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "The coding-agent worktree command exposes frozen create, ls, and archive options and help."
     },
     {
       "id": "source-unit:packages/cli/src/commands/worktree/ls.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/worktree_compat.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/protocol/test/worktree_compat_test.dart; packages/daemon/test/cli/worktree_command_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Frozen managed worktree list and agent association projection are implemented."
     },
     {
       "id": "source-unit:packages/cli/src/index.ts",
@@ -12315,9 +12333,9 @@
       "status": "partial",
       "implementation": "packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/workspace/workspace_auto_name.dart; packages/daemon/lib/src/git/worktree_metadata.dart; packages/daemon/lib/src/git/git_service.dart",
       "evidence": [
-        "packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/workspace/workspace_auto_name_test.dart; packages/daemon/test/worktree_metadata_test.dart; packages/daemon/test/git_service_test.dart"
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/workspace/workspace_auto_name_test.dart; packages/daemon/test/worktree_metadata_test.dart; packages/daemon/test/git_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
       ],
-      "notes": "Branch-off creation and the first-agent pending-to-attempted lifecycle now include guarded rename, collision suffixing, user-change protection, and workspace branch/title persistence. Broader worktree service parity remains."
+      "notes": "Branch-off, checkout, registered-worktree listing, dirty-protected reference-scoped archive, first-agent naming, metadata, and real Git E2E are implemented. Full upstream service error taxonomy and every recovery/concurrency edge remain."
     },
     {
       "id": "source-unit:packages/server/src/server/path-utils.ts",
@@ -13392,11 +13410,11 @@
     {
       "id": "source-unit:packages/server/src/server/worktree-session.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/workspace/workspace_auto_name.dart",
+      "implementation": "packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/workspace/workspace_auto_name.dart; packages/protocol/lib/src/messages/worktree_compat.dart",
       "evidence": [
-        "packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/workspace/workspace_setup_service_test.dart; packages/daemon/test/workspace/workspace_auto_name_test.dart"
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/workspace/workspace_setup_service_test.dart; packages/daemon/test/workspace/workspace_auto_name_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
       ],
-      "notes": "Directory/worktree creation now schedules first-agent metadata generation independently from setup and continuation. Dirty-protected archive, setup status/progress, runtime environment, terminal bootstrap, failed-agent cleanup, and projection exist; remaining session orchestration is incomplete."
+      "notes": "Directory/worktree creation, legacy create/list/scoped archive wire, dirty preflight, owned-content teardown, setup status/progress, runtime environment, terminal bootstrap, and failed-agent cleanup exist. Remaining session orchestration is incomplete."
     },
     {
       "id": "source-unit:packages/server/src/server/worktree/commands.ts",
@@ -14315,17 +14333,21 @@
     },
     {
       "id": "wire-message:create_paseo_worktree_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/worktree_compat.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/protocol/test/worktree_compat_test.dart; packages/daemon/test/cli/worktree_command_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Typed frozen create worktree request crosses protocol, daemon adapter, CLI, and real WebSocket E2E."
     },
     {
       "id": "wire-message:create_paseo_worktree_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/worktree_compat.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/protocol/test/worktree_compat_test.dart; packages/daemon/test/cli/worktree_command_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Typed frozen create worktree response crosses protocol, daemon adapter, CLI, and real WebSocket E2E."
     },
     {
       "id": "wire-message:create_terminal_request",
@@ -14825,31 +14847,39 @@
     },
     {
       "id": "wire-message:paseo_worktree_archive_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/worktree_compat.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/protocol/test/worktree_compat_test.dart; packages/daemon/test/cli/worktree_command_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Typed frozen scoped worktree archive request crosses protocol, daemon adapter, CLI, and real WebSocket E2E."
     },
     {
       "id": "wire-message:paseo_worktree_archive_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/worktree_compat.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/protocol/test/worktree_compat_test.dart; packages/daemon/test/cli/worktree_command_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Typed frozen scoped worktree archive response includes removed agents and structured checkout errors."
     },
     {
       "id": "wire-message:paseo_worktree_list_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/worktree_compat.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/protocol/test/worktree_compat_test.dart; packages/daemon/test/cli/worktree_command_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Typed frozen worktree list request crosses protocol, daemon adapter, CLI, and real WebSocket E2E."
     },
     {
       "id": "wire-message:paseo_worktree_list_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/worktree_compat.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/protocol/test/worktree_compat_test.dart; packages/daemon/test/cli/worktree_command_test.dart; packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Typed frozen worktree list response crosses protocol, daemon adapter, CLI, and real WebSocket E2E."
     },
     {
       "id": "wire-message:project_icon_request",

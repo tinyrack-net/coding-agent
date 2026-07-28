@@ -38,6 +38,7 @@ export 'src/messages/terminal_v2.dart';
 export 'src/messages/terminal_state.dart';
 export 'src/messages/workspace.dart';
 export 'src/messages/workspace_v2.dart';
+export 'src/messages/worktree_compat.dart';
 export 'src/messages/workspace_setup.dart';
 export 'src/messages/open_project.dart';
 export 'src/messages/workspace_scripts.dart';

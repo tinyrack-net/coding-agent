@@ -949,6 +949,187 @@ void main() {
     });
   });
 
+  group('legacy worktree compatibility', () {
+    test(
+      'create adapts the legacy branch-off request to workspace v2',
+      () async {
+        git
+          ..isGit = true
+          ..root = projectDirectory.path;
+
+        final response = CreatePaseoWorktreeResponse.fromJson(
+          (await service.handle(
+            connection,
+            const CreatePaseoWorktreeRequest(
+              requestId: 'legacy-create',
+              cwd: 'unused',
+              worktreeSlug: 'feature-x',
+              refName: 'develop',
+              action: 'branch-off',
+            ).toJson()..['cwd'] = projectDirectory.path,
+          ))!,
+        );
+
+        expect(response.error, isNull);
+        expect(response.workspace?['name'], 'feature-x');
+        expect(git.createdBranch, 'feature-x');
+        expect(git.createdBaseRef, 'develop');
+        expect(git.createdWorktreeSlug, 'feature-x');
+      },
+    );
+
+    test('list projects active owned worktrees once per root', () async {
+      final worktreeRoot =
+          '${projectDirectory.path}${Platform.pathSeparator}feature';
+      await Directory(worktreeRoot).create();
+      await registries.projects.upsert(project());
+      await registries.workspaces.upsert(
+        workspace(
+          id: 'wks_a',
+          cwd: worktreeRoot,
+          worktreeRoot: worktreeRoot,
+          owned: true,
+          branch: 'feature',
+        ),
+      );
+      await registries.workspaces.upsert(
+        workspace(
+          id: 'wks_b',
+          cwd: worktreeRoot,
+          worktreeRoot: worktreeRoot,
+          owned: true,
+          branch: 'feature',
+        ),
+      );
+      await registries.workspaces.upsert(
+        workspace(
+          id: 'wks_archived',
+          cwd: '${projectDirectory.path}${Platform.pathSeparator}old',
+          worktreeRoot: '${projectDirectory.path}${Platform.pathSeparator}old',
+          owned: true,
+          branch: 'old',
+          archivedAt: '2',
+        ),
+      );
+
+      final response = PaseoWorktreeListResponse.fromJson(
+        (await service.handle(
+          connection,
+          const PaseoWorktreeListRequest(requestId: 'legacy-list').toJson(),
+        ))!,
+      );
+
+      expect(response.error, isNull);
+      expect(response.worktrees, hasLength(1));
+      expect(response.worktrees.single.worktreePath, worktreeRoot);
+      expect(response.worktrees.single.branchName, 'feature');
+    });
+
+    test('worktree scope archives every reference and owned content', () async {
+      final worktreeRoot =
+          '${projectDirectory.path}${Platform.pathSeparator}feature';
+      await Directory(worktreeRoot).create();
+      await registries.projects.upsert(project());
+      for (final id in const ['wks_a', 'wks_b']) {
+        await registries.workspaces.upsert(
+          workspace(
+            id: id,
+            cwd: worktreeRoot,
+            worktreeRoot: worktreeRoot,
+            owned: true,
+            branch: 'feature',
+          ),
+        );
+      }
+      final archivedWorkspaceIds = <String>[];
+      service = WorkspaceV2Service(
+        registries: registries,
+        git: git,
+        listAgents: () => agents,
+        listTerminalContributions: () => terminals,
+        archiveOwnedContent: (workspaceId) async {
+          archivedWorkspaceIds.add(workspaceId);
+          return ['agent-$workspaceId'];
+        },
+        broadcast: (message, ids) => broadcasts.add((message, ids)),
+        workspaceIdFactory: () => 'wks_${nextWorkspaceId++}',
+        now: () => now,
+      );
+
+      final response = PaseoWorktreeArchiveResponse.fromJson(
+        (await service.handle(
+          connection,
+          PaseoWorktreeArchiveRequest(
+            requestId: 'legacy-archive',
+            worktreePath: worktreeRoot,
+            scope: 'worktree',
+          ).toJson(),
+        ))!,
+      );
+
+      expect(response.success, isTrue);
+      expect(
+        response.removedAgents,
+        unorderedEquals(['agent-wks_a', 'agent-wks_b']),
+      );
+      expect(archivedWorkspaceIds, containsAll(['wks_a', 'wks_b']));
+      expect(
+        (await registries.workspaces.list()).where(
+          (record) => record.archivedAt == null,
+        ),
+        isEmpty,
+      );
+      expect(git.archivedPaths, [worktreeRoot]);
+    });
+
+    test('dirty scope fails before archiving content or records', () async {
+      final worktreeRoot =
+          '${projectDirectory.path}${Platform.pathSeparator}feature';
+      await Directory(worktreeRoot).create();
+      await registries.projects.upsert(project());
+      await registries.workspaces.upsert(
+        workspace(
+          id: 'wks_dirty',
+          cwd: worktreeRoot,
+          worktreeRoot: worktreeRoot,
+          owned: true,
+          branch: 'feature',
+        ),
+      );
+      git.dirtyPaths = ['dirty.txt'];
+      final archivedWorkspaceIds = <String>[];
+      service = WorkspaceV2Service(
+        registries: registries,
+        git: git,
+        archiveOwnedContent: (workspaceId) async {
+          archivedWorkspaceIds.add(workspaceId);
+          return const [];
+        },
+        broadcast: (message, ids) => broadcasts.add((message, ids)),
+        now: () => now,
+      );
+
+      final response = PaseoWorktreeArchiveResponse.fromJson(
+        (await service.handle(
+          connection,
+          PaseoWorktreeArchiveRequest(
+            requestId: 'legacy-dirty',
+            worktreePath: worktreeRoot,
+            scope: 'worktree',
+          ).toJson(),
+        ))!,
+      );
+
+      expect(response.success, isFalse);
+      expect(response.error?['code'], 'DIRTY_WORKTREE');
+      expect(archivedWorkspaceIds, isEmpty);
+      expect(
+        (await registries.workspaces.get('wks_dirty'))?.archivedAt,
+        isNull,
+      );
+    });
+  });
+
   group('fetch and subscriptions', () {
     test(
       'projects rich local Git snapshots into subscribed workspaces',
@@ -2250,6 +2431,7 @@ final class _FakeGitService extends GitService {
   final List<String> archivedPaths = [];
   final List<bool> archiveForces = [];
   final List<String> restoredPaths = [];
+  List<String> dirtyPaths = const [];
 
   @override
   Future<bool> isGitRepo(String path) async => isGit;
@@ -2309,6 +2491,9 @@ final class _FakeGitService extends GitService {
 
   @override
   Future<String?> resolveOriginForge(String projectPath) async => originForge;
+
+  @override
+  Future<List<String>> uncommittedPaths(String path) async => dirtyPaths;
 
   @override
   Future<void> archiveWorktree(String path, {bool force = false}) async {

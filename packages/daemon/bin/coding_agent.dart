@@ -9,6 +9,7 @@ import 'package:agent_daemon/src/cli/provider_command.dart';
 import 'package:agent_daemon/src/cli/schedule_command.dart';
 import 'package:agent_daemon/src/cli/terminal_command.dart';
 import 'package:agent_daemon/src/cli/workspace_command.dart';
+import 'package:agent_daemon/src/cli/worktree_command.dart';
 import 'package:agent_daemon/src/terminal/terminal_activity_hook.dart';
 
 Future<void> main(List<String> arguments) async {
@@ -65,6 +66,10 @@ Future<void> main(List<String> arguments) async {
     exitCode = await runWorkspaceCommand(arguments: arguments.sublist(1));
     return;
   }
+  if (arguments.isNotEmpty && arguments[0] == 'worktree') {
+    exitCode = await runWorktreeCommand(arguments: arguments.sublist(1));
+    return;
+  }
   if (arguments.length >= 3 && arguments.first == 'hooks') {
     final input = stdin.hasTerminal ? null : await _readHookInput();
     await reportTerminalHookActivity(
@@ -89,6 +94,7 @@ Future<void> main(List<String> arguments) async {
     'delete|run-once|update> ...\n'
     '       coding-agent provider <ls|models> ...\n'
     '       coding-agent workspace <create|ls|archive> ...\n'
+    '       coding-agent worktree <create|ls|archive> ...\n'
     '       coding-agent terminal <ls|create|capture|send-keys|kill> ...\n'
     '       coding-agent hooks <agent> <event>',
   );

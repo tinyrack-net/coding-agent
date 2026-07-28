@@ -854,6 +854,22 @@ Future<DaemonServerHandle> startDaemonServer({
       }
     },
   );
+  Future<List<String>> archiveWorkspaceOwnedContent(String workspaceId) async {
+    final archivedAgentIds = await manager.archiveWorkspaceAgents(workspaceId);
+    final terminalIds = [
+      for (final terminal in terminals.listV2(workspaceId: workspaceId))
+        terminal['id']! as String,
+    ];
+    for (final terminalId in terminalIds) {
+      try {
+        await terminals.killAndWait(terminalId);
+      } on Object {
+        // Owned-content teardown is best effort before durable archival.
+      }
+    }
+    return archivedAgentIds;
+  }
+
   workspaceV2 = WorkspaceV2Service(
     registries: workspaceRegistries,
     git: gitService,
@@ -862,6 +878,7 @@ Future<DaemonServerHandle> startDaemonServer({
     terminalBootstrap: terminalBootstrap,
     workspaceAutoName: workspaceAutoName,
     appendAgentTimeline: manager.upsertTimelineItem,
+    archiveOwnedContent: archiveWorkspaceOwnedContent,
     listAgents: manager.list,
     listTerminalContributions: terminals.listActivityContributions,
     broadcast: (message, connectionIds) =>
@@ -871,18 +888,7 @@ Future<DaemonServerHandle> startDaemonServer({
     manager: manager,
     workspaces: workspaceV2,
     archiveWorkspace: (workspaceId) async {
-      await manager.archiveWorkspaceAgents(workspaceId);
-      final terminalIds = [
-        for (final terminal in terminals.listV2(workspaceId: workspaceId))
-          terminal['id']! as String,
-      ];
-      for (final terminalId in terminalIds) {
-        try {
-          await terminals.killAndWait(terminalId);
-        } on Object {
-          // Owned-content teardown is best effort before durable archival.
-        }
-      }
+      await archiveWorkspaceOwnedContent(workspaceId);
       await workspaceV2.archiveAutomationWorkspace(workspaceId);
     },
     log: log,
