@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/host_registry_provider.dart';
 import 'host_connections_settings_screen.dart';
+import 'host_providers_settings_section.dart';
 import 'settings_screen.dart';
 
 class HostSettingsRouteScreen extends ConsumerStatefulWidget {
@@ -52,6 +53,9 @@ class _HostSettingsRouteScreenState
     }
     if (widget.section == 'connections') {
       return HostConnectionsSettingsScreen(serverId: widget.serverId);
+    }
+    if (widget.section == 'providers') {
+      return HostProvidersSettingsSection(serverId: widget.serverId);
     }
     return SettingsScreen(section: widget.section);
   }

@@ -102,6 +102,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Host B'), findsOneWidget);
   });
+
+  testWidgets('routes host providers to the Paseo ACP catalog', (tester) async {
+    final client = DaemonClient(uri: Uri.parse('ws://a.example:6868'));
+    addTearDown(client.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          hostRegistryProvider.overrideWith(_RouteRegistry.new),
+          daemonClientProvider.overrideWithValue(client),
+          connectionStateProvider.overrideWith((ref) => const Stream.empty()),
+        ],
+        child: const FluentApp(
+          home: HostSettingsRouteScreen(
+            serverId: 'server-a',
+            section: 'providers',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Add provider'), findsOneWidget);
+    expect(find.text('Agoragentic'), findsOneWidget);
+    expect(
+      find.text('This host does not support provider discovery.'),
+      findsOneWidget,
+    );
+    expect(find.text('AI Providers'), findsNothing);
+  });
 }
 
 class _RouteRegistry extends HostRegistryNotifier {

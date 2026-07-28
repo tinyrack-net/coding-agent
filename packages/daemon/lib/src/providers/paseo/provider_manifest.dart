@@ -13,7 +13,7 @@ const _storedCapabilities = {
   'supportsRewindBoth': false,
 };
 
-const _acpCapabilities = {
+const paseoAcpCapabilities = {
   'supportsStreaming': true,
   'supportsSessionPersistence': true,
   'supportsSessionListing': true,
@@ -113,6 +113,7 @@ final class PaseoProviderDefinition {
     this.capabilities = _storedCapabilities,
     this.commandArgs = const [],
     this.enabledByDefault = true,
+    this.source = 'builtin',
   });
 
   final String id;
@@ -121,6 +122,7 @@ final class PaseoProviderDefinition {
   final String command;
   final List<String> commandArgs;
   final bool enabledByDefault;
+  final String source;
   final String? defaultModeId;
   final List<PaseoProviderModeDefinition> modes;
   final Map<String, bool> capabilities;
@@ -411,7 +413,7 @@ abstract final class PaseoProviderManifest {
       defaultModeId:
           'https://agentclientprotocol.com/protocol/session-modes#agent',
       modes: _copilotModes,
-      capabilities: _acpCapabilities,
+      capabilities: paseoAcpCapabilities,
     ),
     PaseoProviderDefinition(
       id: 'opencode',

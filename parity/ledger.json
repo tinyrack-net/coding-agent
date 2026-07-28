@@ -3007,10 +3007,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/provider-catalog-list.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/provider_catalog_list.dart;packages/app/lib/widgets/provider_icon.dart",
+      "evidence": [
+        "packages/app/test/provider_catalog_list_test.dart",
+        "packages/app/test/host_settings_route_screen_test.dart"
+      ],
+      "notes": "Installed filtering, title/id/description search, empty state, icon fallback, version/copy, install instructions, fixed-width Add action, and installing state are ported."
     },
     {
       "id": "source-unit:packages/app/src/components/provider-diagnostic-models.ts",
@@ -4190,10 +4193,12 @@
     },
     {
       "id": "source-unit:packages/app/src/data/acp-provider-catalog.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/providers/acp_provider_catalog.dart;packages/app/lib/providers/acp_provider_catalog_data.dart;tool/sync_paseo_acp_provider_catalog.cjs",
+      "evidence": [
+        "packages/app/test/acp_provider_catalog_test.dart"
+      ],
+      "notes": "All 36 frozen entries preserve ids, copy, versions, icon declarations, install links, commands, env, and params; generation rejects any checkout other than the frozen commit."
     },
     {
       "id": "source-unit:packages/app/src/data/daemon-config.ts",
@@ -5243,10 +5248,12 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-acp-provider-catalog.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/providers/acp_provider_catalog.dart;packages/app/lib/providers/acp_provider_catalog_data.dart",
+      "evidence": [
+        "packages/app/test/acp_provider_catalog_test.dart"
+      ],
+      "notes": "The stable catalog and ACP daemon config patch preserve extends, label, description, command, env, and optional params."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-active-worktree-new-action.ts",
@@ -6720,10 +6727,13 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/settings/providers-section.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/screens/host_providers_settings_section.dart;packages/app/lib/screens/host_settings_route_screen.dart",
+      "evidence": [
+        "packages/app/test/host_settings_route_screen_test.dart",
+        "packages/app/test/provider_catalog_list_test.dart"
+      ],
+      "notes": "Per-host snapshot rows, enable/remove controls, catalog install and refresh are connected; provider detail settings and complete custom ACP runtime remain."
     },
     {
       "id": "source-unit:packages/app/src/screens/settings/settings-group.tsx",
@@ -10983,12 +10993,13 @@
     {
       "id": "source-unit:packages/server/src/server/agent/provider-registry.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart",
+      "implementation": "packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart;packages/daemon/lib/src/providers/paseo/provider_manifest.dart;packages/daemon/lib/src/server/daemon_config_store.dart",
       "evidence": [
         "packages/daemon/test/providers/paseo/provider_catalog_registry_test.dart",
-        "packages/daemon/test/providers/paseo/provider_manifest_test.dart"
+        "packages/daemon/test/providers/paseo/provider_manifest_test.dart",
+        "packages/daemon/test/daemon_config_store_test.dart"
       ],
-      "notes": null
+      "notes": "Builtin overrides and custom extends:acp definitions now rebuild from persisted config without restart and surface as custom snapshots; generic ACP clients and non-ACP inheritance remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/provider-session-import.ts",

@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:agent_daemon/src/providers/paseo/provider_catalog_registry.dart';
 import 'package:agent_daemon/src/providers/paseo/provider_manifest.dart';
+import 'package:agent_daemon/src/server/daemon_config_store.dart';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:test/test.dart';
 
@@ -97,6 +100,132 @@ void main() {
         'ready',
       );
       expect(await catalog.snapshot(providers: ['unknown']), isEmpty);
+    },
+  );
+
+  test(
+    'rebuilds custom ACP providers and builtin overrides from config',
+    () async {
+      var config = MutableDaemonConfig(
+        injectMcpIntoAgents: false,
+        providers: {
+          'ready': const MutableDaemonProviderConfig(
+            enabled: false,
+            extra: {'label': 'Ready override'},
+          ),
+          'amp-acp': const MutableDaemonProviderConfig(
+            extra: {
+              'extends': 'acp',
+              'label': 'Amp',
+              'description': 'ACP wrapper',
+              'command': ['amp-acp', '--stdio'],
+            },
+          ),
+        },
+      );
+      final probes = <String>[];
+      final catalog = PaseoProviderCatalogRegistry(
+        definitions: const [ready],
+        configResolver: () => config,
+        commandResolver: (definition) async {
+          probes.add(definition.id);
+          return '/bin/${definition.command}';
+        },
+        now: () => DateTime.utc(2026, 7, 28),
+      );
+
+      expect(catalog.definition('ready')?.label, 'Ready override');
+      expect(catalog.definition('ready')?.enabledByDefault, isFalse);
+      final custom = catalog.definition('amp-acp');
+      expect(custom?.source, 'custom');
+      expect(custom?.command, 'amp-acp');
+      expect(custom?.commandArgs, ['--stdio']);
+      expect(custom?.capabilities, paseoAcpCapabilities);
+
+      final first = await catalog.snapshot();
+      expect(first.map((entry) => entry.provider), ['ready', 'amp-acp']);
+      expect(first.first.enabled, isFalse);
+      expect(first.last.source, 'custom');
+      expect(first.last.status, ProviderCatalogStatus.ready);
+      expect(probes, ['amp-acp']);
+
+      config = const MutableDaemonConfig(
+        injectMcpIntoAgents: false,
+        providers: {},
+      );
+      expect(catalog.definition('amp-acp'), isNull);
+      expect(catalog.definition('ready')?.label, 'Ready');
+    },
+  );
+
+  test('rejects malformed custom provider definitions', () {
+    PaseoProviderCatalogRegistry configured(
+      MutableDaemonProviderConfig provider,
+    ) => PaseoProviderCatalogRegistry(
+      definitions: const [],
+      configResolver: () => MutableDaemonConfig(
+        injectMcpIntoAgents: false,
+        providers: {'custom': provider},
+      ),
+    );
+
+    expect(
+      () => configured(
+        const MutableDaemonProviderConfig(
+          extra: {
+            'command': ['custom'],
+          },
+        ),
+      ).definitions,
+      throwsA(isA<StateError>()),
+    );
+    expect(
+      () => configured(
+        const MutableDaemonProviderConfig(extra: {'extends': 'acp'}),
+      ).definitions,
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test(
+    'reflects persisted ACP install and removal without daemon restart',
+    () async {
+      final home = await Directory.systemTemp.createTemp('provider-install-');
+      addTearDown(() => home.delete(recursive: true));
+      final store = DaemonConfigStore(home: home.path);
+      final catalog = PaseoProviderCatalogRegistry(
+        definitions: const [ready],
+        configResolver: () => store.config,
+        commandResolver: (definition) async =>
+            definition.id == 'amp-acp' ? '/bin/amp-acp' : null,
+        now: () => DateTime.utc(2026, 7, 28),
+      );
+
+      store.patch(
+        const MutableDaemonConfigPatch(
+          providers: {
+            'amp-acp': MutableDaemonProviderConfig(
+              extra: {
+                'extends': 'acp',
+                'label': 'Amp',
+                'description': 'ACP wrapper',
+                'command': ['amp-acp'],
+                'env': <String, Object?>{},
+              },
+            ),
+          },
+        ),
+      );
+      final installed = await catalog.snapshot();
+      expect(installed.map((entry) => entry.provider), ['ready', 'amp-acp']);
+      expect(installed.last.source, 'custom');
+      expect(installed.last.label, 'Amp');
+      expect(installed.last.status, ProviderCatalogStatus.ready);
+
+      store.patch(const MutableDaemonConfigPatch(removeProviders: ['amp-acp']));
+      expect((await catalog.snapshot()).map((entry) => entry.provider), [
+        'ready',
+      ]);
     },
   );
 }

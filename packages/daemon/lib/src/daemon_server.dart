@@ -733,7 +733,9 @@ Future<DaemonServerHandle> startDaemonServer({
     targetAgentExists: (agentId) =>
         manager.list().any((agent) => agent.agentId == agentId),
   );
-  final paseoProviderCatalog = PaseoProviderCatalogRegistry();
+  final paseoProviderCatalog = PaseoProviderCatalogRegistry(
+    configResolver: () => configStore.config,
+  );
   final agentCommands = AgentCommandsService(manager);
   final providerCatalogV2 = ProviderCatalogV2Service(
     registry: paseoProviderCatalog,

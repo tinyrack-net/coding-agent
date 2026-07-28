@@ -5,22 +5,44 @@ import 'provider_manifest.dart';
 
 typedef ProviderCommandResolver =
     Future<String?> Function(PaseoProviderDefinition definition);
+typedef ProviderConfigResolver = MutableDaemonConfig Function();
 
 final class PaseoProviderCatalogRegistry {
   PaseoProviderCatalogRegistry({
     ExecutableResolver? executableResolver,
     ProviderCommandResolver? commandResolver,
     List<PaseoProviderDefinition>? definitions,
+    ProviderConfigResolver? configResolver,
     DateTime Function()? now,
   }) : _resolver = executableResolver ?? ExecutableResolver(),
        _commandResolver = commandResolver,
-       definitions = definitions ?? PaseoProviderManifest.definitions,
+       _baseDefinitions = definitions ?? PaseoProviderManifest.definitions,
+       _configResolver = configResolver,
        _now = now ?? DateTime.now;
 
   final ExecutableResolver _resolver;
   final ProviderCommandResolver? _commandResolver;
+  final ProviderConfigResolver? _configResolver;
   final DateTime Function() _now;
-  final List<PaseoProviderDefinition> definitions;
+  final List<PaseoProviderDefinition> _baseDefinitions;
+
+  List<PaseoProviderDefinition> get definitions {
+    final config = _configResolver?.call();
+    if (config == null) return _baseDefinitions;
+    final overrides = config.providers;
+    final resolved = <PaseoProviderDefinition>[
+      for (final definition in _baseDefinitions)
+        _applyOverride(definition, overrides[definition.id]),
+    ];
+    final builtinIds = {
+      for (final definition in _baseDefinitions) definition.id,
+    };
+    for (final entry in overrides.entries) {
+      if (builtinIds.contains(entry.key)) continue;
+      resolved.add(_customDefinition(entry.key, entry.value));
+    }
+    return List.unmodifiable(resolved);
+  }
 
   PaseoProviderDefinition? definition(String provider) {
     for (final definition in definitions) {
@@ -112,7 +134,6 @@ final class PaseoProviderCatalogRegistry {
     provider: definition.id,
     status: status,
     enabled: enabled,
-    source: 'builtin',
     error: error,
     models: status == ProviderCatalogStatus.ready ? const [] : null,
     modes: status == ProviderCatalogStatus.ready
@@ -122,5 +143,67 @@ final class PaseoProviderCatalogRegistry {
     label: definition.label,
     description: definition.description,
     defaultModeId: definition.defaultModeId,
+    source: definition.source,
   );
+}
+
+PaseoProviderDefinition _applyOverride(
+  PaseoProviderDefinition definition,
+  MutableDaemonProviderConfig? override,
+) {
+  if (override == null) return definition;
+  final command = _command(override.extra['command']);
+  return PaseoProviderDefinition(
+    id: definition.id,
+    label: _string(override.extra['label']) ?? definition.label,
+    description:
+        _string(override.extra['description']) ?? definition.description,
+    command: command?.first ?? definition.command,
+    commandArgs: command == null
+        ? definition.commandArgs
+        : command.skip(1).toList(growable: false),
+    enabledByDefault: override.enabled ?? definition.enabledByDefault,
+    defaultModeId: definition.defaultModeId,
+    modes: definition.modes,
+    capabilities: definition.capabilities,
+    source: definition.source,
+  );
+}
+
+PaseoProviderDefinition _customDefinition(
+  String id,
+  MutableDaemonProviderConfig config,
+) {
+  final extendsId = _string(config.extra['extends']);
+  if (extendsId != 'acp') {
+    throw StateError("Custom provider '$id' requires extends: acp");
+  }
+  final command = _command(config.extra['command']);
+  if (command == null) {
+    throw StateError("ACP provider '$id' requires a command");
+  }
+  return PaseoProviderDefinition(
+    id: id,
+    label: _string(config.extra['label']) ?? id,
+    description: _string(config.extra['description']) ?? 'Custom ACP provider',
+    command: command.first,
+    commandArgs: command.skip(1).toList(growable: false),
+    enabledByDefault: config.enabled ?? true,
+    defaultModeId: null,
+    modes: const [],
+    capabilities: paseoAcpCapabilities,
+    source: 'custom',
+  );
+}
+
+String? _string(Object? value) =>
+    value is String && value.isNotEmpty ? value : null;
+
+List<String>? _command(Object? value) {
+  if (value is! List ||
+      value.isEmpty ||
+      value.any((entry) => entry is! String || entry.isEmpty)) {
+    return null;
+  }
+  return value.cast<String>();
 }
