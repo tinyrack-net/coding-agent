@@ -122,6 +122,62 @@ void writeWorktreeRuntimeMetadata(
   );
 }
 
+void writeWorktreeFirstAgentBranchAutoNameMetadata(
+  String worktreeRoot, {
+  required String placeholderBranchName,
+}) {
+  final placeholder = placeholderBranchName.trim();
+  if (placeholder.isEmpty) {
+    throw ArgumentError('Placeholder branch name is required');
+  }
+  final current = readWorktreeMetadata(worktreeRoot);
+  if (current == null) {
+    throw StateError(
+      'Cannot persist first-agent branch auto-name metadata: '
+      'missing base metadata',
+    );
+  }
+  _writeMetadata(
+    worktreeRoot,
+    WorktreeMetadata(
+      version: 2,
+      baseRefName: current.baseRefName,
+      changeRequestLookupTarget: current.changeRequestLookupTarget,
+      firstAgentBranchAutoName: {
+        'status': 'pending',
+        'placeholderBranchName': placeholder,
+      },
+      worktreePort: current.worktreePort,
+    ),
+  );
+}
+
+WorktreeMetadata? markWorktreeFirstAgentBranchAutoNameAttempted(
+  String worktreeRoot, {
+  DateTime? attemptedAt,
+}) {
+  final current = readWorktreeMetadata(worktreeRoot);
+  if (current == null ||
+      current.version != 2 ||
+      current.firstAgentBranchAutoName?['status'] != 'pending') {
+    return current;
+  }
+  final firstAgent = current.firstAgentBranchAutoName!;
+  final next = WorktreeMetadata(
+    version: 2,
+    baseRefName: current.baseRefName,
+    changeRequestLookupTarget: current.changeRequestLookupTarget,
+    firstAgentBranchAutoName: {
+      'status': 'attempted',
+      'placeholderBranchName': firstAgent['placeholderBranchName']!,
+      'attemptedAt': (attemptedAt ?? DateTime.now()).toUtc().toIso8601String(),
+    },
+    worktreePort: current.worktreePort,
+  );
+  _writeMetadata(worktreeRoot, next);
+  return next;
+}
+
 WorktreeMetadata? readWorktreeMetadata(String worktreeRoot) {
   final file = File(worktreeMetadataPath(worktreeRoot));
   if (!file.existsSync()) return null;

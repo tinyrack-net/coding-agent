@@ -123,6 +123,63 @@ void main() {
     });
 
     test(
+      'branch-off from an existing branch creates a unique local branch',
+      () async {
+        await _git(['branch', 'feature'], repo);
+
+        final created = await service.createWorktree(
+          repo,
+          'feature',
+          baseRef: 'main',
+          worktreeSlug: 'feature',
+          branchOff: true,
+        );
+
+        expect(created.branch, 'feature-2');
+        expect(p.basename(created.path), 'feature');
+        expect(
+          (await _git(['rev-parse', 'HEAD'], created.path)).trim(),
+          (await _git(['rev-parse', 'feature'], repo)).trim(),
+        );
+        expect(readWorktreeMetadata(created.path)?.baseRefName, 'main');
+      },
+    );
+
+    test('resolves origin HEAD before main and master fallbacks', () async {
+      await _git(['branch', 'develop'], repo);
+      await _git([
+        'update-ref',
+        'refs/remotes/origin/develop',
+        'refs/heads/develop',
+      ], repo);
+      await _git([
+        'symbolic-ref',
+        'refs/remotes/origin/HEAD',
+        'refs/remotes/origin/develop',
+      ], repo);
+
+      expect(await service.resolveDefaultBranch(repo), 'develop');
+      await _git([
+        'symbolic-ref',
+        '--delete',
+        'refs/remotes/origin/HEAD',
+      ], repo);
+      expect(await service.resolveDefaultBranch(repo), 'main');
+    });
+
+    test('finds only the worktree occupying the exact managed slug', () async {
+      final created = await service.createWorktree(
+        repo,
+        'steady-otter',
+        worktreeSlug: 'steady-otter',
+      );
+
+      final found = await service.findWorktreeBySlug(repo, 'steady-otter');
+      expect(found?.path, created.path);
+      expect(await service.findWorktreeBySlug(repo, 'steady'), isNull);
+    });
+
+    test(
       'checkout fetches a remote-only branch into the requested slug',
       () async {
         final remote = p.join(tempDir.path, 'remote.git');

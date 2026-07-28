@@ -11,9 +11,11 @@ import 'package:path/path.dart' as p;
 import '../agent/create_agent_title.dart';
 import '../git/git_runner.dart';
 import '../git/git_service.dart';
+import '../git/worktree_metadata.dart';
 import '../server/connection.dart';
 import '../terminal/terminal_manager.dart';
 import '../utils/path_identity.dart';
+import 'mnemonic_worktree_slug.dart';
 import 'polling_workspace_git_backend.dart';
 import 'workspace_git_observer_service.dart';
 import 'workspace_registry.dart';
@@ -56,6 +58,7 @@ final class WorkspaceV2Service {
     this.terminalBootstrap,
     bool Function(String agentId, TimelineItem item)? appendAgentTimeline,
     String Function()? workspaceIdFactory,
+    String Function()? worktreeSlugFactory,
     DateTime Function()? now,
   }) : _broadcast = broadcast,
        _listAgents = listAgents ?? _noAgents,
@@ -63,6 +66,8 @@ final class WorkspaceV2Service {
            listTerminalContributions ?? _noTerminalContributions,
        _appendAgentTimeline = appendAgentTimeline ?? _ignoreAgentTimeline,
        _workspaceIdFactory = workspaceIdFactory ?? generateWorkspaceId,
+       _worktreeSlugFactory =
+           worktreeSlugFactory ?? generateMnemonicWorktreeSlug,
        _now = now ?? DateTime.now {
     registries.workspaces.subscribeToMutations(_onWorkspaceMutation);
     registries.projects.subscribeToMutations(_onProjectMutation);
@@ -79,6 +84,7 @@ final class WorkspaceV2Service {
   _listTerminalContributions;
   final bool Function(String agentId, TimelineItem item) _appendAgentTimeline;
   final String Function() _workspaceIdFactory;
+  final String Function() _worktreeSlugFactory;
   final DateTime Function() _now;
   final Set<String> _workspaceSubscribers = {};
   final Map<String, _WorkspaceBucketHistoryEntry> _bucketHistory = {};
@@ -763,10 +769,13 @@ final class WorkspaceV2Service {
       timestamp: now,
     );
     final changeRequest = _changeRequestSource(source);
+    final requestedWorktreeSlug = _normalizeWorktreeSlug(source.worktreeSlug);
     final checkoutBranch =
         source.action == WorktreeCreateAction.checkout && changeRequest == null;
+    final branchOff = !checkoutBranch && changeRequest == null;
     String branch;
     String? fetchRef;
+    String? resolvedBaseBranch;
     if (changeRequest != null) {
       final requestedForge = changeRequest.$1;
       final detectedForge = await git.resolveOriginForge(project.rootPath);
@@ -795,31 +804,54 @@ final class WorkspaceV2Service {
       final number = changeRequest.$2;
       branch =
           source.branchName ??
-          source.worktreeSlug ??
+          requestedWorktreeSlug ??
           '${forge == 'gitlab' ? 'mr' : 'pr'}-$number';
       fetchRef = forge == 'gitlab'
           ? 'refs/merge-requests/$number/head'
           : 'refs/pull/$number/head';
     } else {
-      final selected = source.branchName ?? source.refName;
-      if (selected == null || selected.isEmpty) {
-        throw const _WorkspaceRequestException(
-          'branchName or refName is required',
-          'branch_required',
-        );
+      if (branchOff) {
+        final generatedSlug = requestedWorktreeSlug ?? _worktreeSlugFactory();
+        branch = _validatedBranchName(source.branchName) ?? generatedSlug;
+        final requestedBase =
+            _trimmed(source.refName) ?? _trimmed(source.baseBranch);
+        resolvedBaseBranch =
+            requestedBase ?? await git.resolveDefaultBranch(project.rootPath);
+      } else {
+        final selected = _trimmed(source.refName) ?? source.branchName;
+        if (selected == null || selected.isEmpty) {
+          throw const _WorkspaceRequestException(
+            'action "checkout" requires refName',
+            'missing_checkout_target',
+          );
+        }
+        branch = selected;
       }
-      branch = selected;
     }
-    final created = await git.createWorktree(
+    final effectiveSlug =
+        requestedWorktreeSlug ?? _requiredNormalizedWorktreeSlug(branch);
+    final existing = await git.findWorktreeBySlug(
       project.rootPath,
-      branch,
-      baseRef: source.action == WorktreeCreateAction.branchOff
-          ? source.refName ?? source.baseBranch
-          : null,
-      worktreeSlug: source.worktreeSlug,
-      requireExistingBranch: checkoutBranch,
-      fetchRef: fetchRef,
+      effectiveSlug,
     );
+    final didCreate = existing == null;
+    final created =
+        existing ??
+        await git.createWorktree(
+          project.rootPath,
+          branch,
+          baseRef: branchOff ? resolvedBaseBranch : null,
+          worktreeSlug: effectiveSlug,
+          requireExistingBranch: checkoutBranch,
+          fetchRef: fetchRef,
+          branchOff: branchOff,
+        );
+    if (didCreate && branchOff) {
+      writeWorktreeFirstAgentBranchAutoNameMetadata(
+        created.path,
+        placeholderBranchName: created.branch,
+      );
+    }
     final workspace = createPersistedWorkspaceRecord(
       workspaceId: await _uniqueWorkspaceId(),
       projectId: project.projectId,
@@ -829,7 +861,9 @@ final class WorkspaceV2Service {
       title: title,
       branch: created.branch.isEmpty ? branch : created.branch,
       worktreeRoot: created.path,
-      baseBranch: source.baseBranch ?? source.refName,
+      baseBranch: branchOff
+          ? resolvedBaseBranch
+          : source.baseBranch ?? source.refName,
       isPaseoOwnedWorktree: true,
       mainRepoRoot: project.rootPath,
       createdAt: now,
@@ -837,6 +871,39 @@ final class WorkspaceV2Service {
     );
     await registries.workspaces.upsert(workspace);
     return (workspace, project);
+  }
+
+  String? _normalizeWorktreeSlug(String? value) =>
+      value == null ? null : _requiredNormalizedWorktreeSlug(value);
+
+  String _requiredNormalizedWorktreeSlug(String value) {
+    final normalized = slugify(value);
+    final validation = validateBranchSlug(normalized);
+    if (!validation.valid) {
+      throw _WorkspaceRequestException(
+        'Invalid worktree name: ${validation.error}',
+        'invalid_worktree_name',
+      );
+    }
+    return normalized;
+  }
+
+  String? _validatedBranchName(String? value) {
+    if (value == null) return null;
+    final branch = value.trim();
+    final validation = validateBranchSlug(branch);
+    if (!validation.valid) {
+      throw _WorkspaceRequestException(
+        'Invalid worktree name: ${validation.error}',
+        'invalid_worktree_name',
+      );
+    }
+    return branch;
+  }
+
+  String? _trimmed(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 
   (String?, int)? _changeRequestSource(WorktreeWorkspaceCreateSource source) {

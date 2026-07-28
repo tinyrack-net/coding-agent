@@ -6547,7 +6547,7 @@
         "packages/app/test/agents_provider_test.dart",
         "packages/daemon/test/daemon_agent_continuation_e2e_test.dart"
       ],
-      "notes": "New Workspace now uses ready provider snapshots instead of legacy API-key ProviderInfo, restores and persists provider-scoped model/mode/thinking/features/favorites plus isolation, browses models across enabled providers, supports synthetic Default models, discovers dynamic features, and forwards the effective values through the deferred workspace-draft handoff. Prompt/image restore, picker/drop/removal, empty creation, worktree setup, and import entry are covered. Complete forge/PR checkout choices, responsive presentation, setup recovery, templates, exact model-selector visuals, and all attachment types remain."
+      "notes": "New Workspace uses ready provider snapshots, persists provider-scoped model/mode/thinking/features/favorites plus isolation, and delegates omitted worktree branch/slug naming to the daemon so the frozen canonical placeholder and first-agent auto-name lifecycle apply. Prompt/image restore, picker/drop/removal, empty creation, worktree setup, and import entry are covered. Complete forge/PR choices, responsive presentation, setup recovery, templates, exact model-selector visuals, and all attachment types remain."
     },
     {
       "id": "source-unit:packages/app/src/screens/new-workspace/project-picker.ts",
@@ -10320,10 +10320,13 @@
     },
     {
       "id": "source-unit:packages/protocol/src/branch-slug.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/branch_slug.dart",
+      "evidence": [
+        "packages/protocol/test/branch_slug_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart"
+      ],
+      "notes": "Exact lowercase branch validation, frozen error text, 100-character validation ceiling, kebab normalization, and word-aware 50-character slug truncation are implemented and consumed by worktree creation."
     },
     {
       "id": "source-unit:packages/protocol/src/browser-automation/capabilities.ts",
@@ -12292,10 +12295,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/paseo-worktree-service.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/git/worktree_metadata.dart",
+      "evidence": [
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
+        "packages/daemon/test/worktree_metadata_test.dart"
+      ],
+      "notes": "New branch-off worktrees now persist the frozen v2 pending first-agent branch auto-name marker while reused worktrees are left untouched. Structured context generation, guarded rename, workspace title persistence, and the full auto-name lifecycle remain pending."
     },
     {
       "id": "source-unit:packages/server/src/server/path-utils.ts",
@@ -13346,13 +13352,15 @@
     {
       "id": "source-unit:packages/server/src/server/worktree-core.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/git/git_service.dart",
+      "implementation": "packages/protocol/lib/src/branch_slug.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/git/git_service.dart; packages/daemon/lib/src/workspace/mnemonic_worktree_slug.dart",
       "evidence": [
+        "packages/protocol/test/branch_slug_test.dart",
         "packages/daemon/test/git_service_test.dart",
         "packages/daemon/test/workspace/workspace_v2_service_test.dart",
+        "packages/daemon/test/workspace/mnemonic_worktree_slug_test.dart",
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
       ],
-      "notes": "Core worktree creation now supports explicit slugs, branch-off bases, remote-only branch fetches, unique local change-request branches, forge-specific PR/MR refs, ownership metadata, and Windows-safe archive retries. Existing-slug reuse, exact mnemonic defaults, cross-repo remotes, config seeding, and remaining lifecycle parity are pending."
+      "notes": "Core creation now includes exact slug normalization and validation, adjective-animal placeholder semantics, repository-default branch resolution, explicit and generated slug placement, existing-slug reuse, branch-off collision renaming, remote-only checkout, forge-specific PR/MR refs, ownership metadata, and Windows-safe archive retries. Cross-repository remotes, config seeding, and remaining lifecycle parity are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/worktree-errors.ts",
@@ -13951,20 +13959,22 @@
       "evidence": [
         "packages/daemon/test/worktree_metadata_test.dart",
         "packages/daemon/test/git_service_test.dart",
-        "packages/daemon/test/workspace/workspace_setup_service_test.dart"
+        "packages/daemon/test/workspace/workspace_setup_service_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart"
       ],
-      "notes": "Linked and main checkout git-dir resolution, v1 base metadata, v2 runtime-port upgrade/preservation, validation, atomic replacement, creation integration, and runtime-port reuse are implemented. First-agent branch auto-name mutation APIs and change-request creation mapping remain."
+      "notes": "Linked and main checkout git-dir resolution, v1 base metadata, v2 runtime-port upgrades, validation, atomic replacement, and first-agent pending-to-attempted mutation APIs are implemented with extension preservation. Change-request creation mapping and remaining metadata parity are pending."
     },
     {
       "id": "source-unit:packages/server/src/utils/worktree.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/workspace/workspace_setup_service.dart; packages/daemon/lib/src/git/git_service.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "implementation": "packages/daemon/lib/src/workspace/workspace_setup_service.dart; packages/daemon/lib/src/git/git_service.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/workspace/mnemonic_worktree_slug.dart",
       "evidence": [
         "packages/daemon/test/workspace/workspace_setup_service_test.dart",
         "packages/daemon/test/git_service_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
       ],
-      "notes": "Worktree setup plus core branch/PR creation, slug placement, ownership, archive/reference protection, bounded Windows deletion retry, and observer quiescence are implemented. Cross-repository checkout remotes, config seeding, full teardown scripts, and broader utility parity remain."
+      "notes": "Worktree setup plus mnemonic/default-base branch creation, exact managed slug reuse, collision-safe branch creation, PR checkout, ownership, archive/reference protection, bounded Windows deletion retry, and observer quiescence are implemented. Cross-repository checkout remotes, config seeding, full teardown scripts, and broader utility parity remain."
     },
     {
       "id": "wire-message:abort_request",

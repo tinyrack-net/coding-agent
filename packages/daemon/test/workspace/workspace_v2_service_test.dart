@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:agent_daemon/src/git/git_runner.dart';
 import 'package:agent_daemon/src/git/git_service.dart';
+import 'package:agent_daemon/src/git/worktree_metadata.dart';
 import 'package:agent_daemon/src/forge/forge_cli.dart';
 import 'package:agent_daemon/src/forge/forge_resolver.dart';
 import 'package:agent_daemon/src/forge/workspace_forge_status_service.dart';
@@ -54,6 +55,7 @@ void main() {
       listTerminalContributions: () => terminals,
       broadcast: (message, ids) => broadcasts.add((message, ids)),
       workspaceIdFactory: () => 'wks_${nextWorkspaceId++}',
+      worktreeSlugFactory: () => 'dazzling-yak',
       now: () => now,
     );
     connection = Connection(_FakeWebSocketChannel(), id: 'connection-1');
@@ -386,16 +388,12 @@ void main() {
   });
 
   group('worktree creation', () {
-    test('requires an existing git source and branch', () async {
+    test('requires an existing git source', () async {
       final noDirectory = await createWorktree(cwd: '/missing');
       expect(noDirectory.errorCode, 'directory_not_found');
 
       final nonGit = await createWorktree(cwd: projectDirectory.path);
       expect(nonGit.errorCode, 'not_git_repository');
-
-      git.isGit = true;
-      final noBranch = await createWorktree(cwd: projectDirectory.path);
-      expect(noBranch.errorCode, 'branch_required');
     });
 
     test('persists Paseo-owned worktree placement', () async {
@@ -417,6 +415,116 @@ void main() {
       expect(record.baseBranch, 'main');
       expect(git.createdBranch, 'feature');
       expect(git.createdBaseRef, 'main');
+    });
+
+    test(
+      'omitted branch-off names use a mnemonic placeholder and default branch',
+      () async {
+        git
+          ..isGit = true
+          ..branch = 'current-topic'
+          ..defaultBranch = 'trunk';
+
+        final response = await createWorktree(
+          cwd: projectDirectory.path,
+          action: WorktreeCreateAction.branchOff,
+        );
+
+        expect(response.error, isNull);
+        expect(git.createdBranch, 'dazzling-yak');
+        expect(git.createdWorktreeSlug, 'dazzling-yak');
+        expect(git.createdBaseRef, 'trunk');
+        expect(git.createdBranchOff, isTrue);
+        final record = (await registries.workspaces.list()).single;
+        expect(record.branch, 'dazzling-yak');
+        expect(record.baseBranch, 'trunk');
+        final metadata = readWorktreeMetadata(record.worktreeRoot!);
+        expect(metadata?.version, 2);
+        expect(metadata?.firstAgentBranchAutoName, {
+          'status': 'pending',
+          'placeholderBranchName': 'dazzling-yak',
+        });
+      },
+    );
+
+    test(
+      'explicit branch supplies the managed slug when slug is omitted',
+      () async {
+        git
+          ..isGit = true
+          ..defaultBranch = 'main';
+
+        final response = await createWorktree(
+          cwd: projectDirectory.path,
+          action: WorktreeCreateAction.branchOff,
+          branchName: 'feature/exact-name',
+        );
+
+        expect(response.error, isNull);
+        expect(git.lookedUpWorktreeSlug, 'feature-exact-name');
+        expect(git.createdWorktreeSlug, 'feature-exact-name');
+        expect(git.createdBaseRef, 'main');
+      },
+    );
+
+    test(
+      'normalizes slugs but strictly validates explicit branch names',
+      () async {
+        git.isGit = true;
+        final normalized = await createWorktree(
+          cwd: projectDirectory.path,
+          action: WorktreeCreateAction.branchOff,
+          worktreeSlug: '  Feature / Exact Name  ',
+        );
+        expect(normalized.error, isNull);
+        expect(git.createdBranch, 'feature-exact-name');
+        expect(git.createdWorktreeSlug, 'feature-exact-name');
+
+        git.createdBranch = null;
+        final invalid = await createWorktree(
+          cwd: projectDirectory.path,
+          action: WorktreeCreateAction.branchOff,
+          branchName: 'Feature Name',
+        );
+        expect(invalid.errorCode, 'invalid_worktree_name');
+        expect(invalid.error, contains('only lowercase letters'));
+        expect(git.createdBranch, isNull);
+      },
+    );
+
+    test('reuses the worktree already occupying a managed slug', () async {
+      git
+        ..isGit = true
+        ..existingWorktree = WorktreeInfo(
+          path:
+              '${projectDirectory.path}${Platform.pathSeparator}'
+              'steady-otter',
+          branch: 'renamed-after-first-agent',
+          projectPath: projectDirectory.path,
+        );
+
+      final response = await createWorktree(
+        cwd: projectDirectory.path,
+        action: WorktreeCreateAction.branchOff,
+        worktreeSlug: 'steady-otter',
+      );
+
+      expect(response.error, isNull);
+      expect(git.lookedUpWorktreeSlug, 'steady-otter');
+      expect(git.createdBranch, isNull);
+      expect(response.workspace?.name, 'renamed-after-first-agent');
+    });
+
+    test('checkout without a target reports the frozen error', () async {
+      git.isGit = true;
+
+      final response = await createWorktree(
+        cwd: projectDirectory.path,
+        action: WorktreeCreateAction.checkout,
+      );
+
+      expect(response.errorCode, 'missing_checkout_target');
+      expect(response.error, 'action "checkout" requires refName');
     });
 
     test('checkout-branch requires and fetches an existing branch', () async {
@@ -2062,6 +2170,10 @@ final class _FakeGitService extends GitService {
   String? createdWorktreeSlug;
   String? createdFetchRef;
   bool createdRequireExistingBranch = false;
+  bool createdBranchOff = false;
+  String defaultBranch = 'main';
+  String? lookedUpWorktreeSlug;
+  WorktreeInfo? existingWorktree;
   String? originForge;
   Object? createError;
   Object? archiveError;
@@ -2081,6 +2193,19 @@ final class _FakeGitService extends GitService {
   Future<String> currentBranch(String projectPath) async => branch;
 
   @override
+  Future<String> resolveDefaultBranch(String projectPath) async =>
+      defaultBranch;
+
+  @override
+  Future<WorktreeInfo?> findWorktreeBySlug(
+    String projectPath,
+    String worktreeSlug,
+  ) async {
+    lookedUpWorktreeSlug = worktreeSlug;
+    return existingWorktree;
+  }
+
+  @override
   Future<WorktreeInfo> createWorktree(
     String projectPath,
     String branch, {
@@ -2088,6 +2213,7 @@ final class _FakeGitService extends GitService {
     String? worktreeSlug,
     bool requireExistingBranch = false,
     String? fetchRef,
+    bool branchOff = false,
   }) async {
     if (createError case final error?) throw error;
     createdBranch = branch;
@@ -2095,11 +2221,12 @@ final class _FakeGitService extends GitService {
     createdWorktreeSlug = worktreeSlug;
     createdFetchRef = fetchRef;
     createdRequireExistingBranch = requireExistingBranch;
-    return WorktreeInfo(
-      path: '$projectPath${Platform.pathSeparator}$branch',
-      branch: branch,
-      projectPath: projectPath,
-    );
+    createdBranchOff = branchOff;
+    final path =
+        '$projectPath${Platform.pathSeparator}${worktreeSlug ?? branch}';
+    Directory('$path${Platform.pathSeparator}.git').createSync(recursive: true);
+    writeWorktreeBaseMetadata(path, baseRefName: baseRef ?? defaultBranch);
+    return WorktreeInfo(path: path, branch: branch, projectPath: projectPath);
   }
 
   @override

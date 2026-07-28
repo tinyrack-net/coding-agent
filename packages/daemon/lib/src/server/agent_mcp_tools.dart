@@ -751,7 +751,7 @@ final class AgentMcpTools {
               ? null
               : mode == 'checkout-branch'
               ? branch
-              : branchName ?? worktreeSlug ?? 'worktree',
+              : branchName,
           checkoutSource: prNumber == null
               ? null
               : {
@@ -1200,17 +1200,14 @@ final class AgentMcpTools {
   WorktreeWorkspaceCreateSource _createAgentWorktreeSource(
     String cwd,
     Map<String, Object?> target,
-    String initialPrompt,
+    String _,
   ) {
     final kind = _requiredString(target, 'kind');
     return switch (kind) {
       'branch-off' => WorktreeWorkspaceCreateSource(
         cwd: cwd,
         action: WorktreeCreateAction.branchOff,
-        branchName:
-            _nullableString(target, 'branchName') ??
-            _nullableString(target, 'worktreeSlug') ??
-            _generatedAgentWorktreeBranch(initialPrompt),
+        branchName: _nullableString(target, 'branchName'),
         baseBranch: _nullableString(target, 'baseBranch'),
         refName: _nullableString(target, 'baseBranch'),
         worktreeSlug: _nullableString(target, 'worktreeSlug'),
@@ -1687,19 +1684,6 @@ String _normalizedComparablePath(String value) {
       .replaceAll('\\', '/')
       .replaceAll(RegExp(r'/+$'), '');
   return Platform.isWindows ? normalized.toLowerCase() : normalized;
-}
-
-String _generatedAgentWorktreeBranch(String initialPrompt) {
-  final title =
-      resolveFirstAgentPromptTitle({'prompt': initialPrompt}) ?? 'agent';
-  final slug = title
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
-      .replaceAll(RegExp(r'^-+|-+$'), '');
-  final prefix = slug.isEmpty
-      ? 'agent'
-      : slug.substring(0, slug.length.clamp(0, 32));
-  return '$prefix-${DateTime.now().microsecondsSinceEpoch}';
 }
 
 int _positiveInt(Map<String, Object?> values, String key) {

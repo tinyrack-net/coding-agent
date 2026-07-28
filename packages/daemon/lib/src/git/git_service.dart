@@ -81,6 +81,52 @@ class GitService {
     return (!result.ok || name.isEmpty || name == 'HEAD') ? 'main' : name;
   }
 
+  /// Resolves the repository's default branch using Paseo's precedence:
+  /// origin/HEAD first, then local `main`, then local `master`.
+  Future<String> resolveDefaultBranch(String projectPath) async {
+    final symbolic = await runner.run(
+      ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'],
+      cwd: projectPath,
+      check: false,
+    );
+    if (symbolic.ok && symbolic.stdout.trim().isNotEmpty) {
+      final ref = symbolic.stdout.trim();
+      final remoteShort = ref.startsWith('refs/remotes/')
+          ? ref.substring('refs/remotes/'.length)
+          : ref;
+      final localName = remoteShort.startsWith('origin/')
+          ? remoteShort.substring('origin/'.length)
+          : remoteShort;
+      final localExists = await runner.run(
+        ['show-ref', '--verify', '--quiet', 'refs/heads/$localName'],
+        cwd: projectPath,
+        check: false,
+      );
+      return localExists.ok ? localName : remoteShort;
+    }
+
+    final branches = (await listBranches(projectPath)).toSet();
+    if (branches.contains('main')) return 'main';
+    if (branches.contains('master')) return 'master';
+    throw StateError('Unable to resolve repository default branch');
+  }
+
+  /// Returns the registered worktree occupying the exact managed slug.
+  Future<WorktreeInfo?> findWorktreeBySlug(
+    String projectPath,
+    String worktreeSlug,
+  ) async {
+    final expected = _canonical(
+      p.join(dataDir, 'worktrees', sanitizeBranch(worktreeSlug)),
+    );
+    for (final worktree in await listWorktrees(projectPath)) {
+      if (!worktree.isMain && p.equals(_canonical(worktree.path), expected)) {
+        return worktree;
+      }
+    }
+    return null;
+  }
+
   /// Creates a worktree for [branch] under `<dataDir>/worktrees/`. If the
   /// branch already exists it is checked out; otherwise it is created,
   /// branching off [baseRef] (defaults to the project's current HEAD).
@@ -91,6 +137,7 @@ class GitService {
     String? worktreeSlug,
     bool requireExistingBranch = false,
     String? fetchRef,
+    bool branchOff = false,
   }) async {
     final metadataBaseRef = baseRef ?? await currentBranch(projectPath);
     final projectName = p.basename(p.normalize(projectPath));
@@ -134,7 +181,20 @@ class GitService {
       branchExists = true;
     }
 
-    if (branchExists) {
+    if (branchOff) {
+      final branchBase = branchExists ? branch : metadataBaseRef;
+      final candidate = branchExists ? (worktreeSlug ?? branch) : branch;
+      effectiveBranch = await _uniqueLocalBranch(projectPath, candidate);
+      await runner.run([
+        'worktree',
+        'add',
+        target,
+        '-b',
+        effectiveBranch,
+        '--no-track',
+        branchBase,
+      ], cwd: projectPath);
+    } else if (branchExists) {
       await runner.run([
         'worktree',
         'add',

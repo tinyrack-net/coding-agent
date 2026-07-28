@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:agent_daemon/src/daemon_server.dart';
 import 'package:agent_daemon/src/agent/agent_store.dart';
+import 'package:agent_daemon/src/git/worktree_metadata.dart';
 import 'package:agent_daemon/src/providers/agent_client.dart';
 import 'package:agent_daemon/src/providers/agent_session.dart';
 import 'package:agent_daemon/src/providers/provider_event.dart';
@@ -959,12 +960,7 @@ void main() {
             'source': {
               'kind': 'worktree',
               'cwd': sourceRepo.path,
-              'target': {
-                'kind': 'branch-off',
-                'worktreeSlug': 'mcp-agent-worktree',
-                'branchName': 'feature/mcp-agent-worktree',
-                'baseBranch': 'main',
-              },
+              'target': {'kind': 'branch-off'},
             },
           },
           'initialPrompt': 'Implement in an isolated worktree',
@@ -985,12 +981,16 @@ void main() {
       expect(legacyWorktreeSummary.currentModeId, 'plan');
       expect(legacyWorktreeSummary.isWorktree, isTrue);
       expect(Directory(legacyWorktreeSummary.cwd).existsSync(), isTrue);
+      final placeholderBranch = await _gitOutput([
+        'branch',
+        '--show-current',
+      ], legacyWorktreeSummary.cwd);
+      expect(placeholderBranch, matches(RegExp(r'^[a-z]+-[a-z]+$')));
       expect(
-        await _gitOutput([
-          'branch',
-          '--show-current',
-        ], legacyWorktreeSummary.cwd),
-        'feature/mcp-agent-worktree',
+        readWorktreeMetadata(
+          legacyWorktreeSummary.cwd,
+        )?.firstAgentBranchAutoName,
+        {'status': 'pending', 'placeholderBranchName': placeholderBranch},
       );
       await pumpEventQueue();
       expect(legacyWorktreeSession.prompts, [

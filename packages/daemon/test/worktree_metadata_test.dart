@@ -97,6 +97,38 @@ void main() {
     });
   });
 
+  test('persists the first-agent branch auto-name state transition', () {
+    writeWorktreeBaseMetadata(worktree, baseRefName: 'main');
+    writeWorktreeRuntimeMetadata(worktree, worktreePort: 45678);
+
+    writeWorktreeFirstAgentBranchAutoNameMetadata(
+      worktree,
+      placeholderBranchName: 'dazzling-yak',
+    );
+    final pending = readWorktreeMetadata(worktree)!;
+    expect(pending.version, 2);
+    expect(pending.worktreePort, 45678);
+    expect(pending.firstAgentBranchAutoName, {
+      'status': 'pending',
+      'placeholderBranchName': 'dazzling-yak',
+    });
+
+    final attemptedAt = DateTime.utc(2026, 7, 29, 1, 2, 3);
+    final attempted = markWorktreeFirstAgentBranchAutoNameAttempted(
+      worktree,
+      attemptedAt: attemptedAt,
+    );
+    expect(attempted?.firstAgentBranchAutoName, {
+      'status': 'attempted',
+      'placeholderBranchName': 'dazzling-yak',
+      'attemptedAt': '2026-07-29T01:02:03.000Z',
+    });
+    expect(
+      markWorktreeFirstAgentBranchAutoNameAttempted(worktree)?.toJson(),
+      attempted?.toJson(),
+    );
+  });
+
   test('validates base refs, ports, and persisted schema boundaries', () {
     for (final value in ['', 'HEAD', 'main..bad', 'main@{1}', 'bad name']) {
       expect(

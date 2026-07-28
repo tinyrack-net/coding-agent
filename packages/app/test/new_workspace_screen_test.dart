@@ -728,7 +728,7 @@ void main() {
   });
 
   testWidgets('switching Isolation to "New worktree" reveals the "Start from" '
-      'picker; submitting creates a worktree with an auto-generated branch', (
+      'picker; submitting delegates automatic naming to the daemon', (
     tester,
   ) async {
     final client = FakeDaemonClient()
@@ -779,8 +779,8 @@ void main() {
     expect(source['cwd'], '/repo');
     expect(source['refName'], 'main');
     expect(source['action'], 'branch-off');
-    final branch = source['branchName'] as String;
-    expect(branch, matches(RegExp(r'^[a-z]+-[a-z]+$')));
+    expect(source.containsKey('branchName'), isFalse);
+    expect(source.containsKey('worktreeSlug'), isFalse);
 
     expect(
       client.requests.any((r) => r.$1 == MessageTypes.agentCreateRequest),

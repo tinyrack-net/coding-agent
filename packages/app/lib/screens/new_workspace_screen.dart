@@ -17,7 +17,6 @@ import '../composer/provider_model_selection.dart';
 import '../composer/workspace_draft_submission.dart';
 import '../core/daemon_client.dart';
 import '../core/theme.dart';
-import '../core/workspace_slug.dart';
 import '../import_sessions/import_session_dialog.dart';
 import '../providers/draft_provider_features.dart';
 import '../providers/providers_snapshot.dart';
@@ -591,7 +590,6 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
           cwd: projectPath,
           action: WorktreeCreateAction.branchOff,
           refName: baseRef,
-          branchName: generateWorkspaceSlug(),
         );
       }
       final workspaceResponse = WorkspaceCreateResponse.fromJson(
