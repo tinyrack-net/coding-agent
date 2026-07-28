@@ -10872,10 +10872,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/audio-utils.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/audio_debug.dart",
+      "evidence": [
+        "packages/daemon/test/voice/stt_debug_test.dart"
+      ],
+      "notes": "Frozen format-to-extension precedence, webm fallback, safe filename character replacement, fallback segment, and 64-character limit are ported."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent-lifecycle-dispatch.ts",
@@ -10964,10 +10966,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/pcm16-resampler.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/pcm16_resampler.dart",
+      "evidence": [
+        "packages/daemon/test/voice/pcm16_resampler_test.dart",
+        "packages/daemon/test/voice/stt_manager_test.dart"
+      ],
+      "notes": "Stateful PCM16LE mono linear interpolation, cross-chunk carry and position, float32 intermediate behavior, clamping, reset, empty input, and odd-byte rejection are ported."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/permission-response.ts",
@@ -11658,10 +11663,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/recordings-debug.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/recordings_debug.dart",
+      "evidence": [
+        "packages/daemon/test/voice/stt_debug_test.dart"
+      ],
+      "notes": "Explicit recording directory precedence, truthy debug flag parsing, disabled null state, and cwd-relative .debug/recordings fallback are ported with TINYRACK_* branding."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/rewind/rewind.ts",
@@ -11697,17 +11704,24 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/stt-debug.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/stt_debug.dart",
+      "evidence": [
+        "packages/daemon/test/voice/stt_debug_test.dart",
+        "packages/daemon/test/voice/stt_manager_test.dart"
+      ],
+      "notes": "Optional raw audio capture, one-time announcement, sanitized per-session folder and metadata filename parts, millisecond UTC timestamp, inferred extension, recursive creation, and byte persistence are ported."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/stt-manager.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/stt_manager.dart",
+      "evidence": [
+        "packages/daemon/test/voice/stt_manager_test.dart",
+        "packages/daemon/test/voice/audio_test.dart",
+        "packages/daemon/test/voice/pcm16_resampler_test.dart"
+      ],
+      "notes": "Dynamic provider resolution, language selection, debug capture recovery, WAV/raw PCM preparation and resampling, one-second append chunks, configurable batch commits, committed/final ordering, 120-second bounded final wait, ordered transcript and metadata assembly, low-confidence filtering, error propagation, byte/format/debug metadata, and session closure are ported with TINYRACK_* branding."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/system-prompt.ts",
@@ -12625,10 +12639,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/speech/audio.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/audio.dart",
+      "evidence": [
+        "packages/daemon/test/voice/audio_test.dart",
+        "packages/daemon/test/voice/stt_manager_test.dart"
+      ],
+      "notes": "RIFF/WAVE chunk parsing with padding, PCM mono/16-bit validation, raw PCM rate parsing, peak detection, PCM16LE/Float32 conversion with frozen clamping and rounding, and byte chunking are ported."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/provider-resolver.ts",
