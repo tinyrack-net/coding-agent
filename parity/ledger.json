@@ -10906,10 +10906,16 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent-title.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/agent_title_limits.dart; packages/daemon/lib/src/agent/create_agent_title.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/daemon_server.dart; packages/daemon/lib/src/schedule/schedule_agent_runner.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "evidence": [
+        "packages/daemon/test/agent/create_agent_title_test.dart",
+        "packages/daemon/test/agent_manager_test.dart",
+        "packages/daemon/test/daemon_agent_continuation_e2e_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
+        "packages/daemon/test/schedule/schedule_agent_runner_test.dart"
+      ],
+      "notes": "Matches the frozen explicit 200-character boundary and provisional first-content-line trim, whitespace collapse, and 60 UTF-16-code-unit clamp without ellipsis across direct and delayed create, schedule, workspace first-agent, and imported-session paths. The 111-test targeted boundary passed once and then passed in three concurrent independent processes with --concurrency=8 (333 repeated assertions) without flakes."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent/create.ts",

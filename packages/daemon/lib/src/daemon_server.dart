@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import 'agent/agent_manager.dart';
+import 'agent/create_agent_title.dart';
 import 'agent/agent_store.dart';
 import 'agent/timeline_projection.dart';
 import 'agent/timeline_store.dart';
@@ -405,6 +406,10 @@ Future<DaemonServerHandle> startDaemonServer({
       final images = AgentPromptImage.normalizeList(payload['images']);
       final attachments = AgentAttachment.normalizeList(payload['attachments']);
       try {
+        final titles = resolveCreateAgentTitles(
+          configTitle: payload['title'] as String?,
+          initialPrompt: initialPrompt,
+        );
         final agent = await manager.createAgent(
           cwd: cwd,
           provider: (payload['provider'] as String?) ?? ProviderId.openai.name,
@@ -418,7 +423,7 @@ Future<DaemonServerHandle> startDaemonServer({
           mcpServers: payload['mcpServers'] is Map
               ? Map<String, Object?>.from(payload['mcpServers']! as Map)
               : const {},
-          title: payload['title'] as String?,
+          title: titles.provisionalTitle,
           workspaceId: workspaceId,
           projectPath: payload['projectPath'] as String?,
           branch: payload['branch'] as String?,

@@ -14,6 +14,7 @@ import '../providers/provider_event.dart';
 import '../server/rpc_router.dart';
 import '../utils/path_identity.dart';
 import 'agent_store.dart';
+import 'create_agent_title.dart';
 import 'provider_subagent_store.dart';
 import 'runtime_mcp_config.dart';
 import 'system_prompt.dart';
@@ -430,6 +431,12 @@ class AgentManager {
     _runtimes[agentId] = runtime;
     try {
       await _startSession(runtime);
+      final importedTitle = resolveCreateAgentTitles(
+        initialPrompt: _firstUserMessageText(runtime.timeline.snapshot()),
+      ).provisionalTitle;
+      if (importedTitle != null) {
+        runtime.summary = runtime.summary.copyWith(title: importedTitle);
+      }
       if (runtime.summary.runState == AgentRunState.initializing) {
         runtime.summary = runtime.summary.copyWith(
           runState: AgentRunState.idle,
@@ -630,10 +637,21 @@ class AgentManager {
     }
     final agentId = _uuid.v4();
     final createdAt = DateTime.now().toUtc();
+    final resolvedTitles = resolveCreateAgentTitles(
+      configTitle: title,
+      initialPrompt: initialPrompt,
+    );
+    if ((resolvedTitles.explicitTitle?.length ?? 0) >
+        maxExplicitAgentTitleChars) {
+      throw RpcException(
+        RpcErrorCodes.invalidPayload,
+        'Agent title must be at most $maxExplicitAgentTitleChars characters',
+      );
+    }
     final runtime = AgentRuntime(
       summary: AgentSummary(
         agentId: agentId,
-        title: title ?? 'Agent',
+        title: resolvedTitles.provisionalTitle ?? 'Agent',
         cwd: cwd,
         provider: provider,
         model: model,
@@ -1747,6 +1765,15 @@ class AgentManager {
 String? _normalizeOptionalText(String? value) {
   final normalized = value?.trim();
   return normalized == null || normalized.isEmpty ? null : normalized;
+}
+
+String? _firstUserMessageText(Iterable<TimelineItem> timeline) {
+  for (final item in timeline) {
+    if (item is! UserMessageItem) continue;
+    final text = item.text.trim();
+    if (text.isNotEmpty) return text;
+  }
+  return null;
 }
 
 AgentMode _modeFromId(String modeId) => switch (modeId) {

@@ -105,6 +105,7 @@ void main() {
     );
 
     expect(result.workspaceId, isNotNull);
+    expect(manager.get(result.agentId!)!.title, 'Review the branch');
     expect(records, hasLength(2));
     expect(records.first.agentId, isNull);
     expect(records.last.agentId, result.agentId);

@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
 
+import '../agent/create_agent_title.dart';
 import '../git/git_runner.dart';
 import '../git/git_service.dart';
 import '../server/connection.dart';
@@ -458,15 +459,18 @@ final class WorkspaceV2Service {
 
   Future<Map<String, Object?>> _create(WorkspaceCreateRequest request) async {
     try {
+      final title = resolveCreateAgentTitles(
+        configTitle: request.title,
+        initialPrompt: request.firstAgentContext?['prompt'] is String
+            ? request.firstAgentContext!['prompt']! as String
+            : null,
+      ).provisionalTitle;
       final created = switch (request.source) {
         DirectoryWorkspaceCreateSource source => _createDirectory(
           source,
-          request.title,
+          title,
         ),
-        WorktreeWorkspaceCreateSource source => _createWorktree(
-          source,
-          request.title,
-        ),
+        WorktreeWorkspaceCreateSource source => _createWorktree(source, title),
       };
       final (workspace, project) = await created;
       _ensureGitSnapshot(workspace);

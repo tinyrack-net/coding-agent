@@ -4,6 +4,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
 
 import '../agent/agent_manager.dart';
+import '../agent/create_agent_title.dart';
 import '../workspace/workspace_v2_service.dart';
 import 'schedule_service.dart';
 
@@ -97,7 +98,10 @@ final class ScheduleAgentRunner {
         thinkingOptionId: config.thinkingOptionId,
         featureValues: config.featureValues ?? const {},
         mcpServers: config.mcpServers ?? const {},
-        title: config.title ?? _title(schedule.summary.prompt),
+        title: resolveCreateAgentTitles(
+          configTitle: config.title,
+          initialPrompt: schedule.summary.prompt,
+        ).provisionalTitle,
         workspaceId: workspace.workspaceId,
         projectPath: workspace.mainRepoRoot,
         branch: workspace.branch,
@@ -135,9 +139,3 @@ AgentMode _mode(String? modeId) => switch (modeId) {
   'full-access' || 'fullAccess' => AgentMode.fullAccess,
   _ => AgentMode.normal,
 };
-
-String _title(String prompt) {
-  final compact = prompt.trim().replaceAll(RegExp(r'\s+'), ' ');
-  if (compact.isEmpty) return 'Scheduled agent';
-  return compact.length <= 60 ? compact : '${compact.substring(0, 57)}...';
-}

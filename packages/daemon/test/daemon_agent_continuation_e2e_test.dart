@@ -170,6 +170,7 @@ void main() {
       final agent = AgentSummary.fromJson(
         agentFrame.payload['agent'] as Map<String, Object?>,
       );
+      expect(agent.title, 'Start after bootstrap');
       final terminalMarker = File(
         '${workspace.workspaceDirectory}'
         '${Platform.pathSeparator}terminal-marker.txt',

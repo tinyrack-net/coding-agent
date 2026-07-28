@@ -376,6 +376,7 @@ void main() {
     final imported = await first;
     expect(imported.timelineSize, 2);
     expect(imported.reactivated, isFalse);
+    expect(imported.summary.title, 'Imported prompt');
     expect(imported.summary.sessionId, 'native-1');
     expect(imported.summary.workspaceId, 'workspace-1');
     expect(imported.summary.labels, {'source': 'recent'});
@@ -802,6 +803,7 @@ void main() {
     );
     await pumpEventQueue();
 
+    expect(agent.title, 'Start here');
     final session = client.sessions.single as MockStructuredAgentSession;
     expect(session.structuredPrompts, hasLength(1));
     expect(session.structuredPrompts.single.text, 'Start here');
@@ -820,6 +822,40 @@ void main() {
           .singleWhere((item) => item.agentId == agent.agentId)
           .runState,
       AgentRunState.running,
+    );
+  });
+
+  test('explicit create titles trim and enforce the protocol limit', () async {
+    final maximumTitle = List.filled(maxExplicitAgentTitleChars, 'x').join();
+    final titled = await manager.createAgent(
+      cwd: tempDir.path,
+      provider: 'claude',
+      model: 'claude-sonnet-5',
+      mode: AgentMode.normal,
+      title: '  $maximumTitle  ',
+      initialPrompt: 'ignored',
+    );
+    expect(titled.title, maximumTitle);
+
+    final oversizedTitle = List.filled(
+      maxExplicitAgentTitleChars + 1,
+      'x',
+    ).join();
+    await expectLater(
+      manager.createAgent(
+        cwd: tempDir.path,
+        provider: 'claude',
+        model: 'claude-sonnet-5',
+        mode: AgentMode.normal,
+        title: oversizedTitle,
+      ),
+      throwsA(
+        isA<RpcException>().having(
+          (error) => error.error.message,
+          'message',
+          'Agent title must be at most 200 characters',
+        ),
+      ),
     );
   });
 

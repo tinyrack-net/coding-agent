@@ -611,6 +611,7 @@ void main() {
           ))!,
         );
         final workspaceId = response.workspace!.id;
+        expect(response.workspace!.title, 'fix it');
 
         await Future<void>.delayed(Duration.zero);
         expect(setup.snapshotFor(workspaceId), isNull);
