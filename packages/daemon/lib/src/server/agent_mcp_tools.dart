@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import '../agent/agent_manager.dart';
 import '../agent/create_agent_intent.dart';
 import '../agent/create_agent_mode.dart';
+import '../agent/create_agent_title.dart';
 import '../agent/timeline_projection.dart';
 import '../agent/timeline_store.dart';
 import '../providers/paseo/provider_catalog_registry.dart';
@@ -817,22 +818,27 @@ final class AgentMcpTools {
     final provider = providerPair.substring(0, separator);
     final model = providerPair.substring(separator + 1);
     final initialPrompt = _requiredString(arguments, 'initialPrompt');
-    final settings = _optionalMap(arguments, 'settings') ?? const {};
     final labelsRaw = _optionalMap(arguments, 'labels') ?? const {};
     if (labelsRaw.values.any((value) => value is! String)) {
       throw const FormatException('labels must contain string values');
     }
-    final features = _optionalMap(settings, 'features') ?? const {};
-    final modeId = _nullableString(settings, 'modeId');
-    final thinkingOptionId = _nullableString(settings, 'thinkingOptionId');
     final caller = callerAgentId == null ? null : _manager.get(callerAgentId);
     if (callerAgentId != null && caller == null) {
       throw StateError('Caller agent $callerAgentId not found');
     }
+    final placement = await _resolveMcpCreatePlacement(
+      arguments,
+      callerAgentId: callerAgentId,
+      caller: caller,
+      initialPrompt: initialPrompt,
+    );
+    final settings = placement.settings;
+    final features = _optionalMap(settings, 'features') ?? const {};
+    final modeId = _nullableString(settings, 'modeId');
+    final thinkingOptionId = _nullableString(settings, 'thinkingOptionId');
     final workspaces = _workspaceService();
-    final explicitWorkspaceId = _nullableString(arguments, 'workspaceId');
     final intent = await resolveCreateAgentIntent(
-      explicitWorkspaceId: explicitWorkspaceId,
+      explicitWorkspaceId: placement.workspace.workspaceId,
       caller: caller == null
           ? null
           : CreateAgentCaller(
@@ -841,61 +847,71 @@ final class AgentMcpTools {
               workspaceId: caller.workspaceId,
             ),
       labels: labelsRaw.cast<String, String>(),
+      childAgentDefaultLabels: callerAgentId == null
+          ? null
+          : _voiceBridge
+                .resolveCallerContext(callerAgentId)
+                ?.childAgentDefaultLabels,
       resolveWorkspace: (workspaceId) async {
-        final workspace = await workspaces.requireActiveAutomationWorkspace(
-          workspaceId,
-        );
+        final workspace = workspaceId == placement.workspace.workspaceId
+            ? placement.workspace
+            : await workspaces.requireActiveAutomationWorkspace(workspaceId);
         return CreateAgentPlacement(
           workspaceId: workspace.workspaceId,
-          cwd: workspace.cwd,
+          cwd: placement.runtimeCwd,
         );
       },
-      createWorkspace: () async {
-        final workspace = await workspaces.createAutomationWorkspace(
-          DirectoryWorkspaceCreateSource(path: Directory.current.path),
-        );
-        return CreateAgentPlacement(
-          workspaceId: workspace.workspaceId,
-          cwd: workspace.cwd,
-        );
-      },
-      legacyDetached: _resolveLegacyDetached(arguments, callerAgentId),
+      createWorkspace: () => throw StateError(
+        'create_agent placement must resolve before agent creation',
+      ),
+      legacyDetached: placement.detached,
     );
-    final workspace = await workspaces.requireActiveAutomationWorkspace(
-      intent.workspaceId,
-    );
+    final workspace = placement.workspace;
     final requestedBackground = _nullableBool(arguments, 'background') ?? false;
     final background = callerAgentId != null || requestedBackground;
     final notifyOnFinish =
         _nullableBool(arguments, 'notifyOnFinish') ?? callerAgentId != null;
-    final resolvedModeId = await _providerCatalog.resolveCreateAgentMode(
-      AgentCreateModeRequest(
+    String? createdAgentId;
+    late final AgentSummary agent;
+    try {
+      final resolvedModeId = await _providerCatalog.resolveCreateAgentMode(
+        AgentCreateModeRequest(
+          cwd: intent.cwd,
+          targetProvider: provider,
+          requestedMode: modeId,
+          parent: caller == null
+              ? null
+              : _providerCatalog.createAgentModeParent(caller),
+          unattended: false,
+        ),
+      );
+      agent = await _manager.createAgent(
         cwd: intent.cwd,
-        targetProvider: provider,
-        requestedMode: modeId,
-        parent: caller == null
-            ? null
-            : _providerCatalog.createAgentModeParent(caller),
-        unattended: false,
-      ),
-    );
-    final agent = await _manager.createAgent(
-      cwd: intent.cwd,
-      provider: provider,
-      model: model,
-      mode: _agentMode(resolvedModeId),
-      modeId: resolvedModeId,
-      thinkingOptionId: thinkingOptionId,
-      featureValues: features,
-      title: title,
-      workspaceId: intent.workspaceId,
-      projectPath: workspace.mainRepoRoot,
-      branch: workspace.branch,
-      isWorktree: workspace.isPaseoOwnedWorktree,
-      parentAgentId: intent.parentAgentId,
-      labels: intent.labels,
-      initialPrompt: initialPrompt,
-    );
+        provider: provider,
+        model: model,
+        mode: _agentMode(resolvedModeId),
+        modeId: resolvedModeId,
+        thinkingOptionId: thinkingOptionId,
+        featureValues: features,
+        title: title,
+        workspaceId: intent.workspaceId,
+        projectPath: workspace.mainRepoRoot,
+        branch: workspace.branch,
+        isWorktree: workspace.isPaseoOwnedWorktree,
+        parentAgentId: intent.parentAgentId,
+        labels: intent.labels,
+      );
+      createdAgentId = agent.agentId;
+      if (placement.createdWorktree) {
+        workspaces.startAgentContinuation(agent);
+      }
+      unawaited(_manager.prompt(agent.agentId, initialPrompt));
+    } catch (_) {
+      if (placement.createdWorktree && createdAgentId == null) {
+        await workspaces.cancelAgentContinuation(workspace.workspaceId);
+      }
+      rethrow;
+    }
     final notificationParentId = intent.parentAgentId;
     final shouldNotify =
         notificationParentId != null && background && notifyOnFinish;
@@ -922,6 +938,293 @@ final class AgentMcpTools {
                 'other work until the notification arrives.'
           : null,
     );
+  }
+
+  Future<_ResolvedMcpCreatePlacement> _resolveMcpCreatePlacement(
+    Map<String, Object?> arguments, {
+    required String? callerAgentId,
+    required AgentSummary? caller,
+    required String initialPrompt,
+  }) async {
+    final legacy = _hasLegacyCreateAgentPlacement(arguments);
+    final settings = _normalizedCreateAgentSettings(arguments, legacy: legacy);
+    if (!legacy) {
+      final requestedWorkspaceId = _nullableString(arguments, 'workspaceId');
+      if (requestedWorkspaceId != null) {
+        final workspace = await _workspaceService()
+            .requireActiveAutomationWorkspace(requestedWorkspaceId);
+        return _ResolvedMcpCreatePlacement(
+          workspace: workspace,
+          runtimeCwd: workspace.cwd,
+          detached: false,
+          settings: settings,
+          createdWorktree: false,
+        );
+      }
+      if (caller != null) {
+        final workspaceId = caller.workspaceId;
+        if (workspaceId == null || workspaceId.isEmpty) {
+          throw StateError(
+            'Caller agent ${caller.agentId} has no current workspace',
+          );
+        }
+        final workspace = await _workspaceService()
+            .requireActiveAutomationWorkspace(workspaceId);
+        return _ResolvedMcpCreatePlacement(
+          workspace: workspace,
+          runtimeCwd: caller.cwd,
+          detached: false,
+          settings: settings,
+          createdWorktree: false,
+        );
+      }
+      final workspace = await _createMcpDirectoryWorkspace(
+        Directory.current.path,
+        initialPrompt,
+      );
+      return _ResolvedMcpCreatePlacement(
+        workspace: workspace,
+        runtimeCwd: workspace.cwd,
+        detached: false,
+        settings: settings,
+        createdWorktree: false,
+      );
+    }
+
+    Map<String, Object?> relationship;
+    Map<String, Object?> workspaceInput;
+    if (arguments.containsKey('relationship') ||
+        arguments.containsKey('workspace')) {
+      if (!arguments.containsKey('relationship') ||
+          !arguments.containsKey('workspace')) {
+        throw StateError(
+          'relationship and workspace must be provided together',
+        );
+      }
+      relationship = _requiredMap(arguments, 'relationship');
+      workspaceInput = _requiredMap(arguments, 'workspace');
+    } else {
+      if (callerAgentId != null) {
+        throw StateError(
+          'relationship and workspace must be provided together',
+        );
+      }
+      final cwd = _nullableString(arguments, 'cwd');
+      if (cwd == null) {
+        throw StateError(
+          'cwd is required for legacy top-level create_agent calls',
+        );
+      }
+      relationship = const {'kind': 'detached'};
+      workspaceInput = _legacyFlatWorkspaceInput(arguments, cwd);
+    }
+
+    final relationshipKind = _requiredString(relationship, 'kind');
+    final detached = switch (relationshipKind) {
+      'detached' => true,
+      'subagent' when callerAgentId != null => false,
+      'subagent' => throw StateError(
+        'relationship subagent requires an agent-scoped tool session',
+      ),
+      _ => throw FormatException(
+        'Unknown agent relationship: $relationshipKind',
+      ),
+    };
+    return _resolveLegacyWorkspacePlacement(
+      workspaceInput,
+      callerAgentId: callerAgentId,
+      caller: caller,
+      detached: detached,
+      settings: settings,
+      initialPrompt: initialPrompt,
+    );
+  }
+
+  Future<_ResolvedMcpCreatePlacement> _resolveLegacyWorkspacePlacement(
+    Map<String, Object?> workspaceInput, {
+    required String? callerAgentId,
+    required AgentSummary? caller,
+    required bool detached,
+    required Map<String, Object?> settings,
+    required String initialPrompt,
+  }) async {
+    final kind = _requiredString(workspaceInput, 'kind');
+    final callerContext = callerAgentId == null
+        ? null
+        : _voiceBridge.resolveCallerContext(callerAgentId);
+    switch (kind) {
+      case 'current':
+        if (caller == null) {
+          throw StateError(
+            'workspace current requires an agent-scoped tool session',
+          );
+        }
+        final workspaceId = caller.workspaceId;
+        if (workspaceId == null || workspaceId.isEmpty) {
+          throw StateError(
+            'Caller agent ${caller.agentId} has no current workspace',
+          );
+        }
+        final workspace = await _workspaceService()
+            .requireActiveAutomationWorkspace(workspaceId);
+        return _ResolvedMcpCreatePlacement(
+          workspace: workspace,
+          runtimeCwd: _resolveCreateAgentRuntimeCwd(
+            workspaceInput,
+            caller: caller,
+            callerContext: callerContext,
+            fallback: caller.cwd,
+          ),
+          detached: detached,
+          settings: settings,
+          createdWorktree: false,
+        );
+      case 'existing':
+        final workspaceId = _requiredString(workspaceInput, 'workspaceId');
+        final workspace = await _workspaceService()
+            .requireActiveAutomationWorkspace(workspaceId);
+        final runtimeCwd = _resolveCreateAgentRuntimeCwd(
+          workspaceInput,
+          caller: caller,
+          callerContext: callerContext,
+          fallback: workspace.cwd,
+        );
+        _requireAllowedCreateAgentCwd(runtimeCwd, callerContext?.lockedCwd);
+        return _ResolvedMcpCreatePlacement(
+          workspace: workspace,
+          runtimeCwd: runtimeCwd,
+          detached: detached,
+          settings: settings,
+          createdWorktree: false,
+        );
+      case 'create':
+        final source = _requiredMap(workspaceInput, 'source');
+        final sourceKind = _requiredString(source, 'kind');
+        if (sourceKind == 'directory') {
+          final path = _resolveCreateAgentSourceCwd(
+            _nullableString(source, 'path'),
+            caller: caller,
+            callerContext: callerContext,
+          );
+          final workspace = await _createMcpDirectoryWorkspace(
+            path,
+            initialPrompt,
+          );
+          return _ResolvedMcpCreatePlacement(
+            workspace: workspace,
+            runtimeCwd: workspace.cwd,
+            detached: detached,
+            settings: settings,
+            createdWorktree: false,
+          );
+        }
+        if (sourceKind != 'worktree') {
+          throw FormatException(
+            'Unknown create_agent workspace source: $sourceKind',
+          );
+        }
+        final cwd = _resolveCreateAgentSourceCwd(
+          _nullableString(source, 'cwd'),
+          caller: caller,
+          callerContext: callerContext,
+        );
+        final worktreeSource = _createAgentWorktreeSource(
+          cwd,
+          _requiredMap(source, 'target'),
+          initialPrompt,
+        );
+        final workspace = await _workspaceService().createAutomationWorkspace(
+          worktreeSource,
+          title: resolveFirstAgentPromptTitle({'prompt': initialPrompt}),
+          firstAgentContext: {'prompt': initialPrompt},
+        );
+        return _ResolvedMcpCreatePlacement(
+          workspace: workspace,
+          runtimeCwd: workspace.cwd,
+          detached: detached,
+          settings: settings,
+          createdWorktree: true,
+        );
+      default:
+        throw FormatException('Unknown create_agent workspace kind: $kind');
+    }
+  }
+
+  Future<PersistedWorkspaceRecord> _createMcpDirectoryWorkspace(
+    String cwd,
+    String initialPrompt,
+  ) => _workspaceService().createAutomationWorkspace(
+    DirectoryWorkspaceCreateSource(path: cwd),
+    title: resolveFirstAgentPromptTitle({'prompt': initialPrompt}),
+    firstAgentContext: {'prompt': initialPrompt},
+  );
+
+  String _resolveCreateAgentRuntimeCwd(
+    Map<String, Object?> input, {
+    required AgentSummary? caller,
+    required VoiceCallerContext? callerContext,
+    required String fallback,
+  }) {
+    final requested = _nullableString(input, 'cwd');
+    if (caller == null) {
+      return requested == null ? fallback : _expandUserPath(requested);
+    }
+    final locked = callerContext?.lockedCwd?.trim();
+    if (locked?.isNotEmpty == true) return _expandUserPath(locked!);
+    if (requested == null || callerContext?.allowCustomCwd == false) {
+      return fallback;
+    }
+    return _resolvePathFromBase(caller.cwd, requested);
+  }
+
+  String _resolveCreateAgentSourceCwd(
+    String? requested, {
+    required AgentSummary? caller,
+    required VoiceCallerContext? callerContext,
+  }) {
+    final resolved = caller == null
+        ? _expandUserPath(requested ?? Directory.current.path)
+        : _resolveCreateAgentRuntimeCwd(
+            {'cwd': requested},
+            caller: caller,
+            callerContext: callerContext,
+            fallback: caller.cwd,
+          );
+    _requireAllowedCreateAgentCwd(resolved, callerContext?.lockedCwd);
+    return resolved;
+  }
+
+  WorktreeWorkspaceCreateSource _createAgentWorktreeSource(
+    String cwd,
+    Map<String, Object?> target,
+    String initialPrompt,
+  ) {
+    final kind = _requiredString(target, 'kind');
+    return switch (kind) {
+      'branch-off' => WorktreeWorkspaceCreateSource(
+        cwd: cwd,
+        action: WorktreeCreateAction.branchOff,
+        branchName:
+            _nullableString(target, 'branchName') ??
+            _nullableString(target, 'worktreeSlug') ??
+            _generatedAgentWorktreeBranch(initialPrompt),
+        baseBranch: _nullableString(target, 'baseBranch'),
+        refName: _nullableString(target, 'baseBranch'),
+        worktreeSlug: _nullableString(target, 'worktreeSlug'),
+      ),
+      'checkout-branch' => WorktreeWorkspaceCreateSource(
+        cwd: cwd,
+        action: WorktreeCreateAction.checkout,
+        branchName: _requiredString(target, 'branch'),
+        refName: _requiredString(target, 'branch'),
+      ),
+      'checkout-pr' => WorktreeWorkspaceCreateSource(
+        cwd: cwd,
+        action: WorktreeCreateAction.checkout,
+        githubPrNumber: _positiveInt(target, 'githubPrNumber'),
+      ),
+      _ => throw FormatException('Unknown create_agent worktree target: $kind'),
+    };
   }
 
   Future<Map<String, Object?>> _waitForAgent(String agentId) async {
@@ -1301,6 +1604,123 @@ Map<String, Object?> _workspaceSummary(PersistedWorkspaceRecord workspace) => {
   'title': workspace.title,
 };
 
+final class _ResolvedMcpCreatePlacement {
+  const _ResolvedMcpCreatePlacement({
+    required this.workspace,
+    required this.runtimeCwd,
+    required this.detached,
+    required this.settings,
+    required this.createdWorktree,
+  });
+
+  final PersistedWorkspaceRecord workspace;
+  final String runtimeCwd;
+  final bool detached;
+  final Map<String, Object?> settings;
+  final bool createdWorktree;
+}
+
+bool _hasLegacyCreateAgentPlacement(Map<String, Object?> arguments) => const [
+  'relationship',
+  'workspace',
+  'cwd',
+  'worktreeName',
+  'branchName',
+  'baseBranch',
+  'refName',
+  'githubPrNumber',
+].any((key) => arguments[key] != null);
+
+Map<String, Object?> _normalizedCreateAgentSettings(
+  Map<String, Object?> arguments, {
+  required bool legacy,
+}) {
+  final settings = <String, Object?>{...?_optionalMap(arguments, 'settings')};
+  if (!legacy) return settings;
+  final mode = _nullableString(arguments, 'mode');
+  final thinking = _nullableString(arguments, 'thinking');
+  final features = _optionalMap(arguments, 'features');
+  if (mode != null) settings['modeId'] = mode;
+  if (thinking != null) settings['thinkingOptionId'] = thinking;
+  if (features != null) settings['features'] = features;
+  return settings;
+}
+
+Map<String, Object?> _legacyFlatWorkspaceInput(
+  Map<String, Object?> arguments,
+  String cwd,
+) {
+  final worktreeName = _nullableString(arguments, 'worktreeName');
+  final branchName = _nullableString(arguments, 'branchName');
+  final baseBranch = _nullableString(arguments, 'baseBranch');
+  final refName = _nullableString(arguments, 'refName');
+  final githubPrNumber = arguments['githubPrNumber'];
+  Map<String, Object?>? target;
+  if (githubPrNumber != null) {
+    target = {
+      'kind': 'checkout-pr',
+      'githubPrNumber': _positiveInt(arguments, 'githubPrNumber'),
+    };
+  } else if (refName != null) {
+    target = {'kind': 'checkout-branch', 'branch': refName};
+  } else if (worktreeName != null || branchName != null || baseBranch != null) {
+    target = {
+      'kind': 'branch-off',
+      if (worktreeName != null) 'worktreeSlug': worktreeName,
+      if (branchName != null) 'branchName': branchName,
+      if (baseBranch != null) 'baseBranch': baseBranch,
+    };
+  }
+  return {
+    'kind': 'create',
+    'source': target == null
+        ? {'kind': 'directory', 'path': cwd}
+        : {'kind': 'worktree', 'cwd': cwd, 'target': target},
+  };
+}
+
+void _requireAllowedCreateAgentCwd(String candidate, String? lockedCwd) {
+  final locked = lockedCwd?.trim();
+  if (locked == null || locked.isEmpty) return;
+  final root = _normalizedComparablePath(_expandUserPath(locked));
+  final path = _normalizedComparablePath(candidate);
+  if (path != root && !path.startsWith('$root/')) {
+    throw StateError('Workspace is outside the allowed cwd');
+  }
+}
+
+String _normalizedComparablePath(String value) {
+  final normalized = p
+      .normalize(p.absolute(value))
+      .replaceAll('\\', '/')
+      .replaceAll(RegExp(r'/+$'), '');
+  return Platform.isWindows ? normalized.toLowerCase() : normalized;
+}
+
+String _generatedAgentWorktreeBranch(String initialPrompt) {
+  final title =
+      resolveFirstAgentPromptTitle({'prompt': initialPrompt}) ?? 'agent';
+  final slug = title
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '');
+  final prefix = slug.isEmpty
+      ? 'agent'
+      : slug.substring(0, slug.length.clamp(0, 32));
+  return '$prefix-${DateTime.now().microsecondsSinceEpoch}';
+}
+
+int _positiveInt(Map<String, Object?> values, String key) {
+  final value = values[key];
+  if (value is! num ||
+      value != value.roundToDouble() ||
+      value <= 0 ||
+      value > 0x7fffffff) {
+    throw FormatException('$key must be a positive integer');
+  }
+  return value.toInt();
+}
+
 Map<String, Object?> _createdAgentResult(
   Map<String, Object?> snapshot, {
   Object? lastMessage,
@@ -1539,23 +1959,6 @@ String? _nullableString(Map<String, Object?> values, String key) {
   if (value == null) return null;
   if (value is! String) throw FormatException('$key must be a string or null');
   return value.trim().isEmpty ? null : value.trim();
-}
-
-bool _resolveLegacyDetached(
-  Map<String, Object?> arguments,
-  String? callerAgentId,
-) {
-  if (!arguments.containsKey('relationship')) return false;
-  final relationship = _requiredMap(arguments, 'relationship');
-  final kind = _requiredString(relationship, 'kind');
-  return switch (kind) {
-    'detached' => true,
-    'subagent' when callerAgentId != null => false,
-    'subagent' => throw StateError(
-      'relationship subagent requires an agent-scoped tool session',
-    ),
-    _ => throw FormatException('Unknown agent relationship: $kind'),
-  };
 }
 
 String? _optionalTrimmedString(Map<String, Object?> values, String key) {

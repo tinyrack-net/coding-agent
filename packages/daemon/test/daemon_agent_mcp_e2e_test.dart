@@ -828,6 +828,68 @@ void main() {
         isFalse,
       );
 
+      final legacyWorktreeAgent = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'create_agent',
+        {
+          'title': 'Legacy worktree agent',
+          'provider': 'fixture/fixture-model',
+          'relationship': {'kind': 'detached'},
+          'workspace': {
+            'kind': 'create',
+            'source': {
+              'kind': 'worktree',
+              'cwd': sourceRepo.path,
+              'target': {
+                'kind': 'branch-off',
+                'worktreeSlug': 'mcp-agent-worktree',
+                'branchName': 'feature/mcp-agent-worktree',
+                'baseBranch': 'main',
+              },
+            },
+          },
+          'initialPrompt': 'Implement in an isolated worktree',
+          'settings': {'modeId': 'plan'},
+          'background': true,
+        },
+      );
+      final legacyWorktreeSession = client.sessions.last;
+      final legacyWorktreeSummary = handle.manager.get(
+        legacyWorktreeAgent['agentId']! as String,
+      )!;
+      expect(legacyWorktreeAgent['workspaceId'], isA<String>());
+      expect(
+        legacyWorktreeSummary.workspaceId,
+        legacyWorktreeAgent['workspaceId'],
+      );
+      expect(legacyWorktreeSummary.parentAgentId, isNull);
+      expect(legacyWorktreeSummary.currentModeId, 'plan');
+      expect(legacyWorktreeSummary.isWorktree, isTrue);
+      expect(Directory(legacyWorktreeSummary.cwd).existsSync(), isTrue);
+      expect(
+        await _gitOutput([
+          'branch',
+          '--show-current',
+        ], legacyWorktreeSummary.cwd),
+        'feature/mcp-agent-worktree',
+      );
+      await pumpEventQueue();
+      expect(legacyWorktreeSession.prompts, [
+        'Implement in an isolated worktree',
+      ]);
+      final archivedLegacyWorktree = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'archive_workspace',
+        {'workspaceId': legacyWorktreeAgent['workspaceId']},
+      );
+      expect(archivedLegacyWorktree['archivedAgentIds'], [
+        legacyWorktreeAgent['agentId'],
+      ]);
+      expect(archivedLegacyWorktree['removedDirectory'], isTrue);
+      expect(Directory(legacyWorktreeSummary.cwd).existsSync(), isFalse);
+
       final autonomous = await _call(
         topLevelEndpoint,
         mcpAuthToken,
@@ -1138,8 +1200,11 @@ void main() {
         {
           'title': 'Detached workspace child',
           'provider': 'fixture/fixture-model',
-          'workspaceId': workspaceB['workspaceId'],
           'relationship': {'kind': 'detached'},
+          'workspace': {
+            'kind': 'existing',
+            'workspaceId': workspaceB['workspaceId'],
+          },
           'labels': {
             'surface': 'detached',
             paseoParentAgentIdLabel: 'spoofed-parent',
@@ -1160,8 +1225,11 @@ void main() {
         await _callError(topLevelEndpoint, mcpAuthToken, 'create_agent', {
           'title': 'Invalid root subagent',
           'provider': 'fixture/fixture-model',
-          'workspaceId': workspaceB['workspaceId'],
           'relationship': {'kind': 'subagent'},
+          'workspace': {
+            'kind': 'existing',
+            'workspaceId': workspaceB['workspaceId'],
+          },
           'initialPrompt': 'Cannot attach without a caller',
         }),
         contains('relationship subagent requires an agent-scoped tool session'),
