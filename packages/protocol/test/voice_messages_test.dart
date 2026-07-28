@@ -98,4 +98,155 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test('dictation inbound messages match frozen top-level shapes', () {
+    const start = DictationStreamStartMessage(
+      dictationId: 'd1',
+      format: 'audio/pcm;rate=16000;bits=16',
+    );
+    const chunk = DictationStreamChunkMessage(
+      dictationId: 'd1',
+      seq: 0,
+      audio: 'AAE=',
+      format: 'audio/pcm;rate=16000;bits=16',
+    );
+    const finish = DictationStreamFinishMessage(dictationId: 'd1', finalSeq: 0);
+    const cancel = DictationStreamCancelMessage(dictationId: 'd1');
+
+    for (final pair in [
+      (
+        start.toJson(),
+        DictationStreamStartMessage.fromJson(start.toJson()).toJson(),
+      ),
+      (
+        chunk.toJson(),
+        DictationStreamChunkMessage.fromJson(chunk.toJson()).toJson(),
+      ),
+      (
+        finish.toJson(),
+        DictationStreamFinishMessage.fromJson(finish.toJson()).toJson(),
+      ),
+      (
+        cancel.toJson(),
+        DictationStreamCancelMessage.fromJson(cancel.toJson()).toJson(),
+      ),
+    ]) {
+      expect(pair.$2, pair.$1);
+      expect(pair.$1, isNot(contains('payload')));
+    }
+  });
+
+  test('dictation outbound messages round-trip frozen payloads', () {
+    final messages = <(Map<String, Object?>, Map<String, Object?>)>[
+      (
+        const VoiceInputStateMessage(isSpeaking: true).toJson(),
+        VoiceInputStateMessage.fromJson(
+          const VoiceInputStateMessage(isSpeaking: true).toJson(),
+        ).toJson(),
+      ),
+      (
+        const DictationStreamAckMessage(dictationId: 'd1', ackSeq: -1).toJson(),
+        DictationStreamAckMessage.fromJson(
+          const DictationStreamAckMessage(
+            dictationId: 'd1',
+            ackSeq: -1,
+          ).toJson(),
+        ).toJson(),
+      ),
+      (
+        const DictationStreamFinishAcceptedMessage(
+          dictationId: 'd1',
+          timeoutMs: 10000,
+        ).toJson(),
+        DictationStreamFinishAcceptedMessage.fromJson(
+          const DictationStreamFinishAcceptedMessage(
+            dictationId: 'd1',
+            timeoutMs: 10000,
+          ).toJson(),
+        ).toJson(),
+      ),
+      (
+        const DictationStreamPartialMessage(
+          dictationId: 'd1',
+          text: 'hel',
+        ).toJson(),
+        DictationStreamPartialMessage.fromJson(
+          const DictationStreamPartialMessage(
+            dictationId: 'd1',
+            text: 'hel',
+          ).toJson(),
+        ).toJson(),
+      ),
+      (
+        const DictationStreamFinalMessage(
+          dictationId: 'd1',
+          text: 'hello',
+          debugRecordingPath: 'recording.wav',
+        ).toJson(),
+        DictationStreamFinalMessage.fromJson(
+          const DictationStreamFinalMessage(
+            dictationId: 'd1',
+            text: 'hello',
+            debugRecordingPath: 'recording.wav',
+          ).toJson(),
+        ).toJson(),
+      ),
+      (
+        const DictationStreamErrorMessage(
+          dictationId: 'd1',
+          error: 'missing model',
+          retryable: true,
+          reasonCode: 'model_missing',
+          missingModelIds: ['parakeet'],
+          debugRecordingPath: 'recording.wav',
+        ).toJson(),
+        DictationStreamErrorMessage.fromJson(
+          const DictationStreamErrorMessage(
+            dictationId: 'd1',
+            error: 'missing model',
+            retryable: true,
+            reasonCode: 'model_missing',
+            missingModelIds: ['parakeet'],
+            debugRecordingPath: 'recording.wav',
+          ).toJson(),
+        ).toJson(),
+      ),
+    ];
+    for (final pair in messages) {
+      expect(pair.$2, pair.$1);
+      expect(pair.$1['payload'], isA<Map<String, Object?>>());
+    }
+  });
+
+  test('dictation message boundaries reject invalid integers and payloads', () {
+    expect(
+      () => DictationStreamChunkMessage.fromJson(const {
+        'type': DictationStreamChunkMessage.type,
+        'dictationId': 'd',
+        'seq': -1,
+        'audio': '',
+        'format': 'pcm',
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => DictationStreamFinishAcceptedMessage.fromJson(const {
+        'type': DictationStreamFinishAcceptedMessage.type,
+        'payload': {'dictationId': 'd', 'timeoutMs': 0},
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => DictationStreamErrorMessage.fromJson(const {
+        'type': DictationStreamErrorMessage.type,
+        'payload': {
+          'dictationId': 'd',
+          'error': 'x',
+          'retryable': true,
+          'missingModelIds': [1],
+        },
+      }),
+      throwsFormatException,
+    );
+  });
 }

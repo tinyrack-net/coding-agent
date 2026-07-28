@@ -10918,9 +10918,11 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/dictation-debug.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/dictation_debug.dart",
+      "evidence": [
+        "packages/daemon/test/voice/dictation_stream_manager_test.dart"
+      ],
       "notes": null
     },
     {
@@ -11994,9 +11996,11 @@
     },
     {
       "id": "source-unit:packages/server/src/server/dictation/dictation-stream-manager.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/dictation_stream_manager.dart",
+      "evidence": [
+        "packages/daemon/test/voice/dictation_stream_manager_test.dart"
+      ],
       "notes": null
     },
     {
