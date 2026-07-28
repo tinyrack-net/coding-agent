@@ -205,7 +205,11 @@ final class ProviderCatalogV2Service {
   Future<Map<String, Object?>> _refresh(
     RefreshProvidersSnapshotRequest request,
   ) async {
-    await registry.snapshot(providers: request.providers, cwd: request.cwd);
+    await registry.snapshot(
+      providers: request.providers,
+      cwd: request.cwd,
+      force: true,
+    );
     final entries = await registry.snapshot(cwd: request.cwd);
     _onSnapshotChanged?.call(
       ProvidersSnapshotUpdate(

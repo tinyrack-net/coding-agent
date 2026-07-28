@@ -1,11 +1,28 @@
-import 'package:agent_protocol/agent_protocol.dart';
+import 'dart:convert';
+import 'dart:io';
 
+import 'package:agent_protocol/agent_protocol.dart';
+import 'package:path/path.dart' as p;
+
+import 'acp_catalog.dart';
 import 'executable_resolver.dart';
 import 'provider_manifest.dart';
 
 typedef ProviderCommandResolver =
     Future<String?> Function(PaseoProviderDefinition definition);
 typedef ProviderConfigResolver = MutableDaemonConfig Function();
+typedef ProviderCatalogProbe =
+    Future<AcpProviderCatalog?> Function(
+      PaseoProviderDefinition definition,
+      String cwd,
+    );
+
+final class _CatalogLoad {
+  const _CatalogLoad({required this.fingerprint, required this.result});
+
+  final String fingerprint;
+  final Future<AcpProviderCatalog?> result;
+}
 
 final class PaseoProviderCatalogRegistry {
   PaseoProviderCatalogRegistry({
@@ -13,18 +30,22 @@ final class PaseoProviderCatalogRegistry {
     ProviderCommandResolver? commandResolver,
     List<PaseoProviderDefinition>? definitions,
     ProviderConfigResolver? configResolver,
+    ProviderCatalogProbe? catalogProbe,
     DateTime Function()? now,
   }) : _resolver = executableResolver ?? ExecutableResolver(),
        _commandResolver = commandResolver,
        _baseDefinitions = definitions ?? PaseoProviderManifest.definitions,
        _configResolver = configResolver,
+       _catalogProbe = catalogProbe,
        _now = now ?? DateTime.now;
 
   final ExecutableResolver _resolver;
   final ProviderCommandResolver? _commandResolver;
   final ProviderConfigResolver? _configResolver;
+  final ProviderCatalogProbe? _catalogProbe;
   final DateTime Function() _now;
   final List<PaseoProviderDefinition> _baseDefinitions;
+  final Map<String, _CatalogLoad> _catalogLoads = {};
 
   List<PaseoProviderDefinition> get definitions {
     final config = _configResolver?.call();
@@ -84,18 +105,26 @@ final class PaseoProviderCatalogRegistry {
   Future<List<ProviderSnapshotEntry>> snapshot({
     Iterable<String>? providers,
     String? cwd,
+    bool force = false,
   }) async {
     final filter = providers == null ? null : providers.toSet();
     final selected = [
       for (final definition in definitions)
         if (filter == null || filter.contains(definition.id)) definition,
     ];
-    return Future.wait(selected.map(_snapshotEntry));
+    final probeCwd = _resolveProbeCwd(cwd);
+    return Future.wait(
+      selected.map(
+        (definition) => _snapshotEntry(definition, cwd: probeCwd, force: force),
+      ),
+    );
   }
 
   Future<ProviderSnapshotEntry> _snapshotEntry(
-    PaseoProviderDefinition definition,
-  ) async {
+    PaseoProviderDefinition definition, {
+    required String cwd,
+    required bool force,
+  }) async {
     final fetchedAt = _now().toUtc().toIso8601String();
     if (!definition.enabledByDefault) {
       return _entry(
@@ -107,12 +136,17 @@ final class PaseoProviderCatalogRegistry {
     }
     try {
       final available = await resolveCommand(definition) != null;
+      final catalog = available
+          ? await _probeCatalog(definition, cwd: cwd, force: force)
+          : null;
       return _entry(
         definition,
         available
             ? ProviderCatalogStatus.ready
             : ProviderCatalogStatus.unavailable,
         fetchedAt,
+        models: catalog?.models,
+        modes: catalog?.modes,
       );
     } catch (error) {
       return _entry(
@@ -130,14 +164,16 @@ final class PaseoProviderCatalogRegistry {
     String fetchedAt, {
     bool enabled = true,
     String? error,
+    List<ProviderModelDefinition>? models,
+    List<ProviderMode>? modes,
   }) => ProviderSnapshotEntry(
     provider: definition.id,
     status: status,
     enabled: enabled,
     error: error,
-    models: status == ProviderCatalogStatus.ready ? const [] : null,
+    models: status == ProviderCatalogStatus.ready ? (models ?? const []) : null,
     modes: status == ProviderCatalogStatus.ready
-        ? [for (final entry in definition.modes) entry.mode]
+        ? (modes ?? [for (final entry in definition.modes) entry.mode])
         : null,
     fetchedAt: fetchedAt,
     label: definition.label,
@@ -145,7 +181,46 @@ final class PaseoProviderCatalogRegistry {
     defaultModeId: definition.defaultModeId,
     source: definition.source,
   );
+
+  Future<AcpProviderCatalog?> _probeCatalog(
+    PaseoProviderDefinition definition, {
+    required String cwd,
+    required bool force,
+  }) {
+    final probe = _catalogProbe;
+    if (probe == null) return Future.value();
+    final key = '${definition.id}\u0000$cwd';
+    final fingerprint = _definitionFingerprint(definition);
+    final existing = _catalogLoads[key];
+    if (!force && existing?.fingerprint == fingerprint) {
+      return existing!.result;
+    }
+    final result = probe(definition, cwd);
+    _catalogLoads[key] = _CatalogLoad(fingerprint: fingerprint, result: result);
+    return result;
+  }
 }
+
+String _resolveProbeCwd(String? cwd) {
+  final trimmed = cwd?.trim();
+  if (trimmed?.isNotEmpty == true) return p.normalize(p.absolute(trimmed!));
+  final home =
+      Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'];
+  return p.normalize(
+    p.absolute(home?.isNotEmpty == true ? home! : Directory.current.path),
+  );
+}
+
+String _definitionFingerprint(PaseoProviderDefinition definition) =>
+    jsonEncode({
+      'command': [definition.command, ...definition.commandArgs],
+      'environment': Map.fromEntries(
+        definition.environment.entries.toList()
+          ..sort((left, right) => left.key.compareTo(right.key)),
+      ),
+      'params': definition.providerParams,
+      'modes': [for (final mode in definition.modes) mode.mode.toJson()],
+    });
 
 PaseoProviderDefinition _applyOverride(
   PaseoProviderDefinition definition,

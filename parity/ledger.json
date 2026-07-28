@@ -11018,11 +11018,14 @@
     {
       "id": "source-unit:packages/server/src/server/agent/provider-snapshot-manager.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart",
+      "implementation": "packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart;packages/daemon/lib/src/providers/paseo/acp_catalog.dart;packages/daemon/lib/src/providers/paseo/generic_acp_agent_client.dart;packages/daemon/lib/src/providers/paseo/provider_catalog_v2_service.dart",
       "evidence": [
-        "packages/daemon/test/providers/paseo/provider_catalog_registry_test.dart"
+        "packages/daemon/test/providers/paseo/provider_catalog_registry_test.dart",
+        "packages/daemon/test/providers/paseo/acp_catalog_test.dart",
+        "packages/daemon/test/providers/paseo/generic_acp_agent_client_test.dart",
+        "packages/daemon/test/daemon_custom_acp_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Workspace-scoped ACP model/mode/config probes are cached by normalized cwd and provider configuration, forced refresh replaces the cache, and failures remain isolated to one provider entry. The full asynchronous loading snapshot manager, stale-load suppression across config generations, diagnostics, warm-up, and builtin provider catalog probing remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/provider-subagents/store.ts",
@@ -11042,7 +11045,7 @@
         "packages/daemon/test/providers/paseo/generic_acp_agent_client_test.dart",
         "packages/daemon/test/daemon_custom_acp_e2e_test.dart"
       ],
-      "notes": "ACP JSON-RPC initialization, new and resumed sessions, text/reasoning/tool streaming, slash commands, permission selection, usage, mode/model/config writes, cancellation, process exit, and structured text attachments are normalized through the shared daemon runtime. Session/load history replay, list/import, MCP injection, image/audio/resource blocks, plans, rich tool details, client fs/terminal methods, catalog probing, diagnostics, close capability, and complete config-option semantics remain."
+      "notes": "ACP JSON-RPC initialization, new and resumed sessions, text/reasoning/tool streaming, slash commands, permission selection, usage, cancellation, process exit, and structured text attachments are normalized through the shared daemon runtime. Explicit and config-option model/mode/thinking selection plus workspace catalog probing now use the frozen derivation precedence, grouped selectors, shared thinking options, normalized cwd caching, and NO_BROWSER probe environment. Session/load history replay, list/import, MCP injection, image/audio/resource blocks, plans, rich tool details, client fs/terminal methods, diagnostics, close capability, and provider-specific config feature mapping remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/claude/agent.ts",
@@ -11091,7 +11094,7 @@
         "packages/daemon/test/providers/paseo/provider_catalog_registry_test.dart",
         "packages/daemon/test/daemon_custom_acp_e2e_test.dart"
       ],
-      "notes": "Configured command, args and environment now launch the common ACP session runtime and command absence fails before spawning. Provider param capability overrides, version and ACP probe diagnostics, launch resolution modes, and diagnostic timeouts remain."
+      "notes": "Configured command, args and environment launch the common ACP session runtime and command absence fails before spawning. Generic ACP probes now derive explicit or config-option models and modes, grouped options, and shared thinking defaults, and runtime selection chooses the matching ACP method or config-option fallback. Client capability overrides, version and diagnostic output, launch resolution modes, and diagnostic timeouts remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/claude/project-dir.ts",
@@ -11239,10 +11242,15 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/generic-acp-agent.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/providers/paseo/acp_catalog.dart;packages/daemon/lib/src/providers/paseo/acp_rpc_process.dart;packages/daemon/lib/src/providers/paseo/generic_acp_agent_client.dart;packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo/acp_catalog_test.dart",
+        "packages/daemon/test/providers/paseo/generic_acp_agent_client_test.dart",
+        "packages/daemon/test/providers/paseo/provider_catalog_registry_test.dart",
+        "packages/daemon/test/daemon_custom_acp_e2e_test.dart"
+      ],
+      "notes": "Configured generic ACP processes now support initialize, new and resumed sessions, prompt streaming, permissions, cancellation, commands, explicit or config-option model/mode/thinking selection, and isolated workspace catalog probes with grouped selectors and NO_BROWSER. Session listing/import and history replay, MCP injection, client fs/terminal methods, rich content/tool details, diagnostics, and close capability remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/jsonl-rpc-process.ts",
@@ -12499,11 +12507,11 @@
     {
       "id": "source-unit:packages/server/src/server/session/provider/provider-catalog-session.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/providers/paseo/provider_catalog_v2_service.dart;packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart;packages/daemon/lib/src/agent/agent_manager.dart;packages/daemon/lib/src/providers/agent_client.dart;packages/daemon/lib/src/providers/agent_session.dart",
+      "implementation": "packages/daemon/lib/src/providers/paseo/provider_catalog_v2_service.dart;packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart;packages/daemon/lib/src/providers/paseo/acp_catalog.dart;packages/daemon/lib/src/providers/paseo/generic_acp_agent_client.dart;packages/daemon/lib/src/agent/agent_manager.dart;packages/daemon/lib/src/providers/agent_client.dart;packages/daemon/lib/src/providers/agent_session.dart",
       "evidence": [
-        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart;packages/daemon/test/agent_feature_discovery_test.dart"
+        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart;packages/daemon/test/providers/paseo/acp_catalog_test.dart;packages/daemon/test/providers/paseo/generic_acp_agent_client_test.dart;packages/daemon/test/daemon_custom_acp_e2e_test.dart;packages/daemon/test/agent_feature_discovery_test.dart;packages/app/test/provider_model_selection_test.dart;packages/app/test/draft_agent_selection_test.dart"
       ],
-      "notes": "Draft feature requests delegate through provider clients or disposable session probes after frozen validation, and configured generic ACP providers now execute through the live daemon. ACP model/mode catalog probing and dynamic config-feature derivation remain."
+      "notes": "Draft feature requests delegate through provider clients or disposable session probes after frozen validation. Configured generic ACP providers execute through the live daemon, and their probed models, modes, grouped model metadata, thinking defaults, errors, and forced refreshes reach the Flutter selector and draft defaults through canonical snapshots. Dynamic provider-specific config-feature derivation and the full loading/warm-up manager remain."
     },
     {
       "id": "source-unit:packages/server/src/server/session/voice/voice-session.ts",

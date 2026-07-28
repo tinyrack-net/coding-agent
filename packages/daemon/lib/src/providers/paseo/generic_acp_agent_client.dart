@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../agent_client.dart';
 import '../agent_session.dart';
 import '../provider_event.dart';
+import 'acp_catalog.dart';
 import 'acp_rpc_process.dart';
 
 typedef AcpCommandResolver = Future<String?> Function();
@@ -18,6 +19,7 @@ final class GenericAcpAgentClient implements AgentClient {
     required AcpCommandResolver resolveCommand,
     this.environment = const {},
     this.providerParams = const {},
+    this.fallbackModes = const [],
     this.processStarter,
   }) : _resolveCommand = resolveCommand;
 
@@ -26,6 +28,7 @@ final class GenericAcpAgentClient implements AgentClient {
   final List<String> commandArgs;
   final Map<String, String> environment;
   final Map<String, Object?> providerParams;
+  final List<ProviderMode> fallbackModes;
   final AcpRpcProcessStarter? processStarter;
   final AcpCommandResolver _resolveCommand;
 
@@ -57,10 +60,40 @@ final class GenericAcpAgentClient implements AgentClient {
       thinkingOptionId: thinkingOptionId,
       featureValues: featureValues,
       resumeSessionId: sessionId,
+      fallbackModes: fallbackModes,
       processStarter: processStarter,
     );
     await session.initialize();
     return session;
+  }
+
+  Future<AcpProviderCatalog> fetchCatalog({required String cwd}) async {
+    final executable = await _resolveCommand();
+    if (executable == null) {
+      throw StateError(
+        "ACP provider '$provider' command is unavailable: $command",
+      );
+    }
+    final session = GenericAcpAgentSession(
+      provider: provider,
+      executable: executable,
+      commandArgs: commandArgs,
+      cwd: cwd,
+      environment: {...environment, 'NO_BROWSER': 'true'},
+      model: '',
+      modeId: null,
+      thinkingOptionId: null,
+      featureValues: const {},
+      resumeSessionId: null,
+      fallbackModes: fallbackModes,
+      processStarter: processStarter,
+    );
+    try {
+      await session.initialize();
+      return session.catalog;
+    } finally {
+      await session.dispose();
+    }
   }
 }
 
@@ -103,6 +136,7 @@ final class GenericAcpAgentSession
     required this.thinkingOptionId,
     required this.featureValues,
     required this.resumeSessionId,
+    required this.fallbackModes,
     this.processStarter,
   }) {
     _events = StreamController<ProviderEvent>.broadcast(sync: true);
@@ -120,20 +154,25 @@ final class GenericAcpAgentSession
   final String? thinkingOptionId;
   final Map<String, Object?> featureValues;
   final String? resumeSessionId;
+  final List<ProviderMode> fallbackModes;
   final AcpRpcProcessStarter? processStarter;
 
   late final StreamController<ProviderEvent> _events;
   final Map<String, _PendingAcpPermission> _pendingPermissions = {};
   final Map<String, _AcpToolSnapshot> _toolCalls = {};
   final List<AgentSlashCommand> _commands = [];
+  final Map<String, Object?> _sessionState = {};
 
   AcpRpcProcess? _rpc;
+  late AcpProviderCatalog _catalog;
   String? _sessionId;
   String? _fallbackAssistantMessageId;
   String? _fallbackReasoningId;
   bool _turnActive = false;
   bool _disposed = false;
   bool _intentionalClose = false;
+
+  AcpProviderCatalog get catalog => _catalog;
 
   @override
   Stream<ProviderEvent> get events async* {
@@ -143,6 +182,11 @@ final class GenericAcpAgentSession
   }
 
   Future<void> initialize() async {
+    _catalog = deriveAcpProviderCatalog(
+      provider: provider,
+      sessionState: const {},
+      fallbackModes: fallbackModes,
+    );
     try {
       final rpc = await AcpRpcProcess.start(
         launch: AcpRpcProcessLaunch(
@@ -292,10 +336,18 @@ final class GenericAcpAgentSession
 
   @override
   Future<AgentProviderNotice?> setMode(String modeId) async {
-    final result = await _requireRpc().request('session/set_mode', {
-      'sessionId': _requireSessionId(),
-      'modeId': modeId,
-    });
+    if (modeId == _catalog.currentModeId) return null;
+    final option = _catalog.selectConfigOption('mode');
+    final useConfigOption =
+        !_catalog.hasExplicitModes &&
+        option != null &&
+        _catalog.configOptionContains(option, modeId);
+    final result = useConfigOption
+        ? await _setConfigOptionRequest(option['id'] as String, modeId)
+        : await _requireRpc().request('session/set_mode', {
+            'sessionId': _requireSessionId(),
+            'modeId': modeId,
+          });
     final state = _map(result);
     if (state != null) _applySessionState(state);
     return null;
@@ -304,10 +356,18 @@ final class GenericAcpAgentSession
   @override
   Future<void> setModel(String? modelId) async {
     if (modelId == null || modelId.isEmpty) return;
-    final result = await _requireRpc().request('session/set_model', {
-      'sessionId': _requireSessionId(),
-      'modelId': modelId,
-    });
+    if (modelId == _catalog.currentModelId) return;
+    final option = _catalog.selectConfigOption('model');
+    final useConfigOption =
+        !_catalog.hasExplicitModels &&
+        option != null &&
+        _catalog.configOptionContains(option, modelId);
+    final result = useConfigOption
+        ? await _setConfigOptionRequest(option['id'] as String, modelId)
+        : await _requireRpc().request('session/set_model', {
+            'sessionId': _requireSessionId(),
+            'modelId': modelId,
+          });
     final state = _map(result);
     if (state != null) _applySessionState(state);
   }
@@ -317,7 +377,12 @@ final class GenericAcpAgentSession
     String? thinkingOptionId,
   ) async {
     if (thinkingOptionId == null || thinkingOptionId.isEmpty) return null;
-    await _setConfigOption('thought_level', thinkingOptionId);
+    if (thinkingOptionId == _catalog.currentThinkingOptionId) return null;
+    final option = _catalog.selectConfigOption('thought_level');
+    await _setConfigOption(
+      option?['id'] as String? ?? 'thought_level',
+      thinkingOptionId,
+    );
     return null;
   }
 
@@ -329,15 +394,18 @@ final class GenericAcpAgentSession
     if (value is! String && value is! bool) {
       throw ArgumentError.value(value, configId, 'must be a string or boolean');
     }
-    final result = await _requireRpc().request('session/set_config_option', {
-      'sessionId': _requireSessionId(),
-      'configId': configId,
-      if (value is bool) 'type': 'boolean',
-      'value': value,
-    });
+    final result = await _setConfigOptionRequest(configId, value);
     final state = _map(result);
     if (state != null) _applySessionState(state);
   }
+
+  Future<Object?> _setConfigOptionRequest(String configId, Object? value) =>
+      _requireRpc().request('session/set_config_option', {
+        'sessionId': _requireSessionId(),
+        'configId': configId,
+        if (value is bool) 'type': 'boolean',
+        'value': value,
+      });
 
   @override
   Future<List<AgentSlashCommand>> listCommands() async =>
@@ -394,6 +462,15 @@ final class GenericAcpAgentSession
               ),
             ),
           );
+      case 'current_mode_update':
+        _applySessionState({
+          'modes': {
+            ...?_map(_sessionState['modes']),
+            'currentModeId': update['currentModeId'],
+          },
+        });
+      case 'config_option_update':
+        _applySessionState({'configOptions': update['configOptions']});
       case 'usage_update':
         final usage = _usage(update);
         if (usage != null) _events.add(UsageUpdated(usage: usage));
@@ -541,6 +618,14 @@ final class GenericAcpAgentSession
   }
 
   void _applySessionState(Map<String, Object?> state) {
+    for (final key in const ['models', 'modes', 'configOptions']) {
+      if (state.containsKey(key)) _sessionState[key] = state[key];
+    }
+    _catalog = deriveAcpProviderCatalog(
+      provider: provider,
+      sessionState: _sessionState,
+      fallbackModes: fallbackModes,
+    );
     final commands = state['availableCommands'];
     if (commands is List) {
       _commands

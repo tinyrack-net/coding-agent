@@ -49,6 +49,46 @@ void main() {
     );
   });
 
+  test('resolves probed custom ACP defaults without builtin assumptions', () {
+    const models = [
+      ProviderModelDefinition(
+        provider: 'fixture-acp',
+        id: 'fixture-model',
+        label: 'Fixture Model',
+        isDefault: true,
+        defaultThinkingOptionId: 'medium',
+      ),
+    ];
+    const provider = ProviderSnapshotEntry(
+      provider: 'fixture-acp',
+      source: 'custom',
+      status: ProviderCatalogStatus.ready,
+      models: models,
+      modes: [
+        ProviderMode(id: 'agent', label: 'Agent'),
+        ProviderMode(id: 'plan', label: 'Plan'),
+      ],
+    );
+
+    final model = resolveEffectiveDraftModelId(
+      selectedModelId: null,
+      availableModels: models,
+    );
+    expect(model, 'fixture-model');
+    expect(
+      resolveEffectiveDraftThinkingOptionId(
+        selectedThinkingOptionId: null,
+        effectiveModelId: model,
+        availableModels: models,
+      ),
+      'medium',
+    );
+    expect(
+      resolveEffectiveDraftModeId(selectedModeId: null, provider: provider),
+      'agent',
+    );
+  });
+
   test('preserves explicit trimmed model and thinking selections', () {
     expect(
       resolveEffectiveDraftModelId(

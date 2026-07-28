@@ -189,8 +189,27 @@ Future<DaemonServerHandle> startDaemonServer({
       entry.id: OpenAiCompatibleBackend(catalogEntry: entry),
   };
   final registry = ProviderRegistry(credentials, nativeBackends);
-  final paseoProviderCatalog = PaseoProviderCatalogRegistry(
+  late final PaseoProviderCatalogRegistry paseoProviderCatalog;
+  GenericAcpAgentClient? genericAcpClient(PaseoProviderDefinition definition) {
+    if (!definition.enabledByDefault ||
+        (definition.source != 'custom' && definition.id != 'copilot')) {
+      return null;
+    }
+    return GenericAcpAgentClient(
+      provider: definition.id,
+      command: definition.command,
+      commandArgs: definition.commandArgs,
+      environment: definition.environment,
+      providerParams: definition.providerParams,
+      fallbackModes: [for (final mode in definition.modes) mode.mode],
+      resolveCommand: () => paseoProviderCatalog.resolveCommand(definition),
+    );
+  }
+
+  paseoProviderCatalog = PaseoProviderCatalogRegistry(
     configResolver: () => configStore.config,
+    catalogProbe: (definition, cwd) async =>
+        genericAcpClient(definition)?.fetchCatalog(cwd: cwd),
   );
 
   late final WsServer server;
@@ -214,20 +233,7 @@ Future<DaemonServerHandle> startDaemonServer({
     clientResolver: agentClients == null
         ? (provider) {
             final definition = paseoProviderCatalog.definition(provider);
-            if (definition == null ||
-                !definition.enabledByDefault ||
-                (definition.source != 'custom' && definition.id != 'copilot')) {
-              return null;
-            }
-            return GenericAcpAgentClient(
-              provider: definition.id,
-              command: definition.command,
-              commandArgs: definition.commandArgs,
-              environment: definition.environment,
-              providerParams: definition.providerParams,
-              resolveCommand: () =>
-                  paseoProviderCatalog.resolveCommand(definition),
-            );
+            return definition == null ? null : genericAcpClient(definition);
           }
         : null,
     providerIdsResolver: agentClients == null

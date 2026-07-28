@@ -3,6 +3,48 @@ import 'dart:io';
 
 Object? pendingPromptId;
 var pendingPromptWaitsForCancel = false;
+var configMode = 'default';
+var configModel = 'base-model';
+var configThinking = 'low';
+
+bool get configOnly =>
+    Platform.environment['ACP_FIXTURE_CONFIG_ONLY'] == 'true';
+
+List<Map<String, Object?>> configOnlyOptions() => [
+  {
+    'id': 'agent-mode',
+    'name': 'Mode',
+    'category': 'mode',
+    'type': 'select',
+    'currentValue': configMode,
+    'options': [
+      {'value': 'default', 'name': 'Default'},
+      {'value': 'review', 'name': 'Review'},
+    ],
+  },
+  {
+    'id': 'model-picker',
+    'name': 'Model',
+    'category': 'model',
+    'type': 'select',
+    'currentValue': configModel,
+    'options': [
+      {'value': 'base-model', 'name': 'Base Model'},
+      {'value': 'config-model', 'name': 'Config Model'},
+    ],
+  },
+  {
+    'id': 'reasoning',
+    'name': 'Reasoning',
+    'category': 'thought_level',
+    'type': 'select',
+    'currentValue': configThinking,
+    'options': [
+      {'value': 'low', 'name': 'Low'},
+      {'value': 'high', 'name': 'High'},
+    ],
+  },
+];
 
 void send(Map<String, Object?> message) {
   stdout.writeln(jsonEncode(message));
@@ -85,8 +127,53 @@ void main() {
           },
         });
       case 'session/new':
+        if (configOnly) {
+          respond(id, {
+            'sessionId': 'session-1',
+            'configOptions': configOnlyOptions(),
+          });
+          return;
+        }
         respond(id, {
           'sessionId': 'session-1',
+          'models': {
+            'availableModels': [
+              {
+                'modelId': 'fixture-model',
+                'name': 'Fixture Model',
+                'description': Platform.environment['NO_BROWSER'] == 'true'
+                    ? 'Probe fixture model'
+                    : 'Primary fixture model',
+              },
+              {
+                'modelId': 'fixture-fast',
+                'name': 'Fixture Fast',
+                'description': 'Fast fixture model',
+              },
+            ],
+            'currentModelId': 'fixture-model',
+          },
+          'modes': {
+            'availableModes': [
+              {'id': 'agent', 'name': 'Agent'},
+              {'id': 'plan', 'name': 'Plan'},
+            ],
+            'currentModeId': 'agent',
+          },
+          'configOptions': [
+            {
+              'id': 'reasoning',
+              'name': 'Reasoning',
+              'category': 'thought_level',
+              'type': 'select',
+              'currentValue': 'medium',
+              'options': [
+                {'value': 'low', 'name': 'Low'},
+                {'value': 'medium', 'name': 'Medium'},
+                {'value': 'high', 'name': 'High'},
+              ],
+            },
+          ],
           'availableCommands': [
             {
               'name': 'review',
@@ -107,7 +194,43 @@ void main() {
         respond(id, {'sessionId': params['sessionId']});
       case 'session/set_mode':
       case 'session/set_model':
+        if (configOnly) {
+          send({
+            'jsonrpc': '2.0',
+            'id': id,
+            'error': {
+              'code': -32601,
+              'message': 'explicit selection is unavailable',
+            },
+          });
+          return;
+        }
+        respond(id, const {});
       case 'session/set_config_option':
+        if (configOnly) {
+          final configId = params['configId'];
+          final value = params['value'];
+          switch (configId) {
+            case 'agent-mode':
+              configMode = value! as String;
+            case 'model-picker':
+              configModel = value! as String;
+            case 'reasoning':
+              configThinking = value! as String;
+            default:
+              send({
+                'jsonrpc': '2.0',
+                'id': id,
+                'error': {
+                  'code': -32602,
+                  'message': 'unexpected config option $configId',
+                },
+              });
+              return;
+          }
+          respond(id, {'configOptions': configOnlyOptions()});
+          return;
+        }
         respond(id, const {});
       case 'session/prompt':
         pendingPromptId = id;

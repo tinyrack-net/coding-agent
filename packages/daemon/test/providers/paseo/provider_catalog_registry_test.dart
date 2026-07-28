@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:agent_daemon/src/providers/paseo/acp_catalog.dart';
 import 'package:agent_daemon/src/providers/paseo/provider_catalog_registry.dart';
 import 'package:agent_daemon/src/providers/paseo/provider_manifest.dart';
 import 'package:agent_daemon/src/server/daemon_config_store.dart';
@@ -192,6 +193,64 @@ void main() {
       ).definitions,
       throwsA(isA<StateError>()),
     );
+  });
+
+  test(
+    'probes and caches workspace-scoped ACP catalogs until forced',
+    () async {
+      final probeCwds = <String>[];
+      final catalog = PaseoProviderCatalogRegistry(
+        definitions: const [ready],
+        commandResolver: (_) async => '/bin/ready',
+        catalogProbe: (definition, cwd) async {
+          probeCwds.add(cwd);
+          return AcpProviderCatalog(
+            models: [
+              ProviderModelDefinition(
+                provider: definition.id,
+                id: 'model',
+                label: 'Model',
+                isDefault: true,
+              ),
+            ],
+            modes: const [ProviderMode(id: 'agent', label: 'Agent')],
+            currentModelId: 'model',
+            currentModeId: 'agent',
+            currentThinkingOptionId: null,
+            configOptions: const [],
+            hasExplicitModels: true,
+            hasExplicitModes: true,
+          );
+        },
+      );
+
+      final first = (await catalog.snapshot(cwd: '.')).single;
+      final second = (await catalog.snapshot(cwd: '.')).single;
+      final forced = (await catalog.snapshot(cwd: '.', force: true)).single;
+
+      expect(first.models?.single.id, 'model');
+      expect(first.modes?.single.id, 'agent');
+      expect(second.models?.single.id, 'model');
+      expect(forced.models?.single.id, 'model');
+      expect(probeCwds, hasLength(2));
+      expect(probeCwds.toSet().single, Directory.current.absolute.path);
+
+      await catalog.snapshot(cwd: Directory.systemTemp.path);
+      expect(probeCwds, hasLength(3));
+    },
+  );
+
+  test('isolates ACP catalog probe failures in the provider entry', () async {
+    final catalog = PaseoProviderCatalogRegistry(
+      definitions: const [ready],
+      commandResolver: (_) async => '/bin/ready',
+      catalogProbe: (_, _) async => throw StateError('ACP probe failed'),
+    );
+
+    final entry = (await catalog.snapshot(cwd: '.')).single;
+    expect(entry.status, ProviderCatalogStatus.error);
+    expect(entry.error, contains('ACP probe failed'));
+    expect(entry.models, isNull);
   });
 
   test(

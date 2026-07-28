@@ -25,6 +25,55 @@ ProviderSnapshotEntry _entry({
 );
 
 void main() {
+  test('renders probed custom ACP models as normal selectable rows', () {
+    final providers = buildSelectableProviderSelectorProviders(const [
+      ProviderSnapshotEntry(
+        provider: 'fixture-acp',
+        status: ProviderCatalogStatus.ready,
+        source: 'custom',
+        label: 'Fixture ACP',
+        models: [
+          ProviderModelDefinition(
+            provider: 'fixture-acp',
+            id: 'fixture-model',
+            label: 'Fixture Model',
+            description: 'Primary fixture model',
+            isDefault: true,
+            defaultThinkingOptionId: 'medium',
+          ),
+          ProviderModelDefinition(
+            provider: 'fixture-acp',
+            id: 'fixture-fast',
+            label: 'Fixture Fast',
+          ),
+        ],
+      ),
+    ]);
+
+    expect(providers.single.id, 'fixture-acp');
+    expect(providers.single.label, 'Fixture ACP');
+    expect(getProviderModelRows(providers.single), [
+      isA<ProviderSelectionModelRow>()
+          .having((row) => row.modelId, 'id', 'fixture-model')
+          .having((row) => row.modelLabel, 'label', 'Fixture Model')
+          .having((row) => row.isDefault, 'default', isTrue),
+      isA<ProviderSelectionModelRow>().having(
+        (row) => row.modelId,
+        'id',
+        'fixture-fast',
+      ),
+    ]);
+    expect(
+      resolveSelectedModelLabel(
+        providers: providers,
+        selectedProvider: 'fixture-acp',
+        selectedModel: '',
+        isLoading: false,
+      ),
+      'Fixture Model',
+    );
+  });
+
   test('builds model, synthetic default, loading, and error selections', () {
     final providers = buildSelectableProviderSelectorProviders([
       _entry(provider: 'codex', label: 'Codex'),

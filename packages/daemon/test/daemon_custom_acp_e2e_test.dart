@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_daemon/src/daemon_server.dart';
@@ -6,6 +7,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 String fixturePath() {
   final local = p.join(
@@ -57,6 +59,54 @@ void main() {
         log: (_) {},
       );
       addTearDown(handle.stop);
+
+      final channel = WebSocketChannel.connect(
+        Uri.parse('ws://127.0.0.1:${handle.server.port}/ws'),
+      );
+      await channel.ready;
+      addTearDown(channel.sink.close);
+      final frames = channel.stream
+          .where((frame) => frame is String)
+          .map((frame) => jsonDecode(frame as String) as Map<String, Object?>)
+          .asBroadcastStream();
+      channel.sink.add(
+        jsonEncode(
+          const WebSocketHello(
+            clientId: 'custom-acp-e2e',
+            clientType: WebSocketClientType.cli,
+            protocolVersion: paseoWebSocketProtocolVersion,
+          ).toJson(),
+        ),
+      );
+      await frames.firstWhere((frame) => frame['status'] == 'server_info');
+      final snapshotFrame = frames.firstWhere(
+        (frame) =>
+            frame['type'] == 'session' &&
+            (frame['message'] as Map?)?['type'] ==
+                'get_providers_snapshot_response',
+      );
+      channel.sink.add(
+        jsonEncode({
+          'type': 'session',
+          'message': const GetProvidersSnapshotRequest(
+            requestId: 'custom-acp-snapshot',
+            cwd: '.',
+          ).toJson(),
+        }),
+      );
+      final snapshot = GetProvidersSnapshotResponse.fromJson(
+        ((await snapshotFrame)['message'] as Map).cast<String, Object?>(),
+      );
+      final provider = snapshot.entries.firstWhere(
+        (entry) => entry.provider == 'fixture-acp',
+      );
+      expect(provider.status, ProviderCatalogStatus.ready);
+      expect(provider.models?.map((model) => model.id), [
+        'fixture-model',
+        'fixture-fast',
+      ]);
+      expect(provider.modes?.map((mode) => mode.id), ['agent', 'plan']);
+      expect(provider.models?.first.defaultThinkingOptionId, 'medium');
 
       expect(handle.manager.isProviderAvailable('fixture-acp'), isTrue);
       final created = await handle.manager.createAgent(

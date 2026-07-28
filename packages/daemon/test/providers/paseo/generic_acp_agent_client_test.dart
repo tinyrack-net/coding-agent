@@ -26,15 +26,17 @@ String fixturePath() {
   );
 }
 
-GenericAcpAgentClient client({Future<String?> Function()? resolveCommand}) =>
-    GenericAcpAgentClient(
-      provider: 'fixture-acp',
-      command: 'dart',
-      commandArgs: [fixturePath()],
-      environment: const {'ACP_FIXTURE_ENV': 'configured'},
-      providerParams: const {'supportsMcpServers': false},
-      resolveCommand: resolveCommand ?? () async => Platform.resolvedExecutable,
-    );
+GenericAcpAgentClient client({
+  Future<String?> Function()? resolveCommand,
+  Map<String, String> environment = const {'ACP_FIXTURE_ENV': 'configured'},
+}) => GenericAcpAgentClient(
+  provider: 'fixture-acp',
+  command: 'dart',
+  commandArgs: [fixturePath()],
+  environment: environment,
+  providerParams: const {'supportsMcpServers': false},
+  resolveCommand: resolveCommand ?? () async => Platform.resolvedExecutable,
+);
 
 Future<T> eventOf<T extends ProviderEvent>(Stream<ProviderEvent> events) =>
     events.firstWhere((event) => event is T).then((event) => event as T);
@@ -156,6 +158,60 @@ void main() {
           'restored-session',
         ),
       );
+    },
+  );
+
+  test(
+    'probes ACP models, modes and thinking without interactive auth',
+    () async {
+      final catalog = await client().fetchCatalog(cwd: Directory.current.path);
+
+      expect(catalog.models, [
+        isA<ProviderModelDefinition>()
+            .having((model) => model.id, 'id', 'fixture-model')
+            .having((model) => model.isDefault, 'default', isTrue)
+            .having(
+              (model) => model.description,
+              'probe environment',
+              'Probe fixture model',
+            ),
+        isA<ProviderModelDefinition>().having(
+          (model) => model.id,
+          'id',
+          'fixture-fast',
+        ),
+      ]);
+      expect(catalog.modes.map((mode) => mode.id), ['agent', 'plan']);
+      expect(catalog.models.first.defaultThinkingOptionId, 'medium');
+      expect(catalog.models.first.thinkingOptions?.map((option) => option.id), [
+        'low',
+        'medium',
+        'high',
+      ]);
+    },
+  );
+
+  test(
+    'uses config-option selection when explicit ACP selectors are absent',
+    () async {
+      final session =
+          await client(
+            environment: const {'ACP_FIXTURE_CONFIG_ONLY': 'true'},
+          ).createSession(
+            cwd: Directory.current.path,
+            model: 'config-model',
+            mode: AgentMode.normal,
+            modeId: 'review',
+            thinkingOptionId: 'high',
+          );
+      addTearDown(session.dispose);
+
+      final catalog = (session as GenericAcpAgentSession).catalog;
+      expect(catalog.currentModeId, 'review');
+      expect(catalog.currentModelId, 'config-model');
+      expect(catalog.currentThinkingOptionId, 'high');
+      expect(catalog.hasExplicitModes, isFalse);
+      expect(catalog.hasExplicitModels, isFalse);
     },
   );
 
