@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 
 typedef ScheduleUpdater =
     FutureOr<StoredSchedule> Function(StoredSchedule schedule);
+typedef ScheduleCreator = FutureOr<StoredSchedule> Function();
 
 final class ScheduleStore {
   ScheduleStore(this.directory, {Random? random})
@@ -15,7 +16,7 @@ final class ScheduleStore {
 
   final String directory;
   final Random _random;
-  final Map<String, Future<void>> _mutations = {};
+  Future<void>? _mutation;
 
   String _filePath(String id) => p.join(directory, '$id.json');
 
@@ -41,7 +42,10 @@ final class ScheduleStore {
     return StoredSchedule.fromJson(jsonDecode(await file.readAsString()));
   }
 
-  Future<StoredSchedule> create(StoredSchedule schedule) async {
+  Future<StoredSchedule> create(StoredSchedule schedule) =>
+      _serializeMutation(() => _createUnsafe(schedule));
+
+  Future<StoredSchedule> _createUnsafe(StoredSchedule schedule) async {
     final id = schedule.summary.id.isEmpty
         ? _generateId()
         : schedule.summary.id;
@@ -52,8 +56,34 @@ final class ScheduleStore {
     return created;
   }
 
+  Future<StoredSchedule> upsertByNameAndTarget({
+    required String name,
+    required ScheduleTarget target,
+    required ScheduleCreator create,
+    required ScheduleUpdater update,
+  }) => _serializeMutation(() async {
+    final targetJson = jsonEncode(target.toJson());
+    final existing = (await list()).where(
+      (schedule) =>
+          schedule.summary.status != ScheduleStatus.completed &&
+          schedule.summary.name == name &&
+          jsonEncode(schedule.summary.target.toJson()) == targetJson,
+    );
+    if (existing.isEmpty) return _createUnsafe(await create());
+    final current = existing.first;
+    final next = await update(current);
+    if (next.summary.id != current.summary.id) {
+      throw StateError(
+        'Schedule update cannot change id: ${current.summary.id}',
+      );
+    }
+    final validated = StoredSchedule.fromJson(next.toJson());
+    await _write(validated);
+    return validated;
+  });
+
   Future<StoredSchedule?> update(String id, ScheduleUpdater updater) =>
-      _serialize(id, () async {
+      _serializeMutation(() async {
         final current = await get(id);
         if (current == null) return null;
         final next = await updater(current);
@@ -66,16 +96,16 @@ final class ScheduleStore {
         return validated;
       });
 
-  Future<void> delete(String id) => _serialize(id, () async {
+  Future<void> delete(String id) => _serializeMutation(() async {
     final file = File(_filePath(id));
     if (await file.exists()) await file.delete();
   });
 
-  Future<T> _serialize<T>(String id, Future<T> Function() mutation) async {
-    final previous = _mutations[id];
+  Future<T> _serializeMutation<T>(Future<T> Function() mutation) async {
+    final previous = _mutation;
     final barrier = Completer<void>();
     final next = barrier.future;
-    _mutations[id] = next;
+    _mutation = next;
     if (previous != null) {
       try {
         await previous;
@@ -87,8 +117,8 @@ final class ScheduleStore {
       return await mutation();
     } finally {
       barrier.complete();
-      if (identical(_mutations[id], next)) {
-        _mutations.remove(id);
+      if (identical(_mutation, next)) {
+        _mutation = null;
       }
     }
   }

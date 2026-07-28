@@ -4,11 +4,116 @@ import 'package:shelf/shelf.dart';
 
 import '../agent/agent_manager.dart';
 import '../providers/paseo/provider_catalog_registry.dart';
+import '../schedule/schedule_service.dart';
 import '../terminal/terminal_manager.dart';
 import '../workspace/workspace_v2_service.dart';
 import '../workspace/workspace_scripts_service.dart';
 import 'agent_mcp_tools.dart';
 import 'daemon_auth.dart';
+
+const _emptyInputSchema = <String, Object?>{
+  'type': 'object',
+  'properties': <String, Object?>{},
+  'additionalProperties': false,
+};
+const _scheduleIdInputSchema = <String, Object?>{
+  'type': 'object',
+  'properties': {
+    'id': {'type': 'string', 'minLength': 1},
+  },
+  'required': ['id'],
+  'additionalProperties': false,
+};
+const _successSchema = <String, Object?>{
+  'type': 'object',
+  'properties': {
+    'success': {'type': 'boolean'},
+  },
+  'required': ['success'],
+  'additionalProperties': false,
+};
+const _nullableStringSchema = <String, Object?>{
+  'type': ['string', 'null'],
+};
+const _scheduleSummaryProperties = <String, Object?>{
+  'id': {'type': 'string'},
+  'name': _nullableStringSchema,
+  'prompt': {'type': 'string'},
+  'cadence': {'type': 'object'},
+  'target': {'type': 'object'},
+  'status': {
+    'type': 'string',
+    'enum': ['active', 'paused', 'completed'],
+  },
+  'createdAt': {'type': 'string'},
+  'updatedAt': {'type': 'string'},
+  'nextRunAt': _nullableStringSchema,
+  'lastRunAt': _nullableStringSchema,
+  'pausedAt': _nullableStringSchema,
+  'expiresAt': _nullableStringSchema,
+  'maxRuns': {
+    'type': ['integer', 'null'],
+    'minimum': 1,
+  },
+};
+const _scheduleSummaryRequired = <String>[
+  'id',
+  'name',
+  'prompt',
+  'cadence',
+  'target',
+  'status',
+  'createdAt',
+  'updatedAt',
+  'nextRunAt',
+  'lastRunAt',
+  'pausedAt',
+  'expiresAt',
+  'maxRuns',
+];
+const _scheduleSummarySchema = <String, Object?>{
+  'type': 'object',
+  'properties': _scheduleSummaryProperties,
+  'required': _scheduleSummaryRequired,
+  'additionalProperties': false,
+};
+const _scheduleRunSchema = <String, Object?>{
+  'type': 'object',
+  'properties': {
+    'id': {'type': 'string'},
+    'scheduledFor': {'type': 'string'},
+    'startedAt': {'type': 'string'},
+    'endedAt': _nullableStringSchema,
+    'status': {
+      'type': 'string',
+      'enum': ['running', 'succeeded', 'failed'],
+    },
+    'agentId': _nullableStringSchema,
+    'workspaceId': _nullableStringSchema,
+    'output': _nullableStringSchema,
+    'error': _nullableStringSchema,
+  },
+  'required': [
+    'id',
+    'scheduledFor',
+    'startedAt',
+    'endedAt',
+    'status',
+    'agentId',
+    'output',
+    'error',
+  ],
+  'additionalProperties': false,
+};
+const _storedScheduleSchema = <String, Object?>{
+  'type': 'object',
+  'properties': {
+    ..._scheduleSummaryProperties,
+    'runs': {'type': 'array', 'items': _scheduleRunSchema},
+  },
+  'required': [..._scheduleSummaryRequired, 'runs'],
+  'additionalProperties': false,
+};
 
 final class AgentMcpHttpHandler {
   AgentMcpHttpHandler({
@@ -16,6 +121,7 @@ final class AgentMcpHttpHandler {
     required PaseoProviderCatalogRegistry providerCatalog,
     required WorkspaceV2Service Function() workspaceService,
     required WorkspaceScriptsService Function() workspaceScripts,
+    required ScheduleService Function() schedules,
     required TerminalManager terminals,
     required String capabilityToken,
     String? passwordHash,
@@ -25,6 +131,7 @@ final class AgentMcpHttpHandler {
          providerCatalog: providerCatalog,
          workspaceService: workspaceService,
          workspaceScripts: workspaceScripts,
+         schedules: schedules,
          terminals: terminals,
          agentWaitTimeout: agentWaitTimeout,
        ),
@@ -85,7 +192,9 @@ final class AgentMcpHttpHandler {
           },
           'serverInfo': const {'name': 'agent-mcp', 'version': '2.0.0'},
         }),
-        'tools/list' => _rpcResult(id, {'tools': _tools}),
+        'tools/list' => _rpcResult(id, {
+          'tools': _toolsFor(request.url.queryParameters['callerAgentId']),
+        }),
         'tools/call' => await _callTool(id, arguments, request.url),
         _ => _rpcError(id, -32601, 'Method not found'),
       };
@@ -425,6 +534,160 @@ final class AgentMcpHttpHandler {
       },
     },
     {
+      'name': 'create_schedule',
+      'title': 'Create schedule',
+      'description':
+          'Create a recurring schedule that starts a new agent on a cron cadence.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'prompt': {'type': 'string', 'minLength': 1},
+          'cron': {'type': 'string', 'minLength': 1},
+          'timezone': {'type': 'string', 'minLength': 1},
+          'name': {'type': 'string'},
+          'provider': {'type': 'string'},
+          'cwd': {'type': 'string'},
+          'isolation': {
+            'type': 'string',
+            'enum': ['local', 'worktree'],
+          },
+          'maxRuns': {'type': 'integer', 'minimum': 1},
+          'expiresIn': {'type': 'string'},
+        },
+        'required': ['prompt', 'cron'],
+        'additionalProperties': false,
+      },
+      'outputSchema': _scheduleSummarySchema,
+    },
+    {
+      'name': 'create_heartbeat',
+      'title': 'Create heartbeat',
+      'description':
+          'Create a recurring heartbeat that sends you a prompt on a cron cadence.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'prompt': {'type': 'string', 'minLength': 1},
+          'cron': {'type': 'string', 'minLength': 1},
+          'timezone': {'type': 'string', 'minLength': 1},
+          'name': {'type': 'string'},
+          'maxRuns': {'type': 'integer', 'minimum': 1},
+          'expiresIn': {'type': 'string'},
+        },
+        'required': ['prompt', 'cron'],
+        'additionalProperties': false,
+      },
+      'outputSchema': _scheduleSummarySchema,
+    },
+    {
+      'name': 'delete_heartbeat',
+      'title': 'Delete heartbeat',
+      'description': 'Delete one of your heartbeats.',
+      'inputSchema': _scheduleIdInputSchema,
+      'outputSchema': _successSchema,
+    },
+    {
+      'name': 'list_schedules',
+      'title': 'List schedules',
+      'description': 'List all schedules managed by the daemon.',
+      'inputSchema': _emptyInputSchema,
+      'outputSchema': {
+        'type': 'object',
+        'properties': {
+          'schedules': {'type': 'array', 'items': _scheduleSummarySchema},
+        },
+        'required': ['schedules'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'inspect_schedule',
+      'title': 'Inspect schedule',
+      'description': 'Inspect a schedule and its run history.',
+      'inputSchema': _scheduleIdInputSchema,
+      'outputSchema': _storedScheduleSchema,
+    },
+    {
+      'name': 'pause_schedule',
+      'title': 'Pause schedule',
+      'description': 'Pause an active schedule.',
+      'inputSchema': _scheduleIdInputSchema,
+      'outputSchema': _successSchema,
+    },
+    {
+      'name': 'resume_schedule',
+      'title': 'Resume schedule',
+      'description': 'Resume a paused schedule.',
+      'inputSchema': _scheduleIdInputSchema,
+      'outputSchema': _successSchema,
+    },
+    {
+      'name': 'delete_schedule',
+      'title': 'Delete schedule',
+      'description': 'Delete a schedule permanently.',
+      'inputSchema': _scheduleIdInputSchema,
+      'outputSchema': _successSchema,
+    },
+    {
+      'name': 'update_schedule',
+      'title': 'Update schedule',
+      'description':
+          'Update an existing schedule. Only provided fields are changed; omitted fields remain unchanged.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'id': {'type': 'string'},
+          'cron': {'type': 'string'},
+          'timezone': {'type': 'string', 'minLength': 1},
+          'name': {
+            'type': ['string', 'null'],
+          },
+          'prompt': {'type': 'string', 'minLength': 1},
+          'maxRuns': {
+            'type': ['integer', 'null'],
+            'minimum': 1,
+          },
+          'provider': {'type': 'string', 'minLength': 1},
+          'model': {
+            'type': ['string', 'null'],
+            'minLength': 1,
+          },
+          'mode': {
+            'type': ['string', 'null'],
+            'minLength': 1,
+          },
+          'cwd': {'type': 'string', 'minLength': 1},
+          'expiresIn': {'type': 'string'},
+          'clearExpires': {'type': 'boolean'},
+        },
+        'required': ['id'],
+        'additionalProperties': true,
+      },
+      'outputSchema': _storedScheduleSchema,
+    },
+    {
+      'name': 'schedule_logs',
+      'title': 'Schedule logs',
+      'description': 'Get the run history (logs) for a schedule.',
+      'inputSchema': _scheduleIdInputSchema,
+      'outputSchema': {
+        'type': 'object',
+        'properties': {
+          'runs': {'type': 'array', 'items': _scheduleRunSchema},
+        },
+        'required': ['runs'],
+        'additionalProperties': false,
+      },
+    },
+    {
+      'name': 'run_schedule_once',
+      'title': 'Run schedule once',
+      'description':
+          'Run a schedule immediately without changing its cron cadence.',
+      'inputSchema': _scheduleIdInputSchema,
+      'outputSchema': _storedScheduleSchema,
+    },
+    {
       'name': 'list_agents',
       'title': 'List agents',
       'description': 'List active or archived coding agents.',
@@ -655,6 +918,23 @@ final class AgentMcpHttpHandler {
       },
     },
   ];
+
+  static List<Map<String, Object?>> _toolsFor(String? callerAgentId) {
+    if (callerAgentId != null) return _tools;
+    return [
+      for (final tool in _tools)
+        if (tool['name'] == 'create_schedule')
+          {
+            ...tool,
+            'inputSchema': {
+              ...tool['inputSchema']! as Map<String, Object?>,
+              'required': ['prompt', 'cron', 'provider'],
+            },
+          }
+        else
+          tool,
+    ];
+  }
 
   static Response _rpcResult(Object? id, Object? result) =>
       _json({'jsonrpc': '2.0', 'result': result, 'id': id});

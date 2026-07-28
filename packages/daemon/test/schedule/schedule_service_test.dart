@@ -67,6 +67,62 @@ void main() {
     },
   );
 
+  test('createOrReplace atomically reuses active names per target', () async {
+    final request = _request(
+      cadence: const CronScheduleCadence(
+        expression: '0 9 * * *',
+        timezone: 'Asia/Seoul',
+      ),
+    );
+    final created = await Future.wait(
+      List.generate(8, (_) => service.createOrReplace(request)),
+    );
+    expect(
+      created.map((schedule) => schedule.summary.id).toSet(),
+      hasLength(1),
+    );
+    expect(await service.list(), hasLength(1));
+
+    final id = created.first.summary.id;
+    await service.pause(id);
+    now = now.add(const Duration(minutes: 1));
+    final replaced = await service.createOrReplace(
+      _request(cadence: const CronScheduleCadence(expression: '30 10 * * *')),
+    );
+    expect(replaced.summary.id, id);
+    expect(replaced.summary.status, ScheduleStatus.active);
+    expect(replaced.summary.pausedAt, isNull);
+    expect(
+      (replaced.summary.cadence as CronScheduleCadence).timezone,
+      'Asia/Seoul',
+    );
+    expect(replaced.summary.createdAt, created.first.summary.createdAt);
+  });
+
+  test(
+    'createOrReplace keeps anonymous and completed schedules as siblings',
+    () async {
+      final anonymous = ScheduleCreateRequest(
+        requestId: 'anonymous',
+        prompt: 'Run tests',
+        cadence: const CronScheduleCadence(expression: '0 9 * * *'),
+        target: const AgentScheduleTarget(agentId: _agentId),
+      );
+      await service.createOrReplace(anonymous);
+      await service.createOrReplace(anonymous);
+      expect(await service.list(), hasLength(2));
+
+      final completed = await service.createOrReplace(_request(maxRuns: 1));
+      await service.tick();
+      expect(
+        (await service.inspect(completed.summary.id)).summary.status,
+        ScheduleStatus.completed,
+      );
+      final sibling = await service.createOrReplace(_request(maxRuns: 1));
+      expect(sibling.summary.id, isNot(completed.summary.id));
+    },
+  );
+
   test('tick records a successful run and completes at maxRuns', () async {
     final created = await service.create(_request(maxRuns: 1));
     await service.tick();
@@ -155,9 +211,7 @@ void main() {
         throw StateError('provider failed');
       },
     );
-    final created = await recordingService.create(
-      _request(runOnCreate: false),
-    );
+    final created = await recordingService.create(_request(runOnCreate: false));
     final result = await recordingService.runOnce(created.summary.id);
 
     expect(result.runs.single.status, ScheduleRunStatus.failed);
@@ -223,129 +277,134 @@ void main() {
     expect((deleted!['payload']! as Map)['scheduleId'], schedule.id);
   });
 
-  test('RPC handler covers update, inspect, logs, lifecycle, and run now', () async {
-    final created = await service.create(_request(runOnCreate: false));
-    final id = created.summary.id;
+  test(
+    'RPC handler covers update, inspect, logs, lifecycle, and run now',
+    () async {
+      final created = await service.create(_request(runOnCreate: false));
+      final id = created.summary.id;
 
-    final update = await service.handle({
-      'type': 'schedule/update',
-      'requestId': 'update',
-      'scheduleId': id,
-      'expiresAt': '2026-01-02T12:00:00.000Z',
-    });
-    expect(update!['type'], 'schedule/update/response');
-    expect((update['payload']! as Map)['error'], isNull);
+      final update = await service.handle({
+        'type': 'schedule/update',
+        'requestId': 'update',
+        'scheduleId': id,
+        'expiresAt': '2026-01-02T12:00:00.000Z',
+      });
+      expect(update!['type'], 'schedule/update/response');
+      expect((update['payload']! as Map)['error'], isNull);
 
-    for (final requestType in [
-      ScheduleIdRequest.inspectType,
-      ScheduleIdRequest.logsType,
-      ScheduleIdRequest.pauseType,
-      ScheduleIdRequest.resumeType,
-      ScheduleIdRequest.runOnceType,
-    ]) {
-      final response = await service.handle(
-        ScheduleIdRequest(
-          type: requestType,
-          requestId: requestType,
-          scheduleId: id,
-        ).toJson(),
-      );
-      expect(response!['type'], '$requestType/response');
-      expect((response['payload']! as Map)['error'], isNull);
-    }
+      for (final requestType in [
+        ScheduleIdRequest.inspectType,
+        ScheduleIdRequest.logsType,
+        ScheduleIdRequest.pauseType,
+        ScheduleIdRequest.resumeType,
+        ScheduleIdRequest.runOnceType,
+      ]) {
+        final response = await service.handle(
+          ScheduleIdRequest(
+            type: requestType,
+            requestId: requestType,
+            scheduleId: id,
+          ).toJson(),
+        );
+        expect(response!['type'], '$requestType/response');
+        expect((response['payload']! as Map)['error'], isNull);
+      }
 
-    final malformedDelete = await service.handle({
-      'type': ScheduleIdRequest.deleteType,
-      'requestId': 'bad-delete',
-      'scheduleId': 42,
-    });
-    expect((malformedDelete!['payload']! as Map)['scheduleId'], '');
-    expect((malformedDelete['payload']! as Map)['error'], isNotNull);
-  });
+      final malformedDelete = await service.handle({
+        'type': ScheduleIdRequest.deleteType,
+        'requestId': 'bad-delete',
+        'scheduleId': 42,
+      });
+      expect((malformedDelete!['payload']! as Map)['scheduleId'], '');
+      expect((malformedDelete['payload']! as Map)['error'], isNotNull);
+    },
+  );
 
-  test('new-agent updates preserve timezone and patch runtime config', () async {
-    final created = await service.create(
-      _request(
-        runOnCreate: false,
-        cadence: const CronScheduleCadence(
-          expression: '0 9 * * *',
-          timezone: 'Asia/Seoul',
-        ),
-        target: NewAgentScheduleTarget(
-          config: ScheduleNewAgentConfig(
-            provider: ' codex ',
-            cwd: ' ${temp.path} ',
-            model: 'old',
-            modeId: 'default',
-            thinkingOptionId: 'medium',
-            archiveOnFinish: true,
-            isolation: 'local',
-            title: 'Title',
-            hasTitle: true,
-            approvalPolicy: 'on-request',
-            sandboxMode: 'workspace-write',
-            networkAccess: true,
-            webSearch: false,
-            featureValues: const {'feature': true},
-            extra: const {'extra': true},
-            systemPrompt: 'system',
-            mcpServers: const {'server': <String, Object?>{}},
+  test(
+    'new-agent updates preserve timezone and patch runtime config',
+    () async {
+      final created = await service.create(
+        _request(
+          runOnCreate: false,
+          cadence: const CronScheduleCadence(
+            expression: '0 9 * * *',
+            timezone: 'Asia/Seoul',
+          ),
+          target: NewAgentScheduleTarget(
+            config: ScheduleNewAgentConfig(
+              provider: ' codex ',
+              cwd: ' ${temp.path} ',
+              model: 'old',
+              modeId: 'default',
+              thinkingOptionId: 'medium',
+              archiveOnFinish: true,
+              isolation: 'local',
+              title: 'Title',
+              hasTitle: true,
+              approvalPolicy: 'on-request',
+              sandboxMode: 'workspace-write',
+              networkAccess: true,
+              webSearch: false,
+              featureValues: const {'feature': true},
+              extra: const {'extra': true},
+              systemPrompt: 'system',
+              mcpServers: const {'server': <String, Object?>{}},
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    final updated = await service.update(
-      ScheduleUpdateRequest.fromJson({
-        'type': ScheduleUpdateRequest.type,
-        'requestId': 'patch',
-        'scheduleId': created.summary.id,
-        'cadence': {'type': 'cron', 'expression': '30 10 * * *'},
-        'expiresAt': '2026-02-01T00:00:00.000Z',
-        'newAgentConfig': {
-          'provider': ' claude-code ',
-          'cwd': ' ${temp.path}/next ',
-          'model': 'new',
-          'modeId': 'plan',
-          'thinkingOptionId': 'high',
-          'archiveOnFinish': false,
-          'isolation': 'worktree',
-        },
-      }),
-    );
-    final cadence = updated.summary.cadence as CronScheduleCadence;
-    final config =
-        (updated.summary.target as NewAgentScheduleTarget).config;
-    expect(cadence.timezone, 'Asia/Seoul');
-    expect(config.provider, 'claude-code');
-    expect(config.cwd, '${temp.path}/next');
-    expect(config.model, 'new');
-    expect(config.modeId, 'plan');
-    expect(config.thinkingOptionId, 'high');
-    expect(config.archiveOnFinish, isFalse);
-    expect(config.isolation, 'worktree');
-    expect(config.title, 'Title');
-    expect(config.approvalPolicy, 'on-request');
-    expect(config.sandboxMode, 'workspace-write');
-    expect(config.networkAccess, isTrue);
-    expect(config.webSearch, isFalse);
-    expect(config.featureValues, {'feature': true});
-    expect(config.extra, {'extra': true});
-    expect(config.systemPrompt, 'system');
-    expect(config.mcpServers, {'server': <String, Object?>{}});
-
-    await expectLater(
-      service.update(
+      final updated = await service.update(
         ScheduleUpdateRequest.fromJson({
           'type': ScheduleUpdateRequest.type,
-          'requestId': 'wrong-target',
-          'scheduleId': (await service.create(_request())).summary.id,
-          'newAgentConfig': {'provider': 'codex'},
+          'requestId': 'patch',
+          'scheduleId': created.summary.id,
+          'cadence': {'type': 'cron', 'expression': '30 10 * * *'},
+          'expiresAt': '2026-02-01T00:00:00.000Z',
+          'newAgentConfig': {
+            'provider': ' claude-code ',
+            'cwd': ' ${temp.path}/next ',
+            'model': 'new',
+            'modeId': 'plan',
+            'thinkingOptionId': 'high',
+            'archiveOnFinish': false,
+            'isolation': 'worktree',
+          },
         }),
-      ),
-      throwsStateError,
-    );
-  });
+      );
+      final cadence = updated.summary.cadence as CronScheduleCadence;
+      final config = (updated.summary.target as NewAgentScheduleTarget).config;
+      expect(cadence.timezone, 'Asia/Seoul');
+      expect(config.provider, 'claude-code');
+      expect(config.cwd, '${temp.path}/next');
+      expect(config.model, 'new');
+      expect(config.modeId, 'plan');
+      expect(config.thinkingOptionId, 'high');
+      expect(config.archiveOnFinish, isFalse);
+      expect(config.isolation, 'worktree');
+      expect(config.title, 'Title');
+      expect(config.approvalPolicy, 'on-request');
+      expect(config.sandboxMode, 'workspace-write');
+      expect(config.networkAccess, isTrue);
+      expect(config.webSearch, isFalse);
+      expect(config.featureValues, {'feature': true});
+      expect(config.extra, {'extra': true});
+      expect(config.systemPrompt, 'system');
+      expect(config.mcpServers, {'server': <String, Object?>{}});
+
+      await expectLater(
+        service.update(
+          ScheduleUpdateRequest.fromJson({
+            'type': ScheduleUpdateRequest.type,
+            'requestId': 'wrong-target',
+            'scheduleId': (await service.create(_request())).summary.id,
+            'newAgentConfig': {'provider': 'codex'},
+          }),
+        ),
+        throwsStateError,
+      );
+    },
+  );
 
   test('missing, completed, running, and expired guards are stable', () async {
     await expectLater(
@@ -388,9 +447,7 @@ void main() {
         return const ScheduleExecutionResult(agentId: null, output: null);
       },
     );
-    final running = await runningService.create(
-      _request(runOnCreate: false),
-    );
+    final running = await runningService.create(_request(runOnCreate: false));
     final firstRun = runningService.runOnce(running.summary.id);
     await started.future;
     await expectLater(
@@ -538,9 +595,7 @@ void main() {
       runner: (_, __) async =>
           const ScheduleExecutionResult(agentId: null, output: null),
     );
-    final created = await orphanService.create(
-      _request(runOnCreate: false),
-    );
+    final created = await orphanService.create(_request(runOnCreate: false));
 
     await orphanService.start();
     expect(

@@ -522,6 +522,9 @@ class AgentManager {
     return runtime.summary;
   }
 
+  Map<String, Object?> mcpServersFor(String agentId) =>
+      Map.unmodifiable(_runtime(agentId).mcpServers);
+
   /// Resolves the frozen Paseo identifier contract: exact id, unique id
   /// prefix, then exact full title. Archived agents remain addressable.
   AgentSummary resolveIdentifier(String identifier) {

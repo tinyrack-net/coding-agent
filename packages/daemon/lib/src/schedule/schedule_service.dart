@@ -82,6 +82,55 @@ final class ScheduleService {
   }
 
   Future<StoredSchedule> create(ScheduleCreateRequest request) async {
+    return _store.create(_newSchedule(request));
+  }
+
+  Future<StoredSchedule> createOrReplace(ScheduleCreateRequest request) async {
+    final name = _optionalName(request.name);
+    if (name == null) return create(request);
+    final candidate = _newSchedule(request);
+    return _store.upsertByNameAndTarget(
+      name: name,
+      target: candidate.summary.target,
+      create: () => candidate,
+      update: (current) {
+        final now = _now().toUtc();
+        var cadence = candidate.summary.cadence;
+        if (current.summary.cadence case CronScheduleCadence(
+          timezone: final currentZone?,
+        )) {
+          if (cadence case CronScheduleCadence(
+            expression: final expression,
+            timezone: null,
+          )) {
+            cadence = CronScheduleCadence(
+              expression: expression,
+              timezone: currentZone,
+            );
+          }
+        }
+        final nextRunAt = request.runOnCreate ?? false
+            ? now
+            : computeNextRunAt(cadence, now);
+        return current.copyWith(
+          summary: current.summary.copyWith(
+            name: name,
+            prompt: candidate.summary.prompt,
+            cadence: cadence,
+            target: candidate.summary.target,
+            status: ScheduleStatus.active,
+            updatedAt: now.toIso8601String(),
+            nextRunAt: nextRunAt.toIso8601String(),
+            pausedAt: null,
+            expiresAt: candidate.summary.expiresAt,
+            maxRuns: candidate.summary.maxRuns,
+          ),
+        );
+      },
+    );
+  }
+
+  StoredSchedule _newSchedule(ScheduleCreateRequest request) {
     final prompt = _normalizePrompt(request.prompt);
     validateScheduleCadence(request.cadence);
     final target = switch (request.target) {
@@ -96,25 +145,23 @@ final class ScheduleService {
     final nextRunAt = runOnCreate
         ? now
         : computeNextRunAt(request.cadence, now);
-    return _store.create(
-      StoredSchedule(
-        summary: ScheduleSummary(
-          id: '',
-          name: _optionalName(request.name),
-          prompt: prompt,
-          cadence: request.cadence,
-          target: target,
-          status: ScheduleStatus.active,
-          createdAt: now.toIso8601String(),
-          updatedAt: now.toIso8601String(),
-          nextRunAt: nextRunAt.toIso8601String(),
-          lastRunAt: null,
-          pausedAt: null,
-          expiresAt: request.expiresAt,
-          maxRuns: request.maxRuns,
-        ),
-        runs: const [],
+    return StoredSchedule(
+      summary: ScheduleSummary(
+        id: '',
+        name: _optionalName(request.name),
+        prompt: prompt,
+        cadence: request.cadence,
+        target: target,
+        status: ScheduleStatus.active,
+        createdAt: now.toIso8601String(),
+        updatedAt: now.toIso8601String(),
+        nextRunAt: nextRunAt.toIso8601String(),
+        lastRunAt: null,
+        pausedAt: null,
+        expiresAt: request.expiresAt,
+        maxRuns: request.maxRuns,
       ),
+      runs: const [],
     );
   }
 
@@ -267,8 +314,7 @@ final class ScheduleService {
   Future<Set<String>> listActiveAgentTargetIds() async => {
     for (final schedule in await _store.list())
       if (schedule.summary.status == ScheduleStatus.active)
-        if (schedule.summary.target
-            case AgentScheduleTarget(agentId: final id))
+        if (schedule.summary.target case AgentScheduleTarget(agentId: final id))
           id,
   };
 
@@ -277,7 +323,7 @@ final class ScheduleService {
     var completed = 0;
     for (final schedule in await _store.list()) {
       if (schedule.summary.target
-              case AgentScheduleTarget(agentId: final targetId)
+          case AgentScheduleTarget(agentId: final targetId)
           when targetId == agentId &&
               schedule.summary.status != ScheduleStatus.completed) {
         await _complete(schedule.summary.id, now);
@@ -587,7 +633,7 @@ final class ScheduleService {
               () {
                 dirty = true;
                 if (current.summary.target
-                        case NewAgentScheduleTarget(config: final config)
+                    case NewAgentScheduleTarget(config: final config)
                     when run.workspaceId != null &&
                         (run.agentId == null ||
                             (config.archiveOnFinish ?? true))) {

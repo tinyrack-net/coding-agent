@@ -10957,7 +10957,7 @@
         "packages/daemon/test/agent_manager_test.dart",
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
       ],
-      "notes": "The exact 30-second bounded agent wait, terminal state and permission result, timeout guidance, five projected recent activities, status mapping, and last assistant response are ported. Stored-agent metadata serialization and schedule duration helpers remain."
+      "notes": "The exact 30-second bounded agent wait, terminal state and permission result, timeout guidance, five projected recent activities, status mapping, last assistant response, and schedule duration parser are ported. Stored-agent metadata serialization remains."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/pcm16-resampler.ts",
@@ -11750,21 +11750,21 @@
         "packages/daemon/test/terminal_manager_test.dart",
         "packages/daemon/test/git_service_test.dart"
       ],
-      "notes": "The runtime MCP catalog includes canonical workspace create/list/rename/archive, create-agent, workspace-script list/start/stop, and terminal list/create/kill/capture/send-key operations in addition to agent, permission, and provider tools. Terminal cwd scoping, fresh top-level workspace minting, caller workspace ownership, special key tokens, capture, errors, script lifecycle, checkout placement, parentage, notifications, and workspace teardown are covered. Schedule, heartbeat, browser, voice, and remaining mutation tools are pending."
+      "notes": "The runtime MCP catalog includes canonical workspace create/list/rename/archive, create-agent, workspace-script list/start/stop, terminal list/create/kill/capture/send-key, and all eleven schedule/heartbeat operations in addition to agent, permission, and provider tools. Schedule create-or-replace, caller inheritance, heartbeat ownership, duration parsing, lifecycle, updates, immediate runs, logs, schemas, and target filtering are covered by authenticated HTTP E2E. Browser, voice, and remaining mutation tools are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tools/types.ts",
       "status": "not-started",
       "implementation": null,
       "evidence": [],
-      "notes": null
+      "notes": "Create-or-replace now atomically reuses active named schedules by structural target, preserves identity and run history, reactivates paused schedules, carries forward omitted cron time zones, and leaves anonymous or completed schedules as siblings. Broader service parity remains tracked as partial."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tts-debug.ts",
       "status": "not-started",
       "implementation": null,
       "evidence": [],
-      "notes": null
+      "notes": "All persistent mutations share one failure-safe serialization queue, and named target upserts are atomic under concurrent callers. Broader frozen store conformance remains tracked as partial."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tts-manager.ts",

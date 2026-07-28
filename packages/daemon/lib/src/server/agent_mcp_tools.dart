@@ -8,6 +8,7 @@ import '../agent/agent_manager.dart';
 import '../agent/timeline_projection.dart';
 import '../agent/timeline_store.dart';
 import '../providers/paseo/provider_catalog_registry.dart';
+import '../schedule/schedule_service.dart';
 import '../terminal/terminal_manager.dart';
 import '../workspace/workspace_registry.dart';
 import '../workspace/workspace_scripts_service.dart';
@@ -19,18 +20,21 @@ final class AgentMcpTools {
     required PaseoProviderCatalogRegistry providerCatalog,
     required WorkspaceV2Service Function() workspaceService,
     required WorkspaceScriptsService Function() workspaceScripts,
+    required ScheduleService Function() schedules,
     required TerminalManager terminals,
     this.agentWaitTimeout = const Duration(seconds: 30),
   }) : _manager = manager,
        _providerCatalog = providerCatalog,
        _workspaceService = workspaceService,
        _workspaceScripts = workspaceScripts,
+       _schedules = schedules,
        _terminals = terminals;
 
   final AgentManager _manager;
   final PaseoProviderCatalogRegistry _providerCatalog;
   final WorkspaceV2Service Function() _workspaceService;
   final WorkspaceScriptsService Function() _workspaceScripts;
+  final ScheduleService Function() _schedules;
   final TerminalManager _terminals;
   final Duration agentWaitTimeout;
 
@@ -66,6 +70,28 @@ final class AgentMcpTools {
         return _captureTerminal(arguments);
       case 'send_terminal_keys':
         return _sendTerminalKeys(arguments);
+      case 'create_schedule':
+        return _createSchedule(arguments, callerAgentId);
+      case 'create_heartbeat':
+        return _createHeartbeat(arguments, callerAgentId);
+      case 'delete_heartbeat':
+        return _deleteHeartbeat(arguments, callerAgentId);
+      case 'list_schedules':
+        return _listSchedules();
+      case 'inspect_schedule':
+        return _inspectSchedule(arguments);
+      case 'pause_schedule':
+        return _pauseSchedule(arguments);
+      case 'resume_schedule':
+        return _resumeSchedule(arguments);
+      case 'delete_schedule':
+        return _deleteSchedule(arguments);
+      case 'update_schedule':
+        return _updateSchedule(arguments);
+      case 'schedule_logs':
+        return _scheduleLogs(arguments);
+      case 'run_schedule_once':
+        return _runScheduleOnce(arguments);
       case 'list_agents':
         return _listAgents(arguments, callerAgentId);
       case 'get_agent_status':
@@ -292,6 +318,301 @@ final class AgentMcpTools {
       _resolveTerminalKeyToken(_requiredRawString(arguments, 'keys'), literal),
     );
     return {'success': true};
+  }
+
+  Future<Map<String, Object?>> _createSchedule(
+    Map<String, Object?> arguments,
+    String? callerAgentId,
+  ) async {
+    final prompt = _requiredString(arguments, 'prompt');
+    final cron = _requiredString(arguments, 'cron');
+    final timezone = _optionalTrimmedString(arguments, 'timezone');
+    final name = _optionalTrimmedString(arguments, 'name');
+    final maxRuns = _optionalPositiveInt(arguments, 'maxRuns');
+    final expiresAt = _expiresAt(arguments);
+    final isolation = _optionalTrimmedString(arguments, 'isolation');
+    if (isolation != null && isolation != 'local' && isolation != 'worktree') {
+      throw const FormatException('isolation must be local or worktree');
+    }
+
+    late final ScheduleNewAgentConfig config;
+    if (callerAgentId != null) {
+      final caller = _requireCallerAgent(callerAgentId);
+      final providerInput = _optionalTrimmedString(arguments, 'provider');
+      final pair = providerInput == null
+          ? (provider: caller.provider, model: caller.model as String?)
+          : _parseProvider(providerInput);
+      config = ScheduleNewAgentConfig(
+        provider: pair.provider,
+        cwd: arguments.containsKey('cwd')
+            ? _expandUserPath(_requiredString(arguments, 'cwd'))
+            : caller.cwd,
+        model: pair.model,
+        modeId: pair.provider == caller.provider ? caller.currentModeId : null,
+        thinkingOptionId: caller.thinkingOptionId,
+        isolation: isolation,
+        featureValues: caller.featureValues.isEmpty
+            ? null
+            : caller.featureValues,
+        mcpServers: _manager.mcpServersFor(callerAgentId).isEmpty
+            ? null
+            : _manager.mcpServersFor(callerAgentId),
+      );
+    } else {
+      final providerInput = _optionalTrimmedString(arguments, 'provider');
+      if (providerInput == null) {
+        throw const FormatException('provider is required');
+      }
+      final pair = _parseProvider(providerInput);
+      config = ScheduleNewAgentConfig(
+        provider: pair.provider,
+        cwd: arguments.containsKey('cwd')
+            ? _expandUserPath(_requiredString(arguments, 'cwd'))
+            : Directory.current.path,
+        model: pair.model,
+        isolation: isolation,
+      );
+    }
+    final schedule = await _schedules().createOrReplace(
+      ScheduleCreateRequest(
+        requestId: 'mcp',
+        prompt: prompt,
+        name: name,
+        cadence: CronScheduleCadence(expression: cron, timezone: timezone),
+        target: NewAgentScheduleTarget(config: config),
+        maxRuns: maxRuns,
+        expiresAt: expiresAt,
+      ),
+    );
+    return schedule.summary.toJson();
+  }
+
+  Future<Map<String, Object?>> _createHeartbeat(
+    Map<String, Object?> arguments,
+    String? callerAgentId,
+  ) async {
+    if (callerAgentId == null) {
+      throw StateError('create_heartbeat requires an agent-scoped session');
+    }
+    _requireCallerAgent(callerAgentId);
+    final schedule = await _schedules().createOrReplace(
+      ScheduleCreateRequest(
+        requestId: 'mcp',
+        prompt: _requiredString(arguments, 'prompt'),
+        name: _optionalTrimmedString(arguments, 'name'),
+        cadence: CronScheduleCadence(
+          expression: _requiredString(arguments, 'cron'),
+          timezone: _optionalTrimmedString(arguments, 'timezone'),
+        ),
+        target: AgentScheduleTarget(agentId: callerAgentId),
+        maxRuns: _optionalPositiveInt(arguments, 'maxRuns'),
+        expiresAt: _expiresAt(arguments),
+      ),
+    );
+    return schedule.summary.toJson();
+  }
+
+  Future<Map<String, Object?>> _deleteHeartbeat(
+    Map<String, Object?> arguments,
+    String? callerAgentId,
+  ) async {
+    if (callerAgentId == null) {
+      throw StateError('Heartbeat operations require an agent-scoped session');
+    }
+    final id = _requiredString(arguments, 'id');
+    final schedule = await _schedules().inspect(id);
+    final target = schedule.summary.target;
+    if (target is! AgentScheduleTarget) {
+      throw StateError('Heartbeat not found: $id');
+    }
+    if (target.agentId != callerAgentId) {
+      throw StateError(
+        'Heartbeat $id does not belong to caller $callerAgentId',
+      );
+    }
+    await _schedules().delete(id);
+    return {'success': true};
+  }
+
+  Future<Map<String, Object?>> _listSchedules() async => {
+    'schedules': [
+      for (final schedule in await _schedules().list())
+        if (schedule.summary.target is NewAgentScheduleTarget)
+          schedule.summary.toJson(),
+    ],
+  };
+
+  Future<Map<String, Object?>> _inspectSchedule(
+    Map<String, Object?> arguments,
+  ) async => (await _requireNewAgentSchedule(arguments)).toJson();
+
+  Future<Map<String, Object?>> _pauseSchedule(
+    Map<String, Object?> arguments,
+  ) async {
+    final schedule = await _requireNewAgentSchedule(arguments);
+    await _schedules().pause(schedule.summary.id);
+    return {'success': true};
+  }
+
+  Future<Map<String, Object?>> _resumeSchedule(
+    Map<String, Object?> arguments,
+  ) async {
+    final schedule = await _requireNewAgentSchedule(arguments);
+    await _schedules().resume(schedule.summary.id);
+    return {'success': true};
+  }
+
+  Future<Map<String, Object?>> _deleteSchedule(
+    Map<String, Object?> arguments,
+  ) async {
+    final schedule = await _requireNewAgentSchedule(arguments);
+    await _schedules().delete(schedule.summary.id);
+    return {'success': true};
+  }
+
+  Future<Map<String, Object?>> _scheduleLogs(
+    Map<String, Object?> arguments,
+  ) async {
+    final schedule = await _requireNewAgentSchedule(arguments);
+    return {
+      'runs': [
+        for (final run in await _schedules().logs(schedule.summary.id))
+          run.toJson(),
+      ],
+    };
+  }
+
+  Future<Map<String, Object?>> _runScheduleOnce(
+    Map<String, Object?> arguments,
+  ) async {
+    final schedule = await _requireNewAgentSchedule(arguments);
+    return (await _schedules().runOnce(schedule.summary.id)).toJson();
+  }
+
+  Future<Map<String, Object?>> _updateSchedule(
+    Map<String, Object?> arguments,
+  ) async {
+    final schedule = await _requireNewAgentSchedule(arguments);
+    final changes = <String, Object?>{};
+    if (arguments.containsKey('name')) {
+      final value = arguments['name'];
+      if (value != null && value is! String) {
+        throw const FormatException('name must be a string or null');
+      }
+      changes['name'] = value == null ? null : (value as String).trim();
+    }
+    if (arguments.containsKey('prompt')) {
+      changes['prompt'] = _requiredString(arguments, 'prompt');
+    }
+    final hasEvery = arguments.containsKey('every');
+    final hasCron = arguments.containsKey('cron');
+    if (hasEvery && hasCron) {
+      throw const FormatException('Specify at most one of every or cron');
+    }
+    if (arguments.containsKey('timezone') && !hasCron) {
+      throw const FormatException('timezone requires cron');
+    }
+    if (hasEvery) {
+      final every = _requiredString(arguments, 'every');
+      final cron = everyMsToFiveFieldCron(_parseDurationMs(every));
+      if (cron == null) {
+        throw FormatException(
+          'Interval $every cannot be represented by a five-field cron',
+        );
+      }
+      changes['cadence'] = CronScheduleCadence(expression: cron).toJson();
+    } else if (hasCron) {
+      changes['cadence'] = CronScheduleCadence(
+        expression: _requiredString(arguments, 'cron'),
+        timezone: _optionalTrimmedString(arguments, 'timezone'),
+      ).toJson();
+    }
+    if (arguments.containsKey('maxRuns')) {
+      changes['maxRuns'] = _nullablePositiveInt(arguments, 'maxRuns');
+    }
+    final clearExpires = _optionalBool(arguments, 'clearExpires') ?? false;
+    if (arguments.containsKey('expiresIn') && clearExpires) {
+      throw const FormatException(
+        'expiresIn and clearExpires cannot be used together',
+      );
+    }
+    if (arguments.containsKey('expiresIn')) {
+      changes['expiresAt'] = _expiresAt(arguments);
+    } else if (clearExpires) {
+      changes['expiresAt'] = null;
+    }
+    final config = <String, Object?>{};
+    _applyProviderUpdate(arguments, config);
+    for (final entry in const {'mode': 'modeId', 'cwd': 'cwd'}.entries) {
+      if (!arguments.containsKey(entry.key)) continue;
+      final value = arguments[entry.key];
+      if (value == null && entry.key == 'mode') {
+        config[entry.value] = null;
+      } else {
+        config[entry.value] = _requiredString(arguments, entry.key);
+      }
+    }
+    if (config.isNotEmpty) changes['newAgentConfig'] = config;
+    final updated = await _schedules().update(
+      ScheduleUpdateRequest(
+        requestId: 'mcp',
+        scheduleId: schedule.summary.id,
+        changes: changes,
+      ),
+    );
+    return updated.toJson();
+  }
+
+  Future<StoredSchedule> _requireNewAgentSchedule(
+    Map<String, Object?> arguments,
+  ) async {
+    final id = _requiredString(arguments, 'id');
+    final schedule = await _schedules().inspect(id);
+    if (schedule.summary.target is! NewAgentScheduleTarget) {
+      throw StateError('Schedule not found: $id');
+    }
+    return schedule;
+  }
+
+  String? _expiresAt(Map<String, Object?> arguments) {
+    final value = _optionalTrimmedString(arguments, 'expiresIn');
+    if (value == null) return null;
+    return DateTime.now()
+        .toUtc()
+        .add(Duration(milliseconds: _parseDurationMs(value)))
+        .toIso8601String();
+  }
+
+  void _applyProviderUpdate(
+    Map<String, Object?> arguments,
+    Map<String, Object?> config,
+  ) {
+    final hasProvider = arguments.containsKey('provider');
+    final hasModel = arguments.containsKey('model');
+    final modelValue = arguments['model'];
+    if (hasModel && modelValue != null) {
+      config['model'] = _requiredString(arguments, 'model');
+    } else if (hasModel) {
+      config['model'] = null;
+    }
+    if (!hasProvider) return;
+    final providerInput = _requiredString(arguments, 'provider');
+    final slash = providerInput.indexOf('/');
+    if (slash < 0) {
+      config['provider'] = providerInput;
+      return;
+    }
+    final pair = _parseProvider(providerInput);
+    if (hasModel && modelValue == null) {
+      throw const FormatException(
+        'model cannot be null when provider includes a model',
+      );
+    }
+    if (hasModel && config['model'] != pair.model) {
+      throw const FormatException('provider model conflicts with model');
+    }
+    config['provider'] = pair.provider;
+    config['model'] = pair.model;
   }
 
   String _resolveScopedCwd(
@@ -1211,6 +1532,71 @@ int _boundedInt(
     throw FormatException('$key must be between $minimum and $maximum');
   }
   return integer;
+}
+
+int? _optionalPositiveInt(Map<String, Object?> values, String key) {
+  if (!values.containsKey(key)) return null;
+  return _nullablePositiveInt(values, key);
+}
+
+int? _nullablePositiveInt(Map<String, Object?> values, String key) {
+  final value = values[key];
+  if (value == null) return null;
+  if (value is! num || value != value.roundToDouble() || value <= 0) {
+    throw FormatException('$key must be a positive integer');
+  }
+  return value.toInt();
+}
+
+({String provider, String? model}) _parseProvider(
+  String? input, {
+  String? defaultProvider,
+  String? defaultModel,
+}) {
+  final value = input?.trim() ?? defaultProvider?.trim();
+  if (value == null || value.isEmpty) {
+    throw const FormatException(
+      'provider must be <provider> or <provider>/<model>',
+    );
+  }
+  final slash = value.indexOf('/');
+  if (slash < 0) {
+    return (provider: value, model: defaultModel);
+  }
+  final provider = value.substring(0, slash).trim();
+  final model = value.substring(slash + 1).trim();
+  if (provider.isEmpty || model.isEmpty) {
+    throw const FormatException(
+      'provider must be <provider> or <provider>/<model>',
+    );
+  }
+  return (provider: provider, model: model);
+}
+
+int _parseDurationMs(String input) {
+  final value = input.trim();
+  if (RegExp(r'^\d+$').hasMatch(value)) {
+    return int.parse(value) * 1000;
+  }
+  var total = 0;
+  var matched = false;
+  for (final match in RegExp(r'(\d+)([smh])').allMatches(value)) {
+    matched = true;
+    final amount = int.parse(match.group(1)!);
+    total += switch (match.group(2)) {
+      's' => amount * 1000,
+      'm' => amount * 60 * 1000,
+      'h' => amount * 60 * 60 * 1000,
+      _ => 0,
+    };
+  }
+  if (!matched) {
+    throw FormatException(
+      'Invalid duration format: $input. '
+      'Use formats like: 5m, 30s, 1h, 2h30m',
+    );
+  }
+  return total;
 }
 
 void _requireAbsent(

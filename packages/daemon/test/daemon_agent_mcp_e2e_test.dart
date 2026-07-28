@@ -57,6 +57,7 @@ final class _McpSession implements AgentSession {
 final class _McpClient implements AgentClient, McpAgentClient {
   final mcpCalls = <Map<String, Object?>>[];
   final sessions = <_McpSession>[];
+  var completeNewSessions = false;
 
   @override
   Future<AgentSession> createSession({
@@ -92,7 +93,7 @@ final class _McpClient implements AgentClient, McpAgentClient {
     Map<String, Object?> mcpServers = const {},
   }) async {
     mcpCalls.add(mcpServers);
-    final session = _McpSession();
+    final session = _McpSession()..completeNextPrompt = completeNewSessions;
     sessions.add(session);
     return session;
   }
@@ -198,6 +199,17 @@ void main() {
         'kill_terminal',
         'capture_terminal',
         'send_terminal_keys',
+        'create_schedule',
+        'create_heartbeat',
+        'delete_heartbeat',
+        'list_schedules',
+        'inspect_schedule',
+        'pause_schedule',
+        'resume_schedule',
+        'delete_schedule',
+        'update_schedule',
+        'schedule_logs',
+        'run_schedule_once',
         'list_agents',
         'get_agent_status',
         'send_agent_prompt',
@@ -228,6 +240,13 @@ void main() {
         ((listTerminalsTool['outputSchema']! as Map)['properties']! as Map)
             .keys,
         ['terminals'],
+      );
+      final createScheduleTool = listedTools.singleWhere(
+        (tool) => tool['name'] == 'create_schedule',
+      );
+      expect(
+        (createScheduleTool['outputSchema']! as Map)['required'],
+        containsAll(['id', 'cadence', 'target', 'nextRunAt']),
       );
 
       final status = await _post(endpoint, {
@@ -537,6 +556,22 @@ void main() {
       );
 
       final topLevelEndpoint = endpoint.replace(queryParameters: const {});
+      final topLevelToolsResponse = await _post(topLevelEndpoint, const {
+        'jsonrpc': '2.0',
+        'id': 'top-level-tools',
+        'method': 'tools/list',
+        'params': <String, Object?>{},
+      }, bearer: mcpAuthToken);
+      final topLevelTools = (_result(topLevelToolsResponse)['tools']! as List)
+          .cast<Map>();
+      final topLevelCreateSchedule = topLevelTools.singleWhere(
+        (tool) => tool['name'] == 'create_schedule',
+      );
+      expect((topLevelCreateSchedule['inputSchema']! as Map)['required'], [
+        'prompt',
+        'cron',
+        'provider',
+      ]);
       expect(
         await _callError(
           topLevelEndpoint,
@@ -732,6 +767,7 @@ void main() {
           'background': true,
         },
       );
+      final autonomousSession = client.sessions.last;
       expect(autonomous['type'], 'fixture');
       expect(autonomous['workspaceId'], workspaceA['workspaceId']);
       expect(autonomous['currentModeId'], 'plan');
@@ -828,6 +864,173 @@ void main() {
         {'success': true},
       );
       await _waitUntil(() => !handle.terminals.contains(scopedTerminalId));
+
+      expect(
+        await _callError(
+          topLevelEndpoint,
+          mcpAuthToken,
+          'create_heartbeat',
+          const {'prompt': 'Check status', 'cron': '0 * * * *'},
+        ),
+        contains('requires an agent-scoped session'),
+      );
+      final heartbeat =
+          await _call(scopedEndpoint, mcpAuthToken, 'create_heartbeat', const {
+            'prompt': 'Check status',
+            'cron': '0 0 1 1 *',
+            'timezone': 'UTC',
+            'name': '  Daily heartbeat  ',
+            'maxRuns': 3,
+            'expiresIn': '1h',
+          });
+      expect(heartbeat['name'], 'Daily heartbeat');
+      expect((heartbeat['target'] as Map)['agentId'], workspaceParent.agentId);
+      final replacedHeartbeat =
+          await _call(scopedEndpoint, mcpAuthToken, 'create_heartbeat', const {
+            'prompt': 'Check status again',
+            'cron': '0 0 1 1 *',
+            'timezone': 'UTC',
+            'name': 'Daily heartbeat',
+          });
+      expect(replacedHeartbeat['id'], heartbeat['id']);
+      expect(replacedHeartbeat['prompt'], 'Check status again');
+      expect(
+        await _callError(callerEndpoint, mcpAuthToken, 'delete_heartbeat', {
+          'id': heartbeat['id'],
+        }),
+        contains('does not belong to caller'),
+      );
+      expect(
+        await _callError(topLevelEndpoint, mcpAuthToken, 'inspect_schedule', {
+          'id': heartbeat['id'],
+        }),
+        contains('Schedule not found'),
+      );
+      expect(
+        (await _call(
+          topLevelEndpoint,
+          mcpAuthToken,
+          'list_schedules',
+          const {},
+        ))['schedules'],
+        isEmpty,
+      );
+      expect(
+        await _call(scopedEndpoint, mcpAuthToken, 'delete_heartbeat', {
+          'id': heartbeat['id'],
+        }),
+        {'success': true},
+      );
+
+      expect(
+        await _callError(
+          topLevelEndpoint,
+          mcpAuthToken,
+          'create_schedule',
+          const {'prompt': 'Run checks', 'cron': '0 0 1 1 *'},
+        ),
+        contains('provider is required'),
+      );
+      final scheduled =
+          await _call(topLevelEndpoint, mcpAuthToken, 'create_schedule', {
+            'prompt': 'Run checks',
+            'cron': '0 0 1 1 *',
+            'timezone': 'UTC',
+            'name': '  Scheduled checks  ',
+            'provider': 'fixture/fixture-model',
+            'cwd': home.path,
+            'isolation': 'local',
+            'maxRuns': 3,
+            'expiresIn': '1h',
+          });
+      final scheduleId = scheduled['id']! as String;
+      final replacedSchedule =
+          await _call(topLevelEndpoint, mcpAuthToken, 'create_schedule', {
+            'prompt': 'Run checks again',
+            'cron': '0 0 1 1 *',
+            'timezone': 'UTC',
+            'name': 'Scheduled checks',
+            'provider': 'fixture/fixture-model',
+            'cwd': home.path,
+            'isolation': 'local',
+          });
+      expect(replacedSchedule['id'], scheduleId);
+      expect(replacedSchedule['prompt'], 'Run checks again');
+      final listedSchedules = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'list_schedules',
+        const {},
+      );
+      expect(
+        (listedSchedules['schedules']! as List).cast<Map>().map(
+          (entry) => entry['id'],
+        ),
+        contains(scheduleId),
+      );
+      final inspectedSchedule = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'inspect_schedule',
+        {'id': scheduleId},
+      );
+      expect(inspectedSchedule['runs'], isEmpty);
+      expect(
+        await _call(topLevelEndpoint, mcpAuthToken, 'pause_schedule', {
+          'id': scheduleId,
+        }),
+        {'success': true},
+      );
+      expect(
+        await _call(topLevelEndpoint, mcpAuthToken, 'resume_schedule', {
+          'id': scheduleId,
+        }),
+        {'success': true},
+      );
+      final updatedSchedule =
+          await _call(topLevelEndpoint, mcpAuthToken, 'update_schedule', {
+            'id': scheduleId,
+            'every': '1h',
+            'name': 'Hourly checks',
+            'prompt': 'Run hourly checks',
+            'maxRuns': null,
+            'provider': 'fixture',
+            'model': 'fixture-model',
+            'mode': null,
+            'cwd': home.path,
+            'expiresIn': '2h',
+          });
+      expect(updatedSchedule['name'], 'Hourly checks');
+      expect((updatedSchedule['cadence'] as Map)['expression'], '0 * * * *');
+      expect(updatedSchedule['maxRuns'], isNull);
+
+      client.completeNewSessions = true;
+      final runSchedule = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'run_schedule_once',
+        {'id': scheduleId},
+      );
+      client.completeNewSessions = false;
+      expect((runSchedule['runs']! as List), hasLength(1));
+      expect(
+        ((runSchedule['runs']! as List).single as Map)['status'],
+        'succeeded',
+      );
+      final scheduleLogs = await _call(
+        topLevelEndpoint,
+        mcpAuthToken,
+        'schedule_logs',
+        {'id': scheduleId},
+      );
+      expect((scheduleLogs['runs']! as List), hasLength(1));
+      expect(
+        await _call(topLevelEndpoint, mcpAuthToken, 'delete_schedule', {
+          'id': scheduleId,
+        }),
+        {'success': true},
+      );
+
       final crossWorkspaceChild =
           await _call(scopedEndpoint, mcpAuthToken, 'create_agent', {
             'title': 'Cross workspace child',
@@ -836,6 +1039,7 @@ void main() {
             'initialPrompt': 'Work elsewhere',
             'notifyOnFinish': false,
           });
+      final crossWorkspaceChildSession = client.sessions.last;
       expect(crossWorkspaceChild['guidance'], isNull);
       final childSummary = handle.manager.get(
         crossWorkspaceChild['agentId']! as String,
@@ -847,10 +1051,8 @@ void main() {
         workspaceParent.agentId,
       );
       await pumpEventQueue();
-      expect(client.sessions[client.sessions.length - 3].prompts, [
-        'Start automation',
-      ]);
-      expect(client.sessions.last.prompts, ['Work elsewhere']);
+      expect(autonomousSession.prompts, ['Start automation']);
+      expect(crossWorkspaceChildSession.prompts, ['Work elsewhere']);
 
       final archivedWorkspace = await _call(
         endpoint,

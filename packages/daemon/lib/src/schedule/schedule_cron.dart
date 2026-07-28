@@ -59,7 +59,7 @@ DateTime computeNextRunAt(ScheduleCadence cadence, DateTime after) {
 timezone.Location _location(String name) {
   _ensureTimeZones();
   try {
-    return timezone.getLocation(name);
+    return timezone.getLocation(name == 'UTC' ? 'Etc/UTC' : name);
   } on Object {
     throw FormatException('Invalid cron time zone: $name');
   }
