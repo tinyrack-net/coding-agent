@@ -5,6 +5,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
 
 import '../agent/agent_manager.dart';
+import '../agent/create_agent_mode.dart';
 import '../agent/timeline_projection.dart';
 import '../agent/timeline_store.dart';
 import '../providers/paseo/provider_catalog_registry.dart';
@@ -853,12 +854,23 @@ final class AgentMcpTools {
     final background = callerAgentId != null || requestedBackground;
     final notifyOnFinish =
         _nullableBool(arguments, 'notifyOnFinish') ?? callerAgentId != null;
+    final resolvedModeId = await _providerCatalog.resolveCreateAgentMode(
+      AgentCreateModeRequest(
+        cwd: workspace.cwd,
+        targetProvider: provider,
+        requestedMode: modeId,
+        parent: caller == null
+            ? null
+            : _providerCatalog.createAgentModeParent(caller),
+        unattended: false,
+      ),
+    );
     final agent = await _manager.createAgent(
       cwd: workspace.cwd,
       provider: provider,
       model: model,
-      mode: _agentMode(modeId),
-      modeId: modeId,
+      mode: _agentMode(resolvedModeId),
+      modeId: resolvedModeId,
       thinkingOptionId: thinkingOptionId,
       featureValues: features,
       title: title,

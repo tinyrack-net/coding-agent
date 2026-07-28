@@ -132,6 +132,14 @@ void main() {
       final terminalsStreamFuture = frames.firstWhere(
         (frame) => isCompletedTool(frame, 'paseo_worktree_terminals'),
       );
+      final parent = await handle.manager.createAgent(
+        cwd: workspace.workspaceDirectory,
+        provider: 'test',
+        model: 'fake',
+        mode: AgentMode.fullAccess,
+        modeId: 'trusted',
+        workspaceId: workspace.id,
+      );
       final agentFuture = frames.firstWhere(
         (frame) =>
             frame['type'] == 'session' &&
@@ -153,6 +161,7 @@ void main() {
               'projectPath': workspace.projectRootPath,
               'branch': 'feature',
               'isWorktree': true,
+              'parentAgentId': parent.agentId,
               'initialPrompt': 'Start after bootstrap',
               'clientMessageId': 'first-client-message',
             },
@@ -171,6 +180,7 @@ void main() {
         agentFrame.payload['agent'] as Map<String, Object?>,
       );
       expect(agent.title, 'Start after bootstrap');
+      expect(agent.currentModeId, 'trusted');
       final terminalMarker = File(
         '${workspace.workspaceDirectory}'
         '${Platform.pathSeparator}terminal-marker.txt',

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:agent_daemon/src/agent/create_agent_mode.dart';
 import 'package:agent_daemon/src/providers/paseo/acp_catalog.dart';
 import 'package:agent_daemon/src/providers/paseo/provider_catalog_registry.dart';
 import 'package:agent_daemon/src/providers/paseo/provider_manifest.dart';
@@ -101,6 +102,111 @@ void main() {
         'ready',
       );
       expect(await catalog.snapshot(providers: ['unknown']), isEmpty);
+    },
+  );
+
+  test(
+    'resolves create modes from the ready catalog and unattended metadata',
+    () async {
+      const worker = PaseoProviderDefinition(
+        id: 'worker',
+        label: 'Worker',
+        description: 'Worker provider',
+        command: 'worker',
+        defaultModeId: 'build',
+        modes: [
+          PaseoProviderModeDefinition(
+            mode: ProviderMode(id: 'build', label: 'Build'),
+          ),
+          PaseoProviderModeDefinition(
+            mode: ProviderMode(id: 'allow-all', label: 'Allow all'),
+            isUnattended: true,
+          ),
+        ],
+      );
+      const plain = PaseoProviderDefinition(
+        id: 'plain',
+        label: 'Plain',
+        description: 'Provider without modes',
+        command: 'plain',
+        defaultModeId: null,
+        modes: [],
+      );
+      final catalog = PaseoProviderCatalogRegistry(
+        definitions: const [worker, plain],
+        commandResolver: (definition) async => '/bin/${definition.command}',
+      );
+
+      expect(
+        await catalog.resolveCreateAgentMode(
+          const AgentCreateModeRequest(
+            cwd: '.',
+            targetProvider: 'worker',
+            requestedMode: 'build',
+            parent: null,
+            unattended: false,
+          ),
+        ),
+        'build',
+      );
+      expect(
+        await catalog.resolveCreateAgentMode(
+          const AgentCreateModeRequest(
+            cwd: '.',
+            targetProvider: 'worker',
+            requestedMode: null,
+            parent: AgentCreateModeParent(
+              provider: 'parent',
+              modeId: 'unattended',
+              isUnattended: true,
+            ),
+            unattended: false,
+          ),
+        ),
+        'allow-all',
+      );
+      expect(
+        await catalog.resolveCreateAgentMode(
+          const AgentCreateModeRequest(
+            cwd: '.',
+            targetProvider: 'plain',
+            requestedMode: null,
+            parent: AgentCreateModeParent(
+              provider: 'parent',
+              modeId: 'unattended',
+              isUnattended: true,
+            ),
+            unattended: false,
+          ),
+        ),
+        isNull,
+      );
+      expect(
+        catalog.isCreateAgentModeUnattended(
+          provider: 'worker',
+          modeId: 'allow-all',
+        ),
+        isTrue,
+      );
+      expect(
+        () => catalog.resolveCreateAgentMode(
+          const AgentCreateModeRequest(
+            cwd: '.',
+            targetProvider: 'worker',
+            requestedMode: 'missing',
+            parent: null,
+            unattended: false,
+          ),
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            "Invalid mode 'missing' for provider 'worker'. "
+                'Available modes: build, allow-all',
+          ),
+        ),
+      );
     },
   );
 

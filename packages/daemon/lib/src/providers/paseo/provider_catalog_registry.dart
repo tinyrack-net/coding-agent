@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
 
+import '../../agent/create_agent_mode.dart';
 import 'acp_catalog.dart';
 import 'executable_resolver.dart';
 import 'provider_manifest.dart';
@@ -119,6 +120,64 @@ final class PaseoProviderCatalogRegistry {
       ),
     );
   }
+
+  Future<String?> resolveCreateAgentMode(AgentCreateModeRequest request) async {
+    final providerDefinition = definition(request.targetProvider);
+    List<String>? availableModes;
+    String? targetUnattendedMode;
+    if (providerDefinition != null) {
+      final entries = await snapshot(
+        providers: [request.targetProvider],
+        cwd: request.cwd,
+      );
+      final entry = entries.firstOrNull;
+      if (entry?.status == ProviderCatalogStatus.ready) {
+        availableModes = [
+          for (final mode in entry?.modes ?? const <ProviderMode>[]) mode.id,
+        ];
+      }
+      for (final mode in providerDefinition.modes) {
+        if (mode.isUnattended) {
+          targetUnattendedMode = mode.mode.id;
+          break;
+        }
+      }
+    }
+    return resolveAndValidateCreateAgentMode(
+      requestedMode: request.requestedMode,
+      targetProvider: request.targetProvider,
+      parent: request.parent,
+      unattended: request.unattended,
+      availableModes: availableModes,
+      targetUnattendedMode: targetUnattendedMode,
+    );
+  }
+
+  bool isCreateAgentModeUnattended({
+    required String provider,
+    required String? modeId,
+  }) {
+    final modes = {
+      for (final mode
+          in definition(provider)?.modes ??
+              const <PaseoProviderModeDefinition>[])
+        mode.mode.id: mode.isUnattended,
+    };
+    return isDefaultAgentCreateConfigUnattended(
+      modeId: modeId,
+      unattendedModes: modes,
+    );
+  }
+
+  AgentCreateModeParent createAgentModeParent(AgentSummary parent) =>
+      AgentCreateModeParent(
+        provider: parent.provider,
+        modeId: parent.currentModeId,
+        isUnattended: isCreateAgentModeUnattended(
+          provider: parent.provider,
+          modeId: parent.currentModeId,
+        ),
+      );
 
   Future<ProviderSnapshotEntry> _snapshotEntry(
     PaseoProviderDefinition definition, {

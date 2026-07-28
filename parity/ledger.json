@@ -10899,10 +10899,17 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent-mode.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/agent/create_agent_mode.dart; packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart; packages/daemon/lib/src/daemon_server.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/schedule/schedule_agent_runner.dart",
+      "evidence": [
+        "packages/daemon/test/agent/create_agent_mode_test.dart",
+        "packages/daemon/test/providers/paseo/provider_catalog_registry_test.dart",
+        "packages/daemon/test/schedule/schedule_agent_runner_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/daemon/test/daemon_agent_continuation_e2e_test.dart",
+        "packages/daemon/test/agent_store_test.dart"
+      ],
+      "notes": "Matches frozen explicit-mode validation and diagnostics, same-provider inheritance, cross-provider refusal including unknown/no-mode semantics, unattended target-mode bridging, and explicit-mode precedence across direct, MCP, and scheduled creation. AgentStore now serializes same-agent atomic writes with unique temporary files after the parallel boundary exposed a Windows rename race. The 33-test targeted boundary passed once and then passed in three concurrent independent processes with --concurrency=8 (99 repeated tests) without flakes."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent-title.ts",

@@ -862,6 +862,7 @@ void main() {
         provider: 'fixture',
         model: 'fixture-model',
         mode: AgentMode.normal,
+        modeId: 'full-access',
         title: 'Workspace parent',
         workspaceId: workspaceA['workspaceId']! as String,
       );
@@ -1125,6 +1126,7 @@ void main() {
       )!;
       expect(childSummary.workspaceId, workspaceB['workspaceId']);
       expect(childSummary.parentAgentId, workspaceParent.agentId);
+      expect(childSummary.currentModeId, 'full-access');
       expect(
         childSummary.labels[paseoParentAgentIdLabel],
         workspaceParent.agentId,

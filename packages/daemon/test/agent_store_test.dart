@@ -157,6 +157,34 @@ void main() {
       expect(loaded.single.epoch, 5);
     });
 
+    test('concurrent saves to one agent serialize and latest wins', () async {
+      final store = AgentStore(dataDir: tempDir.path);
+      final writes = [
+        for (var index = 0; index < 40; index++)
+          store.save(
+            PersistedAgent(
+              summary: record().summary.copyWith(title: 'revision-$index'),
+              archived: false,
+              epoch: 2,
+              lastSeq: index,
+              items: const [],
+            ),
+          ),
+      ];
+
+      await Future.wait(writes);
+
+      final loaded = await store.loadAll();
+      expect(loaded, hasLength(1));
+      expect(loaded.single.summary.title, 'revision-39');
+      expect(loaded.single.lastSeq, 39);
+      final leftovers = await tempDir
+          .list(recursive: true)
+          .where((entity) => entity is File && entity.path.endsWith('.tmp'))
+          .toList();
+      expect(leftovers, isEmpty);
+    });
+
     test('agents in different cwds land in distinct directories', () async {
       final store = AgentStore(dataDir: tempDir.path);
       await store.save(record(agentId: 'a1', cwd: r'C:\proj one'));

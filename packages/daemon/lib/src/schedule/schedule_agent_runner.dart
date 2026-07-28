@@ -4,6 +4,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
 
 import '../agent/agent_manager.dart';
+import '../agent/create_agent_mode.dart';
 import '../agent/create_agent_title.dart';
 import '../workspace/workspace_v2_service.dart';
 import 'schedule_service.dart';
@@ -13,6 +14,7 @@ final class ScheduleAgentRunner {
     this.manager,
     this.workspaces, {
     required this.recordWorkspace,
+    required this.resolveCreateMode,
   });
 
   final AgentManager manager;
@@ -24,6 +26,7 @@ final class ScheduleAgentRunner {
     required String? agentId,
   })
   recordWorkspace;
+  final AgentCreateModeResolver resolveCreateMode;
 
   Future<ScheduleExecutionResult> call(
     StoredSchedule schedule,
@@ -89,12 +92,21 @@ final class ScheduleAgentRunner {
     );
     AgentSummary? agent;
     try {
+      final resolvedModeId = await resolveCreateMode(
+        AgentCreateModeRequest(
+          cwd: workspace.cwd,
+          targetProvider: config.provider,
+          requestedMode: config.modeId,
+          parent: null,
+          unattended: true,
+        ),
+      );
       agent = await manager.createAgent(
         cwd: workspace.cwd,
         provider: config.provider,
         model: config.model ?? '',
-        mode: _mode(config.modeId),
-        modeId: config.modeId,
+        mode: _mode(resolvedModeId),
+        modeId: resolvedModeId,
         thinkingOptionId: config.thinkingOptionId,
         featureValues: config.featureValues ?? const {},
         mcpServers: config.mcpServers ?? const {},

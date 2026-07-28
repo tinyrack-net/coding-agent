@@ -83,6 +83,8 @@ class AgentStore {
 
   final Map<String, Timer> _timers = {};
   final Map<String, PersistedAgent> _dirty = {};
+  final Map<String, Future<void>> _writes = {};
+  static int _nextTempId = 0;
 
   static String defaultDataDir() {
     final home =
@@ -142,17 +144,38 @@ class AgentStore {
   }
 
   /// Immediate atomic write (tmp + rename).
-  Future<void> save(PersistedAgent record) async {
-    final file = File(_fileFor(record));
+  Future<void> save(PersistedAgent record) {
+    final path = _fileFor(record);
+    final previous = _writes[path] ?? Future<void>.value();
+    late final Future<void> queued;
+    queued = previous.then(
+      (_) => _saveNow(path, record),
+      onError: (_, __) => _saveNow(path, record),
+    );
+    _writes[path] = queued;
+    return queued.whenComplete(() {
+      if (identical(_writes[path], queued)) {
+        _writes.remove(path);
+      }
+    });
+  }
+
+  Future<void> _saveNow(String path, PersistedAgent record) async {
+    final file = File(path);
     await file.parent.create(recursive: true);
-    final tmp = File('${file.path}.tmp');
-    await tmp.writeAsString(jsonEncode(record.toJson()), flush: true);
-    if (file.existsSync()) {
-      try {
+    final tempId = _nextTempId++;
+    final tmp = File('${file.path}.$pid.$tempId.tmp');
+    try {
+      await tmp.writeAsString(jsonEncode(record.toJson()), flush: true);
+      if (await file.exists()) {
         await file.delete();
-      } catch (_) {}
+      }
+      await tmp.rename(file.path);
+    } finally {
+      if (await tmp.exists()) {
+        await tmp.delete();
+      }
     }
-    await tmp.rename(file.path);
   }
 
   /// Write out all pending debounced saves now.
@@ -165,6 +188,10 @@ class AgentStore {
     _dirty.clear();
     for (final record in pending) {
       await save(record);
+    }
+    final writes = _writes.values.toList(growable: false);
+    if (writes.isNotEmpty) {
+      await Future.wait(writes);
     }
   }
 }

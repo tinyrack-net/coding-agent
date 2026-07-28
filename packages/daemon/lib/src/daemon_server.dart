@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import 'agent/agent_manager.dart';
+import 'agent/create_agent_mode.dart';
 import 'agent/create_agent_title.dart';
 import 'agent/agent_store.dart';
 import 'agent/timeline_projection.dart';
@@ -406,16 +407,34 @@ Future<DaemonServerHandle> startDaemonServer({
       final images = AgentPromptImage.normalizeList(payload['images']);
       final attachments = AgentAttachment.normalizeList(payload['attachments']);
       try {
+        final provider =
+            (payload['provider'] as String?) ?? ProviderId.openai.name;
+        final parentAgentId = payload['parentAgentId'] as String?;
+        final parent = parentAgentId == null
+            ? null
+            : manager.get(parentAgentId);
+        final resolvedModeId = await paseoProviderCatalog
+            .resolveCreateAgentMode(
+              AgentCreateModeRequest(
+                cwd: cwd,
+                targetProvider: provider,
+                requestedMode: payload['modeId'] as String?,
+                parent: parent == null
+                    ? null
+                    : paseoProviderCatalog.createAgentModeParent(parent),
+                unattended: false,
+              ),
+            );
         final titles = resolveCreateAgentTitles(
           configTitle: payload['title'] as String?,
           initialPrompt: initialPrompt,
         );
         final agent = await manager.createAgent(
           cwd: cwd,
-          provider: (payload['provider'] as String?) ?? ProviderId.openai.name,
+          provider: provider,
           model: (payload['model'] as String?) ?? '',
           mode: _parseMode(payload['mode']),
-          modeId: payload['modeId'] as String?,
+          modeId: resolvedModeId,
           thinkingOptionId: payload['thinkingOptionId'] as String?,
           featureValues: payload['features'] is Map
               ? Map<String, Object?>.from(payload['features']! as Map)
@@ -428,7 +447,7 @@ Future<DaemonServerHandle> startDaemonServer({
           projectPath: payload['projectPath'] as String?,
           branch: payload['branch'] as String?,
           isWorktree: payload['isWorktree'] == true,
-          parentAgentId: payload['parentAgentId'] as String?,
+          parentAgentId: parentAgentId,
         );
         Future<void> startInitialPrompt() => manager.prompt(
           agent.agentId,
@@ -807,6 +826,7 @@ Future<DaemonServerHandle> startDaemonServer({
   final scheduleRunner = ScheduleAgentRunner(
     manager,
     workspaceV2,
+    resolveCreateMode: paseoProviderCatalog.resolveCreateAgentMode,
     recordWorkspace:
         ({
           required scheduleId,

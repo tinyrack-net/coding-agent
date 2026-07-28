@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:agent_daemon/src/agent/agent_manager.dart';
 import 'package:agent_daemon/src/agent/agent_store.dart';
+import 'package:agent_daemon/src/agent/create_agent_mode.dart';
 import 'package:agent_daemon/src/git/git_service.dart';
 import 'package:agent_daemon/src/providers/agent_client.dart';
 import 'package:agent_daemon/src/providers/agent_session.dart';
@@ -20,6 +21,7 @@ void main() {
   late WorkspaceRegistries registries;
   late WorkspaceV2Service workspaces;
   late List<({String workspaceId, String? agentId})> records;
+  late List<AgentCreateModeRequest> modeRequests;
 
   setUp(() async {
     temp = Directory.systemTemp.createTempSync('schedule-runner-');
@@ -40,6 +42,7 @@ void main() {
       broadcast: (_, __) {},
     );
     records = [];
+    modeRequests = [];
   });
 
   tearDown(() async {
@@ -50,6 +53,17 @@ void main() {
   ScheduleAgentRunner runner() => ScheduleAgentRunner(
     manager,
     workspaces,
+    resolveCreateMode: (request) async {
+      modeRequests.add(request);
+      return resolveAndValidateCreateAgentMode(
+        requestedMode: request.requestedMode,
+        targetProvider: request.targetProvider,
+        parent: request.parent,
+        unattended: request.unattended,
+        availableModes: const ['auto', 'full-access'],
+        targetUnattendedMode: 'full-access',
+      );
+    },
     recordWorkspace:
         ({
           required scheduleId,
@@ -105,7 +119,12 @@ void main() {
     );
 
     expect(result.workspaceId, isNotNull);
-    expect(manager.get(result.agentId!)!.title, 'Review the branch');
+    final summary = manager.get(result.agentId!)!;
+    expect(summary.title, 'Review the branch');
+    expect(summary.currentModeId, 'full-access');
+    expect(modeRequests, hasLength(1));
+    expect(modeRequests.single.unattended, isTrue);
+    expect(modeRequests.single.parent, isNull);
     expect(records, hasLength(2));
     expect(records.first.agentId, isNull);
     expect(records.last.agentId, result.agentId);
