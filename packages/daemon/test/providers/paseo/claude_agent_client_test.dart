@@ -457,7 +457,8 @@ void main() {
       await session.prompt('first');
       await expectLater(session.prompt('overlap'), throwsStateError);
       final notice = await session.setThinkingOption('max');
-      expect(notice?.message, contains('next Claude turn'));
+      expect(notice?.type, AgentProviderNoticeType.warning);
+      expect(notice?.message, 'Thinking level applies next turn');
       expect(launches, hasLength(1));
       connections.single.emit({
         'type': 'result',
@@ -689,7 +690,8 @@ void main() {
     expect((connection.sent[4]['request'] as Map)['settings'], {
       'fastMode': true,
     });
-    expect(notice?.type, AgentProviderNoticeType.info);
+    expect(notice?.type, AgentProviderNoticeType.warning);
+    expect(notice?.message, 'Thinking level applies next turn');
     await expectLater(
       session.setFeature('unknown', true),
       throwsUnsupportedError,

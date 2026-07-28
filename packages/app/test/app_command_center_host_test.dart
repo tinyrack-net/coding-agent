@@ -103,6 +103,24 @@ class _FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
     Duration timeout = const Duration(seconds: 30),
   }) async {
     sessionMessages.add(message);
+    final responseType = switch (message['type']) {
+      'set_agent_mode_request' => 'set_agent_mode_response',
+      'set_agent_model_request' => 'set_agent_model_response',
+      'set_agent_thinking_request' => 'set_agent_thinking_response',
+      'set_agent_feature_request' => 'set_agent_feature_response',
+      _ => null,
+    };
+    if (responseType != null) {
+      return {
+        'type': responseType,
+        'payload': {
+          'requestId': message['requestId'],
+          'agentId': message['agentId'],
+          'accepted': true,
+          'error': null,
+        },
+      };
+    }
     return const {};
   }
 }

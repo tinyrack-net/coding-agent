@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uuid/uuid.dart';
 
 import '../command_center/command_center.dart';
 import '../composer/provider_model_selection.dart';
@@ -28,8 +27,6 @@ import '../state/worktree_titles_provider.dart';
 import 'command_center_dialog.dart';
 import 'keyboard_shortcuts_dialog.dart';
 import 'workspace_explorer.dart';
-
-const _uuid = Uuid();
 
 class AppCommandCenterHost extends ConsumerStatefulWidget {
   const AppCommandCenterHost({
@@ -590,12 +587,7 @@ class _AppCommandCenterHostState extends ConsumerState<AppCommandCenterHost> {
   }
 
   Future<void> _setAgentModel(AgentSummary agent, String modelId) async {
-    await ref.read(daemonClientProvider).requestSessionMessage({
-      'type': 'set_agent_model_request',
-      'agentId': agent.agentId,
-      'modelId': modelId,
-      'requestId': _uuid.v4(),
-    });
+    await ref.read(daemonClientProvider).setAgentModel(agent.agentId, modelId);
   }
 
   @override

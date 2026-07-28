@@ -271,6 +271,77 @@ class DaemonClient {
     );
   }
 
+  Future<AgentProviderNotice?> setAgentMode(String agentId, String modeId) =>
+      _requestAgentConfig(
+        type: 'set_agent_mode_request',
+        responseType: 'set_agent_mode_response',
+        agentId: agentId,
+        fields: {'modeId': modeId},
+      );
+
+  Future<void> setAgentModel(String agentId, String? modelId) async {
+    await _requestAgentConfig(
+      type: 'set_agent_model_request',
+      responseType: 'set_agent_model_response',
+      agentId: agentId,
+      fields: {'modelId': modelId},
+    );
+  }
+
+  Future<AgentProviderNotice?> setAgentThinkingOption(
+    String agentId,
+    String? thinkingOptionId,
+  ) => _requestAgentConfig(
+    type: 'set_agent_thinking_request',
+    responseType: 'set_agent_thinking_response',
+    agentId: agentId,
+    fields: {'thinkingOptionId': thinkingOptionId},
+  );
+
+  Future<void> setAgentFeature(
+    String agentId,
+    String featureId,
+    Object? value,
+  ) async {
+    await _requestAgentConfig(
+      type: 'set_agent_feature_request',
+      responseType: 'set_agent_feature_response',
+      agentId: agentId,
+      fields: {'featureId': featureId, 'value': value},
+    );
+  }
+
+  Future<AgentProviderNotice?> _requestAgentConfig({
+    required String type,
+    required String responseType,
+    required String agentId,
+    required Map<String, Object?> fields,
+  }) async {
+    final requestId = _uuid.v4();
+    final response = AgentConfigResponse.fromJson(
+      await requestSessionMessage({
+        'type': type,
+        'agentId': agentId,
+        ...fields,
+        'requestId': requestId,
+      }),
+    );
+    if (response.type != responseType ||
+        response.requestId != requestId ||
+        response.agentId != agentId) {
+      throw const FormatException('Agent config response mismatch');
+    }
+    if (!response.accepted) {
+      throw DaemonRpcException(
+        RpcError(
+          code: 'agent_config_rejected',
+          message: response.error ?? 'Agent configuration was rejected',
+        ),
+      );
+    }
+    return response.notice;
+  }
+
   /// Fetches one Paseo v2 timeline page and validates response correlation.
   Future<AgentTimelinePage> fetchAgentTimeline({
     required String agentId,

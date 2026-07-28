@@ -51,6 +51,7 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
   List<DirectorySuggestionEntry> suggestions = const [];
   final suggestionRequests = <({String query, String? cwd, int? limit})>[];
   Object? suggestionError;
+  AgentProviderNotice? sessionNotice;
 
   @override
   Stream<RpcEvent> get events => const Stream.empty();
@@ -105,6 +106,26 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
     sessionMessages.add(message);
     final error = requestError;
     if (error != null) throw error;
+    final type = message['type'];
+    final responseType = switch (type) {
+      'set_agent_mode_request' => 'set_agent_mode_response',
+      'set_agent_model_request' => 'set_agent_model_response',
+      'set_agent_thinking_request' => 'set_agent_thinking_response',
+      'set_agent_feature_request' => 'set_agent_feature_response',
+      _ => null,
+    };
+    if (responseType != null) {
+      return {
+        'type': responseType,
+        'payload': {
+          'requestId': message['requestId'],
+          'agentId': message['agentId'],
+          'accepted': true,
+          'error': null,
+          if (sessionNotice case final notice?) 'notice': notice.toJson(),
+        },
+      };
+    }
     return const {};
   }
 
@@ -1338,7 +1359,11 @@ void main() {
   testWidgets('keyboard dispatcher focuses, sends, and cycles agent mode', (
     tester,
   ) async {
-    final client = FakeDaemonClient();
+    final client = FakeDaemonClient()
+      ..sessionNotice = const AgentProviderNotice(
+        type: AgentProviderNoticeType.warning,
+        message: 'Permission mode applies next turn',
+      );
     await pumpComposer(tester, client);
 
     expect(
@@ -1382,5 +1407,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 150));
     expect(client.sessionMessages.single['type'], 'set_agent_mode_request');
     expect(client.sessionMessages.single['modeId'], AgentMode.fullAccess.name);
+    expect(find.text('Permission mode applies next turn'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
+    expect(find.text('Permission mode applies next turn'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('Permission mode applies next turn'), findsNothing);
   });
 }

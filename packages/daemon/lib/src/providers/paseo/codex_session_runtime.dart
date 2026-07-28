@@ -125,6 +125,7 @@ final class CodexSessionRuntime {
   String? get thinkingOptionId => _thinkingOptionId;
   String get modeId => _modeId;
   bool get isConnected => _connected;
+  bool get isTurnActive => _currentTurnId != null;
   List<TimelineItem>? get restoredHistory => _restoredHistory == null
       ? null
       : List<TimelineItem>.unmodifiable(_restoredHistory!);

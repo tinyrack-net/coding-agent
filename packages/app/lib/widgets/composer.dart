@@ -17,6 +17,7 @@ import '../attachments/attachment_store.dart';
 import '../keyboard/keyboard_action_dispatcher.dart';
 import '../keyboard/shortcut_engine.dart';
 import '../keyboard/shortcut_focus_scope.dart';
+import '../core/provider_notice_toast.dart';
 import '../state/agents_provider.dart';
 import '../state/agent_commands_provider.dart';
 import '../state/create_flow_provider.dart';
@@ -244,12 +245,10 @@ class _ComposerState extends ConsumerState<Composer> {
     final index = modes.indexOf(agent.mode);
     final next = modes[(index + 1) % modes.length];
     try {
-      await ref.read(daemonClientProvider).requestSessionMessage({
-        'type': 'set_agent_mode_request',
-        'agentId': widget.agentId,
-        'modeId': next.name,
-        'requestId': const Uuid().v4(),
-      });
+      final notice = await ref
+          .read(daemonClientProvider)
+          .setAgentMode(widget.agentId, next.name);
+      if (mounted) showProviderNoticeToast(context, notice);
     } catch (e) {
       if (!mounted) return;
       AppToast.show(

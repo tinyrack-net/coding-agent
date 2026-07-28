@@ -5,7 +5,70 @@ final class AgentProviderNotice {
   final AgentProviderNoticeType type;
   final String message;
 
+  factory AgentProviderNotice.fromJson(Map<String, Object?> json) {
+    final type = json['type'];
+    final message = json['message'];
+    if (type is! String || message is! String) {
+      throw const FormatException('Invalid agent provider notice');
+    }
+    return AgentProviderNotice(
+      type:
+          AgentProviderNoticeType.values
+              .where((value) => value.name == type)
+              .firstOrNull ??
+          (throw FormatException('Unknown agent provider notice type: $type')),
+      message: message,
+    );
+  }
+
   Map<String, Object?> toJson() => {'type': type.name, 'message': message};
+}
+
+final class AgentConfigResponse {
+  const AgentConfigResponse({
+    required this.type,
+    required this.requestId,
+    required this.agentId,
+    required this.accepted,
+    required this.error,
+    required this.notice,
+  });
+
+  final String type;
+  final String requestId;
+  final String agentId;
+  final bool accepted;
+  final String? error;
+  final AgentProviderNotice? notice;
+
+  factory AgentConfigResponse.fromJson(Map<String, Object?> json) {
+    final type = json['type'];
+    if (!const {
+      'set_agent_mode_response',
+      'set_agent_model_response',
+      'set_agent_thinking_response',
+      'set_agent_feature_response',
+    }.contains(type)) {
+      throw FormatException('Unknown agent config response: $type');
+    }
+    final payload = _map(json['payload'], 'agent config response payload');
+    final accepted = payload['accepted'];
+    final error = payload['error'];
+    final notice = payload['notice'];
+    if (accepted is! bool || (error != null && error is! String)) {
+      throw const FormatException('Invalid agent config response');
+    }
+    return AgentConfigResponse(
+      type: type! as String,
+      requestId: _requiredString(payload, 'requestId'),
+      agentId: _requiredString(payload, 'agentId'),
+      accepted: accepted,
+      error: error as String?,
+      notice: notice == null
+          ? null
+          : AgentProviderNotice.fromJson(_map(notice, 'agent provider notice')),
+    );
+  }
 }
 
 sealed class AgentConfigRequest {
@@ -94,4 +157,9 @@ String? _nullableString(Map<String, Object?> json, String key) {
   final value = json[key];
   if (value != null && value is! String) throw FormatException('Invalid $key');
   return value as String?;
+}
+
+Map<String, Object?> _map(Object? value, String field) {
+  if (value is! Map) throw FormatException('$field must be an object');
+  return Map<String, Object?>.from(value);
 }

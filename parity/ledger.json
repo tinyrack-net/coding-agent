@@ -11033,10 +11033,18 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/provider-notices.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/provider_notices.dart; packages/daemon/lib/src/providers/paseo/codex_agent_session.dart; packages/daemon/lib/src/providers/paseo/codex_session_runtime.dart; packages/daemon/lib/src/providers/paseo/claude_agent_session.dart; packages/protocol/lib/src/messages/agent_config.dart; packages/app/lib/core/daemon_client.dart; packages/app/lib/core/provider_notice_toast.dart; packages/app/lib/widgets/composer.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo/provider_notices_test.dart",
+        "packages/daemon/test/providers/paseo/codex_agent_session_test.dart",
+        "packages/daemon/test/providers/paseo/claude_agent_client_test.dart",
+        "packages/protocol/test/agent_config_test.dart",
+        "packages/app/test/daemon_client_test.dart",
+        "packages/app/test/composer_test.dart",
+        "packages/app/test/app_command_center_host_test.dart"
+      ],
+      "notes": "Matches the frozen warning type and exact next-turn messages for permission mode and thinking level. Codex reports both notices only while a foreground turn is active; Claude reports the thinking notice while its query/autonomous turn is active. The typed wire boundary validates response variants, correlation, rejection, and optional notices. Flutter surfaces the warning from the live mode-cycle path with the frozen five-second warning duration. The 127-test protocol/daemon/Flutter smoke boundary passed three independent runs without test flakes; Dart ecosystems ran as concurrent processes and Flutter used its supported in-process concurrency to avoid the toolchain's shared-build-directory race."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/provider-registry.ts",

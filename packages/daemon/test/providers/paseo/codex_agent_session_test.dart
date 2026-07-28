@@ -125,6 +125,34 @@ final class _FakeCodexConnection implements CodexAppServerConnection {
 Future<void> _flush() => Future<void>.delayed(Duration.zero);
 
 void main() {
+  test(
+    'warns when mode and thinking changes apply after an active turn',
+    () async {
+      final (session, connection) = _createSession();
+      addTearDown(session.dispose);
+
+      await session.prompt('hello');
+      connection.emit('turn/started', {
+        'threadId': 'thread',
+        'turn': {'id': 'turn-1'},
+      });
+
+      final modeNotice = await session.setMode('full-access');
+      final thinkingNotice = await session.setThinkingOption('high');
+      expect(modeNotice?.type, AgentProviderNoticeType.warning);
+      expect(modeNotice?.message, 'Permission mode applies next turn');
+      expect(thinkingNotice?.type, AgentProviderNoticeType.warning);
+      expect(thinkingNotice?.message, 'Thinking level applies next turn');
+
+      connection.emit('turn/completed', {
+        'threadId': 'thread',
+        'turn': {'id': 'turn-1', 'status': 'completed'},
+      });
+      expect(await session.setMode('read-only'), isNull);
+      expect(await session.setThinkingOption('low'), isNull);
+    },
+  );
+
   test('normalizes session, streaming text, completion, and turn', () async {
     final (session, connection) = _createSession();
     addTearDown(session.dispose);

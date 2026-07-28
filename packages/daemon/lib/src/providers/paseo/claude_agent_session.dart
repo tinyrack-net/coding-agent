@@ -8,6 +8,7 @@ import '../provider_event.dart';
 import 'claude_image_output.dart';
 import 'claude_process_config.dart';
 import 'claude_stream_connection.dart';
+import 'provider_notices.dart';
 import 'jsonl_rpc_process.dart';
 
 typedef ClaudeConnectionRestarter =
@@ -221,12 +222,7 @@ final class ClaudeAgentSession
       sessionId: _config.sessionId,
     );
     _restartNeeded = true;
-    return _turnActive
-        ? const AgentProviderNotice(
-            type: AgentProviderNoticeType.info,
-            message: 'Thinking changes apply to the next Claude turn.',
-          )
-        : null;
+    return _turnActive ? thinkingAppliesNextTurnNotice : null;
   }
 
   @override

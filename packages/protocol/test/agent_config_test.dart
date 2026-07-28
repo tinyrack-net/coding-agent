@@ -51,13 +51,14 @@ void main() {
   });
 
   test('provider notice and AgentSummary config fields round trip', () {
-    expect(
-      const AgentProviderNotice(
-        type: AgentProviderNoticeType.warning,
-        message: 'restart required',
-      ).toJson(),
-      {'type': 'warning', 'message': 'restart required'},
+    const notice = AgentProviderNotice(
+      type: AgentProviderNoticeType.warning,
+      message: 'restart required',
     );
+    expect(AgentProviderNotice.fromJson(notice.toJson()).toJson(), {
+      'type': 'warning',
+      'message': 'restart required',
+    });
     final summary = AgentSummary.fromJson({
       'agentId': 'a',
       'model': 'm',
@@ -76,6 +77,40 @@ void main() {
         isNot(contains('thinkingOptionId')),
         isNot(contains('systemPrompt')),
       ),
+    );
+  });
+
+  test('parses optional provider notices on config responses', () {
+    final response = AgentConfigResponse.fromJson({
+      'type': 'set_agent_mode_response',
+      'payload': {
+        'requestId': 'request',
+        'agentId': 'agent',
+        'accepted': true,
+        'error': null,
+        'notice': {
+          'type': 'warning',
+          'message': 'Permission mode applies next turn',
+        },
+      },
+    });
+
+    expect(response.requestId, 'request');
+    expect(response.agentId, 'agent');
+    expect(response.accepted, isTrue);
+    expect(response.notice?.type, AgentProviderNoticeType.warning);
+    expect(response.notice?.message, 'Permission mode applies next turn');
+    expect(
+      AgentConfigResponse.fromJson({
+        'type': 'set_agent_thinking_response',
+        'payload': {
+          'requestId': 'thinking',
+          'agentId': 'agent',
+          'accepted': true,
+          'error': null,
+        },
+      }).notice,
+      isNull,
     );
   });
 
@@ -102,6 +137,33 @@ void main() {
       },
     ]) {
       expect(() => AgentConfigRequest.fromJson(value), throwsFormatException);
+    }
+    for (final value in <Map<String, Object?>>[
+      {
+        'type': 'set_agent_mode_response',
+        'payload': {
+          'requestId': 'r',
+          'agentId': 'a',
+          'accepted': true,
+          'error': null,
+          'notice': {'type': 'unknown', 'message': 'bad'},
+        },
+      },
+      {
+        'type': 'unknown_response',
+        'payload': {
+          'requestId': 'r',
+          'agentId': 'a',
+          'accepted': true,
+          'error': null,
+        },
+      },
+      {
+        'type': 'set_agent_mode_response',
+        'payload': {'accepted': 'yes'},
+      },
+    ]) {
+      expect(() => AgentConfigResponse.fromJson(value), throwsFormatException);
     }
   });
 }

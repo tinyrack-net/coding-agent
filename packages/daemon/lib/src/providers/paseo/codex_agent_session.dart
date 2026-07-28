@@ -5,6 +5,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import '../agent_session.dart';
 import '../provider_event.dart';
 import 'codex_session_runtime.dart';
+import 'provider_notices.dart';
 import 'jsonl_rpc_process.dart';
 
 /// Normalizes Codex app-server lifecycle, text, reasoning, tool, and approval
@@ -105,7 +106,7 @@ final class CodexAgentSession
   @override
   Future<AgentProviderNotice?> setMode(String modeId) async {
     _runtime.setMode(modeId);
-    return null;
+    return _runtime.isTurnActive ? modeAppliesNextTurnNotice : null;
   }
 
   @override
@@ -118,7 +119,7 @@ final class CodexAgentSession
     String? thinkingOptionId,
   ) async {
     _runtime.setThinkingOption(thinkingOptionId);
-    return null;
+    return _runtime.isTurnActive ? thinkingAppliesNextTurnNotice : null;
   }
 
   @override

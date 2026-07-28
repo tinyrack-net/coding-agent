@@ -262,6 +262,64 @@ void main() {
     expect((response['payload'] as Map)['cwd'], '/repo');
   });
 
+  test('typed agent config surfaces notices and rejected changes', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    unawaited(
+      conn.nextRequest('set_agent_mode_request').then((frame) {
+        expect(frame['agentId'], 'agent-1');
+        expect(frame['modeId'], 'full-access');
+        conn.respondNative(
+          'set_agent_mode_response',
+          frame['requestId'] as String,
+          const {
+            'agentId': 'agent-1',
+            'accepted': true,
+            'error': null,
+            'notice': {
+              'type': 'warning',
+              'message': 'Permission mode applies next turn',
+            },
+          },
+        );
+      }),
+    );
+    final notice = await client.setAgentMode('agent-1', 'full-access');
+    expect(notice?.type, AgentProviderNoticeType.warning);
+    expect(notice?.message, 'Permission mode applies next turn');
+
+    unawaited(
+      conn.nextRequest('set_agent_thinking_request').then((frame) {
+        conn.respondNative(
+          'set_agent_thinking_response',
+          frame['requestId'] as String,
+          const {
+            'agentId': 'agent-1',
+            'accepted': false,
+            'error': 'unsupported effort',
+          },
+        );
+      }),
+    );
+    await expectLater(
+      client.setAgentThinkingOption('agent-1', 'max'),
+      throwsA(
+        isA<DaemonRpcException>().having(
+          (error) => error.error.message,
+          'message',
+          'unsupported effort',
+        ),
+      ),
+    );
+  });
+
   test(
     'listProviderFeatures sends and validates the typed draft query',
     () async {
