@@ -10933,9 +10933,10 @@
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent/create.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/create_agent_intent.dart; packages/daemon/lib/src/agent/create_agent_mode.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/daemon_server.dart",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/server/create_agent_input_validator.dart; packages/daemon/lib/src/agent/create_agent_intent.dart; packages/daemon/lib/src/agent/create_agent_mode.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/daemon_server.dart",
       "evidence": [
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/daemon/test/server/create_agent_input_validator_test.dart",
         "packages/daemon/test/agent/create_agent_intent_test.dart",
         "packages/daemon/test/agent/create_agent_mode_test.dart",
         "packages/daemon/test/providers/paseo/provider_catalog_registry_test.dart",
@@ -10943,7 +10944,7 @@
         "packages/daemon/test/workspace/workspace_v2_service_test.dart",
         "packages/daemon/test/agent_manager_test.dart"
       ],
-      "notes": "Canonical MCP create_agent requires provider/model and initialPrompt, resolves top-level or caller/explicit workspace placement, preserves cross-workspace parentage and labels, starts immediately, and applies Paseo background/wait/notification defaults. Frozen hidden legacy relationship/workspace and flat placement shapes normalize current, existing, directory, branch-off, checkout-branch, and checkout-PR targets without changing the advertised schema; detached ownership, caller cwd policy/default labels, coupled worktree setup continuation, prompt dispatch, and pre-agent failure cleanup are wired. Shared provider create-config resolution now applies resolver-returned mode and features to both MCP and direct RPC creation, including OpenCode full-access normalization and feature-carried unattended inheritance. Strict unknown-key/schema rejection, exact auto-generated worktree naming, provider-only internal model selection, and prompt-failure mode parity remain. The latest 25-test create-config boundary passed once and then passed in three concurrent independent processes with --concurrency=8 (75 repeated tests) without flakes."
+      "notes": "Canonical MCP create_agent requires provider/model and initialPrompt, resolves top-level or caller/explicit workspace placement, preserves cross-workspace parentage and labels, starts immediately, and applies Paseo background/wait/notification defaults. Frozen hidden legacy relationship/workspace and flat placement shapes normalize current, existing, directory, branch-off, checkout-branch, and checkout-PR targets without changing the advertised schema; detached ownership, caller cwd policy/default labels, coupled worktree setup continuation, prompt dispatch, and pre-agent failure cleanup are wired. Canonical and hidden legacy inputs now enforce frozen strict top-level, settings, relationship, workspace, source, and worktree-target shapes before any workspace or provider-session side effect, including explicit-null legacy detection and caller-scope field restrictions. Shared provider create-config resolution applies resolver-returned mode and features to both MCP and direct RPC creation, including OpenCode full-access normalization and feature-carried unattended inheritance. Exact auto-generated worktree naming, provider-only internal model selection, and prompt-failure mode parity remain. The latest 6-test strict-schema boundary passed once and then passed in three concurrent independent processes with --concurrency=8 (18 repeated tests) without flakes."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/create-agent/intent.ts",
@@ -11824,16 +11825,17 @@
     {
       "id": "source-unit:packages/server/src/server/agent/tools/paseo-tools.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/voice/voice_bridge_registry.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/workspace/workspace_scripts_service.dart; packages/daemon/lib/src/terminal/terminal_manager.dart; packages/daemon/lib/src/git/git_service.dart",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/server/create_agent_input_validator.dart; packages/daemon/lib/src/voice/voice_bridge_registry.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/workspace/workspace_scripts_service.dart; packages/daemon/lib/src/terminal/terminal_manager.dart; packages/daemon/lib/src/git/git_service.dart",
       "evidence": [
         "packages/daemon/test/agent_mcp_tools_test.dart",
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/daemon/test/server/create_agent_input_validator_test.dart",
         "packages/daemon/test/workspace/workspace_v2_service_test.dart",
         "packages/daemon/test/workspace/workspace_scripts_service_test.dart",
         "packages/daemon/test/terminal_manager_test.dart",
         "packages/daemon/test/git_service_test.dart"
       ],
-      "notes": "The runtime MCP catalog includes canonical workspace create/list/rename/archive, create-agent, workspace-script list/start/stop, terminal list/create/kill/capture/send-key, all eleven schedule/heartbeat operations, and the conditional speak tool in addition to agent, permission, and provider tools. Speak is caller-scoped, context-gated, length-validated, cancellation-capable at the execution boundary, and blocks through handler completion; authenticated HTTP E2E covers catalog visibility, playback blocking, errors, and schema. Browser, the audio-producing voice session, and remaining mutation details are pending."
+      "notes": "The runtime MCP catalog includes canonical workspace create/list/rename/archive, create-agent, workspace-script list/start/stop, terminal list/create/kill/capture/send-key, all eleven schedule/heartbeat operations, and the conditional speak tool in addition to agent, permission, and provider tools. Create-agent keeps the canonical advertised schema while its canonical and hidden v0.2.0 compatibility parsers reject unknown, null, mistyped, empty, and invalid discriminated-union fields before side effects. Speak is caller-scoped, context-gated, length-validated, cancellation-capable at the execution boundary, and blocks through handler completion; authenticated HTTP E2E covers catalog visibility, playback blocking, errors, and schema. Browser, the audio-producing voice session, and remaining mutation details are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tools/types.ts",

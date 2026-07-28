@@ -635,6 +635,124 @@ void main() {
       );
 
       final topLevelEndpoint = endpoint.replace(queryParameters: const {});
+      final sessionsBeforeInvalidCreates = client.sessions.length;
+      final workspacesBeforeInvalidCreates =
+          ((await _call(
+                    topLevelEndpoint,
+                    mcpAuthToken,
+                    'list_workspaces',
+                    const {},
+                  ))['workspaces']!
+                  as List)
+              .length;
+      final canonicalCreate = <String, Object?>{
+        'title': 'Strict create fixture',
+        'provider': 'fixture/fixture-model',
+        'workspaceId': workspaceA['workspaceId'],
+        'initialPrompt': 'Validate without side effects',
+        'background': true,
+      };
+      expect(
+        await _callError(topLevelEndpoint, mcpAuthToken, 'create_agent', {
+          ...canonicalCreate,
+          'unexpected': true,
+        }),
+        contains('create_agent contains unknown fields: unexpected'),
+      );
+      expect(
+        await _callError(endpoint, mcpAuthToken, 'create_agent', {
+          ...canonicalCreate,
+          'background': true,
+        }),
+        contains('create_agent contains unknown fields: background'),
+      );
+      expect(
+        await _callError(topLevelEndpoint, mcpAuthToken, 'create_agent', {
+          ...canonicalCreate,
+          'settings': {'modeId': 'plan', 'unexpected': true},
+        }),
+        contains('create_agent.settings contains unknown fields: unexpected'),
+      );
+      expect(
+        await _callError(topLevelEndpoint, mcpAuthToken, 'create_agent', {
+          ...canonicalCreate,
+          'workspaceId': null,
+        }),
+        contains('create_agent.workspaceId must be a string'),
+      );
+      final legacyCreate = <String, Object?>{
+        'title': 'Strict legacy fixture',
+        'provider': 'fixture/fixture-model',
+        'relationship': {'kind': 'detached'},
+        'workspace': {
+          'kind': 'existing',
+          'workspaceId': workspaceB['workspaceId'],
+        },
+        'initialPrompt': 'Validate legacy shape',
+        'background': true,
+      };
+      expect(
+        await _callError(topLevelEndpoint, mcpAuthToken, 'create_agent', {
+          ...legacyCreate,
+          'relationship': {'kind': 'detached', 'unexpected': true},
+        }),
+        contains(
+          'create_agent.relationship contains unknown fields: unexpected',
+        ),
+      );
+      expect(
+        await _callError(topLevelEndpoint, mcpAuthToken, 'create_agent', {
+          ...legacyCreate,
+          'workspace': {
+            'kind': 'existing',
+            'workspaceId': workspaceB['workspaceId'],
+            'unexpected': true,
+          },
+        }),
+        contains('create_agent.workspace contains unknown fields: unexpected'),
+      );
+      expect(
+        await _callError(topLevelEndpoint, mcpAuthToken, 'create_agent', {
+          ...legacyCreate,
+          'workspace': {
+            'kind': 'create',
+            'source': {
+              'kind': 'worktree',
+              'cwd': otherDirectory.path,
+              'target': {
+                'kind': 'branch-off',
+                'branchName': 'strict-fixture',
+                'unexpected': true,
+              },
+            },
+          },
+        }),
+        contains(
+          'create_agent.workspace.source.target contains unknown fields: '
+          'unexpected',
+        ),
+      );
+      expect(
+        await _callError(topLevelEndpoint, mcpAuthToken, 'create_agent', {
+          'title': 'Partial legacy fixture',
+          'provider': 'fixture/fixture-model',
+          'relationship': {'kind': 'detached'},
+          'initialPrompt': 'Reject partial placement',
+        }),
+        contains('relationship and workspace must be provided together'),
+      );
+      expect(client.sessions, hasLength(sessionsBeforeInvalidCreates));
+      expect(
+        ((await _call(
+                  topLevelEndpoint,
+                  mcpAuthToken,
+                  'list_workspaces',
+                  const {},
+                ))['workspaces']!
+                as List)
+            .length,
+        workspacesBeforeInvalidCreates,
+      );
       final topLevelToolsResponse = await _post(topLevelEndpoint, const {
         'jsonrpc': '2.0',
         'id': 'top-level-tools',

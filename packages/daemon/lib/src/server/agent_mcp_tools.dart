@@ -18,6 +18,7 @@ import '../voice/voice_types.dart';
 import '../workspace/workspace_registry.dart';
 import '../workspace/workspace_scripts_service.dart';
 import '../workspace/workspace_v2_service.dart';
+import 'create_agent_input_validator.dart';
 
 final class AgentMcpTools {
   AgentMcpTools({
@@ -806,6 +807,7 @@ final class AgentMcpTools {
     Map<String, Object?> arguments,
     String? callerAgentId,
   ) async {
+    validateCreateAgentArguments(arguments, agentScoped: callerAgentId != null);
     final title = _requiredString(arguments, 'title');
     if (title.length > 60) {
       throw const FormatException('title must be at most 60 characters');
@@ -947,7 +949,7 @@ final class AgentMcpTools {
     required AgentSummary? caller,
     required String initialPrompt,
   }) async {
-    final legacy = _hasLegacyCreateAgentPlacement(arguments);
+    final legacy = hasLegacyCreateAgentPlacement(arguments);
     final settings = _normalizedCreateAgentSettings(arguments, legacy: legacy);
     if (!legacy) {
       final requestedWorkspaceId = _nullableString(arguments, 'workspaceId');
@@ -1620,17 +1622,6 @@ final class _ResolvedMcpCreatePlacement {
   final Map<String, Object?> settings;
   final bool createdWorktree;
 }
-
-bool _hasLegacyCreateAgentPlacement(Map<String, Object?> arguments) => const [
-  'relationship',
-  'workspace',
-  'cwd',
-  'worktreeName',
-  'branchName',
-  'baseBranch',
-  'refName',
-  'githubPrNumber',
-].any((key) => arguments[key] != null);
 
 Map<String, Object?> _normalizedCreateAgentSettings(
   Map<String, Object?> arguments, {
