@@ -6,6 +6,7 @@ import '../agent/agent_manager.dart';
 import '../providers/paseo/provider_catalog_registry.dart';
 import '../schedule/schedule_service.dart';
 import '../terminal/terminal_manager.dart';
+import '../voice/voice_bridge_registry.dart';
 import '../workspace/workspace_v2_service.dart';
 import '../workspace/workspace_scripts_service.dart';
 import 'agent_mcp_tools.dart';
@@ -123,6 +124,7 @@ final class AgentMcpHttpHandler {
     required WorkspaceScriptsService Function() workspaceScripts,
     required ScheduleService Function() schedules,
     required TerminalManager terminals,
+    required VoiceBridgeRegistry voiceBridge,
     required String capabilityToken,
     String? passwordHash,
     Duration agentWaitTimeout = const Duration(seconds: 30),
@@ -133,16 +135,19 @@ final class AgentMcpHttpHandler {
          workspaceScripts: workspaceScripts,
          schedules: schedules,
          terminals: terminals,
+         voiceBridge: voiceBridge,
          agentWaitTimeout: agentWaitTimeout,
        ),
        _capabilityToken = capabilityToken,
-       _passwordHash = passwordHash;
+       _passwordHash = passwordHash,
+       _voiceBridge = voiceBridge;
 
   static const protocolVersion = '2025-03-26';
 
   final AgentMcpTools _toolsHost;
   final String _capabilityToken;
   final String? _passwordHash;
+  final VoiceBridgeRegistry _voiceBridge;
 
   Future<Response> call(Request request) async {
     if (!isAgentMcpRequestAuthorized(
@@ -220,6 +225,9 @@ final class AgentMcpHttpHandler {
         : Map<String, Object?>.from(rawArguments as Map);
     final callerAgentId = requestUrl.queryParameters['callerAgentId'];
     try {
+      if (!_toolsFor(callerAgentId).any((tool) => tool['name'] == name)) {
+        throw StateError('Unknown tool: $name');
+      }
       final structured = await _toolsHost.execute(
         name,
         arguments,
@@ -250,6 +258,28 @@ final class AgentMcpHttpHandler {
   }
 
   static const _tools = <Map<String, Object?>>[
+    {
+      'name': 'speak',
+      'title': 'Speak',
+      'description':
+          'Speak text to the user via daemon-managed voice output. Blocks until playback completes.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'text': {'type': 'string', 'minLength': 1, 'maxLength': 4000},
+        },
+        'required': ['text'],
+        'additionalProperties': false,
+      },
+      'outputSchema': {
+        'type': 'object',
+        'properties': {
+          'ok': {'type': 'boolean'},
+        },
+        'required': ['ok'],
+        'additionalProperties': false,
+      },
+    },
     {
       'name': 'create_workspace',
       'title': 'Create workspace',
@@ -919,20 +949,24 @@ final class AgentMcpHttpHandler {
     },
   ];
 
-  static List<Map<String, Object?>> _toolsFor(String? callerAgentId) {
-    if (callerAgentId != null) return _tools;
+  List<Map<String, Object?>> _toolsFor(String? callerAgentId) {
+    final voiceToolsEnabled =
+        callerAgentId != null &&
+        _voiceBridge.resolveCallerContext(callerAgentId)?.enableVoiceTools ==
+            true;
     return [
       for (final tool in _tools)
-        if (tool['name'] == 'create_schedule')
-          {
-            ...tool,
-            'inputSchema': {
-              ...tool['inputSchema']! as Map<String, Object?>,
-              'required': ['prompt', 'cron', 'provider'],
-            },
-          }
-        else
-          tool,
+        if (tool['name'] != 'speak' || voiceToolsEnabled)
+          if (tool['name'] == 'create_schedule' && callerAgentId == null)
+            {
+              ...tool,
+              'inputSchema': {
+                ...tool['inputSchema']! as Map<String, Object?>,
+                'required': ['prompt', 'cron', 'provider'],
+              },
+            }
+          else
+            tool,
     ];
   }
 

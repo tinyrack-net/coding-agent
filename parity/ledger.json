@@ -11743,7 +11743,7 @@
     {
       "id": "source-unit:packages/server/src/server/agent/tools/paseo-tools.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/workspace/workspace_scripts_service.dart; packages/daemon/lib/src/terminal/terminal_manager.dart; packages/daemon/lib/src/git/git_service.dart",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/voice/voice_bridge_registry.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/workspace/workspace_scripts_service.dart; packages/daemon/lib/src/terminal/terminal_manager.dart; packages/daemon/lib/src/git/git_service.dart",
       "evidence": [
         "packages/daemon/test/agent_mcp_tools_test.dart",
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
@@ -11752,21 +11752,24 @@
         "packages/daemon/test/terminal_manager_test.dart",
         "packages/daemon/test/git_service_test.dart"
       ],
-      "notes": "The runtime MCP catalog includes canonical workspace create/list/rename/archive, create-agent, workspace-script list/start/stop, terminal list/create/kill/capture/send-key, and all eleven schedule/heartbeat operations in addition to agent, permission, and provider tools. Schedule create-or-replace, caller inheritance, heartbeat ownership, duration parsing, lifecycle, updates, immediate runs, logs, schemas, and target filtering are covered by authenticated HTTP E2E. Browser, voice, and remaining mutation tools are pending."
+      "notes": "The runtime MCP catalog includes canonical workspace create/list/rename/archive, create-agent, workspace-script list/start/stop, terminal list/create/kill/capture/send-key, all eleven schedule/heartbeat operations, and the conditional speak tool in addition to agent, permission, and provider tools. Speak is caller-scoped, context-gated, length-validated, cancellation-capable at the execution boundary, and blocks through handler completion; authenticated HTTP E2E covers catalog visibility, playback blocking, errors, and schema. Browser, the audio-producing voice session, and remaining mutation details are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tools/types.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": "Create-or-replace now atomically reuses active named schedules by structural target, preserves identity and run history, reactivates paused schedules, carries forward omitted cron time zones, and leaves anonymous or completed schedules as siblings. Broader service parity remains tracked as partial."
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/voice/voice_types.dart",
+      "evidence": [
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/daemon/test/voice/voice_permission_policy_test.dart"
+      ],
+      "notes": "Tool definitions, structured results, runtime caller identity, voice flags through caller context, and optional cancellation at the execution boundary are represented. Streaming sendUpdate and a standalone voice-only catalog factory remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tts-debug.ts",
       "status": "not-started",
       "implementation": null,
       "evidence": [],
-      "notes": "All persistent mutations share one failure-safe serialization queue, and named target upserts are atomic under concurrent callers. Broader frozen store conformance remains tracked as partial."
+      "notes": null
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tts-manager.ts",
@@ -12323,7 +12326,7 @@
       "evidence": [
         "packages/daemon/test/schedule/schedule_service_test.dart"
       ],
-      "notes": null
+      "notes": "Create-or-replace atomically reuses active named schedules by structural target, preserves identity and run history, reactivates paused schedules, carries forward omitted cron time zones, and leaves anonymous or completed schedules as siblings. Broader service parity remains tracked as partial."
     },
     {
       "id": "source-unit:packages/server/src/server/schedule/store.ts",
@@ -12332,7 +12335,7 @@
       "evidence": [
         "packages/daemon/test/schedule/schedule_store_test.dart"
       ],
-      "notes": null
+      "notes": "All persistent mutations share one failure-safe serialization queue, and named target upserts are atomic under concurrent callers. Broader frozen store conformance remains tracked as partial."
     },
     {
       "id": "source-unit:packages/server/src/server/script-health-monitor.ts",
@@ -12965,12 +12968,14 @@
     {
       "id": "source-unit:packages/server/src/server/websocket-server.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/ws_server.dart",
+      "implementation": "packages/daemon/lib/src/server/ws_server.dart; packages/daemon/lib/src/voice/voice_bridge_registry.dart",
       "evidence": [
         "packages/daemon/test/ws_server_test.dart",
-        "packages/daemon/test/websocket_runtime_metrics_test.dart"
+        "packages/daemon/test/websocket_runtime_metrics_test.dart",
+        "packages/daemon/test/voice/voice_bridge_registry_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
       ],
-      "notes": "Hello, server_info, auth, close codes, session bridge, explicitly ordered per-connection frame dispatch, awaited binary file-transfer routing, 60-second runtime metrics flush, final snapshot, request latency, and event-loop delay sampling implemented; retained sessions and full message surface pending"
+      "notes": "Hello, server_info, auth, close codes, session bridge, explicitly ordered per-connection frame dispatch, awaited binary file-transfer routing, 60-second runtime metrics flush, final snapshot, request latency, event-loop delay sampling, and per-agent voice speak-handler/caller-context registry lifecycle are implemented; retained sessions, the audio voice session, and the full message surface remain pending."
     },
     {
       "id": "source-unit:packages/server/src/server/websocket/runtime-metrics.ts",

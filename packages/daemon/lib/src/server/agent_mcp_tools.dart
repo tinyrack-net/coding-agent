@@ -10,6 +10,8 @@ import '../agent/timeline_store.dart';
 import '../providers/paseo/provider_catalog_registry.dart';
 import '../schedule/schedule_service.dart';
 import '../terminal/terminal_manager.dart';
+import '../voice/voice_bridge_registry.dart';
+import '../voice/voice_types.dart';
 import '../workspace/workspace_registry.dart';
 import '../workspace/workspace_scripts_service.dart';
 import '../workspace/workspace_v2_service.dart';
@@ -22,13 +24,15 @@ final class AgentMcpTools {
     required WorkspaceScriptsService Function() workspaceScripts,
     required ScheduleService Function() schedules,
     required TerminalManager terminals,
+    required VoiceBridgeRegistry voiceBridge,
     this.agentWaitTimeout = const Duration(seconds: 30),
   }) : _manager = manager,
        _providerCatalog = providerCatalog,
        _workspaceService = workspaceService,
        _workspaceScripts = workspaceScripts,
        _schedules = schedules,
-       _terminals = terminals;
+       _terminals = terminals,
+       _voiceBridge = voiceBridge;
 
   final AgentManager _manager;
   final PaseoProviderCatalogRegistry _providerCatalog;
@@ -36,14 +40,18 @@ final class AgentMcpTools {
   final WorkspaceScriptsService Function() _workspaceScripts;
   final ScheduleService Function() _schedules;
   final TerminalManager _terminals;
+  final VoiceBridgeRegistry _voiceBridge;
   final Duration agentWaitTimeout;
 
   Future<Map<String, Object?>> execute(
     String name,
     Map<String, Object?> arguments,
-    String? callerAgentId,
-  ) async {
+    String? callerAgentId, {
+    VoiceAbortSignal? signal,
+  }) async {
     switch (name) {
+      case 'speak':
+        return _speak(arguments, callerAgentId, signal);
       case 'create_workspace':
         return _createWorkspace(arguments, callerAgentId);
       case 'list_workspaces':
@@ -179,6 +187,28 @@ final class AgentMcpTools {
       default:
         throw StateError('Unknown tool: $name');
     }
+  }
+
+  Future<Map<String, Object?>> _speak(
+    Map<String, Object?> arguments,
+    String? callerAgentId,
+    VoiceAbortSignal? signal,
+  ) async {
+    if (callerAgentId == null) {
+      throw StateError('speak is only available to agent-scoped tool sessions');
+    }
+    final text = _requiredString(arguments, 'text');
+    if (text.length > 4000) {
+      throw const FormatException('text must be 4000 characters or fewer');
+    }
+    final handler = _voiceBridge.resolveSpeakHandler(callerAgentId);
+    if (handler == null) {
+      throw StateError(
+        "No speak handler registered for your session '$callerAgentId'",
+      );
+    }
+    await handler(text: text, callerAgentId: callerAgentId, signal: signal);
+    return {'ok': true};
   }
 
   Future<Map<String, Object?>> _renameWorkspace(

@@ -80,6 +80,7 @@ import 'workspace/workspace_scripts_service.dart';
 import 'workspace/workspace_setup_service.dart';
 import 'workspace/worktree_terminal_bootstrap_service.dart';
 import 'workspace/workspace_v2_service.dart';
+import 'voice/voice_bridge_registry.dart';
 
 class DaemonServerHandle {
   DaemonServerHandle({
@@ -92,6 +93,7 @@ class DaemonServerHandle {
     required this.relayTransport,
     required this.hubRelationships,
     required this.schedules,
+    required this.voiceBridge,
     required this.serviceProxyStandalone,
     required this.stop,
   });
@@ -105,6 +107,7 @@ class DaemonServerHandle {
   final RelayTransportController? relayTransport;
   final HubRelationshipController hubRelationships;
   final ScheduleService schedules;
+  final VoiceBridgeRegistry voiceBridge;
   final ServiceProxyStandaloneServer? serviceProxyStandalone;
   final Future<void> Function() stop;
 }
@@ -220,6 +223,7 @@ Future<DaemonServerHandle> startDaemonServer({
   late final WorkspaceV2Service workspaceV2;
   late final WorkspaceRegistries workspaceRegistries;
   late final ScheduleService schedules;
+  final voiceBridge = VoiceBridgeRegistry();
   final agentDirectorySubscriptions = <String, AgentDirectorySubscription>{};
   final manager = AgentManager(
     clients:
@@ -700,6 +704,7 @@ Future<DaemonServerHandle> startDaemonServer({
       workspaceScripts: () => workspaceScripts,
       schedules: () => schedules,
       terminals: terminals,
+      voiceBridge: voiceBridge,
       capabilityToken: agentMcpAuthToken,
       passwordHash: passwordHash,
       agentWaitTimeout: agentMcpWaitTimeout,
@@ -1144,6 +1149,7 @@ Future<DaemonServerHandle> startDaemonServer({
     stopConfigBroadcast();
     scriptHealth.stop();
     schedules.stop();
+    voiceBridge.clear();
     workspaceScripts.dispose();
     await workspaceGitObserverBackend.disposeAndWait();
     await manager.dispose();
@@ -1249,6 +1255,7 @@ Future<DaemonServerHandle> startDaemonServer({
     relayTransport: relayTransport,
     hubRelationships: hubRelationships,
     schedules: schedules,
+    voiceBridge: voiceBridge,
     serviceProxyStandalone: serviceProxyStandalone,
     stop: () => shutdown('manual stop'),
   );

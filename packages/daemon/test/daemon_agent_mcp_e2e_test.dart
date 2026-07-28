@@ -9,6 +9,7 @@ import 'package:agent_daemon/src/providers/agent_session.dart';
 import 'package:agent_daemon/src/providers/provider_event.dart';
 import 'package:agent_daemon/src/server/daemon_auth.dart';
 import 'package:agent_daemon/src/server/daemon_config_store.dart';
+import 'package:agent_daemon/src/voice/voice_types.dart';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 import 'package:http/http.dart' as http;
@@ -247,6 +248,82 @@ void main() {
       expect(
         (createScheduleTool['outputSchema']! as Map)['required'],
         containsAll(['id', 'cadence', 'target', 'nextRunAt']),
+      );
+
+      final speakEntered = Completer<void>();
+      final releaseSpeak = Completer<void>();
+      String? spokenText;
+      String? spokenCaller;
+      handle.voiceBridge.registerCallerContext(
+        created.agentId,
+        const VoiceCallerContext(allowCustomCwd: false, enableVoiceTools: true),
+      );
+      handle.voiceBridge.registerSpeakHandler(created.agentId, ({
+        required text,
+        required callerAgentId,
+        signal,
+      }) async {
+        spokenText = text;
+        spokenCaller = callerAgentId;
+        speakEntered.complete();
+        await releaseSpeak.future;
+      });
+      final voiceToolsResponse = await _post(endpoint, const {
+        'jsonrpc': '2.0',
+        'id': 'voice-tools',
+        'method': 'tools/list',
+        'params': <String, Object?>{},
+      }, bearer: mcpAuthToken);
+      final voiceTools = (_result(voiceToolsResponse)['tools']! as List)
+          .cast<Map>();
+      final speakTool = voiceTools.singleWhere(
+        (tool) => tool['name'] == 'speak',
+      );
+      expect((speakTool['inputSchema']! as Map)['required'], ['text']);
+      expect(
+        (((speakTool['inputSchema']! as Map)['properties']! as Map)['text']
+            as Map)['maxLength'],
+        4000,
+      );
+
+      var speakCompleted = false;
+      final speakResult = _call(endpoint, mcpAuthToken, 'speak', const {
+        'text': '  Hello from voice agent.  ',
+      }).whenComplete(() => speakCompleted = true);
+      await speakEntered.future;
+      await pumpEventQueue();
+      expect(speakCompleted, isFalse);
+      expect(spokenText, 'Hello from voice agent.');
+      expect(spokenCaller, created.agentId);
+      releaseSpeak.complete();
+      expect(await speakResult, {'ok': true});
+
+      handle.voiceBridge.unregisterSpeakHandler(created.agentId);
+      expect(
+        await _callError(endpoint, mcpAuthToken, 'speak', const {
+          'text': 'Hello.',
+        }),
+        contains('No speak handler registered for your session'),
+      );
+      expect(
+        await _callError(endpoint, mcpAuthToken, 'speak', {'text': 'x' * 4001}),
+        contains('text must be 4000 characters or fewer'),
+      );
+      handle.voiceBridge.unregisterCallerContext(created.agentId);
+      expect(
+        await _callError(endpoint, mcpAuthToken, 'speak', const {
+          'text': 'Hidden again',
+        }),
+        contains('Unknown tool: speak'),
+      );
+      expect(
+        await _callError(
+          endpoint.replace(queryParameters: const {}),
+          mcpAuthToken,
+          'speak',
+          const {'text': 'Top-level'},
+        ),
+        contains('Unknown tool: speak'),
       );
 
       final status = await _post(endpoint, {
