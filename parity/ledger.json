@@ -11783,10 +11783,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tts-debug.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/tts_debug.dart",
+      "evidence": [
+        "packages/daemon/test/voice/voice_session_test.dart"
+      ],
+      "notes": "Tinyrack debug-directory resolution, sanitized timestamp/group filenames, format extension inference, one-time enable logging, raw audio persistence, and disabled no-op behavior match the frozen helper."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tts-manager.ts",
@@ -12588,10 +12590,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/session/voice/voice-session.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/voice_session.dart",
+      "evidence": [
+        "packages/daemon/test/voice/voice_session_test.dart",
+        "packages/protocol/test/voice_messages_test.dart"
+      ],
+      "notes": "Voice-mode lifecycle and prompt restoration, readiness errors, bridge registration, streaming turn control, interruption, dictation delegation, buffered batch STT, transcription events, TTS playback/debug capture, and cleanup match the frozen session; the implementation file has 400/421 line coverage (95.01%)."
     },
     {
       "id": "source-unit:packages/server/src/server/session/voice/voice-turn-controller.ts",

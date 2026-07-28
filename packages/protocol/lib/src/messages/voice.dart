@@ -19,6 +19,76 @@ final class AudioPlayedMessage {
   Map<String, Object?> toJson() => {'type': type, 'id': id};
 }
 
+final class VoiceAudioChunkMessage {
+  const VoiceAudioChunkMessage({
+    required this.audio,
+    required this.format,
+    required this.isLast,
+  });
+
+  static const type = 'voice_audio_chunk';
+  final String audio;
+  final String format;
+  final bool isLast;
+
+  factory VoiceAudioChunkMessage.fromJson(Map<String, Object?> json) {
+    _expectType(json, type);
+    final isLast = json['isLast'];
+    if (isLast is! bool) {
+      throw const FormatException('isLast must be a boolean');
+    }
+    return VoiceAudioChunkMessage(
+      audio: _requiredString(json, 'audio'),
+      format: _requiredString(json, 'format'),
+      isLast: isLast,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'type': type,
+    'audio': audio,
+    'format': format,
+    'isLast': isLast,
+  };
+}
+
+final class SetVoiceModeMessage {
+  const SetVoiceModeMessage({
+    required this.enabled,
+    this.agentId,
+    this.requestId,
+  });
+
+  static const type = 'set_voice_mode';
+  final bool enabled;
+  final String? agentId;
+  final String? requestId;
+
+  factory SetVoiceModeMessage.fromJson(Map<String, Object?> json) {
+    _expectType(json, type);
+    final enabled = json['enabled'];
+    final agentId = json['agentId'];
+    final requestId = json['requestId'];
+    if (enabled is! bool ||
+        (agentId != null && agentId is! String) ||
+        (requestId != null && requestId is! String)) {
+      throw const FormatException('Invalid set voice mode message');
+    }
+    return SetVoiceModeMessage(
+      enabled: enabled,
+      agentId: agentId as String?,
+      requestId: requestId as String?,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'type': type,
+    'enabled': enabled,
+    if (agentId != null) 'agentId': agentId,
+    if (requestId != null) 'requestId': requestId,
+  };
+}
+
 final class AudioOutputPayload {
   const AudioOutputPayload({
     required this.audio,
@@ -403,6 +473,216 @@ final class DictationStreamErrorMessage {
       if (missingModelIds != null)
         'missingModelIds': List<String>.from(missingModelIds!),
       if (debugRecordingPath != null) 'debugRecordingPath': debugRecordingPath,
+    },
+  };
+}
+
+final class SetVoiceModeResponseMessage {
+  const SetVoiceModeResponseMessage({
+    required this.requestId,
+    required this.enabled,
+    required this.agentId,
+    required this.accepted,
+    required this.error,
+    this.reasonCode,
+    this.retryable,
+    this.missingModelIds,
+  });
+
+  static const type = 'set_voice_mode_response';
+  final String requestId;
+  final bool enabled;
+  final String? agentId;
+  final bool accepted;
+  final String? error;
+  final String? reasonCode;
+  final bool? retryable;
+  final List<String>? missingModelIds;
+
+  factory SetVoiceModeResponseMessage.fromJson(Map<String, Object?> json) {
+    _expectType(json, type);
+    final payload = _requiredPayload(json);
+    final enabled = payload['enabled'];
+    final agentId = payload['agentId'];
+    final accepted = payload['accepted'];
+    final error = payload['error'];
+    final reasonCode = payload['reasonCode'];
+    final retryable = payload['retryable'];
+    final missingModelIds = payload['missingModelIds'];
+    if (enabled is! bool ||
+        (agentId != null && agentId is! String) ||
+        accepted is! bool ||
+        (error != null && error is! String) ||
+        (reasonCode != null && reasonCode is! String) ||
+        (retryable != null && retryable is! bool) ||
+        (missingModelIds != null &&
+            (missingModelIds is! List ||
+                missingModelIds.any((value) => value is! String)))) {
+      throw const FormatException('Invalid set voice mode response');
+    }
+    return SetVoiceModeResponseMessage(
+      requestId: _requiredString(payload, 'requestId'),
+      enabled: enabled,
+      agentId: agentId as String?,
+      accepted: accepted,
+      error: error as String?,
+      reasonCode: reasonCode as String?,
+      retryable: retryable as bool?,
+      missingModelIds: missingModelIds == null
+          ? null
+          : List<String>.from(missingModelIds as List),
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'type': type,
+    'payload': {
+      'requestId': requestId,
+      'enabled': enabled,
+      'agentId': agentId,
+      'accepted': accepted,
+      'error': error,
+      if (reasonCode != null) 'reasonCode': reasonCode,
+      if (retryable != null) 'retryable': retryable,
+      if (missingModelIds != null)
+        'missingModelIds': List<String>.from(missingModelIds!),
+    },
+  };
+}
+
+final class TranscriptionResultMessage {
+  const TranscriptionResultMessage({
+    required this.text,
+    required this.requestId,
+    this.language,
+    this.duration,
+    this.avgLogprob,
+    this.isLowConfidence,
+    this.byteLength,
+    this.format,
+    this.debugRecordingPath,
+  });
+
+  static const type = 'transcription_result';
+  final String text;
+  final String requestId;
+  final String? language;
+  final num? duration;
+  final double? avgLogprob;
+  final bool? isLowConfidence;
+  final int? byteLength;
+  final String? format;
+  final String? debugRecordingPath;
+
+  factory TranscriptionResultMessage.fromJson(Map<String, Object?> json) {
+    _expectType(json, type);
+    final payload = _requiredPayload(json);
+    final language = payload['language'];
+    final duration = payload['duration'];
+    final avgLogprob = payload['avgLogprob'];
+    final isLowConfidence = payload['isLowConfidence'];
+    final byteLength = payload['byteLength'];
+    final format = payload['format'];
+    final debugRecordingPath = payload['debugRecordingPath'];
+    if ((language != null && language is! String) ||
+        (duration != null && duration is! num) ||
+        (avgLogprob != null && avgLogprob is! num) ||
+        (isLowConfidence != null && isLowConfidence is! bool) ||
+        (byteLength != null && byteLength is! num) ||
+        (format != null && format is! String) ||
+        (debugRecordingPath != null && debugRecordingPath is! String)) {
+      throw const FormatException('Invalid transcription result payload');
+    }
+    return TranscriptionResultMessage(
+      text: _requiredString(payload, 'text'),
+      requestId: _requiredString(payload, 'requestId'),
+      language: language as String?,
+      duration: duration as num?,
+      avgLogprob: (avgLogprob as num?)?.toDouble(),
+      isLowConfidence: isLowConfidence as bool?,
+      byteLength: (byteLength as num?)?.toInt(),
+      format: format as String?,
+      debugRecordingPath: debugRecordingPath as String?,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'type': type,
+    'payload': {
+      'text': text,
+      if (language != null) 'language': language,
+      if (duration != null) 'duration': duration,
+      'requestId': requestId,
+      if (avgLogprob != null) 'avgLogprob': avgLogprob,
+      if (isLowConfidence != null) 'isLowConfidence': isLowConfidence,
+      if (byteLength != null) 'byteLength': byteLength,
+      if (format != null) 'format': format,
+      if (debugRecordingPath != null) 'debugRecordingPath': debugRecordingPath,
+    },
+  };
+}
+
+final class ActivityLogMessage {
+  const ActivityLogMessage({
+    required this.id,
+    required this.timestamp,
+    required this.logType,
+    required this.content,
+    this.metadata,
+  });
+
+  static const type = 'activity_log';
+  static const allowedLogTypes = {
+    'transcript',
+    'assistant',
+    'tool_call',
+    'tool_result',
+    'error',
+    'system',
+  };
+
+  final String id;
+  final DateTime timestamp;
+  final String logType;
+  final String content;
+  final Map<String, Object?>? metadata;
+
+  factory ActivityLogMessage.fromJson(Map<String, Object?> json) {
+    _expectType(json, type);
+    final payload = _requiredPayload(json);
+    final timestampValue = payload['timestamp'];
+    final logType = payload['type'];
+    final metadata = payload['metadata'];
+    final timestamp = timestampValue is DateTime
+        ? timestampValue
+        : timestampValue is String
+        ? DateTime.tryParse(timestampValue)
+        : null;
+    if (timestamp == null ||
+        logType is! String ||
+        !allowedLogTypes.contains(logType) ||
+        (metadata != null && metadata is! Map<String, Object?>)) {
+      throw const FormatException('Invalid activity log payload');
+    }
+    return ActivityLogMessage(
+      id: _requiredString(payload, 'id'),
+      timestamp: timestamp,
+      logType: logType,
+      content: _requiredString(payload, 'content'),
+      metadata: metadata == null
+          ? null
+          : Map<String, Object?>.from(metadata as Map),
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'type': type,
+    'payload': {
+      'id': id,
+      'timestamp': timestamp.toUtc().toIso8601String(),
+      'type': logType,
+      'content': content,
+      if (metadata != null) 'metadata': Map<String, Object?>.from(metadata!),
     },
   };
 }

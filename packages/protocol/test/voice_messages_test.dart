@@ -249,4 +249,123 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test(
+    'voice session messages preserve frozen top-level and payload shapes',
+    () {
+      const audio = VoiceAudioChunkMessage(
+        audio: 'AAE=',
+        format: 'audio/pcm;rate=16000;bits=16',
+        isLast: true,
+      );
+      const mode = SetVoiceModeMessage(
+        enabled: true,
+        agentId: 'agent',
+        requestId: 'request',
+      );
+      const response = SetVoiceModeResponseMessage(
+        requestId: 'request',
+        enabled: true,
+        agentId: 'agent',
+        accepted: true,
+        error: null,
+        reasonCode: 'ready',
+        retryable: false,
+        missingModelIds: [],
+      );
+      const transcript = TranscriptionResultMessage(
+        text: 'hello',
+        requestId: 'request',
+        language: 'en',
+        duration: 250,
+        avgLogprob: -0.1,
+        isLowConfidence: false,
+        byteLength: 3200,
+        format: 'audio/wav',
+        debugRecordingPath: 'input.wav',
+      );
+      final activity = ActivityLogMessage(
+        id: 'activity',
+        timestamp: DateTime.utc(2026, 7, 29),
+        logType: 'transcript',
+        content: 'hello',
+        metadata: const {'language': 'en'},
+      );
+
+      expect(
+        VoiceAudioChunkMessage.fromJson(audio.toJson()).toJson(),
+        audio.toJson(),
+      );
+      expect(
+        SetVoiceModeMessage.fromJson(mode.toJson()).toJson(),
+        mode.toJson(),
+      );
+      expect(
+        SetVoiceModeResponseMessage.fromJson(response.toJson()).toJson(),
+        response.toJson(),
+      );
+      expect(
+        TranscriptionResultMessage.fromJson(transcript.toJson()).toJson(),
+        transcript.toJson(),
+      );
+      expect(
+        ActivityLogMessage.fromJson(activity.toJson()).toJson(),
+        activity.toJson(),
+      );
+      expect(audio.toJson(), isNot(contains('payload')));
+      expect(mode.toJson(), isNot(contains('payload')));
+    },
+  );
+
+  test('voice session message boundaries reject malformed values', () {
+    expect(
+      () => VoiceAudioChunkMessage.fromJson(const {
+        'type': VoiceAudioChunkMessage.type,
+        'audio': '',
+        'format': '',
+        'isLast': 1,
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => SetVoiceModeMessage.fromJson(const {
+        'type': SetVoiceModeMessage.type,
+        'enabled': 'yes',
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => SetVoiceModeResponseMessage.fromJson(const {
+        'type': SetVoiceModeResponseMessage.type,
+        'payload': {
+          'requestId': 'r',
+          'enabled': true,
+          'agentId': null,
+          'accepted': false,
+          'error': null,
+          'missingModelIds': [1],
+        },
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => TranscriptionResultMessage.fromJson(const {
+        'type': TranscriptionResultMessage.type,
+        'payload': {'text': '', 'requestId': 'r', 'duration': 'long'},
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => ActivityLogMessage.fromJson(const {
+        'type': ActivityLogMessage.type,
+        'payload': {
+          'id': 'a',
+          'timestamp': 'invalid',
+          'type': 'unknown',
+          'content': '',
+        },
+      }),
+      throwsFormatException,
+    );
+  });
 }
