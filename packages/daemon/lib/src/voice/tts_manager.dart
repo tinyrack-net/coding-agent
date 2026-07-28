@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:uuid/uuid.dart';
 
+import 'provider_resolver.dart';
 import 'speech_provider.dart';
 import 'voice_types.dart';
 
@@ -16,11 +17,11 @@ typedef AudioOutputEmitter = void Function(AudioOutputMessage message);
 final class TtsManager {
   TtsManager({
     required this.sessionId,
-    required TextToSpeechResolver resolveTts,
+    required Object? resolveTts,
     String Function()? createAudioId,
     DateTime Function()? now,
     void Function(String message)? onWarning,
-  }) : _resolveTts = resolveTts,
+  }) : _resolveTts = toResolver<TextToSpeechProvider?>(resolveTts),
        _createAudioId = createAudioId ?? const Uuid().v4,
        _now = now ?? DateTime.now,
        _onWarning = onWarning;

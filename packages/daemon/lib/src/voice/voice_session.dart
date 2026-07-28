@@ -7,6 +7,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:uuid/uuid.dart';
 
 import 'dictation_stream_manager.dart';
+import 'provider_resolver.dart';
 import 'speech_provider.dart';
 import 'speech_readiness.dart';
 import 'stt_manager.dart';
@@ -88,12 +89,12 @@ final class VoiceSession {
     required this.host,
     required SpeechLogger logger,
     required this.sessionId,
-    required TextToSpeechResolver resolveTts,
-    required SpeechToTextResolver resolveStt,
-    required TurnDetectionResolver resolveTurnDetection,
+    required Object? resolveTts,
+    required Object? resolveStt,
+    required Object? resolveTurnDetection,
     this.sttLanguage = 'en',
     VoiceBridgeRegistry? voiceBridge,
-    SpeechToTextResolver? resolveDictationStt,
+    Object? resolveDictationStt,
     String? dictationLanguage,
     Duration dictationFinalTimeout = defaultDictationFinalTimeout,
     SpeechReadinessSnapshot Function()? getSpeechReadiness,
@@ -105,8 +106,10 @@ final class VoiceSession {
     VoiceTurnTimeoutScheduler? scheduleTurnTimeout,
     TtsDebugAudioStore? ttsDebugAudioStore,
   }) : _logger = logger,
-       _resolveTurnDetection = resolveTurnDetection,
-       _resolveStt = resolveStt,
+       _resolveTurnDetection = toResolver<TurnDetectionProvider?>(
+         resolveTurnDetection,
+       ),
+       _resolveStt = toResolver<SpeechToTextProvider?>(resolveStt),
        _voiceBridge = voiceBridge,
        _getSpeechReadiness = getSpeechReadiness,
        _now = now ?? DateTime.now,

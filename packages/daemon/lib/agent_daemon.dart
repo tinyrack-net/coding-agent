@@ -31,6 +31,7 @@ export 'src/voice/openai/config.dart';
 export 'src/voice/openai/runtime.dart';
 export 'src/voice/openai/stt.dart';
 export 'src/voice/openai/tts.dart';
+export 'src/voice/provider_resolver.dart';
 export 'src/voice/speech_provider.dart';
 export 'src/voice/speech_config_resolver.dart';
 export 'src/voice/speech_runtime.dart';

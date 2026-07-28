@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import 'audio.dart';
 import 'dictation_debug.dart';
 import 'pcm16_resampler.dart';
+import 'provider_resolver.dart';
 import 'speech_provider.dart';
 
 const defaultDictationFinalTimeout = Duration(seconds: 10);
@@ -32,7 +33,7 @@ final class DictationStreamManager {
     required SpeechLogger logger,
     required DictationStreamEmitter emit,
     required this.sessionId,
-    required SpeechToTextResolver resolveStt,
+    required Object? resolveStt,
     this.language = 'en',
     Duration finalTimeout = defaultDictationFinalTimeout,
     double? autoCommitSeconds,
@@ -44,7 +45,7 @@ final class DictationStreamManager {
     DateTime Function()? now,
   }) : _logger = logger.child(const {'component': 'dictation-stream-manager'}),
        _emit = emit,
-       _resolveStt = resolveStt,
+       _resolveStt = toResolver<SpeechToTextProvider?>(resolveStt),
        _finalTimeout = finalTimeout,
        _environment = environment ?? Platform.environment,
        _autoCommitSeconds =

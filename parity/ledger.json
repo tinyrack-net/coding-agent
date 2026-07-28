@@ -12672,10 +12672,16 @@
     },
     {
       "id": "source-unit:packages/server/src/server/speech/provider-resolver.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/provider_resolver.dart; packages/daemon/lib/src/voice/stt_manager.dart; packages/daemon/lib/src/voice/tts_manager.dart; packages/daemon/lib/src/voice/dictation_stream_manager.dart; packages/daemon/lib/src/voice/voice_session.dart; packages/daemon/lib/src/server/voice_session_v2_service.dart",
+      "evidence": [
+        "packages/daemon/test/voice/provider_resolver_test.dart",
+        "packages/daemon/test/voice/stt_manager_test.dart",
+        "packages/daemon/test/voice/tts_manager_test.dart",
+        "packages/daemon/test/voice/dictation_stream_manager_test.dart",
+        "packages/daemon/test/voice/voice_session_test.dart"
+      ],
+      "notes": "Direct, nullable, and lazy provider values normalize to typed resolvers; lazy values preserve identity and reevaluation, and all STT/TTS/dictation/voice session consumers accept the frozen value-or-resolver boundary."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/config.ts",
@@ -12909,7 +12915,7 @@
     },
     {
       "id": "source-unit:packages/server/src/server/speech/speech-runtime.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/voice/speech_runtime.dart; packages/daemon/lib/src/voice/speech_readiness.dart; packages/daemon/lib/src/voice/configured_speech_runtime.dart; packages/daemon/lib/src/voice/local/runtime.dart; packages/daemon/lib/src/voice/local/model_downloader.dart; packages/daemon/lib/src/voice/openai/runtime.dart; packages/daemon/lib/src/server/voice_session_v2_service.dart; packages/daemon/lib/src/server/ws_server.dart; packages/daemon/lib/src/server/daemon_config.dart",
       "evidence": [
         "packages/daemon/test/voice/speech_runtime_test.dart",
@@ -12922,7 +12928,7 @@
         "packages/daemon/test/daemon_config_test.dart",
         "packages/app/test/daemon_client_v2_e2e_test.dart"
       ],
-      "notes": "Frozen provider enablement, feature-scoped languages, readiness, listener deduplication, async reconciliation, concrete local model catalog/download/install states, 3-second monitoring, cleanup, capability projection, lifecycle, and OpenAI STT/TTS reconciliation are ported. Concrete worker-backed local turn detection, STT, and TTS services remain."
+      "notes": "Provider enablement, feature languages, readiness publication, asynchronous reconciliation, model monitoring/download states, capability projection, lifecycle cleanup, and concrete OpenAI plus worker-backed local VAD/STT/TTS services are fully composed and verified."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/speech-types.ts",

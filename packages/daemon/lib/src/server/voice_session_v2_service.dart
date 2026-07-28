@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:uuid/uuid.dart';
 
+import '../voice/provider_resolver.dart';
 import '../voice/speech_provider.dart';
 import '../voice/speech_readiness.dart';
 import '../voice/turn_detection_provider.dart';
@@ -17,11 +18,11 @@ typedef VoiceSessionHostFactory =
 final class VoiceSessionV2Service {
   VoiceSessionV2Service({
     required VoiceSessionHostFactory createHost,
-    required TextToSpeechResolver resolveTts,
-    required SpeechToTextResolver resolveStt,
-    required TurnDetectionResolver resolveTurnDetection,
+    required Object? resolveTts,
+    required Object? resolveStt,
+    required Object? resolveTurnDetection,
     required VoiceBridgeRegistry voiceBridge,
-    SpeechToTextResolver? resolveDictationStt,
+    Object? resolveDictationStt,
     SpeechReadinessSnapshot Function()? getSpeechReadiness,
     SpeechLogger logger = const NullSpeechLogger(),
     this.sttLanguage = 'en',
@@ -29,10 +30,14 @@ final class VoiceSessionV2Service {
     Map<String, String>? environment,
     String? cwd,
   }) : _createHost = createHost,
-       _resolveTts = resolveTts,
-       _resolveStt = resolveStt,
-       _resolveDictationStt = resolveDictationStt ?? resolveStt,
-       _resolveTurnDetection = resolveTurnDetection,
+       _resolveTts = toResolver<TextToSpeechProvider?>(resolveTts),
+       _resolveStt = toResolver<SpeechToTextProvider?>(resolveStt),
+       _resolveDictationStt = toResolver<SpeechToTextProvider?>(
+         resolveDictationStt ?? resolveStt,
+       ),
+       _resolveTurnDetection = toResolver<TurnDetectionProvider?>(
+         resolveTurnDetection,
+       ),
        _voiceBridge = voiceBridge,
        _getSpeechReadiness = getSpeechReadiness,
        _logger = logger,

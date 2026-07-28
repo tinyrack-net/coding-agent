@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'audio.dart';
 import 'pcm16_resampler.dart';
+import 'provider_resolver.dart';
 import 'recordings_debug.dart';
 import 'speech_provider.dart';
 import 'stt_debug.dart';
@@ -57,7 +58,7 @@ final class SttManager {
   SttManager({
     required this.sessionId,
     required SpeechLogger logger,
-    required SpeechToTextResolver resolveStt,
+    required Object? resolveStt,
     this.language = 'en',
     SttDebugAudioPersister? debugPersister,
     double? batchCommitEverySeconds,
@@ -70,7 +71,7 @@ final class SttManager {
          'component': 'stt-manager',
          'sessionId': sessionId,
        }),
-       _resolveStt = resolveStt,
+       _resolveStt = toResolver<SpeechToTextProvider?>(resolveStt),
        _now = now ?? DateTime.now,
        _batchCommitEverySeconds =
            batchCommitEverySeconds ??
