@@ -16,6 +16,7 @@ import '../utils/path_identity.dart';
 import 'agent_store.dart';
 import 'provider_subagent_store.dart';
 import 'runtime_mcp_config.dart';
+import 'system_prompt.dart';
 import 'timeline_store.dart';
 
 typedef PermissionRequestedBroadcast =
@@ -123,6 +124,7 @@ class AgentManager {
     String? mcpBaseUrl,
     String? mcpAuthToken,
     bool injectMcpIntoAgents = false,
+    String? appendSystemPrompt,
     void Function(ProviderSubagentUpdate update)? onProviderSubagentUpdate,
   }) : _clients = clients,
        _clientResolver = clientResolver,
@@ -131,6 +133,7 @@ class AgentManager {
        _mcpBaseUrl = mcpBaseUrl,
        _mcpAuthToken = mcpAuthToken,
        _injectMcpIntoAgents = injectMcpIntoAgents,
+       _appendSystemPrompt = appendSystemPrompt ?? '',
        broker = broker ?? PermissionBroker(),
        providerSubagents = ProviderSubagentStore(
          onUpdate: onProviderSubagentUpdate,
@@ -156,6 +159,7 @@ class AgentManager {
   String? _mcpBaseUrl;
   final String? _mcpAuthToken;
   bool _injectMcpIntoAgents;
+  String _appendSystemPrompt;
 
   void configureRuntimeMcp({
     required String? baseUrl,
@@ -163,6 +167,10 @@ class AgentManager {
   }) {
     _mcpBaseUrl = baseUrl;
     _injectMcpIntoAgents = injectIntoAgents;
+  }
+
+  void setAppendSystemPrompt(String? prompt) {
+    _appendSystemPrompt = prompt ?? '';
   }
 
   String? get mcpAuthToken => _mcpAuthToken;
@@ -703,6 +711,10 @@ class AgentManager {
             mcpAuthToken: _mcpAuthToken,
           )
         : stripInternalAgentMcpServers(runtime.mcpServers);
+    final launchSystemPrompt = composeSystemPromptParts([
+      systemPrompt,
+      _appendSystemPrompt,
+    ]);
     final session = client is McpAgentClient
         ? await client.createSessionWithMcp(
             cwd: runtime.summary.cwd,
@@ -711,7 +723,7 @@ class AgentManager {
             modeId: runtime.summary.currentModeId,
             thinkingOptionId: runtime.summary.thinkingOptionId,
             featureValues: runtime.summary.featureValues,
-            systemPrompt: systemPrompt,
+            systemPrompt: launchSystemPrompt,
             sessionId: runtime.summary.sessionId,
             initialHistory: runtime.timeline.snapshot(),
             mcpServers: launchMcpServers,
@@ -723,7 +735,7 @@ class AgentManager {
             modeId: runtime.summary.currentModeId,
             thinkingOptionId: runtime.summary.thinkingOptionId,
             featureValues: runtime.summary.featureValues,
-            systemPrompt: systemPrompt,
+            systemPrompt: launchSystemPrompt,
             sessionId: runtime.summary.sessionId,
             initialHistory: runtime.timeline.snapshot(),
           );

@@ -11751,10 +11751,16 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/system-prompt.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/agent/system_prompt.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/daemon_server.dart",
+      "evidence": [
+        "packages/daemon/test/agent/system_prompt_test.dart",
+        "packages/daemon/test/agent_manager_test.dart",
+        "packages/daemon/test/daemon_append_system_prompt_e2e_test.dart",
+        "packages/daemon/test/providers/paseo/codex_session_runtime_test.dart",
+        "packages/daemon/test/providers/paseo/claude_agent_client_test.dart"
+      ],
+      "notes": "Matches the frozen trim, blank filtering, two-newline join, and undefined/null result semantics. Agent-specific and daemon append prompts are composed only at provider launch/reload, while the durable AgentSummary retains only the agent-specific prompt. Initial config and live appendSystemPrompt changes feed the manager and affect subsequent sessions across provider clients. The 83-test manager/config/provider smoke boundary passed three concurrent independent processes with eight-way test concurrency and no flakes."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/timeline-append.ts",

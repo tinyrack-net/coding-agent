@@ -280,6 +280,7 @@ Future<DaemonServerHandle> startDaemonServer({
         : null,
     mcpAuthToken: agentMcpAuthToken,
     injectMcpIntoAgents: configStore.config.injectMcpIntoAgents,
+    appendSystemPrompt: configStore.config.appendSystemPrompt,
     store: AgentStore(dataDir: dataDir),
     onStream: (payload) => server.broadcast(
       RpcEvent(type: MessageTypes.agentStreamEvent, payload: payload.toJson()),
@@ -878,6 +879,7 @@ Future<DaemonServerHandle> startDaemonServer({
       baseUrl: agentMcpBaseUrl,
       injectIntoAgents: config.injectMcpIntoAgents,
     );
+    manager.setAppendSystemPrompt(config.appendSystemPrompt);
     server.broadcastV2({
       'type': 'status',
       'message': DaemonConfigChangedStatus(config: config).toJson(),

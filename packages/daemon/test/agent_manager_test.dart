@@ -267,6 +267,43 @@ void main() {
     title: 'Test',
   );
 
+  test('injects daemon append system prompt at runtime only', () async {
+    manager.setAppendSystemPrompt('  Daemon instructions.  ');
+    final created = await manager.createAgent(
+      cwd: tempDir.path,
+      provider: 'claude',
+      model: 'claude-sonnet-5',
+      mode: AgentMode.normal,
+      title: 'Prompted',
+      systemPrompt: '  Agent instructions.  ',
+    );
+
+    expect(
+      client.createCalls.single.systemPrompt,
+      'Agent instructions.\n\nDaemon instructions.',
+    );
+    expect(created.systemPrompt, 'Agent instructions.');
+    expect(manager.get(created.agentId)!.systemPrompt, 'Agent instructions.');
+
+    manager.setAppendSystemPrompt('Updated daemon instructions.');
+    final reloaded = await manager.reloadAgentSession(
+      created.agentId,
+      systemPrompt: created.systemPrompt,
+    );
+    expect(
+      client.createCalls.last.systemPrompt,
+      'Agent instructions.\n\nUpdated daemon instructions.',
+    );
+    expect(reloaded.systemPrompt, 'Agent instructions.');
+
+    manager.setAppendSystemPrompt(null);
+    await manager.reloadAgentSession(
+      created.agentId,
+      systemPrompt: created.systemPrompt,
+    );
+    expect(client.createCalls.last.systemPrompt, 'Agent instructions.');
+  });
+
   test(
     'resolves provider clients dynamically from the daemon config surface',
     () async {
