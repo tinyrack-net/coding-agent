@@ -7,11 +7,13 @@ import '../agent_client.dart';
 import '../agent_session.dart';
 import '../provider_event.dart';
 import 'acp_catalog.dart';
+import 'acp_history.dart';
 import 'acp_rpc_process.dart';
 
 typedef AcpCommandResolver = Future<String?> Function();
 
-final class GenericAcpAgentClient implements AgentClient {
+final class GenericAcpAgentClient
+    implements AgentClient, ImportableAgentClient {
   const GenericAcpAgentClient({
     required this.provider,
     required this.command,
@@ -95,6 +97,85 @@ final class GenericAcpAgentClient implements AgentClient {
       await session.dispose();
     }
   }
+
+  @override
+  Future<List<ImportableProviderSession>> listImportableSessions([
+    ListImportableSessionsOptions? options,
+  ]) async {
+    final executable = await _requireExecutable();
+    final rpc = await AcpRpcProcess.start(
+      launch: AcpRpcProcessLaunch(
+        command: executable,
+        args: commandArgs,
+        cwd: options?.cwd ?? '.',
+        environment: {...environment, 'NO_BROWSER': 'true'},
+      ),
+      diagnosticName: '$provider ACP session list',
+      onIncoming: (method, _) {
+        throw UnsupportedError(
+          'Unsupported ACP client method during session listing: $method',
+        );
+      },
+      spawn: processStarter,
+    );
+    try {
+      final initialized = await _initializeAcp(rpc);
+      final capabilities =
+          _map(initialized['agentCapabilities']) ?? const <String, Object?>{};
+      final sessionCapabilities =
+          _map(capabilities['sessionCapabilities']) ??
+          const <String, Object?>{};
+      if (!_capabilityEnabled(sessionCapabilities, 'list')) return const [];
+
+      final sessions = <ImportableProviderSession>[];
+      String? cursor;
+      for (;;) {
+        final page = _requiredMap(
+          await rpc.request('session/list', {
+            if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+            if (options?.cwd case final cwd? when cwd.isNotEmpty) 'cwd': cwd,
+          }),
+          'ACP session/list result',
+        );
+        final rows = page['sessions'];
+        if (rows is! List) {
+          throw const FormatException(
+            'ACP session/list result requires sessions',
+          );
+        }
+        for (final row in rows) {
+          sessions.add(_importableSession(_requiredMap(row, 'ACP session')));
+        }
+        final nextCursor = page['nextCursor'];
+        if (nextCursor != null && nextCursor is! String) {
+          throw const FormatException(
+            'ACP session/list nextCursor must be a string',
+          );
+        }
+        cursor = nextCursor as String?;
+        if (cursor == null || cursor.isEmpty) break;
+        final limit = options?.limit;
+        if (limit != null && sessions.length >= limit) break;
+      }
+      final limit = options?.limit;
+      if (limit == null || sessions.length <= limit) {
+        return List.unmodifiable(sessions);
+      }
+      return List.unmodifiable(sessions.take(limit));
+    } finally {
+      await rpc.close();
+    }
+  }
+
+  Future<String> _requireExecutable() async {
+    final executable = await _resolveCommand();
+    if (executable == null) {
+      throw StateError(
+        "ACP provider '$provider' command is unavailable: $command",
+      );
+    }
+    return executable;
+  }
 }
 
 final class _PendingAcpPermission {
@@ -124,7 +205,8 @@ final class GenericAcpAgentSession
     implements
         StructuredPromptAgentSession,
         ConfigurableAgentSession,
-        CommandListingAgentSession {
+        CommandListingAgentSession,
+        HistoryRestoringAgentSession {
   GenericAcpAgentSession({
     required this.provider,
     required this.executable,
@@ -164,7 +246,9 @@ final class GenericAcpAgentSession
   final Map<String, Object?> _sessionState = {};
 
   AcpRpcProcess? _rpc;
+  AcpHistoryProjector? _historyProjector;
   late AcpProviderCatalog _catalog;
+  List<TimelineItem>? _restoredHistory;
   String? _sessionId;
   String? _fallbackAssistantMessageId;
   String? _fallbackReasoningId;
@@ -173,6 +257,9 @@ final class GenericAcpAgentSession
   bool _intentionalClose = false;
 
   AcpProviderCatalog get catalog => _catalog;
+
+  @override
+  List<TimelineItem>? get restoredHistory => _restoredHistory;
 
   @override
   Stream<ProviderEvent> get events async* {
@@ -206,17 +293,7 @@ final class GenericAcpAgentSession
         }
       });
 
-      final initialized = _requiredMap(
-        await rpc.request('initialize', {
-          'protocolVersion': 1,
-          'clientCapabilities': {
-            'fs': {'readTextFile': false, 'writeTextFile': false},
-            'terminal': false,
-          },
-          'clientInfo': {'name': 'Tinyrack', 'version': '0.2.0'},
-        }),
-        'initialize result',
-      );
+      final initialized = await _initializeAcp(rpc);
       final capabilities =
           _map(initialized['agentCapabilities']) ?? const <String, Object?>{};
       final sessionCapabilities =
@@ -224,17 +301,28 @@ final class GenericAcpAgentSession
           const <String, Object?>{};
 
       final requestedSessionId = resumeSessionId;
-      final response = requestedSessionId == null
-          ? await rpc.request('session/new', {
-              'cwd': cwd,
-              'mcpServers': const [],
-            })
-          : await _resume(
-              rpc,
-              requestedSessionId,
-              loadSession: capabilities['loadSession'] == true,
-              resumeSession: sessionCapabilities['resume'] == true,
-            );
+      Object? response;
+      if (requestedSessionId == null) {
+        response = await rpc.request('session/new', {
+          'cwd': cwd,
+          'mcpServers': const [],
+        });
+      } else {
+        _sessionId = requestedSessionId;
+        final supportsLoad = _capabilityEnabled(capabilities, 'loadSession');
+        if (supportsLoad) _historyProjector = AcpHistoryProjector();
+        response = await _resume(
+          rpc,
+          requestedSessionId,
+          loadSession: supportsLoad,
+          resumeSession: _capabilityEnabled(sessionCapabilities, 'resume'),
+        );
+        final projector = _historyProjector;
+        if (projector != null) {
+          _restoredHistory = projector.finish();
+          _historyProjector = null;
+        }
+      }
       final sessionState = _requiredMap(response, 'ACP session result');
       _sessionId =
           sessionState['sessionId'] as String? ??
@@ -430,6 +518,7 @@ final class GenericAcpAgentSession
     if (params['sessionId'] != _sessionId) return;
     final update = _map(params['update']);
     if (update == null) return;
+    _historyProjector?.addUpdate(update);
     switch (update['sessionUpdate']) {
       case 'agent_message_chunk':
         final text = _contentText(update['content']);
@@ -720,4 +809,51 @@ String _requestErrorMessage(Object? error) {
   if (error is Error) return error.toString();
   final record = _map(error);
   return record?['message'] as String? ?? error.toString();
+}
+
+Future<Map<String, Object?>> _initializeAcp(AcpRpcProcess rpc) async =>
+    _requiredMap(
+      await rpc.request('initialize', {
+        'protocolVersion': 1,
+        'clientCapabilities': {
+          'fs': {'readTextFile': false, 'writeTextFile': false},
+          'terminal': false,
+        },
+        'clientInfo': {'name': 'Tinyrack', 'version': '0.2.0'},
+      }),
+      'initialize result',
+    );
+
+bool _capabilityEnabled(Map<String, Object?> capabilities, String key) =>
+    capabilities.containsKey(key) &&
+    capabilities[key] != null &&
+    capabilities[key] != false;
+
+ImportableProviderSession _importableSession(Map<String, Object?> row) {
+  final sessionId = row['sessionId'];
+  final cwd = row['cwd'];
+  final title = row['title'];
+  final updatedAt = row['updatedAt'];
+  if (sessionId is! String || sessionId.isEmpty) {
+    throw const FormatException('ACP session requires sessionId');
+  }
+  if (cwd is! String || cwd.isEmpty) {
+    throw const FormatException('ACP session requires cwd');
+  }
+  if (title != null && title is! String) {
+    throw const FormatException('ACP session title must be a string');
+  }
+  if (updatedAt != null && updatedAt is! String) {
+    throw const FormatException('ACP session updatedAt must be a string');
+  }
+  return ImportableProviderSession(
+    providerHandleId: sessionId,
+    cwd: cwd,
+    title: title as String?,
+    firstPromptPreview: null,
+    lastPromptPreview: null,
+    lastActivityAt: updatedAt == null
+        ? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)
+        : DateTime.parse(updatedAt as String).toUtc(),
+  );
 }

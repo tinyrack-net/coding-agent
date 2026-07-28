@@ -9,6 +9,14 @@ var configThinking = 'low';
 
 bool get configOnly =>
     Platform.environment['ACP_FIXTURE_CONFIG_ONLY'] == 'true';
+bool get supportsSessionList =>
+    Platform.environment['ACP_FIXTURE_NO_LIST'] != 'true';
+bool get supportsSessionLoad =>
+    Platform.environment['ACP_FIXTURE_NO_LOAD'] != 'true';
+bool get malformedSessionList =>
+    Platform.environment['ACP_FIXTURE_MALFORMED_LIST'] == 'true';
+bool get failSessionLoad =>
+    Platform.environment['ACP_FIXTURE_LOAD_FAIL'] == 'true';
 
 List<Map<String, Object?>> configOnlyOptions() => [
   {
@@ -122,10 +130,129 @@ void main() {
           'result': {
             'protocolVersion': 1,
             'agentCapabilities': {
-              'sessionCapabilities': {'resume': true},
+              if (supportsSessionLoad) 'loadSession': true,
+              'sessionCapabilities': {
+                'resume': true,
+                if (supportsSessionList) 'list': const {},
+              },
             },
           },
         });
+      case 'session/list':
+        if (!supportsSessionList) {
+          send({
+            'jsonrpc': '2.0',
+            'id': id,
+            'error': {'code': -32601, 'message': 'session/list unsupported'},
+          });
+          return;
+        }
+        if (malformedSessionList) {
+          respond(id, {'sessions': 'invalid', 'nextCursor': null});
+          return;
+        }
+        final requestedCwd = params['cwd'] as String?;
+        if (params['cursor'] == 'cursor-2') {
+          respond(id, {
+            'sessions': [
+              {
+                'sessionId': 'restored-session-2',
+                'cwd': requestedCwd ?? Directory.current.path,
+                'title': null,
+                'updatedAt': null,
+              },
+            ],
+            'nextCursor': null,
+          });
+          return;
+        }
+        respond(id, {
+          'sessions': [
+            {
+              'sessionId': 'restored-session',
+              'cwd': requestedCwd ?? Directory.current.path,
+              'title': 'Imported ACP session',
+              'updatedAt': '2026-06-13T00:00:00.000Z',
+            },
+          ],
+          'nextCursor': 'cursor-2',
+        });
+      case 'session/load':
+        if (params['cwd'] == null || params['mcpServers'] is! List) {
+          send({
+            'jsonrpc': '2.0',
+            'id': id,
+            'error': {'code': -32602, 'message': 'missing load context'},
+          });
+          return;
+        }
+        if (failSessionLoad) {
+          send({
+            'jsonrpc': '2.0',
+            'id': id,
+            'error': {'code': -32000, 'message': 'session/load failed'},
+          });
+          return;
+        }
+        final loadedSessionId = params['sessionId']! as String;
+        for (final update in [
+          {
+            'sessionUpdate': 'user_message_chunk',
+            'content': {'type': 'text', 'text': 'Restore '},
+          },
+          {
+            'sessionUpdate': 'user_message_chunk',
+            'content': {
+              'type': 'image',
+              'data': 'AA==',
+              'mimeType': 'image/png',
+            },
+          },
+          {
+            'sessionUpdate': 'agent_message_chunk',
+            'messageId': 'assistant-replay-1',
+            'content': {'type': 'text', 'text': 'Loaded'},
+          },
+          {
+            'sessionUpdate': 'agent_message_chunk',
+            'messageId': 'assistant-replay-1',
+            'content': {'type': 'text', 'text': ' response'},
+          },
+          {
+            'sessionUpdate': 'agent_thought_chunk',
+            'messageId': 'reasoning-replay-1',
+            'content': {'type': 'text', 'text': 'Recovered thought'},
+          },
+          {
+            'sessionUpdate': 'tool_call',
+            'toolCallId': 'tool-replay-1',
+            'title': 'Read source',
+            'kind': 'read',
+            'status': 'pending',
+            'rawInput': {'path': 'README.md'},
+          },
+          {
+            'sessionUpdate': 'tool_call_update',
+            'toolCallId': 'tool-replay-1',
+            'status': 'completed',
+            'rawOutput': {'text': 'done'},
+          },
+          {
+            'sessionUpdate': 'plan',
+            'id': 'plan-replay-1',
+            'entries': [
+              {'content': 'Inspect repository', 'status': 'completed'},
+              {'content': 'Continue port', 'status': 'pending'},
+            ],
+          },
+        ]) {
+          send({
+            'jsonrpc': '2.0',
+            'method': 'session/update',
+            'params': {'sessionId': loadedSessionId, 'update': update},
+          });
+        }
+        respond(id, {'sessionId': loadedSessionId});
       case 'session/new':
         if (configOnly) {
           respond(id, {

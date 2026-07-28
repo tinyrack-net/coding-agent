@@ -128,6 +128,59 @@ void main() {
           'review',
         ),
       );
+
+      final recentFrame = frames.firstWhere(
+        (frame) =>
+            frame['type'] == 'session' &&
+            (frame['message'] as Map?)?['type'] ==
+                FetchRecentProviderSessionsResponse.type,
+      );
+      channel.sink.add(
+        jsonEncode({
+          'type': 'session',
+          'message': FetchRecentProviderSessionsRequest(
+            requestId: 'custom-acp-recent',
+            cwd: Directory.current.path,
+            providers: const ['fixture-acp'],
+            limit: 10,
+          ).toJson(),
+        }),
+      );
+      final recent = FetchRecentProviderSessionsResponse.fromJson(
+        ((await recentFrame)['message'] as Map).cast<String, Object?>(),
+      );
+      expect(recent.entries, hasLength(2));
+      expect(
+        recent.entries.first,
+        isA<RecentProviderSessionDescriptor>()
+            .having((entry) => entry.providerId, 'provider', 'fixture-acp')
+            .having(
+              (entry) => entry.providerHandleId,
+              'provider handle',
+              'restored-session',
+            )
+            .having((entry) => entry.title, 'title', 'Imported ACP session'),
+      );
+
+      final imported = await handle.manager.importProviderSession(
+        provider: 'fixture-acp',
+        providerHandleId: 'restored-session',
+        cwd: Directory.current.path,
+        workspaceId: 'workspace-import',
+      );
+      expect(imported.timelineSize, 5);
+      expect(imported.summary.sessionId, 'restored-session');
+      final importedTimeline = handle.manager.fetchTimeline(
+        imported.summary.agentId,
+      );
+      expect(
+        importedTimeline.items.whereType<AssistantMessageItem>().single.text,
+        'Loaded response',
+      );
+      expect(
+        importedTimeline.items.whereType<ToolCallItem>().single.status,
+        ToolCallStatus.success,
+      );
     },
   );
 }

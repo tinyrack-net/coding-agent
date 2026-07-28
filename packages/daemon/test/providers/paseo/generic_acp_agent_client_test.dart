@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:agent_daemon/src/providers/paseo/generic_acp_agent_client.dart';
+import 'package:agent_daemon/src/providers/paseo/acp_rpc_process.dart';
+import 'package:agent_daemon/src/providers/agent_client.dart';
 import 'package:agent_daemon/src/providers/agent_session.dart';
 import 'package:agent_daemon/src/providers/provider_event.dart';
 import 'package:agent_protocol/agent_protocol.dart';
@@ -140,7 +142,7 @@ void main() {
   });
 
   test(
-    'resumes with cwd and MCP context when the agent advertises resume',
+    'loads with cwd and MCP context when the agent advertises load',
     () async {
       final session = await client().createSession(
         cwd: Directory.current.path,
@@ -160,6 +162,142 @@ void main() {
       );
     },
   );
+
+  test('falls back to ACP resume when session/load is absent', () async {
+    final session =
+        await client(
+          environment: const {'ACP_FIXTURE_NO_LOAD': 'true'},
+        ).createSession(
+          cwd: Directory.current.path,
+          model: '',
+          mode: AgentMode.normal,
+          sessionId: 'restored-session',
+        );
+    addTearDown(session.dispose);
+
+    expect(
+      await eventOf<SessionStarted>(session.events),
+      isA<SessionStarted>().having(
+        (event) => event.sessionId,
+        'session id',
+        'restored-session',
+      ),
+    );
+    expect((session as HistoryRestoringAgentSession).restoredHistory, isNull);
+  });
+
+  test('lists paginated ACP sessions with cwd filtering and limit', () async {
+    final cwd = Directory.current.path;
+    final sessions = await client().listImportableSessions(
+      ListImportableSessionsOptions(cwd: cwd),
+    );
+
+    expect(sessions, hasLength(2));
+    expect(
+      sessions.first,
+      isA<ImportableProviderSession>()
+          .having(
+            (session) => session.providerHandleId,
+            'provider handle',
+            'restored-session',
+          )
+          .having((session) => session.cwd, 'cwd', cwd)
+          .having((session) => session.title, 'title', 'Imported ACP session')
+          .having(
+            (session) => session.lastActivityAt,
+            'last activity',
+            DateTime.utc(2026, 6, 13),
+          ),
+    );
+    expect(
+      await client().listImportableSessions(
+        ListImportableSessionsOptions(cwd: cwd, limit: 1),
+      ),
+      hasLength(1),
+    );
+  });
+
+  test('returns no ACP sessions when list capability is absent', () async {
+    expect(
+      await client(
+        environment: const {'ACP_FIXTURE_NO_LIST': 'true'},
+      ).listImportableSessions(),
+      isEmpty,
+    );
+  });
+
+  test('rejects a malformed ACP session list response', () async {
+    await expectLater(
+      client(
+        environment: const {'ACP_FIXTURE_MALFORMED_LIST': 'true'},
+      ).listImportableSessions(),
+      throwsA(isA<FormatException>()),
+    );
+  });
+
+  test('restores authoritative ACP history from session/load', () async {
+    final session = await client().createSession(
+      cwd: Directory.current.path,
+      model: '',
+      mode: AgentMode.normal,
+      sessionId: 'restored-session',
+    );
+    addTearDown(session.dispose);
+
+    final history = (session as HistoryRestoringAgentSession).restoredHistory;
+    expect(history, hasLength(5));
+    expect(
+      history?[0],
+      isA<UserMessageItem>().having(
+        (item) => item.text,
+        'text',
+        'Restore [image]',
+      ),
+    );
+    expect(
+      history?[1],
+      isA<AssistantMessageItem>()
+          .having((item) => item.id, 'id', 'assistant-replay-1')
+          .having((item) => item.text, 'text', 'Loaded response'),
+    );
+    expect(
+      history?[2],
+      isA<ReasoningItem>().having(
+        (item) => item.text,
+        'text',
+        'Recovered thought',
+      ),
+    );
+    expect(
+      history?[3],
+      isA<ToolCallItem>().having(
+        (item) => item.status,
+        'status',
+        ToolCallStatus.success,
+      ),
+    );
+    expect(history?[4], isA<TodoItem>());
+  });
+
+  test('closes and surfaces ACP session/load failure', () async {
+    await expectLater(
+      client(
+        environment: const {'ACP_FIXTURE_LOAD_FAIL': 'true'},
+      ).createSession(
+        cwd: Directory.current.path,
+        model: '',
+        mode: AgentMode.normal,
+        sessionId: 'restored-session',
+      ),
+      throwsA(
+        isA<AcpRpcError>().having(
+          (error) => error.message,
+          'message',
+          'session/load failed',
+        ),
+      ),
+    );
+  });
 
   test(
     'probes ACP models, modes and thinking without interactive auth',
