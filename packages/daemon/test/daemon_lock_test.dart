@@ -30,48 +30,56 @@ void main() {
       }
       dir = dir.parent;
     }
-    throw StateError('could not locate packages/daemon from ${Directory.current}');
+    throw StateError(
+      'could not locate packages/daemon from ${Directory.current}',
+    );
   }
 
   Future<Process> spawnDaemon() async {
-    final process = await Process.start(
-      Platform.resolvedExecutable,
-      [
-        'run',
-        p.join('bin', 'daemon.dart'),
-        '--host',
-        '127.0.0.1',
-        '--port',
-        '$port',
-        '--data-dir',
-        tempDir.path,
-      ],
-      workingDirectory: daemonPackageDir(),
-    );
+    final process = await Process.start(Platform.resolvedExecutable, [
+      'run',
+      p.join('bin', 'daemon.dart'),
+      '--host',
+      '127.0.0.1',
+      '--port',
+      '$port',
+      '--data-dir',
+      tempDir.path,
+    ], workingDirectory: daemonPackageDir());
     spawnedPids.add(process.pid);
     // Drain stdio so the child never blocks on full pipes.
-    process.stdout.transform(utf8.decoder).listen((data) => print('[daemon stdout] $data'));
-    process.stderr.transform(utf8.decoder).listen((data) => print('[daemon stderr] $data'));
+    process.stdout
+        .transform(utf8.decoder)
+        .listen((data) => print('[daemon stdout] $data'));
+    process.stderr
+        .transform(utf8.decoder)
+        .listen((data) => print('[daemon stderr] $data'));
     return process;
   }
 
   // probeDaemon's cleanup awaits closing a channel that never connected and
   // can hang when nothing is listening yet, so wait for the TCP port to
   // accept connections first and bound every probe with an outer timeout.
-  Future<ServerHello> waitForHello(
-      {Duration timeout = const Duration(seconds: 120)}) async {
+  Future<ServerHello> waitForHello({
+    Duration timeout = const Duration(seconds: 120),
+  }) async {
     final deadline = DateTime.now().add(timeout);
     while (DateTime.now().isBefore(deadline)) {
       try {
-        final socket = await Socket.connect('127.0.0.1', port,
-            timeout: const Duration(seconds: 2));
+        final socket = await Socket.connect(
+          '127.0.0.1',
+          port,
+          timeout: const Duration(seconds: 2),
+        );
         socket.destroy();
       } catch (_) {
         await Future<void>.delayed(const Duration(milliseconds: 500));
         continue;
       }
-      final hello = await probeDaemon('127.0.0.1', port)
-          .timeout(const Duration(seconds: 5), onTimeout: () => null);
+      final hello = await probeDaemon(
+        '127.0.0.1',
+        port,
+      ).timeout(const Duration(seconds: 5), onTimeout: () => null);
       if (hello != null) return hello;
       await Future<void>.delayed(const Duration(milliseconds: 500));
     }
@@ -80,6 +88,15 @@ void main() {
 
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('daemon_lock_test_');
+    await File(p.join(tempDir.path, 'config.json')).writeAsString(
+      jsonEncode({
+        'version': 1,
+        'features': {
+          'dictation': {'enabled': false},
+          'voiceMode': {'enabled': false},
+        },
+      }),
+    );
     final probe = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     port = probe.port;
     await probe.close();
@@ -121,8 +138,9 @@ void main() {
 
     // A second daemon on the same data-dir + port exits with code 11.
     final second = await spawnDaemon();
-    final secondExit =
-        await second.exitCode.timeout(const Duration(seconds: 120));
+    final secondExit = await second.exitCode.timeout(
+      const Duration(seconds: 120),
+    );
     expect(secondExit, 11);
 
     // First daemon must still be reachable and holding its lock.
@@ -139,10 +157,12 @@ void main() {
 
     // daemon.shutdown RPC from loopback: process exits, lock file disappears.
     final ok = await sendLifecycleRequest(
-        '127.0.0.1', port, MessageTypes.daemonShutdownRequest);
+      '127.0.0.1',
+      port,
+      MessageTypes.daemonShutdownRequest,
+    );
     expect(ok, isTrue);
-    final exitCode =
-        await daemon.exitCode.timeout(const Duration(seconds: 60));
+    final exitCode = await daemon.exitCode.timeout(const Duration(seconds: 60));
     expect(exitCode, 0);
 
     // The lock is released just before exit; allow a short grace period.
@@ -151,8 +171,11 @@ void main() {
         DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 200));
     }
-    expect(File(paths.lockFile).existsSync(), isFalse,
-        reason: 'daemon.pid should be deleted on shutdown');
+    expect(
+      File(paths.lockFile).existsSync(),
+      isFalse,
+      reason: 'daemon.pid should be deleted on shutdown',
+    );
   });
 }
 
@@ -163,25 +186,36 @@ Future<RpcResponse> _rpc(int port, String type) async {
   try {
     final frames = channel.stream
         .where((f) => f is String)
-        .map((f) =>
-            RpcFrame.fromJson(jsonDecode(f as String) as Map<String, Object?>))
+        .map(
+          (f) => RpcFrame.fromJson(
+            jsonDecode(f as String) as Map<String, Object?>,
+          ),
+        )
         .asBroadcastStream();
 
-    channel.sink.add(jsonEncode(RpcRequest(
-      type: MessageTypes.clientHelloRequest,
-      requestId: 'hello',
-      payload: const ClientHello(clientName: 'test', clientVersion: '0')
-          .toJson(),
-    ).toJson()));
+    channel.sink.add(
+      jsonEncode(
+        RpcRequest(
+          type: MessageTypes.clientHelloRequest,
+          requestId: 'hello',
+          payload: const ClientHello(
+            clientName: 'test',
+            clientVersion: '0',
+          ).toJson(),
+        ).toJson(),
+      ),
+    );
     await frames
         .firstWhere((f) => f is RpcResponse && f.requestId == 'hello')
         .timeout(const Duration(seconds: 10));
 
-    channel.sink
-        .add(jsonEncode(RpcRequest(type: type, requestId: 'req').toJson()));
+    channel.sink.add(
+      jsonEncode(RpcRequest(type: type, requestId: 'req').toJson()),
+    );
     return await frames
-        .firstWhere((f) => f is RpcResponse && f.requestId == 'req')
-        .timeout(const Duration(seconds: 10)) as RpcResponse;
+            .firstWhere((f) => f is RpcResponse && f.requestId == 'req')
+            .timeout(const Duration(seconds: 10))
+        as RpcResponse;
   } finally {
     try {
       await channel.sink.close(1000);

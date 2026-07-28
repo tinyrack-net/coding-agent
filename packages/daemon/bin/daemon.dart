@@ -79,9 +79,10 @@ Future<void> _run(
   DaemonServerHandle handle;
   try {
     final speechLogger = CallbackSpeechLogger(log);
-    final speechService = createOpenAiSpeechRuntime(
+    final speechService = createConfiguredSpeechRuntime(
       runtimeConfig: config.speech,
       openAiConfig: config.openAiSpeech,
+      localConfig: config.localSpeech,
       logger: speechLogger,
     );
     handle = await startDaemonServer(

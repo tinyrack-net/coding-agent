@@ -6,7 +6,9 @@ import 'package:path/path.dart' as p;
 import 'daemon_auth.dart';
 import 'hostnames.dart';
 import 'trusted_proxies.dart';
+import '../voice/local/config.dart';
 import '../voice/openai/config.dart';
+import '../voice/speech_config_resolver.dart';
 import '../voice/speech_runtime.dart';
 
 const defaultTinyrackListen = '127.0.0.1:6868';
@@ -64,6 +66,7 @@ class DaemonRuntimeConfig {
     required this.enableTerminalAgentHooks,
     this.speech = const SpeechRuntimeConfig(),
     this.openAiSpeech,
+    this.localSpeech,
     this.auth,
   });
 
@@ -82,6 +85,7 @@ class DaemonRuntimeConfig {
   final bool enableTerminalAgentHooks;
   final SpeechRuntimeConfig speech;
   final OpenAiSpeechConfig? openAiSpeech;
+  final LocalSpeechProviderConfig? localSpeech;
   final DaemonAuthConfig? auth;
 
   String get host {
@@ -136,7 +140,6 @@ DaemonRuntimeConfig loadDaemonRuntimeConfig({
   final webUi = _map(features['webUi'], 'features.webUi');
   final app = _map(persisted['app'], 'app');
   final log = _map(persisted['log'], 'log');
-  final speech = _map(persisted['speech'], 'speech');
   final hub = _parseHubUrl(env['TINYRACK_HUB_URL']);
   final optionalServiceProxyLayers =
       _booleanEnv(env['TINYRACK_SERVICE_PROXY_ENABLED']) ??
@@ -195,7 +198,11 @@ DaemonRuntimeConfig loadDaemonRuntimeConfig({
     ),
     parseHostnamesEnv(cliHostnames),
   ]);
-  final speechConfig = SpeechRuntimeConfig.fromJson(speech);
+  final resolvedSpeech = resolveSpeechConfiguration(
+    tinyrackHome: resolvedHome,
+    environment: env,
+    persisted: persisted,
+  );
   final config = DaemonRuntimeConfig(
     home: resolvedHome,
     listen:
@@ -260,12 +267,9 @@ DaemonRuntimeConfig loadDaemonRuntimeConfig({
         _booleanEnv(env['TINYRACK_ENABLE_TERMINAL_AGENT_HOOKS']) ??
         _bool(daemon['enableTerminalAgentHooks']) ??
         false,
-    speech: speechConfig,
-    openAiSpeech: resolveOpenAiSpeechConfig(
-      environment: env,
-      persisted: persisted,
-      providers: speechConfig.providers,
-    ),
+    speech: resolvedSpeech.runtime,
+    openAiSpeech: resolvedSpeech.openAi,
+    localSpeech: resolvedSpeech.local,
     auth: authConfig,
   );
   config.host;

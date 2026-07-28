@@ -86,15 +86,14 @@ void main() {
   test('loads frozen speech provider and language configuration', () {
     _writeConfig(home, {
       'version': 1,
-      'speech': {
-        'providers': {
-          'dictationStt': {
-            'provider': 'openai',
-            'explicit': true,
-            'enabled': false,
-          },
+      'features': {
+        'dictation': {
+          'enabled': false,
+          'stt': {'provider': 'openai', 'language': 'ja'},
         },
-        'sttLanguages': {'voice': 'ko', 'dictation': 'ja'},
+        'voiceMode': {
+          'stt': {'language': 'ko'},
+        },
       },
     });
 
@@ -106,16 +105,19 @@ void main() {
     expect(config.speech.providers.voiceStt.explicit, isFalse);
     expect(config.speech.voiceSttLanguage, 'ko');
     expect(config.speech.dictationSttLanguage, 'ja');
+    expect(config.localSpeech?.models.voiceStt, 'parakeet-tdt-0.6b-v2-int8');
   });
 
   test('resolves frozen OpenAI speech config into daemon runtime', () {
     _writeConfig(home, {
       'version': 1,
-      'speech': {
-        'providers': {
-          'dictationStt': {'provider': 'openai', 'explicit': true},
-          'voiceStt': {'provider': 'openai', 'explicit': true},
-          'voiceTts': {'provider': 'openai', 'explicit': true},
+      'features': {
+        'dictation': {
+          'stt': {'provider': 'openai'},
+        },
+        'voiceMode': {
+          'stt': {'provider': 'openai'},
+          'tts': {'provider': 'openai'},
         },
       },
       'providers': {
@@ -145,28 +147,54 @@ void main() {
     expect(defaults.voiceSttLanguage, 'en');
     expect(defaults.dictationSttLanguage, 'en');
 
-    for (final speech in [
-      <String, Object?>{'providers': false},
+    for (final features in [
+      <String, Object?>{'voiceMode': false},
       <String, Object?>{
-        'providers': {
-          'voiceStt': {'provider': 'invalid', 'explicit': true},
+        'voiceMode': {
+          'stt': {'provider': 'invalid'},
         },
       },
       <String, Object?>{
-        'providers': {
-          'voiceStt': {'provider': 'local', 'explicit': 'yes'},
+        'voiceMode': {
+          'stt': {'provider': 42},
         },
       },
       <String, Object?>{
-        'sttLanguages': {'voice': ' '},
+        'dictation': {'enabled': 42},
       },
     ]) {
-      _writeConfig(home, {'version': 1, 'speech': speech});
+      _writeConfig(home, {'version': 1, 'features': features});
       expect(
         () => loadDaemonRuntimeConfig(home: home.path, environment: {}),
         throwsFormatException,
       );
     }
+  });
+
+  test('legacy direct speech languages no longer override Paseo sources', () {
+    _writeConfig(home, {
+      'version': 1,
+      'speech': {
+        'sttLanguages': {'voice': 'legacy', 'dictation': 'legacy'},
+      },
+      'features': {
+        'dictation': {
+          'stt': {'language': 'fr'},
+        },
+      },
+    });
+
+    final config = loadDaemonRuntimeConfig(
+      home: home.path,
+      environment: const {'TINYRACK_VOICE_LANGUAGE': 'de'},
+    );
+
+    expect(config.speech.voiceSttLanguage, 'de');
+    expect(config.speech.dictationSttLanguage, 'fr');
+    expect(
+      config.localSpeech?.modelsDirectory,
+      p.join(home.path, 'models', 'local-speech'),
+    );
   });
 
   test('applies CLI over env over persisted precedence', () {
