@@ -26,6 +26,17 @@ Future<int> runAgentCommand({
   }
   try {
     final invocation = AgentCliInvocation.parse(arguments);
+    if (invocation.action == 'mode' &&
+        !invocation.listModes &&
+        (invocation.modeId == null || invocation.modeId!.isEmpty)) {
+      throw const AgentCommandException(
+        'MISSING_ARGUMENT',
+        'Mode argument required unless --list is specified',
+        details:
+            'Usage: coding-agent agent mode <id> <mode> | '
+            'coding-agent agent mode --list <id>',
+      );
+    }
     final env = environment ?? Platform.environment;
     var send = request;
     if (send == null) {
@@ -80,6 +91,8 @@ final class AgentCliInvocation {
   const AgentCliInvocation({
     required this.action,
     required this.agentId,
+    required this.modeId,
+    required this.listModes,
     required this.includeArchived,
     required this.global,
     required this.labels,
@@ -92,6 +105,8 @@ final class AgentCliInvocation {
 
   final String action;
   final String? agentId;
+  final String? modeId;
+  final bool listModes;
   final bool includeArchived;
   final bool global;
   final List<String> labels;
@@ -106,16 +121,18 @@ final class AgentCliInvocation {
       throw const FormatException('Missing agent action');
     }
     final action = arguments.first;
-    if (!const {'ls', 'inspect'}.contains(action)) {
+    if (!const {'ls', 'inspect', 'mode'}.contains(action)) {
       throw FormatException('Unknown agent action: $action');
     }
     final positionals = <String>[];
     final labels = <String>[];
     var includeArchived = false;
     var global = false;
+    var listModes = false;
     String? thinking;
     String? host;
     var format = 'table';
+    var json = false;
     var quiet = false;
     var headers = true;
     for (var index = 1; index < arguments.length; index++) {
@@ -131,6 +148,11 @@ final class AgentCliInvocation {
           _onlyList(action, argument);
           includeArchived = true;
           global = true;
+        case '--list':
+          if (action != 'mode') {
+            throw FormatException('$argument is only valid for agent mode');
+          }
+          listModes = true;
         case '--label':
           _onlyList(action, argument);
           labels.add(_requiredValue(arguments, ++index, argument));
@@ -140,9 +162,14 @@ final class AgentCliInvocation {
         case '--host':
           host = _requiredValue(arguments, ++index, argument);
         case '--json':
-          format = 'json';
+          json = true;
         case '-o' || '--format':
-          format = _requiredValue(arguments, ++index, argument);
+          format = _requiredValue(
+            arguments,
+            ++index,
+            argument,
+          ).trim().toLowerCase();
+          if (format == 'cli') format = 'table';
           if (!const {'table', 'json', 'yaml'}.contains(format)) {
             throw FormatException('Unknown output format: $format');
           }
@@ -166,16 +193,26 @@ final class AgentCliInvocation {
         (positionals.length != 1 || positionals.single.trim().isEmpty)) {
       throw const FormatException('Agent ID is required');
     }
+    if (action == 'mode' &&
+        (positionals.isEmpty ||
+            positionals.length > 2 ||
+            positionals.first.trim().isEmpty)) {
+      throw const FormatException('Agent ID is required');
+    }
     final normalizedThinking = thinking?.trim();
     return AgentCliInvocation(
       action: action,
       agentId: positionals.firstOrNull?.trim(),
+      modeId: action == 'mode' && positionals.length == 2
+          ? positionals[1].trim()
+          : null,
+      listModes: listModes,
       includeArchived: includeArchived,
       global: global,
       labels: List.unmodifiable(labels),
       thinking: normalizedThinking,
       host: host,
-      format: format,
+      format: json ? 'json' : format,
       quiet: quiet,
       headers: headers,
     );
@@ -191,6 +228,7 @@ Future<_AgentCommandResult> _execute(
   return switch (invocation.action) {
     'ls' => _listAgents(invocation, request, environment, now),
     'inspect' => _inspectAgent(invocation, request, environment),
+    'mode' => _modeAgent(invocation, request),
     _ => throw StateError('Unhandled agent action'),
   };
 }
@@ -336,6 +374,97 @@ Future<_AgentCommandResult> _inspectAgent(
     rows: _agentInspectRows(data, environment),
     structured: data,
   );
+}
+
+Future<_AgentCommandResult> _modeAgent(
+  AgentCliInvocation invocation,
+  AgentRpcRequester request,
+) async {
+  final operation = invocation.listModes ? 'list modes' : 'set mode';
+  Map<String, Object?> payload;
+  try {
+    payload = await request(
+      FetchAgentRequest(
+        requestId: _requestId('agent_mode_resolve'),
+        agentId: invocation.agentId!,
+      ).toJson(),
+    );
+  } on Object catch (error) {
+    throw AgentCommandException(
+      'MODE_OPERATION_FAILED',
+      'Failed to $operation: ${_errorText(error)}',
+    );
+  }
+  final responseError = payload['error'];
+  if (responseError is String && responseError.isNotEmpty) {
+    throw AgentCommandException(
+      'MODE_OPERATION_FAILED',
+      'Failed to $operation: $responseError',
+    );
+  }
+  final rawAgent = payload['agent'];
+  if (rawAgent == null) {
+    throw AgentCommandException(
+      'AGENT_NOT_FOUND',
+      'No agent found matching: ${invocation.agentId}',
+      details: 'Use `coding-agent ls` to list available agents',
+    );
+  }
+  if (rawAgent is! Map) {
+    throw AgentCommandException(
+      'MODE_OPERATION_FAILED',
+      'Failed to $operation: response contains an invalid agent',
+    );
+  }
+  final snapshot = Map<String, Object?>.from(rawAgent);
+  try {
+    PaseoAgentSnapshotCodec.decode(snapshot);
+  } on Object catch (error) {
+    throw AgentCommandException(
+      'MODE_OPERATION_FAILED',
+      'Failed to $operation: ${_errorText(error)}',
+    );
+  }
+  final resolvedId = _string(snapshot, 'id');
+  if (invocation.listModes) {
+    final modes = snapshot['availableModes'];
+    return _AgentCommandResult.modes([
+      for (final rawMode in modes is List ? modes : const <Object?>[])
+        if (rawMode is Map)
+          {
+            'id': _string(Map<String, Object?>.from(rawMode), 'id'),
+            'label': _string(Map<String, Object?>.from(rawMode), 'label'),
+            if (rawMode['description'] is String)
+              'description': rawMode['description'],
+          },
+    ]);
+  }
+
+  try {
+    final responsePayload = await request(
+      SetAgentModeRequest(
+        agentId: resolvedId,
+        modeId: invocation.modeId!,
+        requestId: _requestId('agent_mode_set'),
+      ).toJson(),
+    );
+    final response = AgentConfigResponse.fromJson({
+      'type': 'set_agent_mode_response',
+      'payload': responsePayload,
+    });
+    if (!response.accepted) {
+      throw StateError(response.error ?? 'setAgentMode rejected');
+    }
+  } on Object catch (error) {
+    throw AgentCommandException(
+      'MODE_OPERATION_FAILED',
+      'Failed to set mode: ${_errorText(error)}',
+    );
+  }
+  return _AgentCommandResult.modeSet({
+    'agentId': resolvedId.substring(0, resolvedId.length.clamp(0, 7)),
+    'mode': invocation.modeId!,
+  });
 }
 
 Map<String, Object?> _agentListRow(
@@ -514,15 +643,14 @@ List<Map<String, Object?>> _agentInspectRows(
 final class _AgentCommandResult {
   const _AgentCommandResult._({
     required this.rows,
-    required this.inspect,
-    required this.structured,
+    required this.kind,
+    this.structured,
   });
 
   factory _AgentCommandResult.list(List<Map<String, Object?>> rows) =>
       _AgentCommandResult._(
         rows: List.unmodifiable(rows),
-        inspect: false,
-        structured: null,
+        kind: _AgentResultKind.agents,
       );
 
   factory _AgentCommandResult.inspect({
@@ -530,18 +658,38 @@ final class _AgentCommandResult {
     required Map<String, Object?> structured,
   }) => _AgentCommandResult._(
     rows: List.unmodifiable(rows),
-    inspect: true,
+    kind: _AgentResultKind.inspect,
     structured: Map.unmodifiable(structured),
   );
 
+  factory _AgentCommandResult.modes(List<Map<String, Object?>> rows) =>
+      _AgentCommandResult._(
+        rows: List.unmodifiable(rows),
+        kind: _AgentResultKind.modes,
+      );
+
+  factory _AgentCommandResult.modeSet(Map<String, Object?> data) =>
+      _AgentCommandResult._(
+        rows: [Map.unmodifiable(data)],
+        kind: _AgentResultKind.modeSet,
+        structured: Map.unmodifiable(data),
+      );
+
   final List<Map<String, Object?>> rows;
-  final bool inspect;
-  final Map<String, Object?>? structured;
+  final _AgentResultKind kind;
+  final Object? structured;
 }
+
+enum _AgentResultKind { agents, inspect, modes, modeSet }
 
 String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
   if (invocation.quiet) {
-    final field = result.inspect ? 'key' : 'shortId';
+    final field = switch (result.kind) {
+      _AgentResultKind.agents => 'shortId',
+      _AgentResultKind.inspect => 'key',
+      _AgentResultKind.modes => 'id',
+      _AgentResultKind.modeSet => 'agentId',
+    };
     return result.rows.map((row) => row[field]).join('\n') +
         (result.rows.isEmpty ? '' : '\n');
   }
@@ -555,17 +703,30 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
         : _yamlList(result.rows);
   }
   if (result.rows.isEmpty) return '';
-  final columns = result.inspect
-      ? const [('KEY', 'key', 3), ('VALUE', 'value', 5)]
-      : const [
-          ('AGENT ID', 'shortId', 12),
-          ('NAME', 'name', 20),
-          ('PROVIDER', 'provider', 15),
-          ('THINKING', 'thinking', 12),
-          ('STATUS', 'status', 10),
-          ('CWD', 'cwd', 30),
-          ('CREATED', 'created', 15),
-        ];
+  final columns = switch (result.kind) {
+    _AgentResultKind.inspect => const [
+      ('KEY', 'key', 3),
+      ('VALUE', 'value', 5),
+    ],
+    _AgentResultKind.modes => const [
+      ('MODE', 'id', 15),
+      ('LABEL', 'label', 25),
+      ('DESCRIPTION', 'description', 40),
+    ],
+    _AgentResultKind.modeSet => const [
+      ('AGENT ID', 'agentId', 12),
+      ('MODE', 'mode', 20),
+    ],
+    _AgentResultKind.agents => const [
+      ('AGENT ID', 'shortId', 12),
+      ('NAME', 'name', 20),
+      ('PROVIDER', 'provider', 15),
+      ('THINKING', 'thinking', 12),
+      ('STATUS', 'status', 10),
+      ('CWD', 'cwd', 30),
+      ('CREATED', 'created', 15),
+    ],
+  };
   final widths = [
     for (final column in columns)
       [
@@ -577,7 +738,7 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
   String line(List<String> cells) => [
     for (var index = 0; index < cells.length; index++)
       cells[index].padRight(widths[index]),
-  ].join('  ').trimRight();
+  ].join('  ');
   return [
         if (invocation.headers) line([for (final column in columns) column.$1]),
         for (final row in result.rows)
@@ -784,6 +945,8 @@ final class AgentCommandException implements Exception {
 const agentUsage =
     'Usage: coding-agent agent ls [options]\n'
     '       coding-agent agent inspect <id> [options]\n'
+    '       coding-agent agent mode <id> <mode> [options]\n'
+    '       coding-agent agent mode --list <id> [options]\n'
     '       coding-agent ls [options]\n'
     '       coding-agent inspect <id> [options]';
 
@@ -794,11 +957,15 @@ String _agentHelp(String? action) => switch (action) {
   'inspect' =>
     'Usage: coding-agent agent inspect [options] <id>\n'
         'Show detailed information about an agent\n',
+  'mode' =>
+    'Usage: coding-agent agent mode [options] <id> [mode]\n'
+        "Change an agent's operational mode\n",
   _ =>
     'Usage: coding-agent agent [command]\n'
         'Manage agents (advanced operations)\n\n'
         'Commands:\n'
         '  ls       List agents\n'
         '  inspect  Show detailed information about an agent\n'
-        '  logs     View agent activity/timeline\n',
+        '  logs     View agent activity/timeline\n'
+        '  mode     Change an agent\'s operational mode\n',
 };

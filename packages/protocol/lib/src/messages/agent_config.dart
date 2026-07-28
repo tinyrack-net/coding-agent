@@ -76,6 +76,34 @@ sealed class AgentConfigRequest {
   final String agentId;
   final String requestId;
 
+  Map<String, Object?> toJson() => switch (this) {
+    SetAgentModeRequest(:final modeId) => {
+      'type': 'set_agent_mode_request',
+      'agentId': agentId,
+      'modeId': modeId,
+      'requestId': requestId,
+    },
+    SetAgentModelRequest(:final modelId) => {
+      'type': 'set_agent_model_request',
+      'agentId': agentId,
+      'modelId': modelId,
+      'requestId': requestId,
+    },
+    SetAgentThinkingRequest(:final thinkingOptionId) => {
+      'type': 'set_agent_thinking_request',
+      'agentId': agentId,
+      'thinkingOptionId': thinkingOptionId,
+      'requestId': requestId,
+    },
+    SetAgentFeatureRequest(:final featureId, :final value) => {
+      'type': 'set_agent_feature_request',
+      'agentId': agentId,
+      'featureId': featureId,
+      'value': value,
+      'requestId': requestId,
+    },
+  };
+
   static AgentConfigRequest fromJson(Map<String, Object?> json) {
     final agentId = json['agentId'];
     final requestId = json['requestId'];

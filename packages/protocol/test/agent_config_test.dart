@@ -50,6 +50,31 @@ void main() {
     );
   });
 
+  test('serializes all frozen agent config request variants', () {
+    const requests = <AgentConfigRequest>[
+      SetAgentModeRequest(agentId: 'a', modeId: 'read-only', requestId: '1'),
+      SetAgentModelRequest(agentId: 'a', modelId: null, requestId: '2'),
+      SetAgentThinkingRequest(
+        agentId: 'a',
+        thinkingOptionId: 'high',
+        requestId: '3',
+      ),
+      SetAgentFeatureRequest(
+        agentId: 'a',
+        featureId: 'search',
+        value: {'nested': true},
+        requestId: '4',
+      ),
+    ];
+
+    for (final request in requests) {
+      expect(
+        AgentConfigRequest.fromJson(request.toJson()).toJson(),
+        request.toJson(),
+      );
+    }
+  });
+
   test('provider notice and AgentSummary config fields round trip', () {
     const notice = AgentProviderNotice(
       type: AgentProviderNoticeType.warning,

@@ -7,6 +7,9 @@ import 'package:agent_daemon/src/agent/timeline_store.dart';
 import 'package:agent_daemon/src/cli/agent_command.dart';
 import 'package:agent_daemon/src/cli/agent_logs_command.dart';
 import 'package:agent_daemon/src/daemon_server.dart';
+import 'package:agent_daemon/src/providers/agent_client.dart';
+import 'package:agent_daemon/src/providers/agent_session.dart';
+import 'package:agent_daemon/src/providers/provider_event.dart';
 import 'package:agent_daemon/src/workspace/workspace_registry.dart';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
@@ -134,11 +137,13 @@ void main() {
       ),
     );
 
+    final modeClient = _ModeClient();
     final handle = await startDaemonServer(
       paths: DaemonPaths(dataDir: home.path),
       dataDir: home.path,
       host: '127.0.0.1',
       port: 0,
+      agentClients: {'codex': modeClient},
       log: (_) {},
     );
     addTearDown(handle.stop);
@@ -202,6 +207,57 @@ void main() {
     ]);
     expect(detail['ParentAgentId'], 'parent-agent');
 
+    final modes = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: [
+          'mode',
+          '--list',
+          'agent-cli-act',
+          '--host',
+          host,
+          '--json',
+        ],
+        environment: const {},
+        writeOutput: modes.write,
+      ),
+      0,
+    );
+    expect((jsonDecode(modes.toString()) as List).map((mode) => mode['id']), [
+      'auto',
+      'auto-review',
+      'full-access',
+    ]);
+
+    final changedMode = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: [
+          'mode',
+          'agent-cli-act',
+          'full-access',
+          '--host',
+          host,
+          '--json',
+        ],
+        environment: const {},
+        writeOutput: changedMode.write,
+      ),
+      0,
+    );
+    expect(jsonDecode(changedMode.toString()), {
+      'agentId': 'agent-c',
+      'mode': 'full-access',
+    });
+    expect(modeClient.session.modeId, 'full-access');
+    expect(
+      handle.manager
+          .list()
+          .singleWhere((agent) => agent.agentId == active.agentId)
+          .currentModeId,
+      'full-access',
+    );
+
     final logs = StringBuffer();
     expect(
       await runAgentLogsCommand(
@@ -250,6 +306,60 @@ void main() {
     expect(await follow, 0);
     expect(followErrors.toString(), isEmpty);
   });
+}
+
+final class _ModeClient implements AgentClient {
+  final _ModeSession session = _ModeSession();
+
+  @override
+  Future<AgentSession> createSession({
+    required String cwd,
+    required String model,
+    required AgentMode mode,
+    String? modeId,
+    String? thinkingOptionId,
+    Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
+    String? sessionId,
+    List<TimelineItem> initialHistory = const [],
+  }) async => session;
+}
+
+final class _ModeSession implements ConfigurableAgentSession {
+  final _events = StreamController<ProviderEvent>.broadcast();
+  String? modeId;
+
+  @override
+  Stream<ProviderEvent> get events => _events.stream;
+
+  @override
+  Future<void> prompt(String text) async {}
+
+  @override
+  Future<void> interrupt() async {}
+
+  @override
+  Future<void> dispose() => _events.close();
+
+  @override
+  Future<AgentProviderNotice?> setMode(String modeId) async {
+    this.modeId = modeId;
+    return const AgentProviderNotice(
+      type: AgentProviderNoticeType.info,
+      message: 'mode changed',
+    );
+  }
+
+  @override
+  Future<void> setModel(String? modelId) async {}
+
+  @override
+  Future<AgentProviderNotice?> setThinkingOption(
+    String? thinkingOptionId,
+  ) async => null;
+
+  @override
+  Future<void> setFeature(String featureId, Object? value) async {}
 }
 
 Future<void> _waitFor(

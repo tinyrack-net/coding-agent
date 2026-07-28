@@ -11,6 +11,7 @@ void main() {
       ['--help'],
       ['ls', '--help'],
       ['inspect', '--help'],
+      ['mode', '--help'],
     ]) {
       final output = StringBuffer();
       expect(
@@ -27,6 +28,7 @@ void main() {
     for (final arguments in const [
       ['agent', 'ls', '--help'],
       ['agent', 'inspect', '--help'],
+      ['agent', 'mode', '--help'],
       ['ls', '--help'],
       ['inspect', '--help'],
     ]) {
@@ -409,6 +411,250 @@ void main() {
     },
   );
 
+  test(
+    'mode --list resolves the agent and renders the frozen catalog',
+    () async {
+      Map<String, Object?>? sent;
+      final output = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: const [
+            'mode',
+            '--list',
+            'agent-pre',
+            '--json',
+            '--format',
+            'yaml',
+          ],
+          request: (message) async {
+            sent = message;
+            return {
+              'requestId': message['requestId'],
+              'agent': _snapshot(
+                id: 'agent-precise',
+                currentModeId: 'plan',
+                availableModes: const [
+                  {
+                    'id': 'plan',
+                    'label': 'Plan',
+                    'description': 'Plan before editing',
+                  },
+                  {'id': 'full-access', 'label': 'Full access'},
+                ],
+              ),
+              'project': null,
+              'error': null,
+            };
+          },
+          writeOutput: output.write,
+        ),
+        0,
+      );
+      expect(sent, {
+        'type': 'fetch_agent_request',
+        'requestId': isA<String>(),
+        'agentId': 'agent-pre',
+      });
+      expect(jsonDecode(output.toString()), [
+        {'id': 'plan', 'label': 'Plan', 'description': 'Plan before editing'},
+        {'id': 'full-access', 'label': 'Full access'},
+      ]);
+
+      Future<Map<String, Object?>> request(message) async => {
+        'requestId': message['requestId'],
+        'agent': _snapshot(
+          id: 'agent-precise',
+          availableModes: const [
+            {'id': 'plan', 'label': 'Plan', 'description': 'Plan first'},
+          ],
+        ),
+        'project': null,
+        'error': null,
+      };
+      final table = StringBuffer();
+      await runAgentCommand(
+        arguments: const [
+          'mode',
+          'agent-pre',
+          '--list',
+          '--format',
+          'CLI',
+          '--no-headers',
+        ],
+        request: request,
+        writeOutput: table.write,
+      );
+      expect(table.toString(), isNot(contains('MODE')));
+      expect(table.toString(), contains('Plan first'));
+      expect(table.toString(), endsWith(' ' * 30 + '\n'));
+
+      final quiet = StringBuffer();
+      await runAgentCommand(
+        arguments: const ['mode', '--list', 'agent-pre', '--quiet'],
+        request: request,
+        writeOutput: quiet.write,
+      );
+      expect(quiet.toString(), 'plan\n');
+
+      final yaml = StringBuffer();
+      await runAgentCommand(
+        arguments: const ['mode', '--list', 'agent-pre', '-o', 'yaml'],
+        request: request,
+        writeOutput: yaml.write,
+      );
+      expect(yaml.toString(), startsWith('- id: plan'));
+    },
+  );
+
+  test(
+    'mode set trims input, uses canonical id, and renders all outputs',
+    () async {
+      final sent = <Map<String, Object?>>[];
+      Future<Map<String, Object?>> request(Map<String, Object?> message) async {
+        sent.add(message);
+        if (message['type'] == 'fetch_agent_request') {
+          return {
+            'requestId': message['requestId'],
+            'agent': _snapshot(id: 'agent-precise'),
+            'project': null,
+            'error': null,
+          };
+        }
+        expect(message['type'], 'set_agent_mode_request');
+        return {
+          'requestId': message['requestId'],
+          'agentId': message['agentId'],
+          'accepted': true,
+          'error': null,
+          'notice': {'type': 'info', 'message': 'mode changed'},
+        };
+      }
+
+      final json = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: const ['mode', 'agent-pre', ' full-access ', '--json'],
+          request: request,
+          writeOutput: json.write,
+        ),
+        0,
+      );
+      expect(sent[1], {
+        'type': 'set_agent_mode_request',
+        'agentId': 'agent-precise',
+        'modeId': 'full-access',
+        'requestId': isA<String>(),
+      });
+      expect(jsonDecode(json.toString()), {
+        'agentId': 'agent-p',
+        'mode': 'full-access',
+      });
+
+      final table = StringBuffer();
+      await runAgentCommand(
+        arguments: const ['mode', 'agent-pre', 'plan'],
+        request: request,
+        writeOutput: table.write,
+      );
+      expect(table.toString(), contains('AGENT ID'));
+      expect(table.toString(), contains('agent-p'));
+      expect(table.toString(), contains('plan'));
+
+      final quiet = StringBuffer();
+      await runAgentCommand(
+        arguments: const ['mode', 'agent-pre', 'plan', '--quiet'],
+        request: request,
+        writeOutput: quiet.write,
+      );
+      expect(quiet.toString(), 'agent-p\n');
+    },
+  );
+
+  test('mode preserves frozen validation and operation errors', () async {
+    var requested = false;
+    final missingMode = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: const ['mode', 'agent', '--json'],
+        request: (_) async {
+          requested = true;
+          return const {};
+        },
+        writeError: missingMode.write,
+      ),
+      1,
+    );
+    expect(requested, isFalse);
+    expect(
+      (jsonDecode(missingMode.toString())
+          as Map<String, dynamic>)['error']['code'],
+      'MISSING_ARGUMENT',
+    );
+
+    final notFound = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: const ['mode', '--list', 'missing'],
+        request: (message) async => {
+          'requestId': message['requestId'],
+          'agent': null,
+          'project': null,
+          'error': null,
+        },
+        writeError: notFound.write,
+      ),
+      1,
+    );
+    expect(notFound.toString(), contains('No agent found matching: missing'));
+    expect(notFound.toString(), contains('coding-agent ls'));
+
+    final fetchFailed = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: const ['mode', '--list', 'ambiguous', '--json'],
+        request: (message) async => {
+          'requestId': message['requestId'],
+          'agent': null,
+          'project': null,
+          'error': 'Agent identifier is ambiguous',
+        },
+        writeError: fetchFailed.write,
+      ),
+      1,
+    );
+    expect(fetchFailed.toString(), contains('MODE_OPERATION_FAILED'));
+    expect(fetchFailed.toString(), contains('Failed to list modes'));
+
+    final rejected = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: const ['mode', 'agent', 'unknown', '--json'],
+        request: (message) async {
+          if (message['type'] == 'fetch_agent_request') {
+            return {
+              'requestId': message['requestId'],
+              'agent': _snapshot(id: 'agent-precise'),
+              'project': null,
+              'error': null,
+            };
+          }
+          return {
+            'requestId': message['requestId'],
+            'agentId': message['agentId'],
+            'accepted': false,
+            'error': 'Unknown mode: unknown',
+          };
+        },
+        writeError: rejected.write,
+      ),
+      1,
+    );
+    final rejectedError =
+        (jsonDecode(rejected.toString()) as Map<String, dynamic>)['error'];
+    expect(rejectedError['code'], 'MODE_OPERATION_FAILED');
+    expect(rejectedError['message'], contains('Unknown mode: unknown'));
+  });
+
   test('parser and invalid thinking errors are deterministic', () async {
     for (final arguments in const [
       <String>[],
@@ -417,6 +663,10 @@ void main() {
       ['inspect'],
       ['inspect', 'one', 'two'],
       ['inspect', 'one', '--all'],
+      ['mode'],
+      ['mode', 'one', 'two', 'three'],
+      ['mode', 'one', 'plan', '--list', 'extra'],
+      ['ls', '--list'],
       ['ls', '--format', 'xml'],
     ]) {
       final error = StringBuffer();
