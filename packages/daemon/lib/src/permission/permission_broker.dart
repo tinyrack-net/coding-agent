@@ -41,19 +41,46 @@ class PermissionBroker {
   /// Resolve a pending permission. [decision] is the wire string:
   /// `allow`, `allow_always` (treated as allow for M1) or `deny`.
   Future<void> respond(String permissionId, String decision) async {
-    final pending = _pending.remove(permissionId);
-    if (pending == null) {
-      throw RpcException('not_found', 'no pending permission $permissionId');
-    }
-    final parsed = switch (decision) {
+    await respondDetailed(permissionId: permissionId, behavior: decision);
+  }
+
+  Future<void> respondDetailed({
+    required String permissionId,
+    required String behavior,
+    String? agentId,
+    String? message,
+    String? selectedActionId,
+    Map<String, Object?>? updatedInput,
+    List<Map<String, Object?>>? updatedPermissions,
+    bool? interrupt,
+  }) async {
+    final parsed = switch (behavior) {
       'allow' || 'allow_always' => PermissionDecision.allow,
       'deny' => PermissionDecision.deny,
       _ => throw RpcException(
         'invalid_payload',
-        'unknown decision "$decision"',
+        'unknown decision "$behavior"',
       ),
     };
-    await pending.respond(parsed);
+    final pending = _pending.remove(permissionId);
+    if (pending == null) {
+      throw RpcException('not_found', 'no pending permission $permissionId');
+    }
+    if (agentId != null && pending.agentId != agentId) {
+      _pending[permissionId] = pending;
+      throw RpcException(
+        'not_found',
+        'no pending permission $permissionId for agent $agentId',
+      );
+    }
+    await pending.respond(
+      parsed,
+      message: message,
+      selectedActionId: selectedActionId,
+      updatedInput: updatedInput,
+      updatedPermissions: updatedPermissions,
+      interrupt: interrupt,
+    );
     pending.onResolved(parsed);
   }
 

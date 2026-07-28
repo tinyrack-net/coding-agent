@@ -595,7 +595,14 @@ void main() {
     expect(request.toolName, 'Bash');
     expect((request.detail as GenericDetail).input, {'command': 'git status'});
 
-    await request.respond(PermissionDecision.allow);
+    await request.respond(
+      PermissionDecision.allow,
+      selectedActionId: 'allow_always',
+      updatedInput: {'command': 'git diff'},
+      updatedPermissions: [
+        {'type': 'allow', 'scope': 'workspace'},
+      ],
+    );
     final response = connection.sent.single;
     expect(response['type'], 'control_response');
     expect((response['response'] as Map)['request_id'], 'permission-1');
@@ -606,6 +613,15 @@ void main() {
     expect(
       ((response['response'] as Map)['response'] as Map)['toolUseID'],
       'tool-1',
+    );
+    expect(((response['response'] as Map)['response'] as Map)['updatedInput'], {
+      'command': 'git diff',
+    });
+    expect(
+      ((response['response'] as Map)['response'] as Map)['updatedPermissions'],
+      [
+        {'type': 'allow', 'scope': 'workspace'},
+      ],
     );
     await session.dispose();
   });

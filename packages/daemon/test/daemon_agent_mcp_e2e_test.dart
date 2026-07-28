@@ -18,18 +18,38 @@ final class _McpSession implements AgentSession {
   final _events = StreamController<ProviderEvent>.broadcast();
   final prompts = <String>[];
   var interrupted = false;
+  var disposed = false;
+  var completeNextPrompt = false;
 
   @override
   Stream<ProviderEvent> get events => _events.stream;
 
   @override
-  Future<void> prompt(String text) async => prompts.add(text);
+  Future<void> prompt(String text) async {
+    prompts.add(text);
+    if (completeNextPrompt) {
+      completeNextPrompt = false;
+      scheduleMicrotask(() {
+        emit(
+          const AssistantMessageComplete(
+            itemId: 'fixture-answer',
+            fullText: 'Fixture completed',
+          ),
+        );
+        emit(const TurnCompleted());
+      });
+    }
+  }
 
   @override
   Future<void> interrupt() async => interrupted = true;
 
   @override
-  Future<void> dispose() => _events.close();
+  Future<void> dispose() async {
+    if (disposed) return;
+    disposed = true;
+    await _events.close();
+  }
 
   void emit(ProviderEvent event) => _events.add(event);
 }
@@ -98,6 +118,7 @@ void main() {
         port: 0,
         passwordHash: passwordHash,
         agentClients: {'fixture': client},
+        agentMcpWaitTimeout: const Duration(milliseconds: 30),
         log: (_) {},
       );
       addTearDown(handle.stop);
@@ -171,6 +192,7 @@ void main() {
         'send_agent_prompt',
         'cancel_agent',
         'archive_agent',
+        'kill_agent',
         'update_agent',
         'get_agent_activity',
         'set_agent_mode',
@@ -216,12 +238,12 @@ void main() {
       expect(compactAgent['title'], 'Renamed fixture');
       expect(compactAgent['labels'], {'surface': 'mcp'});
 
-      final prompted = await _call(
-        endpoint,
-        mcpAuthToken,
-        'send_agent_prompt',
-        {'agentId': created.agentId, 'prompt': 'Inspect the workspace'},
-      );
+      final prompted =
+          await _call(endpoint, mcpAuthToken, 'send_agent_prompt', {
+            'agentId': created.agentId,
+            'prompt': 'Inspect the workspace',
+            'notifyOnFinish': false,
+          });
       expect(prompted['success'], true);
       expect(prompted['status'], 'running');
       expect(client.sessions.single.prompts, ['Inspect the workspace']);
@@ -236,14 +258,32 @@ void main() {
       expect(activity['content'], contains('[User] Inspect the workspace'));
 
       PermissionDecision? permissionDecision;
+      String? permissionMessage;
+      String? permissionActionId;
+      Map<String, Object?>? permissionInput;
+      List<Map<String, Object?>>? permissionUpdates;
+      bool? permissionInterrupt;
       client.sessions.single.emit(
         PermissionRequested(
           permissionId: 'permission-1',
           toolName: 'Write',
           detail: const WriteDetail(path: 'README.md'),
-          respond: (decision, {String? message}) async {
-            permissionDecision = decision;
-          },
+          respond:
+              (
+                decision, {
+                message,
+                selectedActionId,
+                updatedInput,
+                updatedPermissions,
+                interrupt,
+              }) async {
+                permissionDecision = decision;
+                permissionMessage = message;
+                permissionActionId = selectedActionId;
+                permissionInput = updatedInput;
+                permissionUpdates = updatedPermissions;
+                permissionInterrupt = interrupt;
+              },
         ),
       );
       await pumpEventQueue();
@@ -266,11 +306,25 @@ void main() {
         {
           'agentId': created.agentId,
           'requestId': 'permission-1',
-          'response': {'behavior': 'allow'},
+          'response': {
+            'behavior': 'allow',
+            'selectedActionId': 'allow_always',
+            'updatedInput': {'path': 'CHANGELOG.md'},
+            'updatedPermissions': [
+              {'type': 'allow', 'scope': 'workspace'},
+            ],
+          },
         },
       );
       expect(permissionResponse, {'success': true});
       expect(permissionDecision, PermissionDecision.allow);
+      expect(permissionMessage, isNull);
+      expect(permissionActionId, 'allow_always');
+      expect(permissionInput, {'path': 'CHANGELOG.md'});
+      expect(permissionUpdates, [
+        {'type': 'allow', 'scope': 'workspace'},
+      ]);
+      expect(permissionInterrupt, isNull);
 
       final cancelled = await _call(endpoint, mcpAuthToken, 'cancel_agent', {
         'agentId': created.agentId,
@@ -285,6 +339,100 @@ void main() {
         const {},
       );
       expect(providerList['providers'], isNotEmpty);
+
+      final blockingAgent = await handle.manager.createAgent(
+        cwd: home.path,
+        provider: 'fixture',
+        model: 'fixture-model',
+        mode: AgentMode.normal,
+        title: 'Blocking fixture',
+      );
+      client.sessions.last.completeNextPrompt = true;
+      final blocking =
+          await _call(endpoint, mcpAuthToken, 'send_agent_prompt', {
+            'agentId': blockingAgent.agentId,
+            'prompt': 'Wait for completion',
+            'background': false,
+          });
+      expect(blocking['status'], 'idle');
+      expect(blocking['lastMessage'], 'Fixture completed');
+      expect(blocking['permission'], isNull);
+
+      final timeoutAgent = await handle.manager.createAgent(
+        cwd: home.path,
+        provider: 'fixture',
+        model: 'fixture-model',
+        mode: AgentMode.normal,
+        title: 'Timeout fixture',
+      );
+      final timedOut = await _call(
+        endpoint,
+        mcpAuthToken,
+        'send_agent_prompt',
+        {
+          'agentId': timeoutAgent.agentId,
+          'prompt': 'Keep running',
+          'background': false,
+        },
+      );
+      expect(timedOut['status'], 'running');
+      expect(timedOut['lastMessage'], contains('timed out after 0s'));
+      expect(timedOut['lastMessage'], contains('[User] Keep running'));
+
+      final caller = await handle.manager.createAgent(
+        cwd: home.path,
+        provider: 'fixture',
+        model: 'fixture-model',
+        mode: AgentMode.normal,
+        title: 'Caller fixture',
+      );
+      final callerSession = client.sessions.last;
+      final child = await handle.manager.createAgent(
+        cwd: home.path,
+        provider: 'fixture',
+        model: 'fixture-model',
+        mode: AgentMode.normal,
+        title: 'Child fixture',
+      );
+      client.sessions.last.completeNextPrompt = true;
+      final callerEndpoint = endpoint.replace(
+        queryParameters: {'callerAgentId': caller.agentId},
+      );
+      final background = await _call(
+        callerEndpoint,
+        mcpAuthToken,
+        'send_agent_prompt',
+        {'agentId': child.agentId, 'prompt': 'Finish in background'},
+      );
+      expect(background['guidance'], contains('You will get notified'));
+      await _waitUntil(() => callerSession.prompts.isNotEmpty);
+      expect(
+        callerSession.prompts.single,
+        '<paseo-system>\n'
+        'Agent ${child.agentId} (Child fixture) finished.\n\n'
+        '<agent-response>\n'
+        'Fixture completed\n'
+        '</agent-response>\n'
+        '</paseo-system>',
+      );
+
+      final killAgent = await handle.manager.createAgent(
+        cwd: home.path,
+        provider: 'fixture',
+        model: 'fixture-model',
+        mode: AgentMode.normal,
+        title: 'Kill fixture',
+      );
+      final killedSession = client.sessions.last;
+      final killed = await _call(endpoint, mcpAuthToken, 'kill_agent', {
+        'agentId': killAgent.agentId,
+      });
+      expect(killed, {'success': true});
+      expect(killedSession.disposed, isTrue);
+      expect(
+        handle.manager.get(killAgent.agentId)?.runState,
+        AgentRunState.closed,
+      );
 
       final getResponse = await http.get(
         endpoint,
@@ -348,4 +496,14 @@ Future<Map<String, Object?>> _call(
   return Map<String, Object?>.from(
     _result(response)['structuredContent']! as Map,
   );
+}
+
+Future<void> _waitUntil(bool Function() predicate) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 2));
+  while (!predicate()) {
+    if (DateTime.now().isAfter(deadline)) {
+      fail('Timed out waiting for asynchronous MCP notification');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
 }

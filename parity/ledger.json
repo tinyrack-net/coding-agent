@@ -10792,10 +10792,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-prompt.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart",
+      "evidence": [
+        "packages/daemon/test/agent_manager_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+      ],
+      "notes": "MCP prompt orchestration now applies session mode, supports blocking/background defaults, and sends the exact paseo-system finish/error/permission notification body with the last assistant response. Archived-agent unarchive, out-of-band commands, replacement-run ordering, run options, and parent ownership enforcement remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-response-loop.ts",
@@ -10927,10 +10930,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/lifecycle-command.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart",
+      "evidence": [
+        "packages/daemon/test/agent_manager_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+      ],
+      "notes": "Cancel, recursive archive, closed-session retention, kill, mode change, name/label update, and permission-safe session disposal are implemented through the MCP surface. Stored-only archive, close deduplication, and full cancellation settlement/refusal semantics remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/mcp-server.ts",
@@ -10943,10 +10949,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/mcp-shared.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart",
+      "evidence": [
+        "packages/daemon/test/agent_manager_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+      ],
+      "notes": "The exact 30-second bounded agent wait, terminal state and permission result, timeout guidance, five projected recent activities, status mapping, and last assistant response are ported. Stored-agent metadata serialization and schedule duration helpers remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/pcm16-resampler.ts",
@@ -10958,11 +10967,13 @@
     {
       "id": "source-unit:packages/server/src/server/agent/permission-response.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/permission/permission_broker.dart",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/permission/permission_broker.dart; packages/daemon/lib/src/providers/provider_event.dart; packages/daemon/lib/src/providers/paseo/claude_agent_session.dart; packages/daemon/lib/src/providers/paseo/generic_acp_agent_client.dart",
       "evidence": [
-        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+        "packages/daemon/test/permission_broker_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/daemon/test/providers/paseo/claude_agent_client_test.dart"
       ],
-      "notes": "MCP permission requests are projected from canonical pending timeline items and allow/deny responses complete through the broker. selectedActionId, updatedInput, updatedPermissions, deny message, and interrupt semantics remain."
+      "notes": "Permission ownership and the frozen allow/deny union now preserve selectedActionId, updatedInput, updatedPermissions, deny message, and interrupt through the broker to provider adapters. Provider-returned follow-up prompt replacement runs remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/prompt-attachments.ts",
@@ -11731,9 +11742,10 @@
       "implementation": "packages/daemon/lib/src/server/agent_mcp_http.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/agent/agent_manager.dart",
       "evidence": [
         "packages/daemon/test/agent_mcp_tools_test.dart",
-        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/daemon/test/permission_broker_test.dart"
       ],
-      "notes": "The runtime MCP catalog now exposes frozen agent list/status/prompt/cancel/archive/update/activity/mode, pending permission response, and provider list/model/inspect tools with compact list items and full snapshots. Blocking prompt waits, finish notifications, kill, full permission response options, and the remaining workspace, schedule, heartbeat, terminal, script, browser, and voice tools are pending."
+      "notes": "The runtime MCP catalog exposes frozen agent list/status/prompt/cancel/archive/kill/update/activity/mode, permission, and provider discovery tools. Prompt background/blocking defaults, 30-second timeout results, finish notifications, compact lists, full snapshots, and structured permission responses are covered. Workspace, schedule, heartbeat, terminal, script, browser, voice, and remaining mutation tools are pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/tools/types.ts",

@@ -482,28 +482,38 @@ final class ClaudeAgentSession
         permissionId: requestId,
         toolName: name,
         detail: GenericDetail(input: input),
-        respond: (decision, {message}) async {
-          final response = decision == PermissionDecision.allow
-              ? <String, Object?>{
-                  'behavior': 'allow',
-                  'updatedInput': input,
-                  if (request?['tool_use_id'] case final String toolUseId)
-                    'toolUseID': toolUseId,
-                }
-              : <String, Object?>{
-                  'behavior': 'deny',
-                  'message': message ?? 'Permission denied',
-                  'interrupt': false,
-                };
-          _connection.send({
-            'type': 'control_response',
-            'response': {
-              'subtype': 'success',
-              'request_id': requestId,
-              'response': response,
+        respond:
+            (
+              decision, {
+              message,
+              selectedActionId,
+              updatedInput,
+              updatedPermissions,
+              interrupt,
+            }) async {
+              final response = decision == PermissionDecision.allow
+                  ? <String, Object?>{
+                      'behavior': 'allow',
+                      'updatedInput': updatedInput ?? input,
+                      if (updatedPermissions != null)
+                        'updatedPermissions': updatedPermissions,
+                      if (request?['tool_use_id'] case final String toolUseId)
+                        'toolUseID': toolUseId,
+                    }
+                  : <String, Object?>{
+                      'behavior': 'deny',
+                      'message': message ?? 'Permission denied',
+                      'interrupt': interrupt ?? false,
+                    };
+              _connection.send({
+                'type': 'control_response',
+                'response': {
+                  'subtype': 'success',
+                  'request_id': requestId,
+                  'response': response,
+                },
+              });
             },
-          });
-        },
       ),
     );
   }

@@ -74,6 +74,18 @@ final class AgentRunOutcome {
   final List<TimelineItem> timeline;
 }
 
+final class AgentWaitResult {
+  const AgentWaitResult({
+    required this.summary,
+    this.lastMessage,
+    this.permission,
+  });
+
+  final AgentSummary summary;
+  final String? lastMessage;
+  final PermissionItem? permission;
+}
+
 final class ManagedImportableProviderSession {
   const ManagedImportableProviderSession({
     required this.provider,
@@ -836,6 +848,84 @@ class AgentManager {
     }
   }
 
+  Future<AgentWaitResult> waitForAgentEvent(
+    String agentId, {
+    bool waitForActive = false,
+    Duration? timeout,
+  }) async {
+    final deadline = timeout == null ? null : DateTime.now().add(timeout);
+    var hasSeenActive = false;
+    while (true) {
+      final runtime = _runtime(agentId);
+      final state = runtime.summary.runState;
+      if (state == AgentRunState.running ||
+          state == AgentRunState.awaitingPermission) {
+        hasSeenActive = true;
+      }
+      final permission = _latestPendingPermission(runtime);
+      if (permission != null) {
+        return AgentWaitResult(
+          summary: runtime.summary,
+          lastMessage: _lastAssistantMessage(runtime),
+          permission: permission,
+        );
+      }
+      if (state == AgentRunState.error ||
+          state == AgentRunState.closed ||
+          (state == AgentRunState.idle &&
+              (!waitForActive ||
+                  hasSeenActive ||
+                  _latestTurnIsFinal(runtime)))) {
+        return AgentWaitResult(
+          summary: runtime.summary,
+          lastMessage: _lastAssistantMessage(runtime),
+        );
+      }
+
+      final remaining = deadline?.difference(DateTime.now());
+      if (remaining != null && remaining <= Duration.zero) {
+        throw TimeoutException('Agent $agentId wait timed out', timeout);
+      }
+      final waiter = Completer<void>();
+      _stateWaiters.putIfAbsent(agentId, () => []).add(waiter);
+      try {
+        if (remaining == null) {
+          await waiter.future;
+        } else {
+          await waiter.future.timeout(remaining);
+        }
+      } finally {
+        _stateWaiters[agentId]?.remove(waiter);
+        if (_stateWaiters[agentId]?.isEmpty ?? false) {
+          _stateWaiters.remove(agentId);
+        }
+      }
+    }
+  }
+
+  PermissionItem? _latestPendingPermission(AgentRuntime runtime) => runtime
+      .timeline
+      .snapshot()
+      .whereType<PermissionItem>()
+      .where((item) => item.status == PermissionStatus.pending)
+      .lastOrNull;
+
+  String? _lastAssistantMessage(AgentRuntime runtime) {
+    final text = runtime.timeline
+        .snapshot()
+        .whereType<AssistantMessageItem>()
+        .where((item) => item.complete)
+        .lastOrNull
+        ?.text
+        .trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
+  bool _latestTurnIsFinal(AgentRuntime runtime) {
+    final turn = runtime.timeline.snapshot().whereType<TurnItem>().lastOrNull;
+    return turn != null && turn.phase != TurnPhase.started;
+  }
+
   String? _lastError(AgentRuntime runtime) {
     for (final item in runtime.timeline.snapshot().reversed) {
       switch (item) {
@@ -865,6 +955,31 @@ class AgentManager {
     final runtime = _runtime(agentId);
     runtime.interruptRequested = true;
     await runtime.session?.interrupt();
+  }
+
+  Future<void> close(String agentId) async {
+    final runtime = _runtime(agentId);
+    runtime.interruptRequested = true;
+    final session = runtime.session;
+    runtime.session = null;
+    await runtime.sessionSub?.cancel();
+    runtime.sessionSub = null;
+    await broker.autoDenyForAgent(agentId);
+    if (runtime.currentTurnId != null) {
+      _closeTurn(runtime, TurnPhase.canceled);
+    }
+    runtime.timeline.flushAll();
+    runtime.textBuffers.clear();
+    runtime.summary = runtime.summary.copyWith(
+      runState: AgentRunState.closed,
+      updatedAt: DateTime.now().toUtc().toIso8601String(),
+      requiresAttention: false,
+      clearAttention: true,
+    );
+    _persist(runtime);
+    _broadcastState(runtime);
+    await session?.dispose();
+    await _store.flush();
   }
 
   Future<void> ensureLoaded(String agentId) async {
@@ -1086,6 +1201,26 @@ class AgentManager {
 
   Future<void> respondPermission(String permissionId, String decision) =>
       broker.respond(permissionId, decision);
+
+  Future<void> respondPermissionDetailed({
+    required String agentId,
+    required String permissionId,
+    required String behavior,
+    String? message,
+    String? selectedActionId,
+    Map<String, Object?>? updatedInput,
+    List<Map<String, Object?>>? updatedPermissions,
+    bool? interrupt,
+  }) => broker.respondDetailed(
+    permissionId: permissionId,
+    behavior: behavior,
+    agentId: agentId,
+    message: message,
+    selectedActionId: selectedActionId,
+    updatedInput: updatedInput,
+    updatedPermissions: updatedPermissions,
+    interrupt: interrupt,
+  );
 
   /// Wipe the in-memory and persisted conversation state for one or every
   /// agent. Returns the number of agents actually affected.

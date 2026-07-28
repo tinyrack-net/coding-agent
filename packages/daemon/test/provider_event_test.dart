@@ -68,10 +68,18 @@ void main() {
       permissionId: 'perm-1',
       toolName: 'Write',
       detail: const WriteDetail(path: 'a.txt'),
-      respond: (decision, {String? message}) async {
-        decided = decision;
-        capturedMessage = message;
-      },
+      respond:
+          (
+            decision, {
+            message,
+            selectedActionId,
+            updatedInput,
+            updatedPermissions,
+            interrupt,
+          }) async {
+            decided = decision;
+            capturedMessage = message;
+          },
     );
     expect(event.permissionId, 'perm-1');
     expect(event.toolName, 'Write');

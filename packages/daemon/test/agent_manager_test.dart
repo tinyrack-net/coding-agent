@@ -847,7 +847,15 @@ void main() {
           permissionId: 'perm-req-1',
           toolName: 'Write',
           detail: const WriteDetail(path: 'hello.txt', contentPreview: 'hi'),
-          respond: (decision, {String? message}) async => decided = decision,
+          respond:
+              (
+                decision, {
+                message,
+                selectedActionId,
+                updatedInput,
+                updatedPermissions,
+                interrupt,
+              }) async => decided = decision,
         ),
       );
       await pumpEventQueue();
@@ -1037,6 +1045,54 @@ void main() {
     expect(outcome.timeline.whereType<AssistantMessageItem>(), hasLength(1));
   });
 
+  test('waitForAgentEvent returns completion and pending permission', () async {
+    final agent = await createAgent();
+    final session = client.sessions.single;
+    session.emit(const SessionStarted(sessionId: 'sess-1'));
+    await pumpEventQueue();
+
+    await manager.prompt(agent.agentId, 'complete this');
+    final completed = manager.waitForAgentEvent(
+      agent.agentId,
+      waitForActive: true,
+      timeout: const Duration(seconds: 1),
+    );
+    session.emit(
+      const AssistantMessageComplete(itemId: 'answer', fullText: 'All done'),
+    );
+    session.emit(const TurnCompleted());
+    final completedResult = await completed;
+    expect(completedResult.summary.runState, AgentRunState.idle);
+    expect(completedResult.lastMessage, 'All done');
+    expect(completedResult.permission, isNull);
+
+    await manager.prompt(agent.agentId, 'write this');
+    final permission = manager.waitForAgentEvent(
+      agent.agentId,
+      waitForActive: true,
+      timeout: const Duration(seconds: 1),
+    );
+    session.emit(
+      PermissionRequested(
+        permissionId: 'wait-permission',
+        toolName: 'Write',
+        detail: const WriteDetail(path: 'README.md'),
+        respond:
+            (
+              decision, {
+              message,
+              selectedActionId,
+              updatedInput,
+              updatedPermissions,
+              interrupt,
+            }) async {},
+      ),
+    );
+    final permissionResult = await permission;
+    expect(permissionResult.summary.runState, AgentRunState.awaitingPermission);
+    expect(permissionResult.permission?.permissionId, 'wait-permission');
+  });
+
   test('turn failure marks turn failed and state error', () async {
     final agent = await createAgent();
     final session = client.sessions.single;
@@ -1141,7 +1197,15 @@ void main() {
         permissionId: 'perm-2',
         toolName: 'Write',
         detail: const WriteDetail(path: 'x.txt'),
-        respond: (decision, {String? message}) async => decided = decision,
+        respond:
+            (
+              decision, {
+              message,
+              selectedActionId,
+              updatedInput,
+              updatedPermissions,
+              interrupt,
+            }) async => decided = decision,
       ),
     );
     await pumpEventQueue();
@@ -1183,6 +1247,35 @@ void main() {
       throwsA(isA<RpcException>()),
     );
   });
+
+  test(
+    'close disposes the live session and retains a closed snapshot',
+    () async {
+      final agent = await createAgent();
+      final session = client.sessions.single;
+      session.emit(const SessionStarted(sessionId: 'sess-1'));
+      await pumpEventQueue();
+      await manager.prompt(agent.agentId, 'long task');
+
+      await manager.close(agent.agentId);
+
+      expect(session.disposed, isTrue);
+      expect(manager.get(agent.agentId)?.runState, AgentRunState.closed);
+      expect(manager.get(agent.agentId)?.archivedAt, isNull);
+      final turn = manager
+          .fetchCanonicalTimeline(agent.agentId)
+          .rows
+          .map((row) => row.item)
+          .whereType<TurnItem>()
+          .last;
+      expect(turn.phase, TurnPhase.canceled);
+      final persisted = (await AgentStore(
+        dataDir: tempDir.path,
+      ).loadAll()).single;
+      expect(persisted.archived, isFalse);
+      expect(persisted.summary.runState, AgentRunState.closed);
+    },
+  );
 
   test('setMode stores the mode for the next session', () async {
     final agent = await createAgent();

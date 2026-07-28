@@ -12,7 +12,14 @@ enum PermissionDecision { allow, deny }
 /// Callback handed out with [PermissionRequested]; completing it answers the
 /// provider's pending permission prompt.
 typedef PermissionRespond =
-    Future<void> Function(PermissionDecision decision, {String? message});
+    Future<void> Function(
+      PermissionDecision decision, {
+      String? message,
+      String? selectedActionId,
+      Map<String, Object?>? updatedInput,
+      List<Map<String, Object?>>? updatedPermissions,
+      bool? interrupt,
+    });
 
 sealed class ProviderEvent {
   const ProviderEvent();

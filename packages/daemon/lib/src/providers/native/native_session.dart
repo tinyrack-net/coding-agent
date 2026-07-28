@@ -274,9 +274,17 @@ class NativeSession implements AgentSession {
         permissionId: _uuid.v4(),
         toolName: toolName,
         detail: GenericDetail(input: args),
-        respond: (decision, {message}) async {
-          if (!completer.isCompleted) completer.complete(decision);
-        },
+        respond:
+            (
+              decision, {
+              message,
+              selectedActionId,
+              updatedInput,
+              updatedPermissions,
+              interrupt,
+            }) async {
+              if (!completer.isCompleted) completer.complete(decision);
+            },
       ),
     );
     return completer.future;

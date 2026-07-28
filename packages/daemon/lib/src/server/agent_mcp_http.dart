@@ -13,9 +13,11 @@ final class AgentMcpHttpHandler {
     required PaseoProviderCatalogRegistry providerCatalog,
     required String capabilityToken,
     String? passwordHash,
+    Duration agentWaitTimeout = const Duration(seconds: 30),
   }) : _toolsHost = AgentMcpTools(
          manager: manager,
          providerCatalog: providerCatalog,
+         agentWaitTimeout: agentWaitTimeout,
        ),
        _capabilityToken = capabilityToken,
        _passwordHash = passwordHash;
@@ -207,6 +209,19 @@ final class AgentMcpHttpHandler {
       },
     },
     {
+      'name': 'kill_agent',
+      'title': 'Kill agent',
+      'description': 'Terminate an agent session permanently.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'agentId': {'type': 'string'},
+        },
+        'required': ['agentId'],
+        'additionalProperties': false,
+      },
+    },
+    {
       'name': 'update_agent',
       'title': 'Update agent',
       'description': 'Update an agent name, labels, and/or runtime settings.',
@@ -274,7 +289,35 @@ final class AgentMcpHttpHandler {
         'properties': {
           'agentId': {'type': 'string'},
           'requestId': {'type': 'string'},
-          'response': {'type': 'object'},
+          'response': {
+            'oneOf': [
+              {
+                'type': 'object',
+                'properties': {
+                  'behavior': {'const': 'allow'},
+                  'selectedActionId': {'type': 'string'},
+                  'updatedInput': {'type': 'object'},
+                  'updatedPermissions': {
+                    'type': 'array',
+                    'items': {'type': 'object'},
+                  },
+                },
+                'required': ['behavior'],
+                'additionalProperties': false,
+              },
+              {
+                'type': 'object',
+                'properties': {
+                  'behavior': {'const': 'deny'},
+                  'selectedActionId': {'type': 'string'},
+                  'message': {'type': 'string'},
+                  'interrupt': {'type': 'boolean'},
+                },
+                'required': ['behavior'],
+                'additionalProperties': false,
+              },
+            ],
+          },
         },
         'required': ['agentId', 'requestId', 'response'],
         'additionalProperties': false,

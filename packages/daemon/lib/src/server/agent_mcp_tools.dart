@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
 
@@ -10,11 +12,13 @@ final class AgentMcpTools {
   AgentMcpTools({
     required AgentManager manager,
     required PaseoProviderCatalogRegistry providerCatalog,
+    this.agentWaitTimeout = const Duration(seconds: 30),
   }) : _manager = manager,
        _providerCatalog = providerCatalog;
 
   final AgentManager _manager;
   final PaseoProviderCatalogRegistry _providerCatalog;
+  final Duration agentWaitTimeout;
 
   Future<Map<String, Object?>> execute(
     String name,
@@ -36,15 +40,25 @@ final class AgentMcpTools {
           throw const FormatException('sessionMode must be a string');
         }
         await _manager.prompt(agentId, _requiredString(arguments, 'prompt'));
+        final background =
+            arguments['background'] as bool? ?? callerAgentId != null;
+        final notifyOnFinish =
+            arguments['notifyOnFinish'] as bool? ?? callerAgentId != null;
+        final shouldNotify =
+            callerAgentId != null && background && notifyOnFinish;
+        if (shouldNotify) {
+          unawaited(_notifyCallerWhenAgentStops(agentId, callerAgentId));
+        }
+        if (!background) {
+          return _waitForAgent(agentId);
+        }
         final snapshot = _snapshot(agentId);
         return {
           'success': true,
           'status': snapshot['status'],
           'lastMessage': null,
           'permission': null,
-          if (callerAgentId != null &&
-              (arguments['background'] as bool? ?? true) &&
-              (arguments['notifyOnFinish'] as bool? ?? true))
+          if (shouldNotify)
             'guidance':
                 'You will get notified when the prompted agent finishes, '
                 'errors, or needs permission. Do not poll for status; continue '
@@ -61,6 +75,9 @@ final class AgentMcpTools {
         return {'success': running};
       case 'archive_agent':
         await _manager.archive(_requiredString(arguments, 'agentId'));
+        return {'success': true};
+      case 'kill_agent':
+        await _manager.close(_requiredString(arguments, 'agentId'));
         return {'success': true};
       case 'update_agent':
         return _updateAgent(arguments);
@@ -95,6 +112,78 @@ final class AgentMcpTools {
         return _inspectProvider(arguments);
       default:
         throw StateError('Unknown tool: $name');
+    }
+  }
+
+  Future<Map<String, Object?>> _waitForAgent(String agentId) async {
+    try {
+      final result = await _manager.waitForAgentEvent(
+        agentId,
+        waitForActive: true,
+        timeout: agentWaitTimeout,
+      );
+      return {
+        'success': true,
+        'status': _status(result.summary),
+        'lastMessage': result.lastMessage,
+        'permission': result.permission == null
+            ? null
+            : _permissionRequest(result.summary, result.permission!),
+      };
+    } on TimeoutException {
+      final canonical = _manager.fetchCanonicalTimeline(agentId);
+      final items = [for (final row in canonical.rows) row.item];
+      final recent = selectTimelineItemsByProjectedLimit(
+        items: items,
+        direction: 'tail',
+        limit: 5,
+      );
+      final waitedSeconds = agentWaitTimeout.inSeconds;
+      return {
+        'success': true,
+        'status': _status(canonical.agent),
+        'lastMessage':
+            'Awaiting the agent timed out after ${waitedSeconds}s. '
+            'This does not mean the agent failed - it is still running. '
+            'Call get_agent_status to check on it, or continue with other '
+            'work if you will receive a finish notification.\n\n'
+            'Recent activity:\n${curateAgentActivity(recent.items)}',
+        'permission': null,
+      };
+    }
+  }
+
+  Future<void> _notifyCallerWhenAgentStops(
+    String childAgentId,
+    String callerAgentId,
+  ) async {
+    try {
+      final result = await _manager.waitForAgentEvent(
+        childAgentId,
+        waitForActive: true,
+      );
+      final caller = _manager.get(callerAgentId);
+      if (caller == null || caller.archivedAt != null) return;
+      final child = result.summary;
+      final reason = result.permission != null
+          ? 'needs permission'
+          : child.runState == AgentRunState.error
+          ? 'errored'
+          : child.runState == AgentRunState.closed
+          ? null
+          : 'finished';
+      if (reason == null) return;
+      final statusLine = 'Agent $childAgentId (${child.title}) $reason.';
+      final response = result.lastMessage?.trim();
+      final body = response == null || response.isEmpty
+          ? statusLine
+          : '$statusLine\n\n<agent-response>\n$response\n</agent-response>';
+      await _manager.prompt(
+        callerAgentId,
+        '<paseo-system>\n$body\n</paseo-system>',
+      );
+    } on Object {
+      // Finish notifications are best-effort and must not fail the MCP call.
     }
   }
 
@@ -248,7 +337,43 @@ final class AgentMcpTools {
     if (behavior != 'allow' && behavior != 'deny') {
       throw const FormatException('response.behavior must be allow or deny');
     }
-    await _manager.respondPermission(requestId, behavior);
+    if (behavior == 'allow' &&
+        (response.containsKey('message') ||
+            response.containsKey('interrupt'))) {
+      throw const FormatException(
+        'allow response cannot contain message or interrupt',
+      );
+    }
+    if (behavior == 'deny' &&
+        (response.containsKey('updatedInput') ||
+            response.containsKey('updatedPermissions'))) {
+      throw const FormatException(
+        'deny response cannot contain updatedInput or updatedPermissions',
+      );
+    }
+    final updatedPermissions = response['updatedPermissions'];
+    if (updatedPermissions != null &&
+        (updatedPermissions is! List ||
+            updatedPermissions.any((value) => value is! Map))) {
+      throw const FormatException(
+        'response.updatedPermissions must be an array of objects',
+      );
+    }
+    await _manager.respondPermissionDetailed(
+      agentId: agentId,
+      permissionId: requestId,
+      behavior: behavior,
+      message: _nullableString(response, 'message'),
+      selectedActionId: _nullableString(response, 'selectedActionId'),
+      updatedInput: _optionalMap(response, 'updatedInput'),
+      updatedPermissions: updatedPermissions == null
+          ? null
+          : [
+              for (final value in updatedPermissions as List)
+                Map<String, Object?>.from(value as Map),
+            ],
+      interrupt: _nullableBool(response, 'interrupt'),
+    );
     return {'success': true};
   }
 
@@ -322,6 +447,27 @@ final class AgentMcpTools {
     );
   }
 }
+
+String _status(AgentSummary agent) => agent.archivedAt != null
+    ? 'closed'
+    : switch (agent.runState) {
+        AgentRunState.initializing => 'initializing',
+        AgentRunState.idle => 'idle',
+        AgentRunState.running || AgentRunState.awaitingPermission => 'running',
+        AgentRunState.error => 'error',
+        AgentRunState.closed => 'closed',
+      };
+
+Map<String, Object?> _permissionRequest(
+  AgentSummary agent,
+  PermissionItem permission,
+) => {
+  'id': permission.permissionId,
+  'provider': agent.provider,
+  'name': permission.toolName,
+  'kind': 'tool',
+  'detail': permission.detail.toPaseoJson(),
+};
 
 Map<String, Object?> _providerSummary(ProviderSnapshotEntry entry) => {
   'id': entry.provider,
@@ -494,6 +640,13 @@ Map<String, Object?>? _optionalMap(Map<String, Object?> values, String key) {
   if (value == null) return null;
   if (value is! Map) throw FormatException('$key must be an object');
   return Map<String, Object?>.from(value);
+}
+
+bool? _nullableBool(Map<String, Object?> values, String key) {
+  final value = values[key];
+  if (value == null) return null;
+  if (value is! bool) throw FormatException('$key must be a boolean');
+  return value;
 }
 
 int _boundedInt(

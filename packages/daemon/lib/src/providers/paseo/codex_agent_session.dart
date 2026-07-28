@@ -520,41 +520,51 @@ final class CodexAgentSession
         permissionId: 'permission-$itemId',
         toolName: 'request_user_input',
         detail: detail,
-        respond: (decision, {message}) async {
-          if (completer.isCompleted) {
-            return;
-          }
-          final allowed = decision == PermissionDecision.allow;
-          final answers = <String, Object?>{
-            if (allowed)
-              for (final question in questions)
-                if ((question['options'] as List<Object?>).isNotEmpty)
-                  question['id']! as String: {
-                    'answers': [
-                      ((question['options'] as List<Object?>).first
-                          as Map<String, Object?>)['label'],
-                    ],
-                  },
-          };
-          _emit(
-            ToolCallUpdated(
-              itemId: itemId,
-              toolName: 'request_user_input',
-              status: allowed ? ToolCallStatus.success : ToolCallStatus.error,
-              detail: GenericDetail(
-                input: {
-                  ...detail.input,
-                  if (allowed) 'answers': answers,
-                  if (!allowed)
-                    'error': message?.trim().isNotEmpty == true
-                        ? message
-                        : 'Question dismissed',
-                },
-              ),
-            ),
-          );
-          completer.complete({'answers': answers});
-        },
+        respond:
+            (
+              decision, {
+              message,
+              selectedActionId,
+              updatedInput,
+              updatedPermissions,
+              interrupt,
+            }) async {
+              if (completer.isCompleted) {
+                return;
+              }
+              final allowed = decision == PermissionDecision.allow;
+              final answers = <String, Object?>{
+                if (allowed)
+                  for (final question in questions)
+                    if ((question['options'] as List<Object?>).isNotEmpty)
+                      question['id']! as String: {
+                        'answers': [
+                          ((question['options'] as List<Object?>).first
+                              as Map<String, Object?>)['label'],
+                        ],
+                      },
+              };
+              _emit(
+                ToolCallUpdated(
+                  itemId: itemId,
+                  toolName: 'request_user_input',
+                  status: allowed
+                      ? ToolCallStatus.success
+                      : ToolCallStatus.error,
+                  detail: GenericDetail(
+                    input: {
+                      ...detail.input,
+                      if (allowed) 'answers': answers,
+                      if (!allowed)
+                        'error': message?.trim().isNotEmpty == true
+                            ? message
+                            : 'Question dismissed',
+                    },
+                  ),
+                ),
+              );
+              completer.complete({'answers': answers});
+            },
       ),
     );
     return completer.future;
@@ -599,19 +609,27 @@ final class CodexAgentSession
             'elicitationId': parsed['elicitationId'],
           },
         ),
-        respond: (decision, {message}) async {
-          if (!completer.isCompleted) {
-            completer.complete({
-              'action': decision == PermissionDecision.allow
-                  ? 'accept'
-                  : 'decline',
-              'content': decision == PermissionDecision.allow
-                  ? <String, Object?>{}
-                  : null,
-              '_meta': null,
-            });
-          }
-        },
+        respond:
+            (
+              decision, {
+              message,
+              selectedActionId,
+              updatedInput,
+              updatedPermissions,
+              interrupt,
+            }) async {
+              if (!completer.isCompleted) {
+                completer.complete({
+                  'action': decision == PermissionDecision.allow
+                      ? 'accept'
+                      : 'decline',
+                  'content': decision == PermissionDecision.allow
+                      ? <String, Object?>{}
+                      : null,
+                  '_meta': null,
+                });
+              }
+            },
       ),
     );
     return completer.future;
@@ -678,15 +696,23 @@ final class CodexAgentSession
         permissionId: permissionId,
         toolName: toolName,
         detail: detail,
-        respond: (decision, {message}) async {
-          if (!completer.isCompleted) {
-            completer.complete({
-              'decision': decision == PermissionDecision.allow
-                  ? 'accept'
-                  : 'decline',
-            });
-          }
-        },
+        respond:
+            (
+              decision, {
+              message,
+              selectedActionId,
+              updatedInput,
+              updatedPermissions,
+              interrupt,
+            }) async {
+              if (!completer.isCompleted) {
+                completer.complete({
+                  'decision': decision == PermissionDecision.allow
+                      ? 'accept'
+                      : 'decline',
+                });
+              }
+            },
       ),
     );
     return completer.future;

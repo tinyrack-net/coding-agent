@@ -630,8 +630,19 @@ final class GenericAcpAgentSession
         permissionId: permissionId,
         toolName: snapshot.title,
         detail: _toolDetail(snapshot),
-        respond: (decision, {message}) =>
-            _resolvePermission(permissionId, decision),
+        respond:
+            (
+              decision, {
+              message,
+              selectedActionId,
+              updatedInput,
+              updatedPermissions,
+              interrupt,
+            }) => _resolvePermission(
+              permissionId,
+              decision,
+              selectedActionId: selectedActionId,
+            ),
       ),
     );
     return completer.future;
@@ -639,15 +650,22 @@ final class GenericAcpAgentSession
 
   Future<void> _resolvePermission(
     String permissionId,
-    PermissionDecision decision,
-  ) async {
+    PermissionDecision decision, {
+    String? selectedActionId,
+  }) async {
     final pending = _pendingPermissions.remove(permissionId);
     if (pending == null || pending.completer.isCompleted) return;
     final preferred = decision == PermissionDecision.allow
         ? const ['allow_once', 'allow_always']
         : const ['reject_once', 'reject_always'];
-    Map<String, Object?>? selected;
+    Map<String, Object?>? selected = selectedActionId == null
+        ? null
+        : pending.options.cast<Map<String, Object?>?>().firstWhere(
+            (option) => option?['optionId'] == selectedActionId,
+            orElse: () => null,
+          );
     for (final kind in preferred) {
+      if (selected != null) break;
       selected = pending.options.cast<Map<String, Object?>?>().firstWhere(
         (option) => option?['kind'] == kind,
         orElse: () => null,

@@ -135,6 +135,7 @@ Future<DaemonServerHandle> startDaemonServer({
   String appBaseUrl = defaultTinyrackAppBaseUrl,
   AgentHookInstallOptions hookInstallOptions = const AgentHookInstallOptions(),
   Map<String, AgentClient>? agentClients,
+  Duration agentMcpWaitTimeout = const Duration(seconds: 30),
   void Function(String)? log,
   void Function()? onShutdownRequested,
 }) async {
@@ -697,6 +698,7 @@ Future<DaemonServerHandle> startDaemonServer({
       providerCatalog: paseoProviderCatalog,
       capabilityToken: agentMcpAuthToken,
       passwordHash: passwordHash,
+      agentWaitTimeout: agentMcpWaitTimeout,
     ).call,
     webUiHandler: DaemonWebUi(
       enabled: webUiEnabled,
