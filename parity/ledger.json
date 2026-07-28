@@ -654,24 +654,30 @@
     },
     {
       "id": "cli-command:workspace-archive",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Frozen workspace-id archive RPC, timestamp requirement, structured errors, and archive result output are implemented."
     },
     {
       "id": "cli-command:workspace-create",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Frozen local/worktree isolation, branch-off, checkout-branch, checkout-pr/forge, project/path/title options, typed workspace.create RPC, and table/JSON/YAML/quiet output are implemented."
     },
     {
       "id": "cli-command:workspace-ls",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Frozen active-workspace listing follows 200-entry cursor pages in response order and renders the exact workspace row projection."
     },
     {
       "id": "cli-command:worktree-archive",
@@ -9406,38 +9412,48 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/workspace/archive.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Frozen workspace-id archive RPC, timestamp requirement, structured errors, and archive result output are implemented."
     },
     {
       "id": "source-unit:packages/cli/src/commands/workspace/create.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Frozen local/worktree isolation, branch-off, checkout-branch, checkout-pr/forge, project/path/title options, typed workspace.create RPC, and table/JSON/YAML/quiet output are implemented."
     },
     {
       "id": "source-unit:packages/cli/src/commands/workspace/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "The coding-agent workspace command exposes create, ls, and archive with frozen options and help routing."
     },
     {
       "id": "source-unit:packages/cli/src/commands/workspace/ls.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Frozen active-workspace listing follows 200-entry cursor pages in response order and renders the exact workspace row projection."
     },
     {
       "id": "source-unit:packages/cli/src/commands/workspace/shared.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Frozen workspace row projection and WORKSPACE ID, PROJECT, NAME, ISOLATION, CWD schema are implemented."
     },
     {
       "id": "source-unit:packages/cli/src/commands/worktree/archive.ts",
