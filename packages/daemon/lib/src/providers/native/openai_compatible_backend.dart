@@ -14,7 +14,7 @@ import 'provider_catalog.dart';
 
 class OpenAiCompatibleBackend implements LlmBackend {
   OpenAiCompatibleBackend({required this.catalogEntry, http.Client? httpClient})
-      : _http = httpClient ?? http.Client();
+    : _http = httpClient ?? http.Client();
 
   final ProviderCatalogEntry catalogEntry;
   final http.Client _http;
@@ -27,7 +27,10 @@ class OpenAiCompatibleBackend implements LlmBackend {
     required String apiKey,
   }) async* {
     final request =
-        http.Request('POST', Uri.parse('${catalogEntry.baseUrl}/chat/completions'))
+        http.Request(
+            'POST',
+            Uri.parse('${catalogEntry.baseUrl}/chat/completions'),
+          )
           ..headers['Content-Type'] = 'application/json'
           ..headers['Authorization'] = 'Bearer $apiKey'
           ..headers.addAll(catalogEntry.extraHeaders)
@@ -54,9 +57,10 @@ class OpenAiCompatibleBackend implements LlmBackend {
 
     var sawDone = false;
     try {
-      await for (final line in response.stream
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())) {
+      await for (final line
+          in response.stream
+              .transform(utf8.decoder)
+              .transform(const LineSplitter())) {
         if (!line.startsWith('data:')) continue;
         final data = line.substring(5).trim();
         if (data.isEmpty) continue;
@@ -161,43 +165,45 @@ class OpenAiCompatibleBackend implements LlmBackend {
   }
 
   static LlmFinishReason _parseFinishReason(String raw) => switch (raw) {
-        'tool_calls' => LlmFinishReason.toolCalls,
-        'length' => LlmFinishReason.length,
-        _ => LlmFinishReason.stop,
-      };
+    'tool_calls' => LlmFinishReason.toolCalls,
+    'length' => LlmFinishReason.length,
+    _ => LlmFinishReason.stop,
+  };
 
   static Map<String, Object?> _encodeMessage(LlmMessage message) =>
       switch (message) {
         LlmSystemMessage(:final text) => {'role': 'system', 'content': text},
         LlmUserMessage(:final text) => {'role': 'user', 'content': text},
         LlmAssistantMessage(:final text, :final toolCalls) => {
-            'role': 'assistant',
-            'content': text,
-            if (toolCalls.isNotEmpty)
-              'tool_calls': toolCalls
-                  .map((tc) => {
-                        'id': tc.id,
-                        'type': 'function',
-                        'function': {
-                          'name': tc.name,
-                          'arguments': tc.argumentsJson,
-                        },
-                      })
-                  .toList(),
-          },
+          'role': 'assistant',
+          'content': text,
+          if (toolCalls.isNotEmpty)
+            'tool_calls': toolCalls
+                .map(
+                  (tc) => {
+                    'id': tc.id,
+                    'type': 'function',
+                    'function': {
+                      'name': tc.name,
+                      'arguments': tc.argumentsJson,
+                    },
+                  },
+                )
+                .toList(),
+        },
         LlmToolResultMessage(:final toolCallId, :final content) => {
-            'role': 'tool',
-            'tool_call_id': toolCallId,
-            'content': content,
-          },
+          'role': 'tool',
+          'tool_call_id': toolCallId,
+          'content': content,
+        },
       };
 
   static Map<String, Object?> _encodeTool(LlmToolSchema tool) => {
-        'type': 'function',
-        'function': {
-          'name': tool.name,
-          'description': tool.description,
-          'parameters': tool.parameters,
-        },
-      };
+    'type': 'function',
+    'function': {
+      'name': tool.name,
+      'description': tool.description,
+      'parameters': tool.parameters,
+    },
+  };
 }

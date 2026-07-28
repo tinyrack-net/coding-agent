@@ -6,8 +6,7 @@ abstract final class MessageTypes {
   static const clientHelloRequest = 'client.hello.request';
   // providers
   static const providerListRequest = 'provider.list.request';
-  static const providerCredentialSetRequest =
-      'provider.credential.set.request';
+  static const providerCredentialSetRequest = 'provider.credential.set.request';
   static const providerCredentialClearRequest =
       'provider.credential.clear.request';
   static const providerCredentialTestRequest =
@@ -20,7 +19,13 @@ abstract final class MessageTypes {
   static const agentSetModeRequest = 'agent.set_mode.request';
   static const agentRenameRequest = 'agent.rename.request';
   static const agentArchiveRequest = 'agent.archive.request';
+  static const agentDetachRequest = 'agent.detach.request';
+  static const agentAttentionClearRequest = 'agent.attention.clear.request';
   static const agentTimelineFetchRequest = 'agent.timeline.fetch.request';
+  static const providerSubagentListRequest =
+      'agent.provider_subagents.list.request';
+  static const providerSubagentTimelineRequest =
+      'agent.provider_subagents.timeline.get.request';
   // Wipe persisted + in-memory conversation state. Request payload is
   // empty (clear every agent) or `{agentId}` (clear one). Response is
   // [AgentConversationClearResponse] with the number of affected agents.
@@ -29,6 +34,7 @@ abstract final class MessageTypes {
   // broadcast events
   static const agentStreamEvent = 'agent.stream';
   static const agentStateEvent = 'agent.state';
+  static const providerSubagentUpdateEvent = 'agent.provider_subagents.update';
   static const permissionRequestedEvent = 'permission.requested';
   static const permissionResolvedEvent = 'permission.resolved';
   // permissions
@@ -69,16 +75,16 @@ final class ClientHello {
   final String? token;
 
   static ClientHello fromJson(Map<String, Object?> json) => ClientHello(
-        clientName: (json['clientName'] as String?) ?? 'unknown',
-        clientVersion: (json['clientVersion'] as String?) ?? '0.0.0',
-        token: json['token'] as String?,
-      );
+    clientName: (json['clientName'] as String?) ?? 'unknown',
+    clientVersion: (json['clientVersion'] as String?) ?? '0.0.0',
+    token: json['token'] as String?,
+  );
 
   Map<String, Object?> toJson() => {
-        'clientName': clientName,
-        'clientVersion': clientVersion,
-        if (token != null) 'token': token,
-      };
+    'clientName': clientName,
+    'clientVersion': clientVersion,
+    if (token != null) 'token': token,
+  };
 }
 
 final class ServerHello {
@@ -101,19 +107,18 @@ final class ServerHello {
   final bool desktopManaged;
 
   static ServerHello fromJson(Map<String, Object?> json) => ServerHello(
-        daemonVersion: (json['daemonVersion'] as String?) ?? '0.0.0',
-        protocolVersion: (json['protocolVersion'] as num?)?.toInt() ?? 0,
-        capabilities: ((json['capabilities'] as List?) ?? const [])
-            .cast<String>(),
-        pid: (json['pid'] as num?)?.toInt(),
-        desktopManaged: (json['desktopManaged'] as bool?) ?? false,
-      );
+    daemonVersion: (json['daemonVersion'] as String?) ?? '0.0.0',
+    protocolVersion: (json['protocolVersion'] as num?)?.toInt() ?? 0,
+    capabilities: ((json['capabilities'] as List?) ?? const []).cast<String>(),
+    pid: (json['pid'] as num?)?.toInt(),
+    desktopManaged: (json['desktopManaged'] as bool?) ?? false,
+  );
 
   Map<String, Object?> toJson() => {
-        'daemonVersion': daemonVersion,
-        'protocolVersion': protocolVersion,
-        'capabilities': capabilities,
-        if (pid != null) 'pid': pid,
-        'desktopManaged': desktopManaged,
-      };
+    'daemonVersion': daemonVersion,
+    'protocolVersion': protocolVersion,
+    'capabilities': capabilities,
+    if (pid != null) 'pid': pid,
+    'desktopManaged': desktopManaged,
+  };
 }

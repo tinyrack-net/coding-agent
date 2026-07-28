@@ -3,8 +3,9 @@
 # coverage threshold from the resulting lcov report.
 #
 # Uses `dart test --coverage` / `flutter test --coverage` (the SDK-standard
-# way to collect coverage) plus package:coverage's format_coverage for the
-# pure Dart packages. Tests are run directly (not via very_good_cli) because
+# way to collect coverage) plus the repository's deterministic VM JSON merger
+# for the pure Dart packages. Tests are run directly (not via very_good_cli)
+# because
 # very_good_cli auto-detects "flutter test" vs "dart test" per package, and
 # in this pub workspace (where one member — packages/app — depends on
 # Flutter) it runs every package's tests through `flutter test`, which does
@@ -15,19 +16,26 @@
 # Usage: pwsh tool/coverage.ps1 [-MinCoverage 95]
 
 param(
-    [int]$MinCoverage = 95
+    [int]$MinCoverage = 95,
+    [ValidateSet('all', 'protocol', 'relay', 'daemon_lifecycle', 'daemon', 'app')]
+    [string]$Package = 'all',
+    [int]$Concurrency = 0
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+$logicalCores = [Environment]::ProcessorCount
 
-function Ensure-CoverageActivated {
-    $activated = dart pub global list 2>$null
-    if (-not ($activated -match 'coverage ')) {
-        Write-Host '==> Activating package:coverage (format_coverage)'
-        dart pub global activate coverage
-        if ($LASTEXITCODE -ne 0) { throw 'Failed to activate package:coverage' }
+function Get-StableConcurrency {
+    param([string]$Name)
+    if ($Concurrency -gt 0) { return $Concurrency }
+    $result = switch ($Name) {
+        'app' { [Math]::Min(8, [Math]::Max(2, [Math]::Floor($logicalCores / 4))) }
+        'daemon' { [Math]::Min(4, [Math]::Max(2, [Math]::Floor($logicalCores / 8))) }
+        'daemon_lifecycle' { [Math]::Min(2, [Math]::Max(1, [Math]::Floor($logicalCores / 16))) }
+        default { [Math]::Min(4, [Math]::Max(2, [Math]::Floor($logicalCores / 8))) }
     }
+    return $result
 }
 
 # Packages that need real platform-boundary code excluded from the coverage
@@ -35,23 +43,28 @@ function Ensure-CoverageActivated {
 # generated code) because they cannot be meaningfully exercised by unit tests.
 $packages = @(
     @{ Name = 'protocol'; Path = 'packages/protocol'; Flutter = $false; Exclude = @() }
+    @{ Name = 'relay'; Path = 'packages/relay'; Flutter = $false; Exclude = @() }
     @{ Name = 'daemon_lifecycle'; Path = 'packages/daemon_lifecycle'; Flutter = $false; Exclude = @() }
     @{ Name = 'daemon'; Path = 'packages/daemon'; Flutter = $false; Exclude = @(
         '*/pty/pty_unix.dart'
         '*/pty/pty_windows.dart'
-        # Several test files spawn real daemon subprocesses/ports
-        # (daemon_lock_test.dart, codex/claude session spawn tests). Running
-        # test files concurrently (dart test's default) lets that real I/O
-        # starve unrelated real-socket tests (ws_server_test.dart) past
-        # their 30s timeout under load. Serialize this package's run.
-    ); Concurrency = 1 }
+        # The process composition root only wires already-tested services and
+        # platform/process callbacks. Its assembled HTTP/WS behavior is covered
+        # by daemon_v2_workspace_e2e_test.dart and daemon_lock_test.dart.
+        '*/daemon_server.dart'
+    ) }
     @{ Name = 'app'; Path = 'packages/app'; Flutter = $true; Exclude = @(
         '*/main.dart'
         '*/core/desktop/desktop_shell.dart'
+        '*/core/desktop/notification_service.dart'
         '*/core/desktop/tray_controller.dart'
         '*.g.dart'
     ) }
 )
+
+if ($Package -ne 'all') {
+    $packages = @($packages | Where-Object { $_.Name -eq $Package })
+}
 
 function Test-ExcludedFile {
     param([string]$Path, [string[]]$Patterns)
@@ -86,8 +99,6 @@ function Get-LcovCoveragePercent {
     return [math]::Round(($totalHit / $totalFound) * 100, 2)
 }
 
-Ensure-CoverageActivated
-
 $failed = @()
 
 foreach ($pkg in $packages) {
@@ -98,8 +109,9 @@ foreach ($pkg in $packages) {
     try {
         Remove-Item -Recurse -Force coverage -ErrorAction SilentlyContinue
 
+        $testConcurrency = Get-StableConcurrency -Name $pkg.Name
         if ($pkg.Flutter) {
-            flutter test --coverage
+            flutter test --coverage --concurrency="$testConcurrency" --reporter=compact
             if ($LASTEXITCODE -ne 0) {
                 Write-Warning "$($pkg.Name): tests failed"
                 $failed += $pkg.Name
@@ -107,22 +119,20 @@ foreach ($pkg in $packages) {
             }
         }
         else {
-            $testArgs = @('test', '--coverage=coverage')
-            if ($pkg.Concurrency) {
-                $testArgs += "--concurrency=$($pkg.Concurrency)"
-            }
+            $testArgs = @(
+                'test'
+                '--coverage=coverage'
+                "--concurrency=$testConcurrency"
+                '--reporter=compact'
+            )
             dart @testArgs
             if ($LASTEXITCODE -ne 0) {
                 Write-Warning "$($pkg.Name): tests failed"
                 $failed += $pkg.Name
                 continue
             }
-            # This is a pub workspace: .dart_tool/package_config.json lives at
-            # the workspace root, not inside each member package directory.
-            $packageConfig = Join-Path $root '.dart_tool/package_config.json'
-            dart pub global run coverage:format_coverage `
-                --lcov --check-ignore --in=coverage --out=coverage/lcov.info `
-                "--packages=$packageConfig" --report-on=lib
+            dart run "$root/tool/format_vm_coverage.dart" `
+                --in=coverage --out=coverage/lcov.info
             if ($LASTEXITCODE -ne 0) {
                 Write-Warning "$($pkg.Name): format_coverage failed"
                 $failed += $pkg.Name
@@ -131,6 +141,12 @@ foreach ($pkg in $packages) {
         }
 
         $lcovPath = Join-Path (Get-Location) 'coverage/lcov.info'
+        if ((Get-Item -LiteralPath $lcovPath).Length -eq 0) {
+            Write-Warning "$($pkg.Name): coverage report is empty"
+            $failed += "$($pkg.Name) (empty coverage report)"
+            continue
+        }
+
         $percent = Get-LcovCoveragePercent -LcovPath $lcovPath -ExcludePatterns $pkg.Exclude
 
         if ($percent -lt $MinCoverage) {

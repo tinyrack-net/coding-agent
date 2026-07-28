@@ -49,7 +49,9 @@ class PermissionBroker {
       'allow' || 'allow_always' => PermissionDecision.allow,
       'deny' => PermissionDecision.deny,
       _ => throw RpcException(
-          'invalid_payload', 'unknown decision "$decision"'),
+        'invalid_payload',
+        'unknown decision "$decision"',
+      ),
     };
     await pending.respond(parsed);
     pending.onResolved(parsed);

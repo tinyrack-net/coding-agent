@@ -1,8 +1,10 @@
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/desktop/desktop_shell.dart';
 import '../core/theme.dart';
+import '../state/host_registry_provider.dart';
 
 class SettingsShell extends StatelessWidget {
   const SettingsShell({super.key, required this.child});
@@ -29,6 +31,10 @@ class _SettingsSidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final serverId = GoRouterState.of(context).pathParameters['serverId'];
+    if (serverId != null) {
+      return _HostSettingsSidebar(serverId: serverId);
+    }
     final currentSection =
         GoRouterState.of(context).pathParameters['section'] ?? 'general';
 
@@ -45,18 +51,49 @@ class _SettingsSidebar extends StatelessWidget {
         Expanded(
           child: ListView(
             children: [
-              const _SettingsSectionLabel('App'),
+              const _SettingsSectionLabel('Host'),
               _SettingsNavItem(
                 icon: FluentIcons.settings,
-                label: 'General',
+                label: 'Connections',
                 section: 'general',
                 active: currentSection == 'general',
               ),
+              _SettingsNavItem(
+                icon: FluentIcons.robot,
+                label: 'Agents',
+                section: 'agents',
+                active: currentSection == 'agents',
+              ),
+              _SettingsNavItem(
+                icon: FluentIcons.branch_fork2,
+                label: 'Workspaces',
+                section: 'workspaces',
+                active: currentSection == 'workspaces',
+              ),
+              _SettingsNavItem(
+                icon: FluentIcons.command_prompt,
+                label: 'Terminals',
+                section: 'terminals',
+                active: currentSection == 'terminals',
+              ),
+              const _SettingsSectionLabel('App'),
               _SettingsNavItem(
                 icon: FluentIcons.cloud,
                 label: 'Providers',
                 section: 'providers',
                 active: currentSection == 'providers',
+              ),
+              _SettingsNavItem(
+                icon: FluentIcons.keyboard_classic,
+                label: 'Keyboard shortcuts',
+                section: 'keyboard',
+                active: currentSection == 'keyboard',
+              ),
+              _SettingsNavItem(
+                icon: FluentIcons.diagnostic,
+                label: 'Diagnostics',
+                section: 'diagnostics',
+                active: currentSection == 'diagnostics',
               ),
               if (isDesktopShell)
                 _SettingsNavItem(
@@ -72,6 +109,76 @@ class _SettingsSidebar extends StatelessWidget {
                 section: 'reset',
                 active: currentSection == 'reset',
               ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HostSettingsSidebar extends ConsumerWidget {
+  const _HostSettingsSidebar({required this.serverId});
+
+  final String serverId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final registry = ref.watch(hostRegistryProvider);
+    final currentSection =
+        GoRouterState.of(context).pathParameters['hostSection'] ??
+        'connections';
+    final host = registry.hosts
+        .where((candidate) => candidate.serverId == serverId)
+        .firstOrNull;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 4),
+        _SettingsHeaderRow(
+          icon: FluentIcons.back,
+          label: 'Back to Workspace',
+          onTap: () => context.go('/h/${Uri.encodeComponent(serverId)}'),
+        ),
+        const Divider(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 12, 4),
+          child: Text(
+            host?.label ?? serverId,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            children: [
+              for (final entry in const [
+                (FluentIcons.link, 'Connections', 'connections'),
+                (FluentIcons.robot, 'Agents', 'agents'),
+                (FluentIcons.branch_fork2, 'Workspaces', 'workspaces'),
+                (FluentIcons.cloud, 'Providers', 'providers'),
+                (FluentIcons.command_prompt, 'Terminals', 'terminals'),
+                (FluentIcons.settings, 'Host', 'host'),
+              ])
+                _SettingsNavItem(
+                  icon: entry.$1,
+                  label: entry.$2,
+                  section: entry.$3,
+                  active: currentSection == entry.$3,
+                  route:
+                      '/settings/hosts/${Uri.encodeComponent(serverId)}/${entry.$3}',
+                ),
+              const _SettingsSectionLabel('Hosts'),
+              for (final candidate in registry.hosts)
+                _SettingsNavItem(
+                  icon: FluentIcons.server,
+                  label: candidate.label,
+                  section: 'connections',
+                  active: candidate.serverId == serverId,
+                  route:
+                      '/settings/hosts/${Uri.encodeComponent(candidate.serverId)}/connections',
+                ),
             ],
           ),
         ),
@@ -130,12 +237,14 @@ class _SettingsNavItem extends StatelessWidget {
     required this.label,
     required this.section,
     required this.active,
+    this.route,
   });
 
   final IconData icon;
   final String label;
   final String section;
   final bool active;
+  final String? route;
 
   @override
   Widget build(BuildContext context) {
@@ -143,7 +252,7 @@ class _SettingsNavItem extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       child: HoverButton(
-        onPressed: () => context.go('/settings/$section'),
+        onPressed: () => context.go(route ?? '/settings/$section'),
         builder: (context, states) {
           final hovering = states.contains(WidgetState.hovered);
           return Container(
@@ -178,6 +287,13 @@ class _SettingsNavItem extends StatelessWidget {
         },
       ),
     );
+  }
+}
+
+extension<T> on Iterable<T> {
+  T? get firstOrNull {
+    final iterator = this.iterator;
+    return iterator.moveNext() ? iterator.current : null;
   }
 }
 

@@ -1,9 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'launch_at_startup.dart';
 import 'tray_controller.dart';
 
 /// Guard for all desktop-plugin calls (tray, window, autostart). Mobile and

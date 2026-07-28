@@ -26,10 +26,10 @@ import 'pty.dart';
 
 final class _Libc {
   _Libc._()
-      : _process = DynamicLibrary.process(),
-        // openpty lives in libutil on glibc Linux; on macOS and musl it is in
-        // the default namespace. Try the process first, then libutil.
-        _util = _openUtil();
+    : _process = DynamicLibrary.process(),
+      // openpty lives in libutil on glibc Linux; on macOS and musl it is in
+      // the default namespace. Try the process first, then libutil.
+      _util = _openUtil();
 
   static _Libc? _instance;
   static _Libc get instance => _instance ??= _Libc._();
@@ -52,50 +52,96 @@ final class _Libc {
   late final openpty = () {
     try {
       return _process.lookupFunction<
-          Int32 Function(Pointer<Int32>, Pointer<Int32>, Pointer<Void>,
-              Pointer<Void>, Pointer<Void>),
-          int Function(Pointer<Int32>, Pointer<Int32>, Pointer<Void>,
-              Pointer<Void>, Pointer<Void>)>('openpty');
+        Int32 Function(
+          Pointer<Int32>,
+          Pointer<Int32>,
+          Pointer<Void>,
+          Pointer<Void>,
+          Pointer<Void>,
+        ),
+        int Function(
+          Pointer<Int32>,
+          Pointer<Int32>,
+          Pointer<Void>,
+          Pointer<Void>,
+          Pointer<Void>,
+        )
+      >('openpty');
     } catch (_) {
       final util = _util;
       if (util == null) rethrow;
       return util.lookupFunction<
-          Int32 Function(Pointer<Int32>, Pointer<Int32>, Pointer<Void>,
-              Pointer<Void>, Pointer<Void>),
-          int Function(Pointer<Int32>, Pointer<Int32>, Pointer<Void>,
-              Pointer<Void>, Pointer<Void>)>('openpty');
+        Int32 Function(
+          Pointer<Int32>,
+          Pointer<Int32>,
+          Pointer<Void>,
+          Pointer<Void>,
+          Pointer<Void>,
+        ),
+        int Function(
+          Pointer<Int32>,
+          Pointer<Int32>,
+          Pointer<Void>,
+          Pointer<Void>,
+          Pointer<Void>,
+        )
+      >('openpty');
     }
   }();
 
-  late final fork =
-      _process.lookupFunction<Int32 Function(), int Function()>('fork');
-  late final setsid =
-      _process.lookupFunction<Int32 Function(), int Function()>('setsid');
+  late final fork = _process.lookupFunction<Int32 Function(), int Function()>(
+    'fork',
+  );
+  late final setsid = _process.lookupFunction<Int32 Function(), int Function()>(
+    'setsid',
+  );
   late final close = _process
       .lookupFunction<Int32 Function(Int32), int Function(int)>('close');
-  late final dup2 = _process.lookupFunction<Int32 Function(Int32, Int32),
-      int Function(int, int)>('dup2');
-  late final chdir = _process.lookupFunction<Int32 Function(Pointer<Utf8>),
-      int Function(Pointer<Utf8>)>('chdir');
-  late final execvp = _process.lookupFunction<
-      Int32 Function(Pointer<Utf8>, Pointer<Pointer<Utf8>>),
-      int Function(Pointer<Utf8>, Pointer<Pointer<Utf8>>)>('execvp');
-  late final ioctl = _process.lookupFunction<
-      Int32 Function(Int32, IntPtr, Pointer<Void>),
-      int Function(int, int, Pointer<Void>)>('ioctl');
-  late final kill = _process.lookupFunction<Int32 Function(Int32, Int32),
-      int Function(int, int)>('kill');
-  late final write = _process.lookupFunction<
-      IntPtr Function(Int32, Pointer<Uint8>, IntPtr),
-      int Function(int, Pointer<Uint8>, int)>('write');
-  late final read = _process.lookupFunction<
-      IntPtr Function(Int32, Pointer<Uint8>, IntPtr),
-      int Function(int, Pointer<Uint8>, int)>('read');
-  late final waitpid = _process.lookupFunction<
-      Int32 Function(Int32, Pointer<Int32>, Int32),
-      int Function(int, Pointer<Int32>, int)>('waitpid');
-  late final exitFn =
-      _process.lookupFunction<Void Function(Int32), void Function(int)>('_exit');
+  late final dup2 = _process
+      .lookupFunction<Int32 Function(Int32, Int32), int Function(int, int)>(
+        'dup2',
+      );
+  late final chdir = _process
+      .lookupFunction<
+        Int32 Function(Pointer<Utf8>),
+        int Function(Pointer<Utf8>)
+      >('chdir');
+  late final execvp = _process
+      .lookupFunction<
+        Int32 Function(Pointer<Utf8>, Pointer<Pointer<Utf8>>),
+        int Function(Pointer<Utf8>, Pointer<Pointer<Utf8>>)
+      >('execvp');
+  late final setenv = _process
+      .lookupFunction<
+        Int32 Function(Pointer<Utf8>, Pointer<Utf8>, Int32),
+        int Function(Pointer<Utf8>, Pointer<Utf8>, int)
+      >('setenv');
+  late final ioctl = _process
+      .lookupFunction<
+        Int32 Function(Int32, IntPtr, Pointer<Void>),
+        int Function(int, int, Pointer<Void>)
+      >('ioctl');
+  late final kill = _process
+      .lookupFunction<Int32 Function(Int32, Int32), int Function(int, int)>(
+        'kill',
+      );
+  late final write = _process
+      .lookupFunction<
+        IntPtr Function(Int32, Pointer<Uint8>, IntPtr),
+        int Function(int, Pointer<Uint8>, int)
+      >('write');
+  late final read = _process
+      .lookupFunction<
+        IntPtr Function(Int32, Pointer<Uint8>, IntPtr),
+        int Function(int, Pointer<Uint8>, int)
+      >('read');
+  late final waitpid = _process
+      .lookupFunction<
+        Int32 Function(Int32, Pointer<Int32>, Int32),
+        int Function(int, Pointer<Int32>, int)
+      >('waitpid');
+  late final exitFn = _process
+      .lookupFunction<Void Function(Int32), void Function(int)>('_exit');
 }
 
 /// struct winsize { unsigned short ws_row, ws_col, ws_xpixel, ws_ypixel; }
@@ -115,12 +161,9 @@ int get _tiocswinsz => Platform.isMacOS ? 0x80087467 : 0x5414;
 const _sigkill = 9;
 
 class UnixPty implements Pty {
-  UnixPty._({
-    required int masterFd,
-    required int pid,
-    required this.shell,
-  })  : _masterFd = masterFd,
-        _pid = pid {
+  UnixPty._({required int masterFd, required int pid, required this.shell})
+    : _masterFd = masterFd,
+      _pid = pid {
     _startReader();
     _startExitWatcher();
   }
@@ -146,19 +189,18 @@ class UnixPty implements Pty {
     required int cols,
     required int rows,
     String? shell,
+    List<String>? arguments,
+    Map<String, String>? environment,
   }) {
     final libc = _Libc.instance;
-    final resolvedShell =
-        shell ?? Platform.environment['SHELL'] ?? '/bin/sh';
+    final resolvedShell = shell ?? Platform.environment['SHELL'] ?? '/bin/sh';
     return using((arena) {
       final master = arena<Int32>();
       final slave = arena<Int32>();
       final ws = arena<_WinSize>()
         ..ref.wsCol = cols
         ..ref.wsRow = rows;
-      if (libc.openpty(
-              master, slave, nullptr, nullptr, ws.cast<Void>()) !=
-          0) {
+      if (libc.openpty(master, slave, nullptr, nullptr, ws.cast<Void>()) != 0) {
         throw StateError('openpty failed');
       }
 
@@ -166,9 +208,26 @@ class UnixPty implements Pty {
       // heap is not usable in the forked child.
       final shellC = resolvedShell.toNativeUtf8(allocator: arena);
       final cwdC = cwd.toNativeUtf8(allocator: arena);
-      final argv = arena<Pointer<Utf8>>(2);
+      final argumentPointers = [
+        shellC,
+        for (final argument in arguments ?? const <String>[])
+          argument.toNativeUtf8(allocator: arena),
+      ];
+      final argv = arena<Pointer<Utf8>>(argumentPointers.length + 1);
       argv[0] = shellC;
-      argv[1] = nullptr;
+      for (var index = 1; index < argumentPointers.length; index++) {
+        argv[index] = argumentPointers[index];
+      }
+      argv[argumentPointers.length] = nullptr;
+      final environmentEntries = (environment ?? const <String, String>{})
+          .entries
+          .map(
+            (entry) => (
+              entry.key.toNativeUtf8(allocator: arena),
+              entry.value.toNativeUtf8(allocator: arena),
+            ),
+          )
+          .toList(growable: false);
 
       final pid = libc.fork();
       if (pid < 0) {
@@ -186,17 +245,16 @@ class UnixPty implements Pty {
         libc.dup2(slave.value, 2);
         if (slave.value > 2) libc.close(slave.value);
         libc.chdir(cwdC);
+        for (final entry in environmentEntries) {
+          libc.setenv(entry.$1, entry.$2, 1);
+        }
         libc.execvp(shellC, argv);
         libc.exitFn(127); // exec failed
       }
 
       // Parent.
       libc.close(slave.value);
-      return UnixPty._(
-        masterFd: master.value,
-        pid: pid,
-        shell: resolvedShell,
-      );
+      return UnixPty._(masterFd: master.value, pid: pid, shell: resolvedShell);
     });
   }
 

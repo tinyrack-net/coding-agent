@@ -6,8 +6,8 @@ on:
     branches: [main]
 
 jobs:
-  unit-tests:
-    name: Unit tests + coverage gate
+  parity-ledger:
+    name: Paseo parity ledger
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,8 +19,33 @@ jobs:
       - name: Install workspace dependencies
         run: flutter pub get
 
-      - name: Run tests with coverage gate (>= 95%)
-        run: pwsh tool/coverage.ps1
+      - name: Validate Paseo parity ledger
+        run: dart run tool/parity.dart --check
+
+  unit-tests:
+    name: ${{ matrix.package }} tests + coverage
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - protocol
+          - relay
+          - daemon_lifecycle
+          - daemon
+          - app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install workspace dependencies
+        run: flutter pub get
+
+      - name: Run package tests with coverage gate (>= 95%)
+        run: pwsh tool/coverage.ps1 -Package ${{ matrix.package }}
 
   e2e-tests:
     name: Integration (E2E) tests

@@ -22,7 +22,10 @@ void main() {
   });
 
   test('AssistantMessageComplete carries itemId and fullText', () {
-    const event = AssistantMessageComplete(itemId: 'm1', fullText: 'hello world');
+    const event = AssistantMessageComplete(
+      itemId: 'm1',
+      fullText: 'hello world',
+    );
     expect(event.itemId, 'm1');
     expect(event.fullText, 'hello world');
   });
@@ -81,6 +84,31 @@ void main() {
   test('TurnCompleted is a plain marker event', () {
     const event = TurnCompleted();
     expect(event, isA<ProviderEvent>());
+  });
+
+  test('UsageUpdated carries context and request token usage', () {
+    const event = UsageUpdated(
+      usage: AgentUsage(
+        inputTokens: 10,
+        contextWindowMaxTokens: 200000,
+        contextWindowUsedTokens: 50000,
+      ),
+    );
+    expect(event.usage.inputTokens, 10);
+    expect(event.usage.contextWindowUsedTokens, 50000);
+  });
+
+  test('CompactionUpdated carries lifecycle metadata', () {
+    const event = CompactionUpdated(
+      itemId: 'compact',
+      status: CompactionStatus.loading,
+      trigger: CompactionTrigger.auto,
+      preTokens: 190000,
+    );
+    expect(event.itemId, 'compact');
+    expect(event.status, CompactionStatus.loading);
+    expect(event.trigger, CompactionTrigger.auto);
+    expect(event.preTokens, 190000);
   });
 
   test('TurnFailed carries the error message', () {

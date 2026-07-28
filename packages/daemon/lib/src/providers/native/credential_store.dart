@@ -26,7 +26,8 @@ class CredentialStore {
   Map<String, String>? _cache;
 
   static String _defaultDataDir() {
-    final home = Platform.environment['USERPROFILE'] ??
+    final home =
+        Platform.environment['USERPROFILE'] ??
         Platform.environment['HOME'] ??
         Directory.systemTemp.path;
     return p.join(home, '.tinyrack-agent');
@@ -95,9 +96,10 @@ class CredentialStore {
 
   // --- DPAPI (current-user scoped) ---
 
-  static final _localFree = DynamicLibrary.open('kernel32.dll').lookupFunction<
-      Pointer Function(Pointer),
-      Pointer Function(Pointer)>('LocalFree');
+  static final _localFree = DynamicLibrary.open('kernel32.dll')
+      .lookupFunction<Pointer Function(Pointer), Pointer Function(Pointer)>(
+        'LocalFree',
+      );
 
   static Uint8List _protect(String plaintext) {
     final bytes = utf8.encode(plaintext);
@@ -108,17 +110,16 @@ class CredentialStore {
         ..ref.cbData = bytes.length
         ..ref.pbData = inBuf;
       final outBlob = arena<CRYPT_INTEGER_BLOB>();
-      final ok = CryptProtectData(
+      final result = CryptProtectData(
         inBlob,
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
+        null,
+        null,
+        null,
         _cryptProtectUiForbidden,
         outBlob,
       );
-      if (ok == 0) {
-        throw StateError('CryptProtectData failed (${GetLastError()})');
+      if (!result.value) {
+        throw StateError('CryptProtectData failed (${result.error.code})');
       }
       try {
         return Uint8List.fromList(
@@ -138,20 +139,17 @@ class CredentialStore {
         ..ref.cbData = ciphertext.length
         ..ref.pbData = inBuf;
       final outBlob = arena<CRYPT_INTEGER_BLOB>();
-      final ok = CryptUnprotectData(
+      final result = CryptUnprotectData(
         inBlob,
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
+        null,
+        null,
+        null,
         _cryptProtectUiForbidden,
         outBlob,
       );
-      if (ok == 0) return null;
+      if (!result.value) return null;
       try {
-        return utf8.decode(
-          outBlob.ref.pbData.asTypedList(outBlob.ref.cbData),
-        );
+        return utf8.decode(outBlob.ref.pbData.asTypedList(outBlob.ref.cbData));
       } finally {
         _localFree(outBlob.ref.pbData.cast());
       }

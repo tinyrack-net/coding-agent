@@ -2,13 +2,26 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:agent_daemon/agent_daemon.dart';
-import 'package:agent_daemon/src/server/rpc_router.dart';
-import 'package:agent_protocol/agent_protocol.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 
 Future<void> main(List<String> args) async {
   final dataDir = _argValue(args, '--data-dir');
-  final paths = DaemonPaths(dataDir: dataDir);
+  final cliHost = _argValue(args, '--host');
+  final cliPort = _argValue(args, '--port');
+  final cliHostnames =
+      _argValue(args, '--hostnames') ?? _argValue(args, '--allowed-hosts');
+  final cliListen =
+      _argValue(args, '--listen') ??
+      (cliHost != null || cliPort != null
+          ? '${cliHost ?? '127.0.0.1'}:${cliPort ?? '6868'}'
+          : null);
+  final config = loadDaemonRuntimeConfig(
+    home: dataDir,
+    cliListen: cliListen,
+    cliHostnames: cliHostnames,
+    cliWebUiDistDir: _argValue(args, '--web-ui-dist-dir'),
+  );
+  final paths = DaemonPaths(dataDir: config.home);
   final logFilePath = _argValue(args, '--log-file') ?? paths.logFile;
 
   // The desktop app spawns the daemon detached (stdio lost), so mirror every
@@ -21,12 +34,23 @@ Future<void> main(List<String> args) async {
   void log(String message) {
     final line = '${DateTime.now().toIso8601String()} $message';
     stdout.writeln(line);
-    logSink.writeln(line);
-    logFlush = logFlush.then((_) => logSink.flush()).catchError((_) {});
+    logFlush = logFlush
+        .then((_) {
+          logSink.writeln(line);
+          return logSink.flush();
+        })
+        .catchError((_) {});
   }
 
   await runZonedGuarded(
-    () => _run(args, paths: paths, log: log, logSink: logSink),
+    () => _run(
+      args,
+      paths: paths,
+      config: config,
+      log: log,
+      logSink: logSink,
+      waitForLogFlush: () => logFlush,
+    ),
     (error, stack) => log('uncaught error: $error\n$stack'),
   );
 }
@@ -34,17 +58,19 @@ Future<void> main(List<String> args) async {
 Future<void> _run(
   List<String> args, {
   required DaemonPaths paths,
+  required DaemonRuntimeConfig config,
   required void Function(String) log,
   required IOSink logSink,
+  required Future<void> Function() waitForLogFlush,
 }) async {
-  final host = _argValue(args, '--host') ?? '127.0.0.1';
-  final port = int.parse(_argValue(args, '--port') ?? '6868');
+  final host = config.host;
+  final port = config.port;
   final token = _argValue(args, '--token');
-  final dataDir = _argValue(args, '--data-dir');
   final desktopManaged = Platform.environment[desktopManagedEnvVar] == '1';
 
   Future<void> flushLog() async {
     try {
+      await waitForLogFlush();
       await logSink.flush();
       await logSink.close();
     } catch (_) {}
@@ -57,8 +83,19 @@ Future<void> _run(
       host: host,
       port: port,
       token: token,
-      dataDir: dataDir,
+      passwordHash: config.auth?.passwordHash,
+      allowedOrigins: config.corsAllowedOrigins,
+      hostnames: config.hostnames,
+      trustedProxies: config.trustedProxies,
+      webUiEnabled: config.webUiEnabled,
+      webUiDistDir: config.webUiDistDir,
+      serviceProxyPublicBaseUrl: config.serviceProxy.publicBaseUrl,
+      serviceProxyListen: config.serviceProxy.standaloneListen,
+      dataDir: config.home,
       desktopManaged: desktopManaged,
+      enableTerminalAgentHooks: config.enableTerminalAgentHooks,
+      relayConfig: config.relay,
+      appBaseUrl: config.appBaseUrl,
       log: log,
       onShutdownRequested: () async {
         await flushLog();
@@ -68,7 +105,8 @@ Future<void> _run(
   } on LockHeldException {
     await flushLog();
     exit(11);
-  } catch (e) {
+  } catch (error, stack) {
+    log('failed to start daemon: $error\n$stack');
     await flushLog();
     exit(1);
   }
@@ -85,38 +123,6 @@ Future<void> _run(
       exit(0);
     });
   }
-}
-
-AgentMode _parseMode(Object? raw) {
-  final name = (raw as String?) ?? 'normal';
-  try {
-    return AgentMode.values.byName(name);
-  } catch (_) {
-    throw RpcException(RpcErrorCodes.invalidPayload, 'unknown mode "$name"');
-  }
-}
-
-ProviderId _parseProviderId(Object? raw) {
-  final name = raw as String?;
-  if (name == null || name.isEmpty) {
-    throw RpcException(RpcErrorCodes.invalidPayload, 'providerId is required');
-  }
-  try {
-    return ProviderId.fromWire(name);
-  } catch (_) {
-    throw RpcException(
-      RpcErrorCodes.invalidPayload,
-      'unknown providerId "$name"',
-    );
-  }
-}
-
-String _requireString(Map<String, Object?> payload, String key) {
-  final value = payload[key] as String?;
-  if (value == null || value.isEmpty) {
-    throw RpcException(RpcErrorCodes.invalidPayload, '$key is required');
-  }
-  return value;
 }
 
 String? _argValue(List<String> args, String name) {

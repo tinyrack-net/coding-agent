@@ -16,8 +16,16 @@ void registerTerminalHandlers(
     if (cwd == null || cwd.isEmpty) {
       throw RpcException(RpcErrorCodes.invalidPayload, 'cwd is required');
     }
+    final workspaceId = payload['workspaceId'];
+    if (workspaceId != null && workspaceId is! String) {
+      throw RpcException(
+        RpcErrorCodes.invalidPayload,
+        'workspaceId must be a string',
+      );
+    }
     final terminal = terminals.create(
       cwd: cwd,
+      workspaceId: workspaceId as String?,
       cols: (payload['cols'] as num?)?.toInt(),
       rows: (payload['rows'] as num?)?.toInt(),
     );
@@ -34,18 +42,22 @@ void registerTerminalHandlers(
   });
 
   router.on(MessageTypes.terminalSubscribeRequest, (connection, payload) {
-    final slotId = _known(() => terminals.subscribe(
-          connection.id,
-          _requireString(payload, 'terminalId'),
-        ));
+    final slotId = _known(
+      () => terminals.subscribe(
+        connection.id,
+        _requireString(payload, 'terminalId'),
+      ),
+    );
     return {'slotId': slotId};
   });
 
   router.on(MessageTypes.terminalUnsubscribeRequest, (connection, payload) {
-    _known(() => terminals.unsubscribe(
-          connection.id,
-          _requireString(payload, 'terminalId'),
-        ));
+    _known(
+      () => terminals.unsubscribe(
+        connection.id,
+        _requireString(payload, 'terminalId'),
+      ),
+    );
     return const <String, Object?>{};
   });
 }

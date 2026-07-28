@@ -10,16 +10,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeSupervisor extends DaemonSupervisor {
   FakeSupervisor({this.spawnError, DaemonStatus? initial})
-      : _status = initial ??
-            const DaemonStatus(
-              health: DaemonHealth.running,
-              hello: ServerHello(
-                daemonVersion: '0.2.0',
-                protocolVersion: 1,
-                pid: 4242,
-                desktopManaged: true,
-              ),
-            );
+    : _status =
+          initial ??
+          const DaemonStatus(
+            health: DaemonHealth.running,
+            hello: ServerHello(
+              daemonVersion: '0.2.0',
+              protocolVersion: 1,
+              pid: 4242,
+              desktopManaged: true,
+            ),
+          );
 
   final DaemonSpawnException? spawnError;
   DaemonStatus _status;
@@ -72,37 +73,40 @@ void main() {
   // could otherwise be picked up by a later test's fresh container.
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test('desktop + loopback: ensures the daemon and exposes its status',
-      () async {
-    final supervisor = FakeSupervisor();
-    final container = makeContainer(desktop: true, supervisor: supervisor);
+  test(
+    'desktop + loopback: ensures the daemon and exposes its status',
+    () async {
+      final supervisor = FakeSupervisor();
+      final container = makeContainer(desktop: true, supervisor: supervisor);
 
-    final status = await container.read(daemonLifecycleProvider.future);
+      final status = await container.read(daemonLifecycleProvider.future);
 
-    expect(supervisor.ensureCalls, 1);
-    expect(status, isNotNull);
-    expect(status!.isRunning, isTrue);
-    expect(status.hello?.pid, 4242);
-  });
+      expect(supervisor.ensureCalls, 1);
+      expect(status, isNotNull);
+      expect(status!.isRunning, isTrue);
+      expect(status.hello?.pid, 4242);
+    },
+  );
 
-  test('non-desktop shell: state is null and no supervisor call is made',
-      () async {
-    final supervisor = FakeSupervisor();
-    final container = makeContainer(desktop: false, supervisor: supervisor);
+  test(
+    'non-desktop shell: state is null and no supervisor call is made',
+    () async {
+      final supervisor = FakeSupervisor();
+      final container = makeContainer(desktop: false, supervisor: supervisor);
 
-    final status = await container.read(daemonLifecycleProvider.future);
+      final status = await container.read(daemonLifecycleProvider.future);
 
-    expect(status, isNull);
-    expect(supervisor.ensureCalls, 0);
-  });
+      expect(status, isNull);
+      expect(supervisor.ensureCalls, 0);
+    },
+  );
 
   test('remote host: state is null and no supervisor call is made', () async {
     final supervisor = FakeSupervisor();
     final container = makeContainer(desktop: true, supervisor: supervisor);
-    await container.read(connectionSettingsProvider.notifier).save(
-          host: '192.168.0.10',
-          port: 6868,
-        );
+    await container
+        .read(connectionSettingsProvider.notifier)
+        .save(host: '192.168.0.10', port: 6868);
 
     final status = await container.read(daemonLifecycleProvider.future);
 
@@ -110,22 +114,24 @@ void main() {
     expect(supervisor.ensureCalls, 0);
   });
 
-  test('spawn failure surfaces as AsyncError with message and log tail',
-      () async {
-    final supervisor = FakeSupervisor(
-      spawnError: DaemonSpawnException('port 6868 in use', logTail: 'boom'),
-    );
-    final container = makeContainer(desktop: true, supervisor: supervisor);
+  test(
+    'spawn failure surfaces as AsyncError with message and log tail',
+    () async {
+      final supervisor = FakeSupervisor(
+        spawnError: DaemonSpawnException('port 6868 in use', logTail: 'boom'),
+      );
+      final container = makeContainer(desktop: true, supervisor: supervisor);
 
-    await expectLater(
-      container.read(daemonLifecycleProvider.future),
-      throwsA(isA<DaemonSpawnException>()),
-    );
-    final state = container.read(daemonLifecycleProvider);
-    expect(state, isA<AsyncError<DaemonStatus?>>());
-    expect('${state.error}', contains('port 6868 in use'));
-    expect('${state.error}', contains('boom'));
-  });
+      await expectLater(
+        container.read(daemonLifecycleProvider.future),
+        throwsA(isA<DaemonSpawnException>()),
+      );
+      final state = container.read(daemonLifecycleProvider);
+      expect(state, isA<AsyncError<DaemonStatus?>>());
+      expect('${state.error}', contains('port 6868 in use'));
+      expect('${state.error}', contains('boom'));
+    },
+  );
 
   test('restart() delegates to the supervisor and updates state', () async {
     final supervisor = FakeSupervisor();

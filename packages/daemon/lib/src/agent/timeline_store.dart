@@ -15,12 +15,43 @@ import 'dart:async';
 
 import 'package:agent_protocol/agent_protocol.dart';
 
-typedef TimelineItemCallback = void Function(
-  String agentId,
-  int epoch,
-  int seq,
-  TimelineItem item,
-);
+typedef TimelineItemCallback =
+    void Function(String agentId, int epoch, int seq, TimelineItem item);
+
+final class TimelineRow {
+  const TimelineRow({
+    required this.seq,
+    required this.timestamp,
+    required this.item,
+  });
+
+  final int seq;
+  final String timestamp;
+  final TimelineItem item;
+
+  factory TimelineRow.fromJson(Map<String, Object?> json) {
+    final seq = json['seq'];
+    final timestamp = json['timestamp'];
+    final item = json['item'];
+    if (seq is! num || seq.toInt() != seq || seq.toInt() < 0) {
+      throw const FormatException('timeline row seq must be nonnegative');
+    }
+    if (timestamp is! String || item is! Map) {
+      throw const FormatException('invalid persisted timeline row');
+    }
+    return TimelineRow(
+      seq: seq.toInt(),
+      timestamp: timestamp,
+      item: LegacyTimelineCodec.decode(item.cast<String, Object?>()),
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'seq': seq,
+    'timestamp': timestamp,
+    'item': LegacyTimelineCodec.encode(item),
+  };
+}
 
 class TimelineStore {
   TimelineStore({
@@ -28,13 +59,57 @@ class TimelineStore {
     this.onItem,
     int epoch = 1,
     List<TimelineItem> items = const [],
+    List<TimelineRow> rows = const [],
+    int? lastSeq,
     this.coalesceWindow = const Duration(milliseconds: 80),
   }) : _epoch = epoch {
-    for (final item in items) {
-      final entry = (seq: ++_lastSeq, item: item);
-      _entries.add(entry);
-      _byId[item.id] = entry;
+    if (rows.isNotEmpty) {
+      for (final row in rows) {
+        _canonicalRows.add(row);
+        if (row.seq > _lastSeq) _lastSeq = row.seq;
+      }
+      final latestRowById = <String, TimelineRow>{
+        for (final row in rows) row.item.id: row,
+      };
+      if (items.isNotEmpty) {
+        for (final item in items) {
+          final source = latestRowById[item.id];
+          final entry = TimelineRow(
+            seq: source?.seq ?? ++_lastSeq,
+            timestamp:
+                source?.timestamp ?? DateTime.now().toUtc().toIso8601String(),
+            item: item,
+          );
+          _entries.add(entry);
+          _byId[item.id] = entry;
+        }
+        _entries.sort((left, right) => left.seq.compareTo(right.seq));
+      } else {
+        for (final row in rows) {
+          final previous = _byId[row.item.id];
+          final merged = TimelineRow(
+            seq: row.seq,
+            timestamp: row.timestamp,
+            item: _mergeCanonicalDelta(previous?.item, row.item),
+          );
+          if (previous != null) _entries.remove(previous);
+          _entries.add(merged);
+          _byId[row.item.id] = merged;
+        }
+      }
+    } else {
+      for (final item in items) {
+        final row = TimelineRow(
+          seq: ++_lastSeq,
+          timestamp: DateTime.now().toUtc().toIso8601String(),
+          item: item,
+        );
+        _canonicalRows.add(row);
+        _entries.add(row);
+        _byId[item.id] = row;
+      }
     }
+    if (lastSeq != null && lastSeq > _lastSeq) _lastSeq = lastSeq;
   }
 
   final String agentId;
@@ -44,8 +119,9 @@ class TimelineStore {
   int _epoch;
   int _lastSeq = 0;
 
-  final List<({int seq, TimelineItem item})> _entries = [];
-  final Map<String, ({int seq, TimelineItem item})> _byId = {};
+  final List<TimelineRow> _canonicalRows = [];
+  final List<TimelineRow> _entries = [];
+  final Map<String, TimelineRow> _byId = {};
   final Map<String, TimelineItem> _pending = {};
   final Map<String, Timer> _timers = {};
 
@@ -55,14 +131,20 @@ class TimelineStore {
   /// Latest version of every item, in seq order.
   List<TimelineItem> snapshot() => [for (final e in _entries) e.item];
 
+  /// Canonical rows with their current sequence identity.
+  ///
+  /// Paseo's v2 timeline window contract exposes sequence cursors; the legacy
+  /// fetch response intentionally projects only the items.
+  List<TimelineRow> snapshotRows() => List.unmodifiable(_canonicalRows);
+
   TimelineFetchResponse fetch({int afterSeq = 0}) => TimelineFetchResponse(
-        epoch: _epoch,
-        lastSeq: _lastSeq,
-        items: [
-          for (final e in _entries)
-            if (e.seq > afterSeq) e.item,
-        ],
-      );
+    epoch: _epoch,
+    lastSeq: _lastSeq,
+    items: [
+      for (final e in _entries)
+        if (e.seq > afterSeq) e.item,
+    ],
+  );
 
   /// Immediate upsert: assigns the next seq, replaces any previous version of
   /// the same item id, cancels pending coalesced state for it, and notifies
@@ -92,6 +174,7 @@ class TimelineStore {
     }
     _timers.clear();
     _pending.clear();
+    _canonicalRows.clear();
     _entries.clear();
     _byId.clear();
     _epoch += 1;
@@ -110,6 +193,7 @@ class TimelineStore {
     }
     _timers.clear();
     _pending.clear();
+    _canonicalRows.clear();
     _entries.clear();
     _byId.clear();
     _epoch += 1;
@@ -145,9 +229,72 @@ class TimelineStore {
   void _commit(TimelineItem item) {
     final previous = _byId[item.id];
     if (previous != null) _entries.remove(previous);
-    final entry = (seq: ++_lastSeq, item: item);
+    final canonicalItem = _canonicalDelta(previous?.item, item);
+    final entry = TimelineRow(
+      seq: ++_lastSeq,
+      timestamp: DateTime.now().toUtc().toIso8601String(),
+      item: item,
+    );
+    _canonicalRows.add(
+      TimelineRow(
+        seq: entry.seq,
+        timestamp: entry.timestamp,
+        item: canonicalItem,
+      ),
+    );
     _entries.add(entry);
     _byId[item.id] = entry;
     onItem?.call(agentId, _epoch, entry.seq, item);
   }
+}
+
+TimelineItem _canonicalDelta(TimelineItem? previous, TimelineItem current) {
+  if (previous case AssistantMessageItem(
+    text: final previousText,
+  ) when current is AssistantMessageItem) {
+    return AssistantMessageItem(
+      id: current.id,
+      text: current.text.startsWith(previousText)
+          ? current.text.substring(previousText.length)
+          : current.text,
+      complete: current.complete,
+    );
+  }
+  if (previous case ReasoningItem(
+    text: final previousText,
+  ) when current is ReasoningItem) {
+    return ReasoningItem(
+      id: current.id,
+      text: current.text.startsWith(previousText)
+          ? current.text.substring(previousText.length)
+          : current.text,
+      complete: current.complete,
+    );
+  }
+  return current;
+}
+
+TimelineItem _mergeCanonicalDelta(
+  TimelineItem? previous,
+  TimelineItem current,
+) {
+  if (previous case AssistantMessageItem(
+    text: final previousText,
+  ) when current is AssistantMessageItem) {
+    return AssistantMessageItem(
+      id: current.id,
+      text: '$previousText${current.text}',
+      complete: current.complete,
+    );
+  }
+  if (previous case ReasoningItem(
+    text: final previousText,
+  ) when current is ReasoningItem) {
+    return ReasoningItem(
+      id: current.id,
+      text: '$previousText${current.text}',
+      complete: current.complete,
+    );
+  }
+  return current;
 }

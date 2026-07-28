@@ -34,10 +34,8 @@ Future<BashToolResult> runBash(
       : await Process.start('/bin/sh', ['-c', command], workingDirectory: cwd);
 
   final output = StringBuffer();
-  final stdoutSub =
-      process.stdout.transform(utf8.decoder).listen(output.write);
-  final stderrSub =
-      process.stderr.transform(utf8.decoder).listen(output.write);
+  final stdoutSub = process.stdout.transform(utf8.decoder).listen(output.write);
+  final stderrSub = process.stderr.transform(utf8.decoder).listen(output.write);
 
   var timedOut = false;
   int? exitCode;

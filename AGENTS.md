@@ -28,11 +28,15 @@ cd packages/app && flutter run -d windows
 ## 테스트
 
 ```sh
-dart test packages/protocol packages/daemon   # 유닛 테스트
-cd packages/app && flutter test               # 위젯 테스트
+pwsh tool/test.ps1 -Scope smoke
+pwsh tool/test.ps1 -Scope feature -Package app -TestPath test/example_test.dart
+pwsh tool/test.ps1 -Scope integration -Package app
+pwsh tool/test.ps1 -Scope full
 ```
 
-- CI(`.github/workflows/`)는 `pwsh tool/coverage.ps1`로 유닛 테스트 + **95% 커버리지 게이트**를 강제합니다. 커버리지를 낮추는 변경은 병합 전에 테스트를 보강하세요.
+- 작은 구현 단위에서는 smoke 또는 직접 영향받는 feature 테스트만 실행합니다. 패키지 전체 integration은 큰 기능 경계에서, 전체 workspace coverage는 마일스톤·릴리스 후보·CI에서만 실행합니다. 세부 정책은 `TESTING.md`를 따르세요.
+- Flutter 테스트는 안정성이 검증된 8개 worker, daemon은 4개 worker를 사용합니다. 일상적인 우회책으로 `--concurrency=1`을 사용하지 마세요.
+- CI(`.github/workflows/`)는 패키지별 병렬 matrix와 `pwsh tool/coverage.ps1 -Package <name>`으로 **95% 커버리지 게이트**를 강제합니다. 커버리지를 낮추는 변경은 병합 전에 테스트를 보강하세요.
 - E2E는 `packages/app/integration_test`(Windows 데스크톱, `flutter test integration_test -d windows`)로 실행되며, `tool/build_daemon.ps1`로 빌드한 데몬 실행 파일이 필요합니다.
 - 수동 E2E 스모크(실제 API 키 필요, `packages/daemon`에서 실행):
 

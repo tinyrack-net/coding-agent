@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
+import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/workspace_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -376,6 +377,64 @@ void main() {
         expect(container.read(worktreesProvider('/repo')).value, isEmpty);
       },
     );
+  });
+
+  group('worktreeAgentContextProvider', () {
+    test('resolves isolated worktree ownership and branch', () async {
+      final client = FakeDaemonClient();
+      client.onRequest = (type, payload) {
+        if (type == MessageTypes.projectListRequest) {
+          return {
+            'projects': [_proj.toJson()],
+          };
+        }
+        if (type == MessageTypes.worktreeListRequest) {
+          return {
+            'worktrees': [_wt.toJson()],
+          };
+        }
+        return const {};
+      };
+      final container = makeContainer(client);
+      keepAlive(container, container.listen(projectsProvider, (_, _) {}));
+      keepAlive(
+        container,
+        container.listen(worktreesProvider('/repo'), (_, _) {}),
+      );
+      await pump();
+      await container.read(projectsProvider.future);
+      await container.read(worktreesProvider('/repo').future);
+      container
+          .read(agentsProvider.notifier)
+          .upsert(
+            const AgentSummary(
+              agentId: 'agent-1',
+              title: 'Agent',
+              cwd: '/repo-wt',
+              provider: 'codex',
+              model: 'default',
+              mode: AgentMode.normal,
+              runState: AgentRunState.idle,
+              createdAtMs: 1,
+              workspaceId: 'workspace-1',
+            ),
+          );
+
+      final context = container.read(worktreeAgentContextProvider('/repo-wt'));
+      expect(context.projectPath, '/repo');
+      expect(context.branch, 'feature/x');
+      expect(context.isWorktree, isTrue);
+      expect(context.workspaceId, 'workspace-1');
+    });
+
+    test('returns empty context for an unknown path', () {
+      final container = makeContainer(FakeDaemonClient());
+      final context = container.read(worktreeAgentContextProvider('/unknown'));
+      expect(context.projectPath, isNull);
+      expect(context.branch, isNull);
+      expect(context.isWorktree, isFalse);
+      expect(context.workspaceId, isNull);
+    });
   });
 
   group('BranchesNotifier', () {

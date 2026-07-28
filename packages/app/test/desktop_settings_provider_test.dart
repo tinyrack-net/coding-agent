@@ -1,15 +1,9 @@
+import 'package:coding_agent_app/core/desktop/launch_at_startup.dart';
+import 'package:coding_agent_app/core/desktop/launch_at_startup_platform.dart';
 import 'package:coding_agent_app/state/desktop_settings_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-// NOTE: this test host is Windows, so `isDesktopShell` (a real
-// `Platform.isWindows` check, not overridable) is true. The notifier's
-// platform-plugin calls (launch_at_startup, tray) then hit unregistered
-// method channels and throw `MissingPluginException`, which the notifier
-// deliberately swallows — see the try/catch blocks in
-// lib/state/desktop_settings_provider.dart. That lets us exercise the real
-// notifier logic end-to-end without faking the plugin.
 
 ProviderContainer makeContainer() {
   final container = ProviderContainer();
@@ -18,9 +12,15 @@ ProviderContainer makeContainer() {
 }
 
 void main() {
+  late _FakeLaunchAtStartup platform;
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    platform = _FakeLaunchAtStartup();
+    launchAtStartup.debugOverridePlatform(platform);
   });
+
+  tearDown(launchAtStartup.debugResetPlatform);
 
   test('build() returns defaults synchronously', () async {
     final container = makeContainer();
@@ -48,7 +48,7 @@ void main() {
   });
 
   test('setAutoStartAtLogin() reflects the requested value even when the '
-      'platform plugin is unavailable', () async {
+      'platform adapter is available', () async {
     final container = makeContainer();
     container.read(desktopSettingsProvider); // trigger build()
     await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -58,74 +58,110 @@ void main() {
         .setAutoStartAtLogin(true);
 
     expect(container.read(desktopSettingsProvider).autoStartAtLogin, isTrue);
+    expect(platform.enableCount, 1);
 
     await container
         .read(desktopSettingsProvider.notifier)
         .setAutoStartAtLogin(false);
 
     expect(container.read(desktopSettingsProvider).autoStartAtLogin, isFalse);
+    expect(platform.disableCount, 1);
   });
 
-  test('setKeepRunningAfterQuit() updates state and persists to prefs',
-      () async {
-    final container = makeContainer();
+  test(
+    'setKeepRunningAfterQuit() updates state and persists to prefs',
+    () async {
+      final container = makeContainer();
 
-    await container
-        .read(desktopSettingsProvider.notifier)
-        .setKeepRunningAfterQuit(false);
+      await container
+          .read(desktopSettingsProvider.notifier)
+          .setKeepRunningAfterQuit(false);
 
-    expect(
-      container.read(desktopSettingsProvider).keepRunningAfterQuit,
-      isFalse,
-    );
+      expect(
+        container.read(desktopSettingsProvider).keepRunningAfterQuit,
+        isFalse,
+      );
 
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getBool('desktop.keepRunningAfterQuit'), isFalse);
-  });
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('desktop.keepRunningAfterQuit'), isFalse);
+    },
+  );
 
-  test('a fresh notifier loads the persisted keepRunningAfterQuit value',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'desktop.keepRunningAfterQuit': false,
-    });
-    final container = makeContainer();
-    container.read(desktopSettingsProvider);
-    await Future<void>.delayed(const Duration(milliseconds: 10));
+  test(
+    'a fresh notifier loads the persisted keepRunningAfterQuit value',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'desktop.keepRunningAfterQuit': false,
+      });
+      final container = makeContainer();
+      container.read(desktopSettingsProvider);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
 
-    expect(
-      container.read(desktopSettingsProvider).keepRunningAfterQuit,
-      isFalse,
-    );
-  });
+      expect(
+        container.read(desktopSettingsProvider).keepRunningAfterQuit,
+        isFalse,
+      );
+    },
+  );
 
-  test('reset() restores defaults and clears the persisted keepRunning key',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'desktop.keepRunningAfterQuit': false,
-    });
-    final container = makeContainer();
-    container.read(desktopSettingsProvider);
-    await Future<void>.delayed(const Duration(milliseconds: 10));
+  test(
+    'reset() restores defaults and clears the persisted keepRunning key',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'desktop.keepRunningAfterQuit': false,
+      });
+      final container = makeContainer();
+      container.read(desktopSettingsProvider);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
 
-    // Sanity: persisted false loaded into state.
-    expect(
-      container.read(desktopSettingsProvider).keepRunningAfterQuit,
-      isFalse,
-    );
+      // Sanity: persisted false loaded into state.
+      expect(
+        container.read(desktopSettingsProvider).keepRunningAfterQuit,
+        isFalse,
+      );
 
-    await container.read(desktopSettingsProvider.notifier).reset();
+      await container.read(desktopSettingsProvider.notifier).reset();
 
-    // Defaults restored.
-    expect(
-      container.read(desktopSettingsProvider).keepRunningAfterQuit,
-      isTrue,
-    );
-    expect(
-      container.read(desktopSettingsProvider).autoStartAtLogin,
-      isFalse,
-    );
+      // Defaults restored.
+      expect(
+        container.read(desktopSettingsProvider).keepRunningAfterQuit,
+        isTrue,
+      );
+      expect(container.read(desktopSettingsProvider).autoStartAtLogin, isFalse);
 
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.containsKey('desktop.keepRunningAfterQuit'), isFalse);
-  });
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.containsKey('desktop.keepRunningAfterQuit'), isFalse);
+    },
+  );
+}
+
+final class _FakeLaunchAtStartup implements LaunchAtStartupPlatform {
+  bool enabled = false;
+  int enableCount = 0;
+  int disableCount = 0;
+
+  @override
+  void setup({
+    required String appName,
+    required String appPath,
+    String? packageName,
+    List<String> args = const [],
+  }) {}
+
+  @override
+  Future<bool> disable() async {
+    disableCount++;
+    enabled = false;
+    return true;
+  }
+
+  @override
+  Future<bool> enable() async {
+    enableCount++;
+    enabled = true;
+    return true;
+  }
+
+  @override
+  Future<bool> isEnabled() async => enabled;
 }

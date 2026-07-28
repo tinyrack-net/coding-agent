@@ -51,10 +51,7 @@ abstract final class ProviderCatalog {
     displayName: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
     models: [
-      ProviderModel(
-        id: 'openai/gpt-5.4',
-        displayName: 'GPT-5.4 (OpenRouter)',
-      ),
+      ProviderModel(id: 'openai/gpt-5.4', displayName: 'GPT-5.4 (OpenRouter)'),
       ProviderModel(
         id: 'deepseek/deepseek-chat',
         displayName: 'DeepSeek Chat (OpenRouter)',

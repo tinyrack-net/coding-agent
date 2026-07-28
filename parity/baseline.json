@@ -1,0 +1,20 @@
+{
+  "product": "Paseo",
+  "version": "0.2.0",
+  "commit": "7250009ab7ee72142a08344b8a0b7a12af666e53",
+  "scope": [
+    "packages/protocol",
+    "packages/server",
+    "packages/app",
+    "packages/cli",
+    "packages/desktop",
+    "packages/relay",
+    "public-docs"
+  ],
+  "excluded": [
+    "packages/website",
+    "marketing",
+    "documentation-site"
+  ],
+  "brandException": "Tinyrack product name, logo, and legal copy replace Paseo branding."
+}

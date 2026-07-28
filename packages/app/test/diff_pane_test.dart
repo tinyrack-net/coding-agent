@@ -47,7 +47,9 @@ Future<ProviderContainer> pumpDiffPane(
   FakeDaemonClient? client,
 }) async {
   final container = ProviderContainer(
-    overrides: [daemonClientProvider.overrideWithValue(client ?? FakeDaemonClient())],
+    overrides: [
+      daemonClientProvider.overrideWithValue(client ?? FakeDaemonClient()),
+    ],
   );
   addTearDown(container.dispose);
 
@@ -78,10 +80,17 @@ void main() {
     expect(container.read(daemonClientProvider), same(client));
 
     client.requests.clear();
-    await tester.tap(find.byWidgetPredicate((w) => w is Tooltip && w.message == 'Refresh diff'));
+    await tester.tap(
+      find.byWidgetPredicate(
+        (w) => w is Tooltip && w.message == 'Refresh diff',
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 150));
 
-    expect(client.requests.any((r) => r.$1 == MessageTypes.diffGetRequest), isTrue);
+    expect(
+      client.requests.any((r) => r.$1 == MessageTypes.diffGetRequest),
+      isTrue,
+    );
   });
 
   testWidgets('a fetch failure shows an inline error', (tester) async {

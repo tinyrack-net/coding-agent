@@ -23,34 +23,82 @@ class ServerConn {
   final WebSocket socket;
   final Stream<dynamic> frames;
 
-  Stream<Map<String, Object?>> get jsonFrames => frames
+  Stream<Map<String, Object?>> get rawJsonFrames => frames
       .where((f) => f is String)
       .map((f) => jsonDecode(f as String) as Map<String, Object?>);
+
+  Stream<Map<String, Object?>> get jsonFrames => rawJsonFrames.map((frame) {
+    if (frame['type'] == 'session' && frame['message'] is Map) {
+      return (frame['message'] as Map).cast<String, Object?>();
+    }
+    return frame;
+  });
 
   /// Waits for the next request of [type] and returns its decoded frame.
   Future<Map<String, Object?>> nextRequest(String type) =>
       jsonFrames.firstWhere((f) => f['type'] == type);
 
-  void respond(String requestId, String responseType, Map<String, Object?> payload) {
-    socket.add(jsonEncode(
-      RpcResponse(type: responseType, requestId: requestId, payload: payload)
-          .toJson(),
-    ));
+  void respond(
+    String requestId,
+    String responseType,
+    Map<String, Object?> payload,
+  ) {
+    socket.add(
+      jsonEncode({
+        'type': 'session',
+        'message': RpcResponse(
+          type: responseType,
+          requestId: requestId,
+          payload: payload,
+        ).toJson(),
+      }),
+    );
   }
 
   void fail(String requestId, String responseType, RpcError error) {
-    socket.add(jsonEncode(
-      RpcResponse(type: responseType, requestId: requestId, error: error)
-          .toJson(),
-    ));
+    socket.add(
+      jsonEncode({
+        'type': 'session',
+        'message': RpcResponse(
+          type: responseType,
+          requestId: requestId,
+          error: error,
+        ).toJson(),
+      }),
+    );
   }
 
-  /// Answers a `client.hello.request` with a canned [hello] as soon as one
-  /// arrives, returning the decoded request payload.
+  void respondNative(
+    String type,
+    String requestId,
+    Map<String, Object?> payload,
+  ) {
+    socket.add(
+      jsonEncode({
+        'type': 'session',
+        'message': {
+          'type': type,
+          'payload': {'requestId': requestId, ...payload},
+        },
+      }),
+    );
+  }
+
+  /// Answers the Paseo v2 hello with a matching server_info status.
   Future<Map<String, Object?>> respondToHello(ServerHello hello) async {
-    final frame = await nextRequest(MessageTypes.clientHelloRequest);
-    respond(frame['requestId'] as String, 'client.hello.response', hello.toJson());
-    return (frame['payload'] as Map<String, Object?>?) ?? const {};
+    final frame = await rawJsonFrames.firstWhere((f) => f['type'] == 'hello');
+    socket.add(
+      jsonEncode({
+        'status': 'server_info',
+        'serverId': 'server-test',
+        'hostname': 'test-host',
+        'version': hello.daemonVersion,
+        'desktopManaged': hello.desktopManaged,
+        'capabilities': const <String, Object?>{},
+        'features': const <String, bool>{},
+      }),
+    );
+    return frame;
   }
 }
 
@@ -83,7 +131,11 @@ class TestDaemonServer {
         await request.response.close();
         continue;
       }
-      final socket = await WebSocketTransformer.upgrade(request);
+      final socket = await WebSocketTransformer.upgrade(
+        request,
+        protocolSelector: (protocols) =>
+            protocols.isEmpty ? null : protocols.first,
+      );
       _connectionCount++;
       _sockets.add(socket);
       _connections.add(ServerConn(socket));
@@ -115,31 +167,66 @@ void main() {
     await server.close();
   });
 
-  test('connect() performs the hello handshake and reaches connected state',
-      () async {
-    client = DaemonClient(uri: server.uri);
-    final states = <DaemonConnectionState>[];
-    final sub = client.connectionState.listen(states.add);
+  test(
+    'connect() performs the hello handshake and reaches connected state',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final states = <DaemonConnectionState>[];
+      final sub = client.connectionState.listen(states.add);
 
-    final connFuture = nextConnection(server);
-    unawaited(client.connect());
-    final conn = await connFuture;
-    final helloPayload = await conn.respondToHello(
-      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1, pid: 999),
-    );
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      final helloPayload = await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1, pid: 999),
+      );
 
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
 
-    expect(helloPayload['clientName'], 'coding-agent-app');
-    expect(client.currentState, DaemonConnectionState.connected);
-    expect(client.serverHello?.pid, 999);
-    expect(states, contains(DaemonConnectionState.connecting));
-    expect(states, contains(DaemonConnectionState.connected));
-    await sub.cancel();
-  });
+      expect(helloPayload['clientId'], 'coding-agent-app');
+      expect(helloPayload['clientType'], 'mobile');
+      expect(helloPayload['protocolVersion'], paseoWebSocketProtocolVersion);
+      expect(helloPayload['appVersion'], '0.2.0');
+      expect(helloPayload['capabilities'], {
+        for (final capability in ClientCapabilities.all) capability: true,
+      });
+      expect(client.currentState, DaemonConnectionState.connected);
+      expect(client.serverHello?.daemonVersion, '0.2.0');
+      expect(states, contains(DaemonConnectionState.connecting));
+      expect(states, contains(DaemonConnectionState.connected));
+      await sub.cancel();
+    },
+  );
 
-  test('request() resolves with the response payload for its requestId',
-      () async {
+  test(
+    'request() resolves with the response payload for its requestId',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      unawaited(
+        conn.nextRequest('agent.list.request').then((frame) {
+          conn.respond(
+            frame['requestId'] as String,
+            'agent.list.response',
+            const {'agents': []},
+          );
+        }),
+      );
+
+      final response = await client.request('agent.list.request', const {});
+
+      expect(response, <String, Object?>{'agents': []});
+    },
+  );
+
+  test('requestSessionMessage correlates Paseo native responses', () async {
     client = DaemonClient(uri: server.uri);
     final connFuture = nextConnection(server);
     unawaited(client.connect());
@@ -149,18 +236,454 @@ void main() {
     );
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
-    unawaited(conn.nextRequest('agent.list.request').then((frame) {
-      conn.respond(
-        frame['requestId'] as String,
-        'agent.list.response',
-        const {'agents': []},
-      );
-    }));
-
-    final response = await client.request('agent.list.request', const {});
-
-    expect(response, <String, Object?>{'agents': []});
+    unawaited(
+      conn.nextRequest(CheckoutPrStatusRequest.type).then((frame) {
+        expect(frame['cwd'], '/repo');
+        conn.respondNative(
+          CheckoutPrStatusResponse.type,
+          frame['requestId'] as String,
+          const {
+            'cwd': '/repo',
+            'status': null,
+            'githubFeaturesEnabled': true,
+            'authState': null,
+            'error': null,
+          },
+        );
+      }),
+    );
+    final response = await client.requestSessionMessage(
+      const CheckoutPrStatusRequest(
+        cwd: '/repo',
+        requestId: 'native-1',
+      ).toJson(),
+    );
+    expect(response['type'], CheckoutPrStatusResponse.type);
+    expect((response['payload'] as Map)['cwd'], '/repo');
   });
+
+  test(
+    'listProviderFeatures sends and validates the typed draft query',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      unawaited(
+        conn.nextRequest(ListProviderFeaturesRequest.type).then((frame) {
+          expect((frame['draftConfig'] as Map)['provider'], 'codex');
+          expect((frame['draftConfig'] as Map)['model'], 'gpt-5.4');
+          conn.respondNative(
+            ListProviderFeaturesResponse.type,
+            frame['requestId'] as String,
+            {
+              'provider': 'codex',
+              'features': [
+                {
+                  'type': 'toggle',
+                  'id': 'fast_mode',
+                  'label': 'Fast',
+                  'value': false,
+                },
+              ],
+              'error': null,
+              'fetchedAt': 'now',
+            },
+          );
+        }),
+      );
+
+      final response = await client.listProviderFeatures(
+        draftConfig: const ListCommandsDraftConfig(
+          provider: 'codex',
+          cwd: '/repo',
+          model: 'gpt-5.4',
+        ),
+      );
+
+      expect(response.provider, 'codex');
+      expect(response.features, hasLength(1));
+      expect(response.features!.single, isA<AgentFeatureToggle>());
+    },
+  );
+
+  test('fetchAgentTimeline sends and parses the typed Paseo page', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    unawaited(
+      conn.nextRequest(FetchAgentTimelineRequest.type).then((frame) {
+        expect(frame['agentId'], 'agent-1');
+        expect(frame['direction'], 'before');
+        expect(frame['cursor'], {'epoch': '9', 'seq': 41});
+        expect(frame['limit'], agentTimelineFetchPageSize);
+        expect(frame['projection'], 'projected');
+        conn.respondNative(
+          AgentTimelinePage.responseType,
+          frame['requestId'] as String,
+          {
+            'agentId': 'agent-1',
+            'agent': null,
+            'direction': 'before',
+            'projection': 'projected',
+            'epoch': '9',
+            'reset': false,
+            'staleCursor': false,
+            'gap': false,
+            'window': {'minSeq': 1, 'maxSeq': 80, 'nextSeq': 81},
+            'startCursor': {'epoch': '9', 'seq': 1},
+            'endCursor': {'epoch': '9', 'seq': 40},
+            'hasOlder': false,
+            'hasNewer': true,
+            'entries': [
+              {
+                'provider': 'codex',
+                'item': {
+                  'type': 'assistant_message',
+                  'messageId': 'answer',
+                  'text': 'done',
+                },
+                'timestamp': '2026-07-28T00:00:00.000Z',
+                'seqStart': 40,
+                'seqEnd': 40,
+                'sourceSeqRanges': [
+                  {'startSeq': 40, 'endSeq': 40},
+                ],
+                'collapsed': <Object?>[],
+              },
+            ],
+            'error': null,
+          },
+        );
+      }),
+    );
+
+    final page = await client.fetchAgentTimeline(
+      agentId: 'agent-1',
+      direction: AgentTimelineDirection.before,
+      cursor: const AgentTimelineCursor(epoch: '9', seq: 41),
+    );
+    expect(page.cursorRange?.startSeq, 1);
+    expect(page.cursorRange?.endSeq, 40);
+    expect(page.entries.single.item.id, 'answer');
+  });
+
+  test('fetchAgents sends and correlates the native directory page', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    unawaited(
+      conn.nextRequest(FetchAgentsRequest.type).then((frame) {
+        expect(frame['scope'], 'active');
+        expect(frame['page'], {'limit': 40, 'cursor': '40'});
+        expect(frame['subscribe'], isEmpty);
+        expect(frame['sort'], [
+          {'key': 'updated_at', 'direction': 'desc'},
+        ]);
+        conn.respondNative(
+          FetchAgentsResponse.type,
+          frame['requestId'] as String,
+          {
+            'subscriptionId': 'subscription-1',
+            'entries': [
+              {
+                'agent': PaseoAgentSnapshotCodec.encode(
+                  const AgentSummary(
+                    agentId: 'agent-1',
+                    title: 'Agent',
+                    cwd: '/repo',
+                    provider: 'codex',
+                    model: 'gpt-5',
+                    mode: AgentMode.normal,
+                    runState: AgentRunState.idle,
+                    createdAtMs: 1000,
+                  ),
+                ),
+                'project': {
+                  'projectKey': '/repo',
+                  'projectName': 'repo',
+                  'checkout': <String, Object?>{},
+                },
+              },
+            ],
+            'pageInfo': {
+              'nextCursor': null,
+              'prevCursor': '0',
+              'hasMore': false,
+            },
+          },
+        );
+      }),
+    );
+
+    final response = await client.fetchAgents(
+      sort: const [
+        AgentDirectorySort(
+          key: AgentDirectorySortKey.updatedAt,
+          direction: AgentDirectorySortDirection.desc,
+        ),
+      ],
+      limit: 40,
+      cursor: '40',
+      subscribe: true,
+    );
+    expect(response.subscriptionId, 'subscription-1');
+    expect(response.entries.single.agent.agentId, 'agent-1');
+  });
+
+  test('fetchAgentHistory sends and parses archived directory pages', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    unawaited(
+      conn.nextRequest(FetchAgentHistoryRequest.type).then((frame) {
+        expect(frame.containsKey('scope'), isFalse);
+        expect(frame['filter'], {
+          'statuses': ['closed'],
+          'includeArchived': true,
+        });
+        expect(frame['page'], {'limit': 20, 'cursor': 'history-cursor'});
+        conn.respondNative(
+          FetchAgentHistoryResponse.type,
+          frame['requestId'] as String,
+          {
+            'entries': <Object?>[],
+            'pageInfo': {
+              'nextCursor': null,
+              'prevCursor': 'history-cursor',
+              'hasMore': false,
+            },
+          },
+        );
+      }),
+    );
+
+    final response = await client.fetchAgentHistory(
+      filter: const AgentDirectoryFilter(
+        statuses: ['closed'],
+        includeArchived: true,
+      ),
+      limit: 20,
+      cursor: 'history-cursor',
+    );
+    expect(response.entries, isEmpty);
+    expect(response.pageInfo.prevCursor, 'history-cursor');
+  });
+
+  test(
+    'fetchAgent returns detail placement and surfaces server errors',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      unawaited(
+        conn.nextRequest(FetchAgentRequest.type).then((frame) {
+          expect(frame['agentId'], 'Archived title');
+          conn.respondNative(
+            FetchAgentResponse.type,
+            frame['requestId'] as String,
+            {
+              'agent': PaseoAgentSnapshotCodec.encode(
+                const AgentSummary(
+                  agentId: 'archived-1',
+                  title: 'Archived title',
+                  cwd: '/repo',
+                  provider: 'codex',
+                  model: 'gpt-5',
+                  mode: AgentMode.normal,
+                  runState: AgentRunState.closed,
+                  createdAtMs: 1,
+                  archivedAt: '2026-07-28T00:00:00.000Z',
+                ),
+              ),
+              'project': {'projectKey': '/repo'},
+              'error': null,
+            },
+          );
+        }),
+      );
+      final result = await client.fetchAgent('Archived title');
+      expect(result?.agent.agentId, 'archived-1');
+      expect(result?.project, {'projectKey': '/repo'});
+
+      unawaited(
+        conn.nextRequest(FetchAgentRequest.type).then((frame) {
+          conn.respondNative(
+            FetchAgentResponse.type,
+            frame['requestId'] as String,
+            {
+              'agent': null,
+              'project': null,
+              'error': 'Agent not found: missing',
+            },
+          );
+        }),
+      );
+      await expectLater(
+        client.fetchAgent('missing'),
+        throwsA(
+          isA<DaemonRpcException>().having(
+            (error) => error.error.message,
+            'message',
+            'Agent not found: missing',
+          ),
+        ),
+      );
+    },
+  );
+
+  test(
+    'workspace setup status and live progress use typed contracts',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      const detail = WorkspaceSetupDetail(
+        worktreePath: '/repo/feature',
+        branchName: 'feature',
+        log: 'installing',
+        commands: [],
+      );
+      unawaited(
+        conn.nextRequest(WorkspaceSetupStatusRequest.type).then((frame) {
+          expect(frame['workspaceId'], 'workspace-1');
+          conn.respondNative(
+            WorkspaceSetupStatusResponse.type,
+            frame['requestId'] as String,
+            {
+              'workspaceId': 'workspace-1',
+              'snapshot': const WorkspaceSetupSnapshot(
+                status: WorkspaceSetupStatus.running,
+                detail: detail,
+                error: null,
+              ).toJson(),
+            },
+          );
+        }),
+      );
+      final response = await client.fetchWorkspaceSetupStatus('workspace-1');
+      expect(response.snapshot?.detail.log, 'installing');
+
+      final progressFuture = client.workspaceSetupProgress.first;
+      conn.socket.add(
+        jsonEncode({
+          'type': 'session',
+          'message': const WorkspaceSetupProgress(
+            workspaceId: 'workspace-1',
+            snapshot: WorkspaceSetupSnapshot(
+              status: WorkspaceSetupStatus.completed,
+              detail: detail,
+              error: null,
+            ),
+          ).toJson(),
+        }),
+      );
+      expect(
+        (await progressFuture).snapshot.status,
+        WorkspaceSetupStatus.completed,
+      );
+    },
+  );
+
+  test('sendSessionMessage emits a native fire-and-forget envelope', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final request = conn.nextRequest('unsubscribe_terminal_request');
+    client.sendSessionMessage(const {
+      'type': 'unsubscribe_terminal_request',
+      'terminalId': 'term-1',
+    });
+    expect((await request)['terminalId'], 'term-1');
+  });
+
+  test(
+    'requestSessionMessage validates ids and handles errors/timeouts',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      await expectLater(
+        client.requestSessionMessage(const {'type': 'native'}),
+        throwsArgumentError,
+      );
+
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      unawaited(
+        conn.nextRequest('native.failure').then((frame) {
+          conn.respondNative('rpc_error', frame['requestId'] as String, const {
+            'error': 'native failed',
+          });
+        }),
+      );
+      await expectLater(
+        client.requestSessionMessage(const {
+          'type': 'native.failure',
+          'requestId': 'native-failure',
+        }),
+        throwsA(
+          isA<DaemonRpcException>().having(
+            (error) => error.error.message,
+            'message',
+            'native failed',
+          ),
+        ),
+      );
+      await expectLater(
+        client.requestSessionMessage(const {
+          'type': 'native.timeout',
+          'requestId': 'native-timeout',
+        }, timeout: const Duration(milliseconds: 10)),
+        throwsA(isA<TimeoutException>()),
+      );
+    },
+  );
 
   test('request() throws DaemonRpcException on an error response', () async {
     client = DaemonClient(uri: server.uri);
@@ -172,13 +695,15 @@ void main() {
     );
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
-    unawaited(conn.nextRequest('agent.prompt.request').then((frame) {
-      conn.fail(
-        frame['requestId'] as String,
-        'agent.prompt.response',
-        const RpcError(code: 'not_found', message: 'no such agent'),
-      );
-    }));
+    unawaited(
+      conn.nextRequest('agent.prompt.request').then((frame) {
+        conn.fail(
+          frame['requestId'] as String,
+          'agent.prompt.response',
+          const RpcError(code: 'not_found', message: 'no such agent'),
+        );
+      }),
+    );
 
     await expectLater(
       client.request('agent.prompt.request', const {'agentId': 'missing'}),
@@ -190,6 +715,158 @@ void main() {
         ),
       ),
     );
+
+    unawaited(
+      conn.nextRequest(FetchAgentRequest.type).then((frame) {
+        conn.respondNative(
+          FetchAgentResponse.type,
+          frame['requestId'] as String,
+          {'agent': null, 'project': null, 'error': null},
+        );
+      }),
+    );
+    expect(await client.fetchAgent('hidden'), isNull);
+  });
+
+  test('daemon config get, patch, and change events use v2 messages', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final baseConfig = <String, Object?>{
+      'mcp': {'injectIntoAgents': false},
+      'enableTerminalAgentHooks': false,
+    };
+    unawaited(
+      conn.nextRequest('get_daemon_config_request').then((frame) {
+        conn.respondNative(
+          'get_daemon_config_response',
+          frame['requestId'] as String,
+          {'config': baseConfig},
+        );
+      }),
+    );
+    expect((await client.getDaemonConfig()).enableTerminalAgentHooks, isFalse);
+
+    unawaited(
+      conn.nextRequest('set_daemon_config_request').then((frame) {
+        expect((frame['config'] as Map)['enableTerminalAgentHooks'], isTrue);
+        conn.respondNative(
+          'set_daemon_config_response',
+          frame['requestId'] as String,
+          {
+            'config': {...baseConfig, 'enableTerminalAgentHooks': true},
+          },
+        );
+      }),
+    );
+    expect(
+      (await client.patchDaemonConfig(
+        const MutableDaemonConfigPatch(enableTerminalAgentHooks: true),
+      )).enableTerminalAgentHooks,
+      isTrue,
+    );
+
+    final changedFuture = client.daemonConfigChanges.first;
+    conn.socket.add(
+      jsonEncode({
+        'type': 'session',
+        'message': {
+          'type': 'status',
+          'message': {
+            'status': 'daemon_config_changed',
+            'config': {...baseConfig, 'enableTerminalAgentHooks': true},
+          },
+        },
+      }),
+    );
+    expect((await changedFuture).config.enableTerminalAgentHooks, isTrue);
+  });
+
+  test(
+    'daemon config requests time out and fail when the socket closes',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      await expectLater(
+        client.getDaemonConfig(timeout: const Duration(milliseconds: 10)),
+        throwsA(isA<TimeoutException>()),
+      );
+
+      final requestReceived = conn.nextRequest('get_daemon_config_request');
+      final pendingFailure = expectLater(
+        client.getDaemonConfig(),
+        throwsA(isA<StateError>()),
+      );
+      await requestReceived;
+      await conn.socket.close();
+      await pendingFailure;
+    },
+  );
+
+  test('diagnostics uses the native Paseo response envelope', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    unawaited(
+      conn.nextRequest(DiagnosticsRequest.type).then((frame) {
+        conn.respondNative(
+          DiagnosticsResponse.type,
+          frame['requestId'] as String,
+          const {'diagnostic': 'Tinyrack diagnostics\n  PID: 1'},
+        );
+      }),
+    );
+    expect(await client.getDiagnostics(), contains('PID: 1'));
+  });
+
+  test('diagnostics rejects disconnected and times out', () async {
+    client = DaemonClient(uri: server.uri);
+    await expectLater(client.getDiagnostics(), throwsStateError);
+
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await expectLater(
+      client.getDiagnostics(timeout: const Duration(milliseconds: 10)),
+      throwsA(isA<TimeoutException>()),
+    );
+  });
+
+  test('v2 auth uses the Tinyrack bearer subprotocol', () async {
+    client = DaemonClient(uri: server.uri, token: 'shared-secret');
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(conn.socket.protocol, 'tinyrack.bearer.shared-secret');
+    expect(client.currentState, DaemonConnectionState.connected);
   });
 
   test('request() times out when the daemon never responds', () async {
@@ -221,6 +898,12 @@ void main() {
     );
   });
 
+  test('daemon config requests reject before a connection exists', () async {
+    client = DaemonClient(uri: server.uri);
+
+    await expectLater(client.getDaemonConfig(), throwsA(isA<StateError>()));
+  });
+
   test('terminal frames: binary output from the daemon is decoded and '
       'exposed via terminalFrames', () async {
     client = DaemonClient(uri: server.uri);
@@ -246,33 +929,36 @@ void main() {
     expect(utf8.decode(decoded.payload), 'hello from daemon');
   });
 
-  test('sendTerminalFrame() writes the encoded binary frame to the socket',
-      () async {
-    client = DaemonClient(uri: server.uri);
-    final connFuture = nextConnection(server);
-    unawaited(client.connect());
-    final conn = await connFuture;
-    await conn.respondToHello(
-      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 50));
+  test(
+    'sendTerminalFrame() writes the encoded binary frame to the socket',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
 
-    final received = conn.frames.firstWhere((f) => f is List<int>);
-    client.sendTerminalFrame(TerminalFrame(
-      opcode: TerminalOpcode.input,
-      slotId: 3,
-      payload: Uint8List.fromList(utf8.encode('ls')),
-    ));
+      final received = conn.frames.firstWhere((f) => f is List<int>);
+      client.sendTerminalFrame(
+        TerminalFrame(
+          opcode: TerminalOpcode.input,
+          slotId: 3,
+          payload: Uint8List.fromList(utf8.encode('ls')),
+        ),
+      );
 
-    final bytes = await received as List<int>;
-    final decoded = TerminalFrame.decode(Uint8List.fromList(bytes));
-    expect(decoded!.opcode, TerminalOpcode.input);
-    expect(decoded.slotId, 3);
-    expect(utf8.decode(decoded.payload), 'ls');
-  });
+      final bytes = await received as List<int>;
+      final decoded = TerminalFrame.decode(Uint8List.fromList(bytes));
+      expect(decoded!.opcode, TerminalOpcode.input);
+      expect(decoded.slotId, 3);
+      expect(utf8.decode(decoded.payload), 'ls');
+    },
+  );
 
-  test('events: an unsolicited RpcEvent frame is exposed via events',
-      () async {
+  test('events: an unsolicited RpcEvent frame is exposed via events', () async {
     client = DaemonClient(uri: server.uri);
     final connFuture = nextConnection(server);
     unawaited(client.connect());
@@ -283,14 +969,129 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
     final eventFuture = client.events.first;
-    conn.socket.add(jsonEncode(const RpcEvent(
-      type: 'terminal.exited',
-      payload: {'terminalId': 't1', 'exitCode': 1},
-    ).toJson()));
+    conn.socket.add(
+      jsonEncode(
+        const RpcEvent(
+          type: 'terminal.exited',
+          payload: {'terminalId': 't1', 'exitCode': 1},
+        ).toJson(),
+      ),
+    );
 
     final event = await eventFuture;
     expect(event.type, 'terminal.exited');
     expect(event.payload['exitCode'], 1);
+  });
+
+  test('native terminal_stream_exit is normalized onto events', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final eventFuture = client.events.first;
+    conn.socket.add(
+      jsonEncode({
+        'type': 'session',
+        'message': {
+          'type': 'terminal_stream_exit',
+          'payload': {'terminalId': 'term-native'},
+        },
+      }),
+    );
+
+    final event = await eventFuture;
+    expect(event.type, 'terminal_stream_exit');
+    expect(event.payload, {'terminalId': 'term-native'});
+  });
+
+  test('native agent_stream is decoded without the legacy adapter', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final eventFuture = client.agentStreamEvents.first;
+    conn.socket.add(
+      jsonEncode({
+        'type': 'session',
+        'message': {
+          'type': 'agent_stream',
+          'payload': {
+            'agentId': 'agent-native',
+            'event': {
+              'type': 'timeline',
+              'provider': 'codex',
+              'item': {
+                'type': 'assistant_message',
+                'messageId': 'assistant-native',
+                'text': 'native',
+              },
+            },
+            'timestamp': '2026-07-28T00:00:00.000Z',
+            'seq': 2,
+            'epoch': '1',
+          },
+        },
+      }),
+    );
+
+    final event = await eventFuture;
+    expect(event.agentId, 'agent-native');
+    expect(event.epoch, 1);
+    expect(event.seq, 2);
+    expect(event.item.id, 'assistant-native');
+  });
+
+  test('native directory updates are decoded onto a typed stream', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final eventFuture = client.directoryUpdateEvents.first;
+    conn.socket.add(
+      jsonEncode({
+        'type': 'session',
+        'message': {
+          'type': 'agent_update',
+          'payload': {
+            'kind': 'upsert',
+            'agent': PaseoAgentSnapshotCodec.encode(
+              const AgentSummary(
+                agentId: 'agent-directory',
+                title: 'Directory',
+                cwd: '/repo',
+                provider: 'codex',
+                model: 'gpt-5',
+                mode: AgentMode.normal,
+                runState: AgentRunState.idle,
+                createdAtMs: 1000,
+              ),
+            ),
+          },
+        },
+      }),
+    );
+
+    final event = await eventFuture;
+    expect(event, isA<AgentUpsertDirectoryEvent>());
+    expect(
+      (event as AgentUpsertDirectoryEvent).agent.agentId,
+      'agent-directory',
+    );
   });
 
   test('disconnect: server closing the socket surfaces disconnected state '
@@ -347,21 +1148,23 @@ void main() {
     expect(client.currentState, DaemonConnectionState.connected);
   }, timeout: const Timeout(Duration(seconds: 10)));
 
-  test('a same-major-version hello on loopback is always accepted '
-      '(remote-only version gate is covered by daemon_version_gate_test.dart)',
-      () async {
-    client = DaemonClient(uri: server.uri);
-    final connFuture = nextConnection(server);
-    unawaited(client.connect());
-    final conn = await connFuture;
-    await conn.respondToHello(
-      const ServerHello(daemonVersion: '9.9.9', protocolVersion: 1),
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+  test(
+    'a same-major-version hello on loopback is always accepted '
+    '(remote-only version gate is covered by daemon_version_gate_test.dart)',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '9.9.9', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 100));
 
-    expect(client.currentState, DaemonConnectionState.connected);
-    expect(client.rejectedHello, isNull);
-  });
+      expect(client.currentState, DaemonConnectionState.connected);
+      expect(client.rejectedHello, isNull);
+    },
+  );
 
   test('an unsolicited request-shaped frame from the daemon is ignored '
       '(the MVP never expects the daemon to send requests)', () async {
@@ -376,26 +1179,129 @@ void main() {
 
     // Send a request-shaped frame; the client should just ignore it (no
     // crash, no response sent back, no effect on connection state).
-    conn.socket.add(jsonEncode(const RpcRequest(
-      type: 'some.made_up.request',
-      requestId: 'req-1',
-      payload: {'foo': 'bar'},
-    ).toJson()));
+    conn.socket.add(
+      jsonEncode(
+        const RpcRequest(
+          type: 'some.made_up.request',
+          requestId: 'req-1',
+          payload: {'foo': 'bar'},
+        ).toJson(),
+      ),
+    );
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
     expect(client.currentState, DaemonConnectionState.connected);
     // A subsequent real request still resolves normally, proving the client
     // wasn't left in a broken state.
-    unawaited(conn.nextRequest('agent.list.request').then((frame) {
-      conn.respond(
-        frame['requestId'] as String,
-        'agent.list.response',
-        const {'agents': []},
-      );
-    }));
+    unawaited(
+      conn.nextRequest('agent.list.request').then((frame) {
+        conn.respond(
+          frame['requestId'] as String,
+          'agent.list.response',
+          const {'agents': []},
+        );
+      }),
+    );
     final response = await client.request('agent.list.request', const {});
     expect(response, <String, Object?>{'agents': []});
   });
+
+  test(
+    'file subscriptions dispatch updates and file writes are typed',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final versions = <FileVersion>[];
+      final subscribeRequest = Completer<Map<String, Object?>>();
+      unawaited(
+        conn.nextRequest('fs.file.subscribe.request').then((frame) {
+          subscribeRequest.complete(frame);
+          conn.respondNative(
+            'fs.file.subscribe.response',
+            frame['requestId'] as String,
+            {
+              'subscriptionId': frame['subscriptionId'],
+              'initial': const ReadyFileVersion(
+                cwd: '/repo',
+                path: 'a.txt',
+                size: 1,
+                modifiedAt: '2026-01-01T00:00:00.000Z',
+                revision: 'one',
+              ).toJson(),
+            },
+          );
+        }),
+      );
+      final subscription = await client.subscribeFile(
+        cwd: '/repo',
+        path: 'a.txt',
+        onUpdate: versions.add,
+      );
+      expect(subscription.initial, isA<ReadyFileVersion>());
+
+      final subscribeFrame = await subscribeRequest.future;
+      conn.socket.add(
+        jsonEncode({
+          'type': 'session',
+          'message': {
+            'type': 'fs.file.update',
+            'payload': {
+              'subscriptionId': subscribeFrame['subscriptionId'],
+              'version': const MissingFileVersion(
+                cwd: '/repo',
+                path: 'a.txt',
+              ).toJson(),
+            },
+          },
+        }),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(versions.single, isA<MissingFileVersion>());
+
+      unawaited(
+        conn.nextRequest('fs.file.write.request').then((frame) {
+          expect(frame['expectedRevision'], 'one');
+          conn.respondNative(
+            'fs.file.write.response',
+            frame['requestId'] as String,
+            {
+              'result': const WrittenFileResult(
+                modifiedAt: '2026-01-01T00:00:01.000Z',
+                size: 2,
+                revision: 'two',
+              ).toJson(),
+            },
+          );
+        }),
+      );
+      final result = await client.writeFile(
+        cwd: '/repo',
+        path: 'a.txt',
+        content: 'hi',
+        expectedModifiedAt: '2026-01-01T00:00:00.000Z',
+        expectedRevision: 'one',
+      );
+      expect(result, isA<WrittenFileResult>());
+
+      unawaited(
+        conn.nextRequest('fs.file.unsubscribe.request').then((frame) {
+          conn.respondNative(
+            'fs.file.unsubscribe.response',
+            frame['requestId'] as String,
+            {'subscriptionId': frame['subscriptionId']},
+          );
+        }),
+      );
+      await subscription.unsubscribe();
+    },
+  );
 
   test('connect() swallows a connection failure and schedules a retry '
       'instead of throwing', () async {

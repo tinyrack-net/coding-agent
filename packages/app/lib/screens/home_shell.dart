@@ -7,7 +7,10 @@ import 'package:go_router/go_router.dart';
 import '../core/daemon_client.dart';
 import '../core/theme.dart';
 import '../core/worktree_actions.dart';
+import '../state/agents_provider.dart';
 import '../state/daemon_providers.dart';
+import '../state/app_sidebar_visibility_provider.dart';
+import '../state/workspace_focus_mode_provider.dart';
 import '../state/sidebar_grouping_provider.dart';
 import '../state/sidebar_pins_provider.dart';
 import '../state/workspace_providers.dart';
@@ -15,24 +18,161 @@ import '../state/worktree_tabs_provider.dart';
 import '../state/worktree_titles_provider.dart';
 import '../widgets/fluent/toast.dart';
 import '../widgets/worktree_tabbed_pane.dart';
+import '../workspace/workspace_deck_retention.dart';
 
 /// Desktop-style shell: agent sidebar on the left, persistent across every
 /// route, with [child] (the currently routed page) filling the rest.
-class HomeShell extends StatelessWidget {
+class HomeShell extends ConsumerWidget {
   const HomeShell({super.key, required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sidebarVisible = ref.watch(appSidebarVisibilityProvider);
+    final focusMode = ref.watch(workspaceFocusModeProvider);
     return Container(
       color: FluentTheme.of(context).scaffoldBackgroundColor,
       child: Row(
         children: [
-          const SizedBox(width: 280, child: _Sidebar()),
-          const Divider(direction: Axis.vertical),
-          Expanded(child: child),
+          if (sidebarVisible && !focusMode) ...[
+            const SizedBox(width: 280, child: _Sidebar()),
+            const Divider(direction: Axis.vertical),
+          ],
+          Expanded(child: _HomeContentDeck(routeChild: child)),
         ],
+      ),
+    );
+  }
+}
+
+final class _WorkspaceInventory {
+  const _WorkspaceInventory({
+    required this.hydrated,
+    required this.worktreePaths,
+  });
+
+  final bool hydrated;
+  final Set<String> worktreePaths;
+}
+
+final _workspaceInventoryProvider = Provider<_WorkspaceInventory>((ref) {
+  final worktreePaths = <String>{
+    for (final agent in ref.watch(agentsProvider).values)
+      resolveWorktreeKey(agent),
+  };
+  final projects = ref.watch(projectsProvider);
+  var hydrated = projects is AsyncData<List<ProjectInfo>>;
+  for (final project in projects.value ?? const <ProjectInfo>[]) {
+    if (!project.isGitRepo) {
+      worktreePaths.add(project.path);
+      continue;
+    }
+    final worktrees = ref.watch(worktreesProvider(project.path));
+    hydrated = hydrated && worktrees is AsyncData<List<WorktreeInfo>>;
+    worktreePaths.addAll(
+      (worktrees.value ?? const <WorktreeInfo>[]).map(
+        (worktree) => worktree.path,
+      ),
+    );
+  }
+  return _WorkspaceInventory(hydrated: hydrated, worktreePaths: worktreePaths);
+});
+
+final workspaceDeckControllerProvider =
+    Provider<WorkspaceDeckRetentionController>(
+      (ref) => WorkspaceDeckRetentionController(),
+    );
+
+class _HomeContentDeck extends ConsumerWidget {
+  const _HomeContentDeck({required this.routeChild});
+
+  final Widget routeChild;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isWorkspaceRoute = GoRouterState.of(context).matchedLocation == '/';
+    final selected = ref.watch(selectedWorktreeProvider);
+    if (!isWorkspaceRoute || selected == null) {
+      return routeChild;
+    }
+    return WorkspaceDeckPane(worktreePath: selected);
+  }
+}
+
+/// Retained workspace root shared by the legacy `/` selection surface and the
+/// canonical `/h/:serverId/workspace/:workspaceId` route.
+class WorkspaceDeckPane extends ConsumerWidget {
+  const WorkspaceDeckPane({super.key, required this.worktreePath});
+
+  final String worktreePath;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final client = ref.watch(daemonClientProvider);
+    final agentContext = ref.watch(worktreeAgentContextProvider(worktreePath));
+    final controller = ref.watch(workspaceDeckControllerProvider);
+    final activeSelection = controller.selectionFor(
+      serverId: client.serverInfo?.serverId ?? client.uri.toString(),
+      workspaceId: agentContext.workspaceId ?? worktreePath,
+      worktreePath: worktreePath,
+    );
+    final inventory = ref.watch(_workspaceInventoryProvider);
+    final nextSelections = controller.reconcile(
+      activeSelection: activeSelection,
+      hasHydratedWorkspaces: inventory.hydrated,
+      existingWorktreePaths: inventory.worktreePaths,
+    );
+    final renderedSelections = orderWorkspaceSelectionsForStableRender(
+      nextSelections,
+    );
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        for (final selection in renderedSelections)
+          _WorkspaceDeckEntry(
+            key: ValueKey('workspace-deck-entry-${selection.key}'),
+            selection: selection,
+            active: selection == activeSelection,
+          ),
+      ],
+    );
+  }
+}
+
+class _WorkspaceDeckEntry extends ConsumerWidget {
+  const _WorkspaceDeckEntry({
+    super.key,
+    required this.selection,
+    required this.active,
+  });
+
+  final WorkspaceDeckSelection selection;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final agentContext = ref.watch(
+      worktreeAgentContextProvider(selection.worktreePath),
+    );
+    return Offstage(
+      offstage: !active,
+      child: TickerMode(
+        enabled: active,
+        child: IgnorePointer(
+          ignoring: !active,
+          child: ExcludeFocus(
+            excluding: !active,
+            child: WorktreeTabbedPane(
+              worktreePath: selection.worktreePath,
+              projectPath: agentContext.projectPath,
+              branch: agentContext.branch,
+              isWorktree: agentContext.isWorktree,
+              workspaceId: agentContext.workspaceId,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -54,6 +194,7 @@ class HomeChatPane extends ConsumerWidget {
       projectPath: agentContext.projectPath,
       branch: agentContext.branch,
       isWorktree: agentContext.isWorktree,
+      workspaceId: agentContext.workspaceId,
     );
   }
 }
@@ -111,7 +252,11 @@ class _SidebarHeaderRow extends StatelessWidget {
                 Icon(icon, size: 16),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
@@ -154,7 +299,9 @@ class _ProjectHeaderRow extends StatelessWidget {
             child: Row(
               children: [
                 Icon(
-                  isGitRepo ? FluentIcons.folder_horizontal : FluentIcons.folder,
+                  isGitRepo
+                      ? FluentIcons.folder_horizontal
+                      : FluentIcons.folder,
                   size: 14,
                 ),
                 const SizedBox(width: 8),
@@ -167,7 +314,9 @@ class _ProjectHeaderRow extends StatelessWidget {
                   ),
                 ),
                 Icon(
-                  collapsed ? FluentIcons.chevron_right : FluentIcons.chevron_down,
+                  collapsed
+                      ? FluentIcons.chevron_right
+                      : FluentIcons.chevron_down,
                   size: 12,
                 ),
               ],
@@ -190,7 +339,9 @@ class _SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
       child: Text(
         text,
-        style: context.textStyles.bodySmall?.copyWith(color: context.tokens.onSurfaceVariant),
+        style: context.textStyles.bodySmall?.copyWith(
+          color: context.tokens.onSurfaceVariant,
+        ),
       ),
     );
   }
@@ -245,6 +396,16 @@ class _SidebarState extends ConsumerState<_Sidebar> {
           onTap: () => context.push('/projects'),
         ),
         _SidebarHeaderRow(
+          icon: FluentIcons.calendar_week,
+          label: 'Schedules',
+          onTap: () => context.push('/schedules'),
+        ),
+        _SidebarHeaderRow(
+          icon: FluentIcons.history,
+          label: 'Sessions',
+          onTap: () => context.push('/sessions'),
+        ),
+        _SidebarHeaderRow(
           icon: FluentIcons.health,
           label: 'Status',
           onTap: () => context.push('/status'),
@@ -275,11 +436,14 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                             ? section.project.path
                             : section.project.name,
                         isGitRepo: section.project.isGitRepo,
-                        collapsed:
-                            _collapsedProjectPaths.contains(section.project.path),
+                        collapsed: _collapsedProjectPaths.contains(
+                          section.project.path,
+                        ),
                         onTap: () => _toggleProject(section.project.path),
                       ),
-                      if (!_collapsedProjectPaths.contains(section.project.path))
+                      if (!_collapsedProjectPaths.contains(
+                        section.project.path,
+                      ))
                         for (final row in section.rows)
                           _SidebarWorktreeRow(
                             row: row,
@@ -303,20 +467,20 @@ class _SidebarState extends ConsumerState<_Sidebar> {
   }
 }
 
-/// The most urgent run state among a worktree row's agents (or `null` when
+/// The most urgent state bucket among a worktree row's agents (or `null` when
 /// it has none), used to roll up the leading status dot for the whole row.
-AgentRunState? _aggregateRunState(List<AgentSummary> agents) {
-  const urgency = {
-    AgentRunState.awaitingPermission: 0,
-    AgentRunState.error: 1,
-    AgentRunState.running: 2,
-    AgentRunState.initializing: 3,
-    AgentRunState.idle: 3,
-  };
-  AgentRunState? worst;
+WorkspaceStateBucket? _aggregateStateBucket(List<AgentSummary> agents) {
+  WorkspaceStateBucket? worst;
   for (final agent in agents) {
-    if (worst == null || urgency[agent.runState]! < urgency[worst]!) {
-      worst = agent.runState;
+    final bucket = deriveAgentStateBucket(
+      status: agent.runState,
+      requiresAttention: agent.requiresAttention,
+      attentionReason: agent.attentionReason,
+    );
+    if (worst == null ||
+        getWorkspaceStateBucketPriority(bucket) <
+            getWorkspaceStateBucketPriority(worst)) {
+      worst = bucket;
     }
   }
   return worst;
@@ -396,23 +560,24 @@ class _SidebarWorktreeRow extends ConsumerWidget {
       1 => '${row.agents.single.provider} · ${row.agents.single.model}',
       final n => '$n sessions',
     };
-    final runState = _aggregateRunState(row.agents);
+    final stateBucket = _aggregateStateBucket(row.agents);
     final worktree = row.worktree;
-    final branch = worktree?.branch ??
+    final branch =
+        worktree?.branch ??
         (row.agents.length == 1 ? row.agents.single.branch : null);
     final canArchiveWorktree =
         worktree != null && !worktree.isMain && row.agents.isEmpty;
 
     return ListTile.selectable(
       selected: selected,
-      leading: runState == null
+      leading: stateBucket == null
           ? Icon(
               worktree == null || worktree.isMain
                   ? FluentIcons.home
                   : FluentIcons.branch_fork2,
               size: 16,
             )
-          : _RunStateIndicator(runState: runState),
+          : _RunStateIndicator(stateBucket: stateBucket),
       title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing: DropDownButton(
@@ -489,9 +654,9 @@ class _SidebarWorktreeRow extends ConsumerWidget {
 }
 
 class _RunStateIndicator extends StatelessWidget {
-  const _RunStateIndicator({required this.runState});
+  const _RunStateIndicator({required this.stateBucket});
 
-  final AgentRunState runState;
+  final WorkspaceStateBucket stateBucket;
 
   @override
   Widget build(BuildContext context) {
@@ -499,27 +664,32 @@ class _RunStateIndicator extends StatelessWidget {
       width: 20,
       height: 20,
       child: Center(
-        child: switch (runState) {
-          AgentRunState.running => SizedBox(
-              width: 14,
-              height: 14,
-              child: ProgressRing(strokeWidth: 2, activeColor: Colors.yellow),
-            ),
-          AgentRunState.awaitingPermission => Icon(
-              FluentIcons.ringer,
-              size: 16,
-              color: Colors.red,
-            ),
-          AgentRunState.error => Icon(
-              FluentIcons.circle_fill,
-              size: 10,
-              color: Colors.red,
-            ),
-          AgentRunState.initializing || AgentRunState.idle => Icon(
-              FluentIcons.circle_fill,
-              size: 10,
-              color: Colors.grey[100],
-            ),
+        child: switch (stateBucket) {
+          WorkspaceStateBucket.running => SizedBox(
+            width: 14,
+            height: 14,
+            child: ProgressRing(strokeWidth: 2, activeColor: Colors.yellow),
+          ),
+          WorkspaceStateBucket.needsInput => Icon(
+            FluentIcons.ringer,
+            size: 16,
+            color: Colors.red,
+          ),
+          WorkspaceStateBucket.failed => Icon(
+            FluentIcons.circle_fill,
+            size: 10,
+            color: Colors.red,
+          ),
+          WorkspaceStateBucket.attention => Icon(
+            FluentIcons.ringer,
+            size: 16,
+            color: Colors.yellow,
+          ),
+          WorkspaceStateBucket.done => Icon(
+            FluentIcons.circle_fill,
+            size: 10,
+            color: Colors.grey[100],
+          ),
         },
       ),
     );
@@ -531,19 +701,20 @@ class _ConnectionFooter extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final connection = ref.watch(connectionStateProvider).value ??
+    final connection =
+        ref.watch(connectionStateProvider).value ??
         DaemonConnectionState.connecting;
     final (color, label) = switch (connection) {
       DaemonConnectionState.connected => (Colors.green, 'Daemon connected'),
       DaemonConnectionState.connecting => (Colors.yellow, 'Connecting…'),
       DaemonConnectionState.disconnected => (
-          Colors.red,
-          'Daemon offline (retrying)',
-        ),
+        Colors.red,
+        'Daemon offline (retrying)',
+      ),
       DaemonConnectionState.versionMismatch => (
-          Colors.orange,
-          'Daemon version incompatible',
-        ),
+        Colors.orange,
+        'Daemon version incompatible',
+      ),
     };
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),

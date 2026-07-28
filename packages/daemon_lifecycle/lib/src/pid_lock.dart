@@ -36,13 +36,13 @@ final class PidLockData {
   }
 
   Map<String, Object?> toJson() => {
-        'pid': pid,
-        'startedAtMs': startedAtMs,
-        'host': host,
-        'port': port,
-        'version': version,
-        'desktopManaged': desktopManaged,
-      };
+    'pid': pid,
+    'startedAtMs': startedAtMs,
+    'host': host,
+    'port': port,
+    'version': version,
+    'desktopManaged': desktopManaged,
+  };
 }
 
 class LockHeldException implements Exception {
@@ -63,8 +63,8 @@ class PidLock {
     DateTime Function()? now,
     Future<bool> Function(int pid)? isPidAlive,
     this.staleAfter = const Duration(minutes: 5),
-  })  : _now = now ?? DateTime.now,
-        _isPidAlive = isPidAlive ?? process_ops.isPidAlive;
+  }) : _now = now ?? DateTime.now,
+       _isPidAlive = isPidAlive ?? process_ops.isPidAlive;
 
   final String path;
   final Duration staleAfter;
@@ -142,13 +142,25 @@ class PidLock {
 
   /// Reads the lock file without taking it. Null when absent or corrupt.
   Future<PidLockData?> read() async {
-    try {
-      final content = await File(path).readAsString();
-      return PidLockData.fromJson(
-          jsonDecode(content) as Map<String, Object?>);
-    } catch (_) {
-      return null;
+    final file = File(path);
+    // A heartbeat rewrites the small JSON file in place. Readers can land
+    // between truncate and flush, especially on Windows under parallel test
+    // or startup load. Retry that transient window while retaining the public
+    // null result for a genuinely absent or corrupt lock.
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final content = await file.readAsString();
+        return PidLockData.fromJson(
+          jsonDecode(content) as Map<String, Object?>,
+        );
+      } catch (_) {
+        if (attempt == 2 || !await file.exists()) {
+          return null;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 2));
+      }
     }
+    return null;
   }
 
   /// True when the lock exists but its owner is gone (stale heartbeat AND

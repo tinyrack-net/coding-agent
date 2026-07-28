@@ -44,9 +44,13 @@ class _SearchPickerDialogState<T> extends State<SearchPickerDialog<T>> {
     final filtered = _query.isEmpty
         ? widget.items
         : widget.items
-            .where((item) =>
-                widget.itemLabel(item).toLowerCase().contains(_query.toLowerCase()))
-            .toList();
+              .where(
+                (item) => widget
+                    .itemLabel(item)
+                    .toLowerCase()
+                    .contains(_query.toLowerCase()),
+              )
+              .toList();
 
     return ContentDialog(
       title: Text(widget.title),

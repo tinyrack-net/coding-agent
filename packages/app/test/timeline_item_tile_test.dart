@@ -1,4 +1,10 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:agent_protocol/agent_protocol.dart';
+import 'package:coding_agent_app/attachments/memory_attachment_store.dart';
+import 'package:coding_agent_app/composer/composer_image_attachment_service.dart';
+import 'package:coding_agent_app/state/timeline_provider.dart';
 import 'package:coding_agent_app/widgets/timeline_item_tile.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,7 +19,11 @@ void main() {
       status: ToolCallStatus.success,
       detail: ShellDetail(command: 'flutter test', output: 'All tests passed!'),
     ),
-    AssistantMessageItem(id: 'a1', text: 'Tests are **green**.', complete: true),
+    AssistantMessageItem(
+      id: 'a1',
+      text: 'Tests are **green**.',
+      complete: true,
+    ),
     PermissionItem(
       id: 'p1',
       permissionId: 'perm-1',
@@ -22,8 +32,93 @@ void main() {
       detail: EditDetail(path: 'lib/main.dart', diff: '-old\n+new'),
     ),
     TurnItem(id: 'turn1', phase: TurnPhase.completed),
+    CompactionItem(
+      id: 'compact1',
+      status: CompactionStatus.completed,
+      trigger: CompactionTrigger.auto,
+      preTokens: 190000,
+    ),
     ErrorItem(id: 'e1', message: 'provider crashed'),
   ];
+
+  testWidgets('worktree setup uses the frozen display and lifecycle log', (
+    tester,
+  ) async {
+    const item = ToolCallItem(
+      id: 'setup',
+      toolName: 'paseo_worktree_setup',
+      status: ToolCallStatus.success,
+      detail: WorktreeSetupToolDetail(
+        worktreePath: '/repo/feature',
+        branchName: 'feature',
+        log: 'dependencies installed',
+        commands: [],
+      ),
+    );
+    await tester.pumpWidget(
+      const FluentApp(
+        home: ScaffoldPage(content: TimelineItemTile(item: item)),
+      ),
+    );
+
+    expect(find.text('Worktree Setup'), findsOneWidget);
+    expect(find.text('feature'), findsOneWidget);
+    await tester.tap(find.text('Worktree Setup'));
+    await tester.pumpAndSettle();
+    expect(find.text('dependencies installed'), findsOneWidget);
+  });
+
+  testWidgets('rich optimistic user content renders images and attachments', (
+    tester,
+  ) async {
+    final store = MemoryAttachmentStore();
+    final metadata = await store.save(
+      id: 'timeline-image',
+      mimeType: 'image/png',
+      fileName: 'timeline.png',
+      bytes: Uint8List.fromList(
+        base64Decode(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/'
+          'x8AAwMCAO+X1r0AAAAASUVORK5CYII=',
+        ),
+      ),
+    );
+    final message = OptimisticUserMessage(
+      id: 'client-message',
+      text: 'local rich text',
+      timestamp: 123,
+      images: [metadata],
+      attachments: const [
+        TextAgentAttachment(title: 'Context', text: 'attached'),
+      ],
+    );
+
+    await tester.pumpWidget(
+      FluentApp(
+        home: ScaffoldPage(
+          content: TimelineItemTile(
+            item: const UserMessageItem(
+              id: 'provider-message',
+              text: 'server-rendered text',
+            ),
+            userMessage: message,
+            imageAttachmentService: ComposerImageAttachmentService(
+              store: () async => store,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('local rich text'), findsOneWidget);
+    expect(find.text('server-rendered text'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('timeline-image-timeline-image')),
+      findsOneWidget,
+    );
+    expect(find.text('Context'), findsOneWidget);
+  });
 
   testWidgets('renders a scripted timeline item list', (tester) async {
     final decisions = <(String, String)>[];
@@ -65,6 +160,8 @@ void main() {
     expect(find.text('Deny'), findsOneWidget);
     // Turn divider label + error banner.
     expect(find.text('turn completed'), findsOneWidget);
+    expect(find.text('Automatically compacting context'), findsOneWidget);
+    expect(find.text('(190000 tokens)'), findsOneWidget);
     expect(find.text('provider crashed'), findsOneWidget);
 
     // Expanding the tool card reveals output.
@@ -78,8 +175,9 @@ void main() {
     expect(decisions, [('perm-1', 'allow_always')]);
   });
 
-  testWidgets('resolved permission hides buttons and shows state',
-      (tester) async {
+  testWidgets('resolved permission hides buttons and shows state', (
+    tester,
+  ) async {
     const resolved = PermissionItem(
       id: 'p2',
       permissionId: 'perm-2',
@@ -96,8 +194,7 @@ void main() {
     expect(find.text('Denied'), findsOneWidget);
   });
 
-  testWidgets('an allowed permission shows the allowed state',
-      (tester) async {
+  testWidgets('an allowed permission shows the allowed state', (tester) async {
     const resolved = PermissionItem(
       id: 'p3',
       permissionId: 'perm-3',
@@ -143,8 +240,9 @@ void main() {
     expect(decisions, [('perm-4', 'allow'), ('perm-4', 'deny')]);
   });
 
-  testWidgets('an incomplete assistant message shows the streaming cursor',
-      (tester) async {
+  testWidgets('an incomplete assistant message shows the streaming cursor', (
+    tester,
+  ) async {
     const streaming = AssistantMessageItem(
       id: 'a2',
       text: 'still typing',
@@ -163,8 +261,24 @@ void main() {
     expect(find.byType(FadeTransition), findsWidgets);
   });
 
-  testWidgets(
-      'read/write/search/generic tool details render their icons and '
+  testWidgets('loading compaction shows progress semantics', (tester) async {
+    const item = CompactionItem(
+      id: 'compact-loading',
+      status: CompactionStatus.loading,
+      trigger: CompactionTrigger.manual,
+    );
+    await tester.pumpWidget(
+      const FluentApp(
+        home: ScaffoldPage(content: TimelineItemTile(item: item)),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('Compacting context'), findsOneWidget);
+    expect(find.byType(ProgressRing), findsOneWidget);
+  });
+
+  testWidgets('read/write/search/generic tool details render their icons and '
       'summaries, and a null-body detail (Read) collapses to a plain '
       'ListTile', (tester) async {
     const items = <TimelineItem>[
@@ -206,9 +320,7 @@ void main() {
       FluentApp(
         home: ScaffoldPage(
           content: ListView(
-            children: [
-              for (final item in items) TimelineItemTile(item: item),
-            ],
+            children: [for (final item in items) TimelineItemTile(item: item)],
           ),
         ),
       ),
@@ -269,6 +381,140 @@ void main() {
     expect(find.textContaining('added line'), findsOneWidget);
     expect(find.textContaining('removed line'), findsOneWidget);
     expect(find.textContaining('context line'), findsOneWidget);
+  });
+
+  testWidgets('subagent detail renders identity, log, and canceled state', (
+    tester,
+  ) async {
+    const item = ToolCallItem(
+      id: 'subagent',
+      toolName: 'Sub-agent',
+      status: ToolCallStatus.canceled,
+      detail: SubAgentDetail(
+        subAgentType: 'Research',
+        description: 'Inspect routing',
+        log: 'Read lib/main.dart',
+      ),
+    );
+    await tester.pumpWidget(
+      const FluentApp(
+        home: ScaffoldPage(content: TimelineItemTile(item: item)),
+      ),
+    );
+
+    expect(find.byIcon(FluentIcons.branch_fork), findsOneWidget);
+    expect(find.text('Inspect routing'), findsOneWidget);
+    expect(find.text('canceled'), findsOneWidget);
+    await tester.tap(find.text('Sub-agent'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 100));
+    expect(find.text('Read lib/main.dart'), findsOneWidget);
+  });
+
+  testWidgets('tool failures render errors with and without detail bodies', (
+    tester,
+  ) async {
+    const items = <TimelineItem>[
+      ToolCallItem(
+        id: 'terminal-error',
+        toolName: 'paseo_worktree_terminals',
+        status: ToolCallStatus.error,
+        detail: GenericDetail(input: {}),
+        errorMessage: 'terminal creation failed',
+      ),
+      ToolCallItem(
+        id: 'setup-error',
+        toolName: 'paseo_worktree_setup',
+        status: ToolCallStatus.error,
+        detail: WorktreeSetupToolDetail(
+          worktreePath: '/repo/feature',
+          branchName: 'feature',
+          log: 'installing dependencies',
+          commands: [],
+        ),
+        errorMessage: 'setup exited 1',
+      ),
+    ];
+    await tester.pumpWidget(
+      FluentApp(
+        home: ScaffoldPage(
+          content: Column(
+            children: [
+              TimelineItemTile(item: items[0]),
+              TimelineItemTile(item: items[1]),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Worktree Terminals'), findsOneWidget);
+    await tester.tap(find.text('Worktree Terminals'));
+    await tester.tap(find.text('Worktree Setup'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('terminal creation failed'), findsOneWidget);
+    expect(find.text('installing dependencies'), findsOneWidget);
+    expect(find.text('setup exited 1'), findsOneWidget);
+  });
+
+  testWidgets('renders frozen todo, fetch, plain-text, and plan variants', (
+    tester,
+  ) async {
+    const items = <TimelineItem>[
+      TodoItem(
+        id: 'todo',
+        items: [
+          TodoEntry(text: 'Inspect protocol', completed: true),
+          TodoEntry(text: 'Run tests', completed: false),
+        ],
+      ),
+      ToolCallItem(
+        id: 'fetch',
+        toolName: 'fetch',
+        status: ToolCallStatus.success,
+        detail: FetchDetail(
+          url: 'https://example.com',
+          result: 'Fetched content',
+        ),
+      ),
+      ToolCallItem(
+        id: 'plain',
+        toolName: 'note',
+        status: ToolCallStatus.success,
+        detail: PlainTextDetail(label: 'Notice', text: 'Plain content'),
+      ),
+      ToolCallItem(
+        id: 'plan',
+        toolName: 'plan',
+        status: ToolCallStatus.success,
+        detail: PlanDetail(text: '1. Implement'),
+      ),
+    ];
+    await tester.pumpWidget(
+      FluentApp(
+        home: ScaffoldPage(
+          content: ListView(
+            children: [for (final item in items) TimelineItemTile(item: item)],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Tasks'), findsOneWidget);
+    expect(find.text('Inspect protocol'), findsOneWidget);
+    expect(find.byIcon(FluentIcons.completed_solid), findsOneWidget);
+    expect(find.byIcon(FluentIcons.circle_ring), findsOneWidget);
+    expect(find.text('https://example.com'), findsOneWidget);
+    expect(find.text('Notice'), findsOneWidget);
+    expect(find.text('Plan'), findsOneWidget);
+
+    await tester.tap(find.text('fetch'));
+    await tester.tap(find.text('note'));
+    await tester.tap(find.text('plan'));
+    await tester.pumpAndSettle();
+    expect(find.text('Fetched content'), findsOneWidget);
+    expect(find.text('Plain content'), findsOneWidget);
+    expect(find.text('1. Implement'), findsOneWidget);
   });
 
   testWidgets('turn divider: started renders nothing, failed shows the '

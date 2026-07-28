@@ -29,9 +29,7 @@ class ProjectsScreen extends ConsumerWidget {
         data: (projects) {
           final gitProjects = projects.where((p) => p.isGitRepo).toList();
           if (gitProjects.isEmpty) {
-            return const Center(
-              child: Text('No git projects registered yet.'),
-            );
+            return const Center(child: Text('No git projects registered yet.'));
           }
           return ListView.builder(
             itemCount: gitProjects.length,
@@ -59,11 +57,7 @@ class _ProjectSection extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(project.name.isEmpty ? project.path : project.name),
-            Text(
-              project.path,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            Text(project.path, maxLines: 1, overflow: TextOverflow.ellipsis),
           ],
         ),
         content: _WorktreeList(projectPath: project.path),
@@ -144,7 +138,10 @@ class _WorktreeTile extends ConsumerWidget {
                   Tooltip(
                     message: 'Open agent',
                     child: IconButton(
-                      icon: const Icon(FluentIcons.open_in_new_window, size: 18),
+                      icon: const Icon(
+                        FluentIcons.open_in_new_window,
+                        size: 18,
+                      ),
                       onPressed: () {
                         final worktreePath = resolveWorktreeKey(owner!);
                         ref

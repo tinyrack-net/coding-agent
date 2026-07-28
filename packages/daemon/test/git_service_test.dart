@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:agent_daemon/src/git/git_runner.dart';
 import 'package:agent_daemon/src/git/git_service.dart';
+import 'package:agent_daemon/src/git/worktree_metadata.dart';
 import 'package:agent_daemon/src/store/project_store.dart';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
@@ -22,15 +23,17 @@ Future<String> _git(List<String> args, String cwd) async {
   return result.stdout as String;
 }
 
-Future<void> _commit(String cwd, String message) => _git(
-      [
-        '-c', 'user.email=test@example.com',
-        '-c', 'user.name=Test',
-        '-c', 'commit.gpgsign=false',
-        'commit', '-m', message,
-      ],
-      cwd,
-    );
+Future<void> _commit(String cwd, String message) => _git([
+  '-c',
+  'user.email=test@example.com',
+  '-c',
+  'user.name=Test',
+  '-c',
+  'commit.gpgsign=false',
+  'commit',
+  '-m',
+  message,
+], cwd);
 
 void main() {
   late Directory tempDir;
@@ -64,6 +67,7 @@ void main() {
       final plain = Directory(p.join(tempDir.path, 'plain'))..createSync();
       expect(await service.isGitRepo(plain.path), isFalse);
       expect(await service.isGitRepo(p.join(tempDir.path, 'missing')), isFalse);
+      expect(await service.repositoryRoot(repo), p.normalize(repo));
     });
   });
 
@@ -75,6 +79,9 @@ void main() {
       expect(p.isWithin(p.join(dataDir, 'worktrees'), created.path), isTrue);
       expect(p.basename(created.path), startsWith('myproject-feature-login'));
       expect(Directory(created.path).existsSync(), isTrue);
+      final metadata = readWorktreeMetadata(created.path);
+      expect(metadata?.version, 1);
+      expect(metadata?.baseRefName, 'main');
 
       final listed = await service.listWorktrees(repo);
       expect(listed, hasLength(2));
@@ -91,6 +98,22 @@ void main() {
       expect(await service.listWorktrees(repo), hasLength(1));
     });
 
+    test('restore recreates an archived branch at the durable path', () async {
+      final created = await service.createWorktree(repo, 'restore-me');
+      final durablePath = created.path;
+      await service.archiveWorktree(durablePath);
+
+      await service.restoreWorktree(
+        projectPath: repo,
+        worktreePath: durablePath,
+        branch: 'restore-me',
+      );
+
+      expect(Directory(durablePath).existsSync(), isTrue);
+      expect(await service.currentBranch(durablePath), 'restore-me');
+      await service.archiveWorktree(durablePath);
+    });
+
     test('create for an existing branch reuses it', () async {
       await _git(['branch', 'existing'], repo);
       final created = await service.createWorktree(repo, 'existing');
@@ -99,8 +122,7 @@ void main() {
       expect(branches.trim(), isNotEmpty);
     });
 
-    test('create with baseRef branches off that ref instead of HEAD',
-        () async {
+    test('create with baseRef branches off that ref instead of HEAD', () async {
       await _git(['branch', 'base-branch'], repo);
       File(p.join(repo, 'readme.md')).writeAsStringSync('hello\nworld\nmore\n');
       await _git(['add', '-A'], repo);
@@ -114,6 +136,7 @@ void main() {
       final head = (await _git(['rev-parse', 'HEAD'], created.path)).trim();
       final baseHead = (await _git(['rev-parse', 'base-branch'], repo)).trim();
       expect(head, baseHead);
+      expect(readWorktreeMetadata(created.path)?.baseRefName, 'base-branch');
     });
 
     test('listBranches returns local branches, most recently committed '
@@ -127,10 +150,15 @@ void main() {
       final result = await Process.run(
         'git',
         [
-          '-c', 'user.email=test@example.com',
-          '-c', 'user.name=Test',
-          '-c', 'commit.gpgsign=false',
-          'commit', '-m', 'advance newer',
+          '-c',
+          'user.email=test@example.com',
+          '-c',
+          'user.name=Test',
+          '-c',
+          'commit.gpgsign=false',
+          'commit',
+          '-m',
+          'advance newer',
         ],
         workingDirectory: repo,
         environment: {
@@ -162,20 +190,23 @@ void main() {
       );
     });
 
-    test('worktree list from within a linked worktree still maps projectPath',
-        () async {
-      final created = await service.createWorktree(repo, 'side');
-      final listed = await service.listWorktrees(created.path);
-      expect(listed, hasLength(2));
-      expect(p.equals(listed.first.path, repo), isTrue);
-      expect(listed.first.isMain, isTrue);
-    });
+    test(
+      'worktree list from within a linked worktree still maps projectPath',
+      () async {
+        final created = await service.createWorktree(repo, 'side');
+        final listed = await service.listWorktrees(created.path);
+        expect(listed, hasLength(2));
+        expect(p.equals(listed.first.path, repo), isTrue);
+        expect(listed.first.isMain, isTrue);
+      },
+    );
 
     test('collides with an existing directory at the target path and picks '
         'a numbered suffix', () async {
       // Pre-create the directory createWorktree would normally pick first.
-      Directory(p.join(dataDir, 'worktrees', 'myproject-collide'))
-          .createSync(recursive: true);
+      Directory(
+        p.join(dataDir, 'worktrees', 'myproject-collide'),
+      ).createSync(recursive: true);
       final created = await service.createWorktree(repo, 'collide');
       expect(p.basename(created.path), 'myproject-collide-2');
     });
@@ -196,11 +227,13 @@ void main() {
         ..createSync(recursive: true);
       await expectLater(
         service.archiveWorktree(plain.path),
-        throwsA(isA<GitException>().having(
-          (e) => e.message,
-          'message',
-          contains('not a worktree'),
-        )),
+        throwsA(
+          isA<GitException>().having(
+            (e) => e.message,
+            'message',
+            contains('not a worktree'),
+          ),
+        ),
       );
     });
 
@@ -242,90 +275,103 @@ void main() {
       expect(dirty, containsAll(['readme.md', 'new.txt']));
     });
 
-    test('archiveWorktree refuses to remove a dirty worktree without force',
-        () async {
-      final created = await service.createWorktree(repo, 'guarded');
-      File(p.join(created.path, 'readme.md')).writeAsStringSync('changed\n');
+    test(
+      'archiveWorktree refuses to remove a dirty worktree without force',
+      () async {
+        final created = await service.createWorktree(repo, 'guarded');
+        File(p.join(created.path, 'readme.md')).writeAsStringSync('changed\n');
 
-      await expectLater(
-        service.archiveWorktree(created.path),
-        throwsA(isA<GitDirtyWorktreeException>().having(
-          (e) => e.uncommittedPaths,
-          'uncommittedPaths',
-          contains('readme.md'),
-        )),
-      );
-      expect(Directory(created.path).existsSync(), isTrue);
-    });
+        await expectLater(
+          service.archiveWorktree(created.path),
+          throwsA(
+            isA<GitDirtyWorktreeException>().having(
+              (e) => e.uncommittedPaths,
+              'uncommittedPaths',
+              contains('readme.md'),
+            ),
+          ),
+        );
+        expect(Directory(created.path).existsSync(), isTrue);
+      },
+    );
 
-    test('archiveWorktree removes a dirty worktree when force is true',
-        () async {
-      final created = await service.createWorktree(repo, 'forced');
-      File(p.join(created.path, 'readme.md')).writeAsStringSync('changed\n');
+    test(
+      'archiveWorktree removes a dirty worktree when force is true',
+      () async {
+        final created = await service.createWorktree(repo, 'forced');
+        File(p.join(created.path, 'readme.md')).writeAsStringSync('changed\n');
 
-      await service.archiveWorktree(created.path, force: true);
-      expect(Directory(created.path).existsSync(), isFalse);
-    });
+        await service.archiveWorktree(created.path, force: true);
+        expect(Directory(created.path).existsSync(), isFalse);
+      },
+    );
   });
 
   group('diff', () {
-    test('working tree vs HEAD includes tracked changes and untracked files',
-        () async {
-      File(p.join(repo, 'readme.md')).writeAsStringSync('hello\nplanet\n');
-      File(p.join(repo, 'untracked.txt'))
-          .writeAsStringSync('new 1\nnew 2\nnew 3\n');
-      File(p.join(repo, 'blob.bin')).writeAsBytesSync([1, 0, 2, 0, 3]);
+    test(
+      'working tree vs HEAD includes tracked changes and untracked files',
+      () async {
+        File(p.join(repo, 'readme.md')).writeAsStringSync('hello\nplanet\n');
+        File(
+          p.join(repo, 'untracked.txt'),
+        ).writeAsStringSync('new 1\nnew 2\nnew 3\n');
+        File(p.join(repo, 'blob.bin')).writeAsBytesSync([1, 0, 2, 0, 3]);
 
-      final response = await service.diff(repo);
-      final byPath = {for (final f in response.files) f.path: f};
-      expect(byPath.keys.toSet(), {'readme.md', 'untracked.txt', 'blob.bin'});
+        final response = await service.diff(repo);
+        final byPath = {for (final f in response.files) f.path: f};
+        expect(byPath.keys.toSet(), {'readme.md', 'untracked.txt', 'blob.bin'});
 
-      final modified = byPath['readme.md']!;
-      expect(modified.status, DiffFileStatus.modified);
-      expect(modified.additions, 1);
-      expect(modified.deletions, 1);
-      final add = modified.hunks[0].lines
-          .firstWhere((l) => l.type == DiffLineType.add);
-      expect(add.text, 'planet');
-      expect(add.newLineNo, 2);
+        final modified = byPath['readme.md']!;
+        expect(modified.status, DiffFileStatus.modified);
+        expect(modified.additions, 1);
+        expect(modified.deletions, 1);
+        final add = modified.hunks[0].lines.firstWhere(
+          (l) => l.type == DiffLineType.add,
+        );
+        expect(add.text, 'planet');
+        expect(add.newLineNo, 2);
 
-      final untracked = byPath['untracked.txt']!;
-      expect(untracked.status, DiffFileStatus.added);
-      expect(untracked.binary, isFalse);
-      expect(untracked.additions, 3);
-      expect(untracked.hunks, hasLength(1));
-      expect(untracked.hunks[0].header, '@@ -0,0 +1,3 @@');
-      expect(
-        untracked.hunks[0].lines.map((l) => l.text).toList(),
-        ['new 1', 'new 2', 'new 3'],
-      );
-      expect(untracked.hunks[0].lines[2].newLineNo, 3);
-      expect(
-        untracked.hunks[0].lines.every((l) => l.type == DiffLineType.add),
-        isTrue,
-      );
+        final untracked = byPath['untracked.txt']!;
+        expect(untracked.status, DiffFileStatus.added);
+        expect(untracked.binary, isFalse);
+        expect(untracked.additions, 3);
+        expect(untracked.hunks, hasLength(1));
+        expect(untracked.hunks[0].header, '@@ -0,0 +1,3 @@');
+        expect(untracked.hunks[0].lines.map((l) => l.text).toList(), [
+          'new 1',
+          'new 2',
+          'new 3',
+        ]);
+        expect(untracked.hunks[0].lines[2].newLineNo, 3);
+        expect(
+          untracked.hunks[0].lines.every((l) => l.type == DiffLineType.add),
+          isTrue,
+        );
 
-      final binary = byPath['blob.bin']!;
-      expect(binary.status, DiffFileStatus.added);
-      expect(binary.binary, isTrue);
-      expect(binary.hunks, isEmpty);
-    });
+        final binary = byPath['blob.bin']!;
+        expect(binary.status, DiffFileStatus.added);
+        expect(binary.binary, isTrue);
+        expect(binary.hunks, isEmpty);
+      },
+    );
 
-    test('with baseRef diffs against that ref and skips untracked synthesis',
-        () async {
-      File(p.join(repo, 'readme.md')).writeAsStringSync('hello\nmoon\n');
-      await _git(['add', '-A'], repo);
-      await _commit(repo, 'second');
-      File(p.join(repo, 'untracked.txt')).writeAsStringSync('x\n');
+    test(
+      'with baseRef diffs against that ref and skips untracked synthesis',
+      () async {
+        File(p.join(repo, 'readme.md')).writeAsStringSync('hello\nmoon\n');
+        await _git(['add', '-A'], repo);
+        await _commit(repo, 'second');
+        File(p.join(repo, 'untracked.txt')).writeAsStringSync('x\n');
 
-      final response = await service.diff(repo, baseRef: 'HEAD~1');
-      expect(response.files, hasLength(1));
-      final file = response.files.single;
-      expect(file.path, 'readme.md');
-      expect(file.status, DiffFileStatus.modified);
-      expect(file.additions, 1);
-      expect(file.deletions, 1);
-    });
+        final response = await service.diff(repo, baseRef: 'HEAD~1');
+        expect(response.files, hasLength(1));
+        final file = response.files.single;
+        expect(file.path, 'readme.md');
+        expect(file.status, DiffFileStatus.modified);
+        expect(file.additions, 1);
+        expect(file.deletions, 1);
+      },
+    );
 
     test('clean tree yields empty diff', () async {
       final response = await service.diff(repo);
@@ -339,27 +385,28 @@ void main() {
       );
     });
 
-    test('untracked files larger than the cap are synthesized as binary',
-        () async {
-      File(p.join(repo, 'huge.bin'))
-          .writeAsStringSync('a' * (1024 * 1024 + 10));
-      final response = await service.diff(repo);
-      final huge = response.files.singleWhere((f) => f.path == 'huge.bin');
-      expect(huge.status, DiffFileStatus.added);
-      expect(huge.binary, isTrue);
-      expect(huge.hunks, isEmpty);
-    });
+    test(
+      'untracked files larger than the cap are synthesized as binary',
+      () async {
+        File(
+          p.join(repo, 'huge.bin'),
+        ).writeAsStringSync('a' * (1024 * 1024 + 10));
+        final response = await service.diff(repo);
+        final huge = response.files.singleWhere((f) => f.path == 'huge.bin');
+        expect(huge.status, DiffFileStatus.added);
+        expect(huge.binary, isTrue);
+        expect(huge.hunks, isEmpty);
+      },
+    );
 
     test('untracked files with CRLF line endings have the trailing \\r '
         'stripped from each line', () async {
-      File(p.join(repo, 'crlf.txt'))
-          .writeAsBytesSync(utf8.encode('one\r\ntwo\r\n'));
+      File(
+        p.join(repo, 'crlf.txt'),
+      ).writeAsBytesSync(utf8.encode('one\r\ntwo\r\n'));
       final response = await service.diff(repo);
       final file = response.files.singleWhere((f) => f.path == 'crlf.txt');
-      expect(
-        file.hunks[0].lines.map((l) => l.text).toList(),
-        ['one', 'two'],
-      );
+      expect(file.hunks[0].lines.map((l) => l.text).toList(), ['one', 'two']);
       expect(file.hunks[0].lines.every((l) => !l.text.contains('\r')), isTrue);
     });
   });
@@ -404,7 +451,10 @@ class _NoListRunner extends GitRunner {
     bool check = true,
   }) async {
     final result = await super.run(args, cwd: cwd, check: check);
-    if (args.isNotEmpty && args[0] == 'worktree' && args.length > 1 && args[1] == 'list') {
+    if (args.isNotEmpty &&
+        args[0] == 'worktree' &&
+        args.length > 1 &&
+        args[1] == 'list') {
       return const GitResult(exitCode: 0, stdout: '', stderr: '');
     }
     return result;

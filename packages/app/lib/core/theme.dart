@@ -1,12 +1,130 @@
 import 'package:fluent_ui/fluent_ui.dart';
 
-/// The app's single (dark-only) Fluent theme.
-FluentThemeData buildAppTheme() {
-  final base = FluentThemeData(brightness: Brightness.dark, accentColor: Colors.teal);
-  // fluent_ui defaults menuColor (dialogs, flyouts, menus) to a lighter grey
-  // than scaffoldBackgroundColor to convey Fluent Design's popup-elevation
-  // layering; this app wants a flat near-black look everywhere instead.
-  return base.copyWith(menuColor: base.scaffoldBackgroundColor);
+import '../state/appearance_provider.dart';
+
+/// Paseo 0.2.0 semantic colors from the frozen upstream theme contract.
+class PaseoPalette {
+  const PaseoPalette({
+    required this.surface0,
+    required this.surface1,
+    required this.surface2,
+    required this.foreground,
+    required this.foregroundMuted,
+    required this.borderAccent,
+    required this.accent,
+    required this.accentBright,
+  });
+
+  final Color surface0;
+  final Color surface1;
+  final Color surface2;
+  final Color foreground;
+  final Color foregroundMuted;
+  final Color borderAccent;
+  final Color accent;
+  final Color accentBright;
+}
+
+PaseoPalette paseoPaletteFor(
+  AppThemeName name, [
+  Brightness platformBrightness = Brightness.dark,
+]) {
+  final resolvedName = name == AppThemeName.auto
+      ? (platformBrightness == Brightness.light
+            ? AppThemeName.light
+            : AppThemeName.dark)
+      : name;
+  return switch (resolvedName) {
+    AppThemeName.light => const PaseoPalette(
+      surface0: Color(0xFFFFFFFF),
+      surface1: Color(0xFFFAFAFA),
+      surface2: Color(0xFFF4F4F5),
+      foreground: Color(0xFF1A1A1E),
+      foregroundMuted: Color(0xFF71717A),
+      borderAccent: Color(0xFFECECF1),
+      accent: Color(0xFF20744A),
+      accentBright: Color(0xFF239956),
+    ),
+    AppThemeName.zinc => const PaseoPalette(
+      surface0: Color(0xFF18181B),
+      surface1: Color(0xFF1F1F22),
+      surface2: Color(0xFF27272A),
+      foreground: Color(0xFFFAFAFA),
+      foregroundMuted: Color(0xFFA1A1AA),
+      borderAccent: Color(0xFF303036),
+      accent: Color(0xFFE4E4E7),
+      accentBright: Color(0xFFFAFAFA),
+    ),
+    AppThemeName.midnight => const PaseoPalette(
+      surface0: Color(0xFF161820),
+      surface1: Color(0xFF1C1E27),
+      surface2: Color(0xFF252731),
+      foreground: Color(0xFFFAFAFA),
+      foregroundMuted: Color(0xFF9A9DB0),
+      borderAccent: Color(0xFF2E3040),
+      accent: Color(0xFF3B6FCF),
+      accentBright: Color(0xFF7EAAEB),
+    ),
+    AppThemeName.claude => const PaseoPalette(
+      surface0: Color(0xFF1F1F1E),
+      surface1: Color(0xFF262523),
+      surface2: Color(0xFF2F2D2B),
+      foreground: Color(0xFFFAFAFA),
+      foregroundMuted: Color(0xFFADA9A5),
+      borderAccent: Color(0xFF36332F),
+      accent: Color(0xFFD97757),
+      accentBright: Color(0xFFE89A7F),
+    ),
+    AppThemeName.ghostty => const PaseoPalette(
+      surface0: Color(0xFF282C34),
+      surface1: Color(0xFF2F333D),
+      surface2: Color(0xFF383C48),
+      foreground: Color(0xFFFAFAFA),
+      foregroundMuted: Color(0xFFC8CCD8),
+      borderAccent: Color(0xFF3F4454),
+      accent: Color(0xFF89B4FA),
+      accentBright: Color(0xFFB4D0FC),
+    ),
+    AppThemeName.dark || AppThemeName.auto => const PaseoPalette(
+      surface0: Color(0xFF181B1A),
+      surface1: Color(0xFF1E2120),
+      surface2: Color(0xFF272A29),
+      foreground: Color(0xFFFAFAFA),
+      foregroundMuted: Color(0xFFA1A5A4),
+      borderAccent: Color(0xFF2F3534),
+      accent: Color(0xFF20744A),
+      accentBright: Color(0xFF7CCBA0),
+    ),
+  };
+}
+
+FluentThemeData buildAppTheme([
+  AppThemeName name = AppThemeName.dark,
+  Brightness platformBrightness = Brightness.dark,
+]) {
+  final resolvedName = name == AppThemeName.auto
+      ? (platformBrightness == Brightness.light
+            ? AppThemeName.light
+            : AppThemeName.dark)
+      : name;
+  final brightness = resolvedName == AppThemeName.light
+      ? Brightness.light
+      : Brightness.dark;
+  final palette = paseoPaletteFor(resolvedName, platformBrightness);
+  final accent = AccentColor.swatch({
+    'darkest': palette.accent,
+    'darker': palette.accent,
+    'dark': palette.accent,
+    'normal': palette.accent,
+    'light': palette.accentBright,
+    'lighter': palette.accentBright,
+    'lightest': palette.accentBright,
+  });
+  final base = FluentThemeData(brightness: brightness, accentColor: accent);
+  return base.copyWith(
+    scaffoldBackgroundColor: palette.surface0,
+    menuColor: palette.surface2,
+  );
 }
 
 /// Semantic color tokens used across the app, mapped onto the closest
@@ -20,7 +138,8 @@ class AppColors {
   final FluentThemeData _theme;
 
   Color get error => _theme.resources.systemFillColorCritical;
-  Color get errorContainer => _theme.resources.systemFillColorCriticalBackground;
+  Color get errorContainer =>
+      _theme.resources.systemFillColorCriticalBackground;
   Color get onErrorContainer => _theme.resources.textFillColorPrimary;
   Color get onError => Colors.white;
 
@@ -75,5 +194,6 @@ extension AppThemeContext on BuildContext {
   FluentThemeData get fluentTheme => FluentTheme.of(this);
   AppColors get tokens => AppColors._(FluentTheme.of(this));
   StatusColors get statusColors => StatusColors._(FluentTheme.of(this));
-  AppTextStyles get textStyles => AppTextStyles._(FluentTheme.of(this).typography);
+  AppTextStyles get textStyles =>
+      AppTextStyles._(FluentTheme.of(this).typography);
 }

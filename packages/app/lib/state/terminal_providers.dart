@@ -4,9 +4,11 @@ import 'dart:typed_data';
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 import 'package:xterm/xterm.dart';
 
 import 'daemon_providers.dart';
+import 'workspace_terminal_session.dart';
 import 'worktree_tabs_provider.dart';
 
 enum TerminalSessionStatus { starting, running, exited, error }
@@ -14,7 +16,11 @@ enum TerminalSessionStatus { starting, running, exited, error }
 /// Identifies one terminal tab: the worktree whose path is its `cwd`, plus
 /// the [WorktreeTab.tabId] it belongs to (a worktree can have several
 /// terminal tabs, each backed by its own daemon-side PTY).
-typedef TerminalSessionKey = ({String worktreePath, String tabId});
+typedef TerminalSessionKey = ({
+  String worktreePath,
+  String tabId,
+  String? workspaceId,
+});
 
 /// UI-facing snapshot of one embedded terminal session.
 class TerminalSessionState {
@@ -37,13 +43,12 @@ class TerminalSessionState {
     TerminalSessionStatus? status,
     int? exitCode,
     String? errorMessage,
-  }) =>
-      TerminalSessionState(
-        terminal: terminal ?? this.terminal,
-        status: status ?? this.status,
-        exitCode: exitCode ?? this.exitCode,
-        errorMessage: errorMessage ?? this.errorMessage,
-      );
+  }) => TerminalSessionState(
+    terminal: terminal ?? this.terminal,
+    status: status ?? this.status,
+    exitCode: exitCode ?? this.exitCode,
+    errorMessage: errorMessage ?? this.errorMessage,
+  );
 }
 
 /// One daemon-backed PTY per terminal tab, created lazily when the tab is
@@ -53,6 +58,8 @@ class TerminalSessionState {
 class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
   TerminalSessionNotifier(this.key);
 
+  static const _uuid = Uuid();
+
   /// Family argument: which worktree/tab this terminal belongs to.
   /// [TerminalSessionKey.worktreePath] *is* the daemon-side `cwd` directly;
   /// [TerminalSessionKey.tabId] gives each tab its own independent session
@@ -61,29 +68,64 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
 
   String? _terminalId;
   int? _slotId;
+  WorkspaceTerminalSession? _workspaceSession;
+  final TerminalInputModeTracker _inputModeTracker = TerminalInputModeTracker();
   int _generation = 0;
 
   @override
   TerminalSessionState build() {
     _terminalId = null;
     _slotId = null;
+    _inputModeTracker.reset();
     final client = ref.watch(daemonClientProvider);
     final generation = ++_generation;
     final terminal = Terminal(maxLines: 10000);
+    final workspaceSessionScope =
+        '${client.uri}|${key.workspaceId ?? key.worktreePath}';
+    retainWorkspaceTerminalSession(workspaceSessionScope);
+    final workspaceSession = getWorkspaceTerminalSession(workspaceSessionScope);
+    _workspaceSession = workspaceSession;
 
     final frameSub = client.terminalFrames.listen((frame) {
       if (generation != _generation) return;
       if (frame.slotId != _slotId) return;
-      if (frame.opcode != TerminalOpcode.output &&
-          frame.opcode != TerminalOpcode.snapshot) {
-        return;
+      switch (frame.opcode) {
+        case TerminalOpcode.output:
+          final output = utf8.decode(frame.payload, allowMalformed: true);
+          _inputModeTracker.feed(output);
+          terminal.write(output);
+        case TerminalOpcode.snapshot:
+          final snapshot = frame.trySnapshotState;
+          if (snapshot == null) return;
+          _inputModeTracker.reset();
+          final terminalId = _terminalId;
+          if (terminalId != null) {
+            workspaceSession.snapshots.set(terminalId, snapshot);
+          }
+          terminal.write('\x1bc${renderTerminalSnapshotToAnsi(snapshot)}');
+        case TerminalOpcode.restore:
+          _inputModeTracker.reset();
+          terminal.write(
+            '\x1bc${utf8.decode(frame.payload, allowMalformed: true)}',
+          );
+        case TerminalOpcode.input:
+        case TerminalOpcode.resize:
+          return;
       }
-      terminal.write(utf8.decode(frame.payload, allowMalformed: true));
     });
     final eventSub = client.events.listen((event) {
       if (generation != _generation) return;
-      if (event.type != MessageTypes.terminalExitedEvent) return;
+      if (event.type != MessageTypes.terminalExitedEvent &&
+          event.type != TerminalStreamExit.type) {
+        return;
+      }
       if (event.payload['terminalId'] != _terminalId) return;
+      final terminalId = _terminalId;
+      if (terminalId != null) workspaceSession.snapshots.clear(terminalId);
+      _slotId = null;
+      ref
+          .read(worktreeTabsProvider(key.worktreePath).notifier)
+          .clearTerminalId(key.tabId);
       state = state.copyWith(
         status: TerminalSessionStatus.exited,
         exitCode: (event.payload['exitCode'] as num?)?.toInt(),
@@ -92,6 +134,7 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
     ref.onDispose(() {
       frameSub.cancel();
       eventSub.cancel();
+      releaseWorkspaceTerminalSession(workspaceSessionScope);
     });
 
     Future.microtask(() => _start(generation, terminal));
@@ -101,61 +144,136 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
   Future<void> _start(int generation, Terminal terminal) async {
     final client = ref.read(daemonClientProvider);
     final cwd = key.worktreePath;
+    var createdNewTerminal = false;
     try {
-      final created =
-          await client.request(MessageTypes.terminalCreateRequest, {
-        'cwd': cwd,
-        'cols': terminal.viewWidth,
-        'rows': terminal.viewHeight,
-      });
-      final terminalJson = created['terminal'] as Map<String, Object?>?;
-      if (terminalJson == null || terminalJson['terminalId'] is! String) {
-        throw StateError('malformed create response');
+      final restoredTerminalId = ref
+          .read(worktreeTabsProvider(key.worktreePath))
+          .layout
+          .tabs
+          .where((tab) => tab.tabId == key.tabId)
+          .firstOrNull
+          ?.lastKnownTerminalId;
+      final String terminalId;
+      if (restoredTerminalId != null && restoredTerminalId.isNotEmpty) {
+        terminalId = restoredTerminalId;
+      } else {
+        final created = await client.requestSessionMessage(
+          CreateTerminalRequest(
+            cwd: cwd,
+            workspaceId: key.workspaceId,
+            size: TerminalSize(
+              rows: terminal.viewHeight,
+              cols: terminal.viewWidth,
+            ),
+            requestId: _uuid.v4(),
+          ).toJson(),
+        );
+        final createdPayload = created['payload'];
+        final terminalJson = createdPayload is Map
+            ? createdPayload['terminal'] as Map?
+            : null;
+        if (terminalJson == null || terminalJson['id'] is! String) {
+          throw StateError('malformed create response');
+        }
+        terminalId = PaseoTerminalInfo.fromJson(
+          terminalJson.cast<String, Object?>(),
+        ).id;
+        createdNewTerminal = true;
       }
-      final info = TerminalInfo.fromJson(terminalJson);
       if (generation != _generation) {
         // Rebuilt while creating: don't leak the daemon terminal.
-        unawaited(client
-            .request(MessageTypes.terminalKillRequest,
-                {'terminalId': info.terminalId})
-            .catchError((_) => const <String, Object?>{}));
+        if (createdNewTerminal) {
+          unawaited(
+            client
+                .requestSessionMessage(
+                  KillTerminalRequest(
+                    terminalId: terminalId,
+                    requestId: _uuid.v4(),
+                  ).toJson(),
+                )
+                .catchError((_) => const <String, Object?>{}),
+          );
+        }
         return;
       }
-      _terminalId = info.terminalId;
+      _terminalId = terminalId;
+      final cachedSnapshot = _workspaceSession?.snapshots.get(terminalId);
+      if (cachedSnapshot != null) {
+        terminal.write('\x1bc${renderTerminalSnapshotToAnsi(cachedSnapshot)}');
+      }
       ref
           .read(worktreeTabsProvider(key.worktreePath).notifier)
-          .setTerminalId(key.tabId, info.terminalId);
+          .setTerminalId(key.tabId, terminalId);
 
-      final subscribed = await client.request(
-        MessageTypes.terminalSubscribeRequest,
-        {'terminalId': info.terminalId},
+      final subscribed = await client.requestSessionMessage(
+        SubscribeTerminalRequest(
+          terminalId: terminalId,
+          requestId: _uuid.v4(),
+          restore: TerminalRestoreOptions(
+            mode: TerminalRestoreMode.visibleSnapshot,
+            scrollbackLines: 200,
+            size: (rows: terminal.viewHeight, cols: terminal.viewWidth),
+          ),
+        ).toJson(),
       );
-      if (generation != _generation) return;
-      final slotId = (subscribed['slotId'] as num?)?.toInt();
+      if (generation != _generation) {
+        try {
+          client.sendSessionMessage(
+            UnsubscribeTerminalRequest(terminalId: terminalId).toJson(),
+          );
+        } catch (_) {}
+        if (createdNewTerminal) {
+          unawaited(
+            client
+                .requestSessionMessage(
+                  KillTerminalRequest(
+                    terminalId: terminalId,
+                    requestId: _uuid.v4(),
+                  ).toJson(),
+                )
+                .catchError((_) => const <String, Object?>{}),
+          );
+        }
+        return;
+      }
+      final subscribedPayload = subscribed['payload'];
+      final subscribeError = subscribedPayload is Map
+          ? subscribedPayload['error']
+          : null;
+      if (subscribeError is String && subscribeError.isNotEmpty) {
+        throw _TerminalAttachException(subscribeError);
+      }
+      final slotId = subscribedPayload is Map
+          ? (subscribedPayload['slot'] as num?)?.toInt()
+          : null;
       if (slotId == null) throw StateError('malformed subscribe response');
       _slotId = slotId;
 
       terminal.onOutput = (data) {
-        if (generation != _generation) return;
-        client.sendTerminalFrame(TerminalFrame(
-          opcode: TerminalOpcode.input,
-          slotId: slotId,
-          payload: Uint8List.fromList(utf8.encode(data)),
-        ));
+        if (generation != _generation || _slotId != slotId) return;
+        client.sendTerminalFrame(
+          TerminalFrame(
+            opcode: TerminalOpcode.input,
+            slotId: slotId,
+            payload: Uint8List.fromList(utf8.encode(data)),
+          ),
+        );
       };
       terminal.onResize = (cols, rows, pixelWidth, pixelHeight) {
-        if (generation != _generation) return;
+        if (generation != _generation || _slotId != slotId) return;
         client.sendTerminalFrame(
           TerminalFrame.resize(slotId, cols: cols, rows: rows),
         );
       };
       // TerminalView may already have resized the emulator while we were
       // subscribing; sync the PTY to the actual view size.
-      client.sendTerminalFrame(TerminalFrame.resize(
-        slotId,
-        cols: terminal.viewWidth,
-        rows: terminal.viewHeight,
-      ));
+      client.sendTerminalFrame(
+        TerminalFrame.resize(
+          slotId,
+          cols: terminal.viewWidth,
+          rows: terminal.viewHeight,
+        ),
+      );
 
       state = state.copyWith(status: TerminalSessionStatus.running);
     } catch (e) {
@@ -171,6 +289,61 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
   /// swapping in a new emulator.
   void restart() => ref.invalidateSelf();
 
+  /// Sends modified Enter only when the terminal has negotiated an enhanced
+  /// Kitty or Win32 input mode. Otherwise TerminalView keeps its normal input.
+  bool sendModifiedEnter({
+    required bool ctrl,
+    required bool shift,
+    required bool alt,
+    required bool meta,
+  }) {
+    if ((!ctrl && !shift && !alt && !meta) ||
+        !_inputModeTracker.supportsModifiedEnter()) {
+      return false;
+    }
+    final slotId = _slotId;
+    if (slotId == null) return false;
+    final encoded = encodeTerminalKeyInput(
+      TerminalKeyInput(
+        key: 'Enter',
+        ctrl: ctrl,
+        shift: shift,
+        alt: alt,
+        meta: meta,
+      ),
+      TerminalKeyInputEncodingOptions(inputMode: _inputModeTracker.getState()),
+    );
+    if (encoded.isEmpty) return false;
+    ref
+        .read(daemonClientProvider)
+        .sendTerminalFrame(
+          TerminalFrame(
+            opcode: TerminalOpcode.input,
+            slotId: slotId,
+            payload: Uint8List.fromList(utf8.encode(encoded)),
+          ),
+        );
+    return true;
+  }
+
+  /// Sends text directly to the PTY, as terminal file drop does in Paseo.
+  /// This is deliberately not [Terminal.paste]: dropped paths must not gain
+  /// bracketed-paste framing or a trailing newline.
+  bool sendRawInput(String data) {
+    final slotId = _slotId;
+    if (slotId == null || data.isEmpty) return false;
+    ref
+        .read(daemonClientProvider)
+        .sendTerminalFrame(
+          TerminalFrame(
+            opcode: TerminalOpcode.input,
+            slotId: slotId,
+            payload: Uint8List.fromList(utf8.encode(data)),
+          ),
+        );
+    return true;
+  }
+
   /// Kills the daemon-side terminal. Called when this tab is closed or the
   /// owning agent is archived.
   Future<void> shutdown() async {
@@ -180,22 +353,38 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
     _terminalId = null;
     _slotId = null;
     if (terminalId == null) return;
+    final workspaceSessionScope =
+        '${client.uri}|${key.workspaceId ?? key.worktreePath}';
+    getWorkspaceTerminalSession(
+      workspaceSessionScope,
+    ).snapshots.clear(terminalId);
     try {
-      await client.request(
-        MessageTypes.terminalUnsubscribeRequest,
-        {'terminalId': terminalId},
+      client.sendSessionMessage(
+        UnsubscribeTerminalRequest(terminalId: terminalId).toJson(),
       );
     } catch (_) {}
     try {
-      await client.request(
-        MessageTypes.terminalKillRequest,
-        {'terminalId': terminalId},
+      await client.requestSessionMessage(
+        KillTerminalRequest(
+          terminalId: terminalId,
+          requestId: _uuid.v4(),
+        ).toJson(),
       );
     } catch (_) {}
   }
 }
 
-final terminalSessionProvider = NotifierProvider.family<
-    TerminalSessionNotifier, TerminalSessionState, TerminalSessionKey>(
-  TerminalSessionNotifier.new,
-);
+final class _TerminalAttachException implements Exception {
+  const _TerminalAttachException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+final terminalSessionProvider =
+    NotifierProvider.family<
+      TerminalSessionNotifier,
+      TerminalSessionState,
+      TerminalSessionKey
+    >(TerminalSessionNotifier.new);

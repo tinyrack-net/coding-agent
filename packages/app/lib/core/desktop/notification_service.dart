@@ -29,5 +29,6 @@ class NotificationService {
   }
 }
 
-final notificationServiceProvider =
-    Provider<NotificationService>((ref) => NotificationService());
+final notificationServiceProvider = Provider<NotificationService>(
+  (ref) => NotificationService(),
+);

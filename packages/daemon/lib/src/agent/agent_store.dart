@@ -12,6 +12,8 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
 
+import 'timeline_store.dart';
+
 final class PersistedAgent {
   const PersistedAgent({
     required this.summary,
@@ -19,6 +21,8 @@ final class PersistedAgent {
     required this.epoch,
     required this.lastSeq,
     required this.items,
+    this.rows = const [],
+    this.internal = false,
   });
 
   final AgentSummary summary;
@@ -26,31 +30,41 @@ final class PersistedAgent {
   final int epoch;
   final int lastSeq;
   final List<TimelineItem> items;
+  final List<TimelineRow> rows;
+  final bool internal;
 
   static PersistedAgent fromJson(Map<String, Object?> json) => PersistedAgent(
-        summary:
-            AgentSummary.fromJson(json['summary'] as Map<String, Object?>),
-        archived: (json['archived'] as bool?) ?? false,
-        epoch: (json['epoch'] as num?)?.toInt() ?? 1,
-        lastSeq: (json['lastSeq'] as num?)?.toInt() ?? 0,
-        items: ((json['items'] as List?) ?? const [])
-            .cast<Map<String, Object?>>()
-            .map(TimelineItem.fromJson)
-            .toList(),
-      );
+    summary: AgentSummary.fromJson(json['summary'] as Map<String, Object?>),
+    archived: (json['archived'] as bool?) ?? false,
+    epoch: (json['epoch'] as num?)?.toInt() ?? 1,
+    lastSeq: (json['lastSeq'] as num?)?.toInt() ?? 0,
+    items: ((json['items'] as List?) ?? const [])
+        .cast<Map<String, Object?>>()
+        .map(TimelineItem.fromJson)
+        .toList(),
+    rows: ((json['rows'] as List?) ?? const [])
+        .cast<Map<String, Object?>>()
+        .map(TimelineRow.fromJson)
+        .toList(),
+    internal: (json['internal'] as bool?) ?? false,
+  );
 
   Map<String, Object?> toJson() => {
-        'summary': summary.toJson(),
-        'archived': archived,
-        'epoch': epoch,
-        'lastSeq': lastSeq,
-        'items': items.map((i) => i.toJson()).toList(),
-      };
+    'summary': summary.toJson(),
+    'archived': archived,
+    'epoch': epoch,
+    'lastSeq': lastSeq,
+    'items': items.map((i) => i.toJson()).toList(),
+    if (rows.isNotEmpty) 'rows': rows.map((row) => row.toJson()).toList(),
+    if (internal) 'internal': true,
+  };
 }
 
 class AgentStore {
-  AgentStore({String? dataDir, this.debounce = const Duration(milliseconds: 500)})
-      : dataDir = dataDir ?? defaultDataDir();
+  AgentStore({
+    String? dataDir,
+    this.debounce = const Duration(milliseconds: 500),
+  }) : dataDir = dataDir ?? defaultDataDir();
 
   final String dataDir;
   final Duration debounce;
@@ -59,18 +73,19 @@ class AgentStore {
   final Map<String, PersistedAgent> _dirty = {};
 
   static String defaultDataDir() {
-    final home = Platform.environment['USERPROFILE'] ??
+    final home =
+        Platform.environment['USERPROFILE'] ??
         Platform.environment['HOME'] ??
         Directory.systemTemp.path;
     return p.join(home, '.tinyrack-agent');
   }
 
   String _fileFor(PersistedAgent record) => p.join(
-        dataDir,
-        'agents',
-        sanitizeCwd(record.summary.cwd),
-        '${record.summary.agentId}.json',
-      );
+    dataDir,
+    'agents',
+    sanitizeCwd(record.summary.cwd),
+    '${record.summary.agentId}.json',
+  );
 
   /// Filesystem-safe directory name for a cwd, unique per distinct cwd.
   static String sanitizeCwd(String cwd) {

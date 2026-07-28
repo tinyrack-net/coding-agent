@@ -12,8 +12,9 @@ import 'tool_exception.dart';
 /// mirrors the containment check in `GitService`).
 String resolveSandboxedPath(String cwd, String rawPath) {
   final normalizedCwd = p.normalize(p.absolute(cwd));
-  final candidate =
-      p.isAbsolute(rawPath) ? rawPath : p.join(normalizedCwd, rawPath);
+  final candidate = p.isAbsolute(rawPath)
+      ? rawPath
+      : p.join(normalizedCwd, rawPath);
   final normalizedCandidate = p.normalize(p.absolute(candidate));
   final rel = p.relative(normalizedCandidate, from: normalizedCwd);
   if (rel == '..' || rel.startsWith('..${p.separator}')) {

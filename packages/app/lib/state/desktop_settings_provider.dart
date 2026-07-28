@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/desktop/desktop_shell.dart';
+import '../core/desktop/launch_at_startup.dart';
 
 /// Desktop-only preferences (tray residency behaviour).
 class DesktopSettings {
@@ -17,7 +17,10 @@ class DesktopSettings {
   /// When false, quitting from the tray also stops the managed daemon.
   final bool keepRunningAfterQuit;
 
-  DesktopSettings copyWith({bool? autoStartAtLogin, bool? keepRunningAfterQuit}) {
+  DesktopSettings copyWith({
+    bool? autoStartAtLogin,
+    bool? keepRunningAfterQuit,
+  }) {
     return DesktopSettings(
       autoStartAtLogin: autoStartAtLogin ?? this.autoStartAtLogin,
       keepRunningAfterQuit: keepRunningAfterQuit ?? this.keepRunningAfterQuit,
@@ -116,5 +119,5 @@ class DesktopSettingsNotifier extends Notifier<DesktopSettings> {
 
 final desktopSettingsProvider =
     NotifierProvider<DesktopSettingsNotifier, DesktopSettings>(
-  DesktopSettingsNotifier.new,
-);
+      DesktopSettingsNotifier.new,
+    );

@@ -26,6 +26,9 @@ class NativeClient implements AgentClient {
     required String cwd,
     required String model,
     required AgentMode mode,
+    String? modeId,
+    String? thinkingOptionId,
+    Map<String, Object?> featureValues = const {},
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) async {

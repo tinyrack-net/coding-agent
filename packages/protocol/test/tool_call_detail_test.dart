@@ -7,9 +7,39 @@ Map<String, Object?> roundTrip(Map<String, Object?> json) =>
     jsonDecode(jsonEncode(json)) as Map<String, Object?>;
 
 void main() {
+  test('WorktreeSetupToolDetail round-trips the frozen lifecycle shape', () {
+    const detail = WorktreeSetupToolDetail(
+      worktreePath: '/repo/feature',
+      branchName: 'feature',
+      log: 'installed',
+      commands: [
+        WorkspaceSetupCommand(
+          index: 1,
+          command: 'dart pub get',
+          cwd: '/repo/feature',
+          status: WorkspaceSetupCommandStatus.completed,
+          exitCode: 0,
+        ),
+      ],
+      truncated: true,
+    );
+
+    final decoded =
+        ToolCallDetail.fromJson(detail.toJson()) as WorktreeSetupToolDetail;
+    expect(decoded.worktreePath, '/repo/feature');
+    expect(decoded.branchName, 'feature');
+    expect(decoded.log, 'installed');
+    expect(decoded.commands.single.command, 'dart pub get');
+    expect(decoded.truncated, isTrue);
+  });
+
   group('ShellDetail', () {
     test('round-trips with all fields', () {
-      const detail = ShellDetail(command: 'ls -la', output: 'file.txt', exitCode: 0);
+      const detail = ShellDetail(
+        command: 'ls -la',
+        output: 'file.txt',
+        exitCode: 0,
+      );
       final decoded = ToolCallDetail.fromJson(roundTrip(detail.toJson()));
       expect(decoded, isA<ShellDetail>());
       final shell = decoded as ShellDetail;
@@ -63,7 +93,10 @@ void main() {
 
   group('WriteDetail', () {
     test('round-trips with contentPreview', () {
-      const detail = WriteDetail(path: 'lib/b.dart', contentPreview: 'class B {}');
+      const detail = WriteDetail(
+        path: 'lib/b.dart',
+        contentPreview: 'class B {}',
+      );
       final decoded = ToolCallDetail.fromJson(roundTrip(detail.toJson()));
       expect(decoded, isA<WriteDetail>());
       final write = decoded as WriteDetail;
@@ -109,9 +142,10 @@ void main() {
     });
 
     test('unknown kind falls back to GenericDetail', () {
-      final decoded = ToolCallDetail.fromJson(
-        const {'kind': 'mystery', 'input': {'x': 1}},
-      );
+      final decoded = ToolCallDetail.fromJson(const {
+        'kind': 'mystery',
+        'input': {'x': 1},
+      });
       expect(decoded, isA<GenericDetail>());
       expect((decoded as GenericDetail).input, {'x': 1});
     });
@@ -120,6 +154,27 @@ void main() {
       final decoded = ToolCallDetail.fromJson(const {});
       expect(decoded, isA<GenericDetail>());
       expect((decoded as GenericDetail).input, isEmpty);
+    });
+
+    test('round-trips daemon lifecycle output and error metadata', () {
+      const detail = GenericDetail(
+        input: {'worktreePath': '/repo/wt'},
+        output: {
+          'terminals': [
+            {'terminalId': 'term_1'},
+          ],
+        },
+        errorMessage: 'partial failure',
+      );
+
+      final decoded = ToolCallDetail.fromJson(detail.toJson()) as GenericDetail;
+      expect(decoded.input, {'worktreePath': '/repo/wt'});
+      expect(decoded.output, {
+        'terminals': [
+          {'terminalId': 'term_1'},
+        ],
+      });
+      expect(decoded.errorMessage, 'partial failure');
     });
   });
 }

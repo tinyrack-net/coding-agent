@@ -5,6 +5,7 @@ import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/state/connection_settings_provider.dart';
 import 'package:coding_agent_app/state/daemon_lifecycle_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
+import 'package:coding_agent_app/state/host_registry_provider.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -54,8 +55,95 @@ class FakeSupervisor extends DaemonSupervisor {
   }
 }
 
+class TrackingDaemonClient extends DaemonClient {
+  TrackingDaemonClient(Uri uri) : super(uri: uri);
+
+  int connectCalls = 0;
+  int disposeCalls = 0;
+
+  @override
+  Future<void> connect() async {
+    connectCalls++;
+  }
+
+  @override
+  void dispose() {
+    disposeCalls++;
+  }
+}
+
+class MultiHostRegistry extends HostRegistryNotifier {
+  @override
+  HostRegistryState build() => HostRegistryState(
+    hosts: [
+      _host('server-a', 'a.example:7001'),
+      _host('server-b', 'b.example:7002'),
+    ],
+    activeServerId: 'server-a',
+    loaded: true,
+  );
+}
+
 void main() {
   group('daemonClientProvider', () {
+    test(
+      'host runtime keeps every registered client alive across selection',
+      () async {
+        final created = <String, TrackingDaemonClient>{};
+        final container = ProviderContainer(
+          overrides: [
+            desktopShellProvider.overrideWithValue(false),
+            hostRegistryProvider.overrideWith(MultiHostRegistry.new),
+            daemonClientFactoryProvider.overrideWithValue(
+              (settings) => created.putIfAbsent(
+                settings.host,
+                () => TrackingDaemonClient(settings.uri),
+              ),
+            ),
+          ],
+        );
+
+        final sessions = container.read(hostRuntimeClientsProvider);
+        expect(sessions.keys, {'server-a', 'server-b'});
+        expect(created.keys, {'a.example', 'b.example'});
+        expect(
+          created.values.map((client) => client.connectCalls),
+          everyElement(1),
+        );
+        expect(
+          container.read(daemonClientProvider),
+          same(sessions['server-a']),
+        );
+
+        await container
+            .read(hostRegistryProvider.notifier)
+            .selectHost('server-b');
+        final after = container.read(hostRuntimeClientsProvider);
+        expect(after['server-a'], same(sessions['server-a']));
+        expect(after['server-b'], same(sessions['server-b']));
+        expect(
+          container.read(daemonClientProvider),
+          same(sessions['server-b']),
+        );
+        expect(
+          created.values.map((client) => client.disposeCalls),
+          everyElement(0),
+        );
+
+        await container
+            .read(hostRegistryProvider.notifier)
+            .removeHost('server-a');
+        await container.pump();
+        expect(container.read(hostRuntimeClientsProvider).keys, {'server-b'});
+        expect(created['a.example']!.disposeCalls, 1);
+        expect(created['b.example']!.disposeCalls, 0);
+
+        container.dispose();
+        expect(created['a.example']!.disposeCalls, 1);
+        expect(created['b.example']!.disposeCalls, 1);
+      },
+    );
+
     test(
       'non-desktop shell: constructs and connects a client from settings',
       () {
@@ -289,3 +377,14 @@ void main() {
     });
   });
 }
+
+HostProfile _host(String serverId, String endpoint) => HostProfile(
+  serverId: serverId,
+  label: serverId,
+  connections: [
+    DirectTcpHostConnection(id: 'direct:$endpoint', endpoint: endpoint),
+  ],
+  preferredConnectionId: 'direct:$endpoint',
+  createdAt: '2026-07-28T00:00:00.000Z',
+  updatedAt: '2026-07-28T00:00:00.000Z',
+);

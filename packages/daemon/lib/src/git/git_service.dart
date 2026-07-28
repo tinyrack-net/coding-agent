@@ -10,13 +10,14 @@ import 'package:path/path.dart' as p;
 
 import 'git_runner.dart';
 import 'unified_diff_parser.dart';
+import 'worktree_metadata.dart';
 
 /// Untracked files larger than this are reported as binary without content.
 const int _maxUntrackedBytes = 1024 * 1024;
 
 class GitService {
   GitService({required this.dataDir, GitRunner? runner})
-      : runner = runner ?? const GitRunner();
+    : runner = runner ?? const GitRunner();
 
   /// Root data directory; new worktrees live under `<dataDir>/worktrees/`.
   final String dataDir;
@@ -33,26 +34,33 @@ class GitService {
     return result.ok && result.stdout.trim() == 'true';
   }
 
+  /// Top-level checkout directory containing [path].
+  Future<String> repositoryRoot(String path) async {
+    final result = await runner.run([
+      'rev-parse',
+      '--show-toplevel',
+    ], cwd: path);
+    return p.normalize(result.stdout.trim());
+  }
+
   /// Lists all worktrees of the repository containing [projectPath].
   Future<List<WorktreeInfo>> listWorktrees(String projectPath) async {
-    final result = await runner.run(
-      ['worktree', 'list', '--porcelain'],
-      cwd: projectPath,
-    );
+    final result = await runner.run([
+      'worktree',
+      'list',
+      '--porcelain',
+    ], cwd: projectPath);
     return _parseWorktreePorcelain(result.stdout);
   }
 
   /// Local branches of [projectPath], most recently committed first.
   Future<List<String>> listBranches(String projectPath) async {
-    final result = await runner.run(
-      [
-        'for-each-ref',
-        '--sort=-committerdate',
-        '--format=%(refname:short)',
-        'refs/heads/',
-      ],
-      cwd: projectPath,
-    );
+    final result = await runner.run([
+      'for-each-ref',
+      '--sort=-committerdate',
+      '--format=%(refname:short)',
+      'refs/heads/',
+    ], cwd: projectPath);
     return result.stdout
         .split('\n')
         .map((l) => l.trim())
@@ -80,6 +88,7 @@ class GitService {
     String branch, {
     String? baseRef,
   }) async {
+    final metadataBaseRef = baseRef ?? await currentBranch(projectPath);
     final projectName = p.basename(p.normalize(projectPath));
     final sanitized = sanitizeBranch(branch);
     final worktreesDir = Directory(p.join(dataDir, 'worktrees'));
@@ -96,19 +105,19 @@ class GitService {
       ['rev-parse', '--verify', '--quiet', 'refs/heads/$branch'],
       cwd: projectPath,
       check: false,
-    ))
-        .ok;
+    )).ok;
 
     if (branchExists) {
       await runner.run(['worktree', 'add', target, branch], cwd: projectPath);
     } else {
-      await runner.run(
-        [
-          'worktree', 'add', target, '-b', branch,
-          if (baseRef != null) baseRef,
-        ],
-        cwd: projectPath,
-      );
+      await runner.run([
+        'worktree',
+        'add',
+        target,
+        '-b',
+        branch,
+        if (baseRef != null) baseRef,
+      ], cwd: projectPath);
     }
 
     final canonicalTarget = _canonical(target);
@@ -120,16 +129,34 @@ class GitService {
         projectPath: p.normalize(projectPath),
       ),
     );
+    writeWorktreeBaseMetadata(created.path, baseRefName: metadataBaseRef);
     return created;
+  }
+
+  /// Recreates an archived worktree at its original durable path.
+  Future<void> restoreWorktree({
+    required String projectPath,
+    required String worktreePath,
+    required String branch,
+  }) async {
+    await runner.run(['worktree', 'prune'], cwd: projectPath, check: false);
+    await Directory(worktreePath).parent.create(recursive: true);
+    await runner.run([
+      'worktree',
+      'add',
+      worktreePath,
+      branch,
+    ], cwd: projectPath);
   }
 
   /// Paths (relative to [worktreePath]) with uncommitted working-tree
   /// changes, tracked or untracked. Empty means the worktree is clean.
   Future<List<String>> uncommittedPaths(String worktreePath) async {
-    final result = await runner.run(
-      ['status', '--porcelain', '--untracked-files=all'],
-      cwd: worktreePath,
-    );
+    final result = await runner.run([
+      'status',
+      '--porcelain',
+      '--untracked-files=all',
+    ], cwd: worktreePath);
     final paths = <String>[];
     for (final rawLine in result.stdout.split('\n')) {
       if (rawLine.length < 4) continue;
@@ -151,8 +178,9 @@ class GitService {
     }
     final worktrees = await listWorktrees(path);
     final wanted = _canonical(path);
-    final match =
-        worktrees.where((w) => p.equals(_canonical(w.path), wanted)).toList();
+    final match = worktrees
+        .where((w) => p.equals(_canonical(w.path), wanted))
+        .toList();
     if (match.isEmpty) {
       throw GitException(
         args: ['worktree', 'remove', '--force', path],
@@ -171,18 +199,23 @@ class GitService {
       }
     }
     // Run from the main checkout so we are not deleting our own cwd.
-    await runner.run(
-      ['worktree', 'remove', '--force', path],
-      cwd: info.projectPath,
-    );
+    await runner.run([
+      'worktree',
+      'remove',
+      '--force',
+      path,
+    ], cwd: info.projectPath);
   }
 
   /// Structured diff. Without [baseRef]: working tree vs HEAD plus untracked
   /// files synthesized as added. With [baseRef]: `git diff <baseRef>`.
   Future<DiffResponse> diff(String cwd, {String? baseRef}) async {
     if (baseRef != null) {
-      final result =
-          await runner.run(['diff', baseRef, '--no-color'], cwd: cwd);
+      final result = await runner.run([
+        'diff',
+        baseRef,
+        '--no-color',
+      ], cwd: cwd);
       return DiffResponse(files: parseUnifiedDiff(result.stdout));
     }
 
@@ -193,11 +226,9 @@ class GitService {
       ['rev-parse', '--verify', '--quiet', 'HEAD'],
       cwd: cwd,
       check: false,
-    ))
-        .ok;
+    )).ok;
     if (hasHead) {
-      final result =
-          await runner.run(['diff', 'HEAD', '--no-color'], cwd: cwd);
+      final result = await runner.run(['diff', 'HEAD', '--no-color'], cwd: cwd);
       files.addAll(parseUnifiedDiff(result.stdout));
     }
 
@@ -207,17 +238,17 @@ class GitService {
 
   /// Synthesizes an all-added [DiffFile] for every untracked file.
   Future<List<DiffFile>> _untrackedAsAdded(String cwd) async {
-    final root = (await runner.run(
-      ['rev-parse', '--show-toplevel'],
-      cwd: cwd,
-    ))
-        .stdout
-        .trim();
+    final root = (await runner.run([
+      'rev-parse',
+      '--show-toplevel',
+    ], cwd: cwd)).stdout.trim();
 
-    final status = await runner.run(
-      ['status', '--porcelain=v2', '--untracked-files=all', '-z'],
-      cwd: cwd,
-    );
+    final status = await runner.run([
+      'status',
+      '--porcelain=v2',
+      '--untracked-files=all',
+      '-z',
+    ], cwd: cwd);
 
     final untracked = <String>[];
     for (final entry in status.stdout.split('\x00')) {
@@ -239,11 +270,19 @@ class GitService {
   Future<DiffFile> _synthesizeAdded(String relPath, File file) async {
     final length = await file.length();
     if (length > _maxUntrackedBytes) {
-      return DiffFile(path: relPath, status: DiffFileStatus.added, binary: true);
+      return DiffFile(
+        path: relPath,
+        status: DiffFileStatus.added,
+        binary: true,
+      );
     }
     final bytes = await file.readAsBytes();
     if (bytes.contains(0)) {
-      return DiffFile(path: relPath, status: DiffFileStatus.added, binary: true);
+      return DiffFile(
+        path: relPath,
+        status: DiffFileStatus.added,
+        binary: true,
+      );
     }
 
     final content = utf8.decode(bytes, allowMalformed: true);
@@ -324,12 +363,14 @@ class GitService {
       }
       if (path == null) continue;
       mainPath ??= path;
-      infos.add(WorktreeInfo(
-        path: path,
-        branch: isDetached && branch.isEmpty ? '(detached)' : branch,
-        projectPath: mainPath,
-        isMain: idx == 0,
-      ));
+      infos.add(
+        WorktreeInfo(
+          path: path,
+          branch: isDetached && branch.isEmpty ? '(detached)' : branch,
+          projectPath: mainPath,
+          isMain: idx == 0,
+        ),
+      );
     }
     return infos;
   }

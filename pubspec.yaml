@@ -6,6 +6,7 @@ environment:
 
 workspace:
   - packages/protocol
+  - packages/relay
   - packages/daemon_lifecycle
   - packages/daemon
   - packages/app

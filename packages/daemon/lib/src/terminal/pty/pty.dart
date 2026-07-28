@@ -33,10 +33,26 @@ abstract interface class Pty {
     int cols = 80,
     int rows = 24,
     String? shell,
+    List<String>? arguments,
+    Map<String, String>? environment,
   }) {
     if (Platform.isWindows) {
-      return WindowsPty.spawn(cwd: cwd, cols: cols, rows: rows, shell: shell);
+      return WindowsPty.spawn(
+        cwd: cwd,
+        cols: cols,
+        rows: rows,
+        shell: shell,
+        arguments: arguments,
+        environment: environment,
+      );
     }
-    return UnixPty.spawn(cwd: cwd, cols: cols, rows: rows, shell: shell);
+    return UnixPty.spawn(
+      cwd: cwd,
+      cols: cols,
+      rows: rows,
+      shell: shell,
+      arguments: arguments,
+      environment: environment,
+    );
   }
 }

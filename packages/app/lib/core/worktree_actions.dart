@@ -22,7 +22,11 @@ Future<void> archiveAgentWithWorktreeConfirm(
     await actions.archive(agent.agentId);
   } catch (e) {
     if (!context.mounted) return;
-    AppToast.show(context, 'Failed to archive: $e', severity: InfoBarSeverity.error);
+    AppToast.show(
+      context,
+      'Failed to archive: $e',
+      severity: InfoBarSeverity.error,
+    );
     return;
   }
 
@@ -75,8 +79,11 @@ Future<void> archiveWorktreeWithConfirm(
   } on DaemonRpcException catch (e) {
     if (e.error.code != RpcErrorCodes.conflict) {
       if (!context.mounted) return;
-      AppToast.show(context, 'Failed to remove worktree: ${e.error.message}',
-          severity: InfoBarSeverity.error);
+      AppToast.show(
+        context,
+        'Failed to remove worktree: ${e.error.message}',
+        severity: InfoBarSeverity.error,
+      );
       return;
     }
     if (!context.mounted) return;
@@ -104,12 +111,18 @@ Future<void> archiveWorktreeWithConfirm(
       await notifier.archive(path, force: true);
     } catch (e) {
       if (!context.mounted) return;
-      AppToast.show(context, 'Failed to remove worktree: $e',
-          severity: InfoBarSeverity.error);
+      AppToast.show(
+        context,
+        'Failed to remove worktree: $e',
+        severity: InfoBarSeverity.error,
+      );
     }
   } catch (e) {
     if (!context.mounted) return;
-    AppToast.show(context, 'Failed to remove worktree: $e',
-        severity: InfoBarSeverity.error);
+    AppToast.show(
+      context,
+      'Failed to remove worktree: $e',
+      severity: InfoBarSeverity.error,
+    );
   }
 }

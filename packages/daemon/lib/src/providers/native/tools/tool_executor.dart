@@ -47,10 +47,10 @@ class ToolExecutor {
         'grep' => _grep(args),
         'glob' => _glob(args),
         _ => ToolExecutionResult(
-            content: 'unknown tool "$name"',
-            detail: GenericDetail(input: args),
-            isError: true,
-          ),
+          content: 'unknown tool "$name"',
+          detail: GenericDetail(input: args),
+          isError: true,
+        ),
       };
     } on ToolExecutionException catch (e) {
       return ToolExecutionResult(

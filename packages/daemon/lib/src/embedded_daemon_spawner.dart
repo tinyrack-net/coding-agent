@@ -6,12 +6,14 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 
 import 'daemon_server.dart';
+import 'server/daemon_config.dart';
 
 void _embeddedDaemonIsolateEntryPoint(Map<String, Object?> config) async {
   final dataDir = config['dataDir'] as String?;
   final host = config['host'] as String? ?? '127.0.0.1';
   final port = config['port'] as int? ?? 6868;
   final paths = DaemonPaths(dataDir: dataDir);
+  final runtimeConfig = loadDaemonRuntimeConfig(home: dataDir);
 
   IOSink? logSink;
   try {
@@ -35,10 +37,22 @@ void _embeddedDaemonIsolateEntryPoint(Map<String, Object?> config) async {
       port: port,
       dataDir: dataDir,
       desktopManaged: true,
+      passwordHash: runtimeConfig.auth?.passwordHash,
+      allowedOrigins: runtimeConfig.corsAllowedOrigins,
+      hostnames: runtimeConfig.hostnames,
+      trustedProxies: runtimeConfig.trustedProxies,
+      webUiEnabled: runtimeConfig.webUiEnabled,
+      webUiDistDir: runtimeConfig.webUiDistDir,
+      serviceProxyPublicBaseUrl: runtimeConfig.serviceProxy.publicBaseUrl,
+      serviceProxyListen: runtimeConfig.serviceProxy.standaloneListen,
+      enableTerminalAgentHooks: runtimeConfig.enableTerminalAgentHooks,
+      relayConfig: runtimeConfig.relay,
+      appBaseUrl: runtimeConfig.appBaseUrl,
       log: log,
     );
   } catch (e) {
     log('embedded daemon failed to start: $e');
+    await logSink?.close();
   }
 }
 
@@ -51,11 +65,7 @@ Future<ServerHello> spawnEmbeddedDaemon({
 }) async {
   final isolate = await Isolate.spawn(
     _embeddedDaemonIsolateEntryPoint,
-    <String, Object?>{
-      'dataDir': paths.dataDir,
-      'host': host,
-      'port': port,
-    },
+    <String, Object?>{'dataDir': paths.dataDir, 'host': host, 'port': port},
   );
 
   final deadline = DateTime.now().add(timeout);

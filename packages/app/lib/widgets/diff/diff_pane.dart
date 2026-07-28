@@ -9,9 +9,10 @@ import 'diff_view.dart';
 /// Reflects git state directly, not any one agent conversation — a
 /// worktree's `diff`-kind tab is a singleton.
 class DiffPane extends ConsumerWidget {
-  const DiffPane({super.key, required this.cwd});
+  const DiffPane({super.key, required this.cwd, this.compact = false});
 
   final String cwd;
+  final bool compact;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -19,29 +20,46 @@ class DiffPane extends ConsumerWidget {
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  cwd,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.textStyles.bodySmall,
+        if (!compact) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    cwd,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.textStyles.bodySmall,
+                  ),
                 ),
-              ),
-              Tooltip(
+                Tooltip(
+                  message: 'Refresh diff',
+                  child: IconButton(
+                    icon: const Icon(FluentIcons.refresh, size: 20),
+                    onPressed: () =>
+                        ref.read(diffProvider(cwd).notifier).refresh(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(),
+        ] else
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Tooltip(
                 message: 'Refresh diff',
                 child: IconButton(
-                  icon: const Icon(FluentIcons.refresh, size: 20),
-                  onPressed: () => ref.read(diffProvider(cwd).notifier).refresh(),
+                  icon: const Icon(FluentIcons.refresh, size: 14),
+                  onPressed: () =>
+                      ref.read(diffProvider(cwd).notifier).refresh(),
                 ),
               ),
-            ],
+            ),
           ),
-        ),
-        const Divider(),
         Expanded(
           child: diffAsync.when(
             loading: () => const Center(child: ProgressRing()),

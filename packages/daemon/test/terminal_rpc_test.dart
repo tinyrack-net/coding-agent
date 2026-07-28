@@ -55,8 +55,15 @@ void main() {
 
   setUp(() async {
     manager = TerminalManager(
-      spawn: ({required String cwd, int cols = 80, int rows = 24, String? shell}) =>
-          FakePty(),
+      spawn:
+          ({
+            required String cwd,
+            int cols = 80,
+            int rows = 24,
+            String? shell,
+            List<String>? arguments,
+            Map<String, String>? environment,
+          }) => FakePty(),
       sendBinary: (_, __) {},
       onExited: (_, __) {},
     );
@@ -65,17 +72,22 @@ void main() {
     server = WsServer(router: router);
     await server.start(host: '127.0.0.1', port: 0);
 
-    channel =
-        WebSocketChannel.connect(Uri.parse('ws://127.0.0.1:${server.port}'));
+    channel = WebSocketChannel.connect(
+      Uri.parse('ws://127.0.0.1:${server.port}'),
+    );
     await channel.ready;
     frames = channel.stream
         .map((f) => jsonDecode(f as String) as Map<String, Object?>)
         .asBroadcastStream();
-    channel.sink.add(jsonEncode(const RpcRequest(
-      type: MessageTypes.clientHelloRequest,
-      requestId: 'hello',
-      payload: {'clientName': 'test', 'clientVersion': '0.0.1'},
-    ).toJson()));
+    channel.sink.add(
+      jsonEncode(
+        const RpcRequest(
+          type: MessageTypes.clientHelloRequest,
+          requestId: 'hello',
+          payload: {'clientName': 'test', 'clientVersion': '0.0.1'},
+        ).toJson(),
+      ),
+    );
     await frames.first;
   });
 
@@ -90,40 +102,61 @@ void main() {
     Map<String, Object?> payload,
   ) async {
     final id = 'req-${nextRequestId++}';
-    channel.sink.add(jsonEncode(
-        RpcRequest(type: type, requestId: id, payload: payload).toJson()));
+    channel.sink.add(
+      jsonEncode(
+        RpcRequest(type: type, requestId: id, payload: payload).toJson(),
+      ),
+    );
     return frames.firstWhere((f) => f['requestId'] == id);
   }
 
   test('terminal.create requires a non-empty cwd', () async {
-    final response = await request(MessageTypes.terminalCreateRequest, const {});
+    final response = await request(
+      MessageTypes.terminalCreateRequest,
+      const {},
+    );
     expect((response['error'] as Map)['code'], RpcErrorCodes.invalidPayload);
   });
 
-  test('terminal.create returns terminal info; terminal.list reflects it',
-      () async {
-    final createResponse = await request(
-      MessageTypes.terminalCreateRequest,
-      {'cwd': 'C:/work', 'cols': 100, 'rows': 30},
-    );
-    expect(createResponse['error'], isNull);
-    final terminal = (createResponse['payload'] as Map)['terminal'] as Map;
-    expect(terminal['cwd'], 'C:/work');
-    expect(terminal['shell'], 'fake-shell');
-    expect(terminal['terminalId'], isA<String>());
+  test(
+    'terminal.create returns terminal info; terminal.list reflects it',
+    () async {
+      final createResponse = await request(MessageTypes.terminalCreateRequest, {
+        'cwd': 'C:/work',
+        'workspaceId': 'wks_1',
+        'cols': 100,
+        'rows': 30,
+      });
+      expect(createResponse['error'], isNull);
+      final terminal = (createResponse['payload'] as Map)['terminal'] as Map;
+      expect(terminal['cwd'], 'C:/work');
+      expect(terminal['shell'], 'fake-shell');
+      expect(terminal['terminalId'], isA<String>());
+      expect(terminal['workspaceId'], 'wks_1');
+      expect(terminal['activity'], isNull);
 
-    final listResponse =
-        await request(MessageTypes.terminalListRequest, const {});
-    final list = (listResponse['payload'] as Map)['terminals'] as List;
-    expect(list, hasLength(1));
-    expect(list.single, terminal);
+      final listResponse = await request(
+        MessageTypes.terminalListRequest,
+        const {},
+      );
+      final list = (listResponse['payload'] as Map)['terminals'] as List;
+      expect(list, hasLength(1));
+      expect(list.single, terminal);
+    },
+  );
+
+  test('terminal.create validates workspaceId type', () async {
+    final response = await request(MessageTypes.terminalCreateRequest, {
+      'cwd': 'C:/work',
+      'workspaceId': 1,
+    });
+    expect((response['error'] as Map)['code'], RpcErrorCodes.invalidPayload);
   });
 
   test('terminal.subscribe returns a slotId for a known terminal', () async {
-    final createResponse = await request(
-      MessageTypes.terminalCreateRequest,
-      {'cwd': 'C:/work'},
-    );
+    final createResponse = await request(MessageTypes.terminalCreateRequest, {
+      'cwd': 'C:/work',
+    });
     final terminalId =
         ((createResponse['payload'] as Map)['terminal'] as Map)['terminalId']
             as String;
@@ -136,81 +169,79 @@ void main() {
     expect((subscribeResponse['payload'] as Map)['slotId'], isA<int>());
   });
 
-  test('terminal.subscribe on an unknown terminal returns not_found',
-      () async {
-    final response = await request(
-      MessageTypes.terminalSubscribeRequest,
-      {'terminalId': 'nonexistent'},
-    );
+  test('terminal.subscribe on an unknown terminal returns not_found', () async {
+    final response = await request(MessageTypes.terminalSubscribeRequest, {
+      'terminalId': 'nonexistent',
+    });
     expect((response['error'] as Map)['code'], RpcErrorCodes.notFound);
   });
 
   test('terminal.subscribe requires a non-empty terminalId', () async {
-    final response =
-        await request(MessageTypes.terminalSubscribeRequest, const {});
+    final response = await request(
+      MessageTypes.terminalSubscribeRequest,
+      const {},
+    );
     expect((response['error'] as Map)['code'], RpcErrorCodes.invalidPayload);
   });
 
   test('terminal.unsubscribe on a known terminal succeeds with an empty '
       'payload', () async {
-    final createResponse = await request(
-      MessageTypes.terminalCreateRequest,
-      {'cwd': 'C:/work'},
-    );
+    final createResponse = await request(MessageTypes.terminalCreateRequest, {
+      'cwd': 'C:/work',
+    });
     final terminalId =
         ((createResponse['payload'] as Map)['terminal'] as Map)['terminalId']
             as String;
-    await request(
-        MessageTypes.terminalSubscribeRequest, {'terminalId': terminalId});
+    await request(MessageTypes.terminalSubscribeRequest, {
+      'terminalId': terminalId,
+    });
 
-    final response = await request(
-      MessageTypes.terminalUnsubscribeRequest,
-      {'terminalId': terminalId},
-    );
+    final response = await request(MessageTypes.terminalUnsubscribeRequest, {
+      'terminalId': terminalId,
+    });
     expect(response['error'], isNull);
     expect(response['payload'], isEmpty);
   });
 
-  test('terminal.unsubscribe on an unknown terminal returns not_found',
-      () async {
-    final response = await request(
-      MessageTypes.terminalUnsubscribeRequest,
-      {'terminalId': 'nope'},
-    );
-    expect((response['error'] as Map)['code'], RpcErrorCodes.notFound);
-  });
+  test(
+    'terminal.unsubscribe on an unknown terminal returns not_found',
+    () async {
+      final response = await request(MessageTypes.terminalUnsubscribeRequest, {
+        'terminalId': 'nope',
+      });
+      expect((response['error'] as Map)['code'], RpcErrorCodes.notFound);
+    },
+  );
 
   test('terminal.kill removes it from terminal.list; killing again fails '
       'with not_found', () async {
-    final createResponse = await request(
-      MessageTypes.terminalCreateRequest,
-      {'cwd': 'C:/work'},
-    );
+    final createResponse = await request(MessageTypes.terminalCreateRequest, {
+      'cwd': 'C:/work',
+    });
     final terminalId =
         ((createResponse['payload'] as Map)['terminal'] as Map)['terminalId']
             as String;
 
-    final killResponse = await request(
-      MessageTypes.terminalKillRequest,
-      {'terminalId': terminalId},
-    );
+    final killResponse = await request(MessageTypes.terminalKillRequest, {
+      'terminalId': terminalId,
+    });
     expect(killResponse['error'], isNull);
     await Future<void>.delayed(Duration.zero);
 
-    final listResponse =
-        await request(MessageTypes.terminalListRequest, const {});
+    final listResponse = await request(
+      MessageTypes.terminalListRequest,
+      const {},
+    );
     expect((listResponse['payload'] as Map)['terminals'], isEmpty);
 
-    final secondKill = await request(
-      MessageTypes.terminalKillRequest,
-      {'terminalId': terminalId},
-    );
+    final secondKill = await request(MessageTypes.terminalKillRequest, {
+      'terminalId': terminalId,
+    });
     expect((secondKill['error'] as Map)['code'], RpcErrorCodes.notFound);
   });
 
   test('terminal.kill requires a non-empty terminalId', () async {
-    final response =
-        await request(MessageTypes.terminalKillRequest, const {});
+    final response = await request(MessageTypes.terminalKillRequest, const {});
     expect((response['error'] as Map)['code'], RpcErrorCodes.invalidPayload);
   });
 }

@@ -15,6 +15,15 @@ void main() {
     expect(settings.uri, Uri.parse('ws://192.168.1.5:1234'));
   });
 
+  test('ConnectionSettings.uri builds wss:// when TLS is enabled', () {
+    const settings = ConnectionSettings(
+      host: 'example.com',
+      port: 443,
+      useTls: true,
+    );
+    expect(settings.uri, Uri.parse('wss://example.com:443'));
+  });
+
   test('ConnectionSettings equality is by value', () {
     const a = ConnectionSettings(host: 'h', port: 1, token: 't');
     const b = ConnectionSettings(host: 'h', port: 1, token: 't');
@@ -49,7 +58,10 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     await Future<void>.delayed(Duration.zero);
 
-    expect(container.read(connectionSettingsProvider), const ConnectionSettings());
+    expect(
+      container.read(connectionSettingsProvider),
+      const ConnectionSettings(),
+    );
   });
 
   test('loads a persisted empty token as null', () async {
@@ -70,11 +82,9 @@ void main() {
     final container = makeContainer();
     await Future<void>.delayed(Duration.zero);
 
-    await container.read(connectionSettingsProvider.notifier).save(
-          host: '10.1.1.1',
-          port: 7000,
-          token: 'secret',
-        );
+    await container
+        .read(connectionSettingsProvider.notifier)
+        .save(host: '10.1.1.1', port: 7000, token: 'secret');
 
     final state = container.read(connectionSettingsProvider);
     expect(state.host, '10.1.1.1');
@@ -95,11 +105,9 @@ void main() {
     container.read(connectionSettingsProvider);
     await Future<void>.delayed(const Duration(milliseconds: 10));
 
-    await container.read(connectionSettingsProvider.notifier).save(
-          host: '127.0.0.1',
-          port: 6868,
-          token: '',
-        );
+    await container
+        .read(connectionSettingsProvider.notifier)
+        .save(host: '127.0.0.1', port: 6868, token: '');
 
     expect(container.read(connectionSettingsProvider).token, isNull);
     final prefs = await SharedPreferences.getInstance();
@@ -111,10 +119,9 @@ void main() {
     final firstContainer = ProviderContainer();
     firstContainer.read(connectionSettingsProvider);
     await Future<void>.delayed(const Duration(milliseconds: 10));
-    await firstContainer.read(connectionSettingsProvider.notifier).save(
-          host: 'saved-host',
-          port: 4321,
-        );
+    await firstContainer
+        .read(connectionSettingsProvider.notifier)
+        .save(host: 'saved-host', port: 4321);
     firstContainer.dispose();
 
     final container = makeContainer();
@@ -141,8 +148,10 @@ void main() {
 
     await container.read(connectionSettingsProvider.notifier).reset();
 
-    expect(container.read(connectionSettingsProvider),
-        const ConnectionSettings());
+    expect(
+      container.read(connectionSettingsProvider),
+      const ConnectionSettings(),
+    );
 
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.containsKey('daemon.host'), isFalse);

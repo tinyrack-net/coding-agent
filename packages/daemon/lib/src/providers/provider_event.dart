@@ -11,10 +11,8 @@ enum PermissionDecision { allow, deny }
 
 /// Callback handed out with [PermissionRequested]; completing it answers the
 /// provider's pending permission prompt.
-typedef PermissionRespond = Future<void> Function(
-  PermissionDecision decision, {
-  String? message,
-});
+typedef PermissionRespond =
+    Future<void> Function(PermissionDecision decision, {String? message});
 
 sealed class ProviderEvent {
   const ProviderEvent();
@@ -43,7 +41,10 @@ final class ReasoningDelta extends ProviderEvent {
 
 /// Full text snapshot for an assistant text block; replaces accumulated deltas.
 final class AssistantMessageComplete extends ProviderEvent {
-  const AssistantMessageComplete({required this.itemId, required this.fullText});
+  const AssistantMessageComplete({
+    required this.itemId,
+    required this.fullText,
+  });
 
   final String itemId;
   final String fullText;
@@ -97,6 +98,61 @@ final class PermissionRequested extends ProviderEvent {
   final String toolName;
   final ToolCallDetail detail;
   final PermissionRespond respond;
+}
+
+final class UsageUpdated extends ProviderEvent {
+  const UsageUpdated({required this.usage});
+
+  final AgentUsage usage;
+}
+
+final class CompactionUpdated extends ProviderEvent {
+  const CompactionUpdated({
+    required this.itemId,
+    required this.status,
+    this.trigger,
+    this.preTokens,
+  });
+
+  final String itemId;
+  final CompactionStatus status;
+  final CompactionTrigger? trigger;
+  final int? preTokens;
+}
+
+final class ProviderSubagentUpserted extends ProviderEvent {
+  const ProviderSubagentUpserted({
+    required this.subagentId,
+    required this.status,
+    this.title,
+    this.description,
+    this.toolCallId,
+    this.cwd,
+  });
+
+  final String subagentId;
+  final String? title;
+  final String? description;
+  final ProviderSubagentStatus status;
+  final String? toolCallId;
+  final String? cwd;
+}
+
+final class ProviderSubagentTimelineChanged extends ProviderEvent {
+  const ProviderSubagentTimelineChanged({
+    required this.subagentId,
+    required this.item,
+    this.timestamp,
+  });
+
+  final String subagentId;
+  final TimelineItem item;
+  final String? timestamp;
+}
+
+final class ProviderSubagentRemoved extends ProviderEvent {
+  const ProviderSubagentRemoved({required this.subagentId});
+  final String subagentId;
 }
 
 final class TurnCompleted extends ProviderEvent {

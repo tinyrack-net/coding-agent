@@ -13,7 +13,7 @@ import 'workspace_providers.dart';
 /// least one of [worktree]/[agents] is non-empty/non-null.
 class SidebarWorktreeRow {
   const SidebarWorktreeRow({this.worktree, this.agents = const []})
-      : assert(worktree != null || agents.length > 0);
+    : assert(worktree != null || agents.length > 0);
 
   final WorktreeInfo? worktree;
   final List<AgentSummary> agents;
@@ -84,7 +84,8 @@ final sidebarGroupsProvider = Provider<SidebarGroups>((ref) {
       // Every git worktree of this project (including an idle main
       // checkout) surfaces as a row, independent of whether any agent is
       // currently running in it.
-      final worktrees = ref.watch(worktreesProvider(project.path)).value ??
+      final worktrees =
+          ref.watch(worktreesProvider(project.path)).value ??
           const <WorktreeInfo>[];
       if (worktrees.isEmpty) continue;
       final rows = <SidebarWorktreeRow>[];

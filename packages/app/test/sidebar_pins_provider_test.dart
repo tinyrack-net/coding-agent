@@ -29,10 +29,7 @@ void main() {
 
     expect(container.read(sidebarPinsProvider), {'a1'});
     final prefs = await SharedPreferences.getInstance();
-    expect(
-      jsonDecode(prefs.getString('sidebar.pinnedAgentIds')!),
-      ['a1'],
-    );
+    expect(jsonDecode(prefs.getString('sidebar.pinnedAgentIds')!), ['a1']);
   });
 
   test('togglePin() unpins an already-pinned agent', () async {

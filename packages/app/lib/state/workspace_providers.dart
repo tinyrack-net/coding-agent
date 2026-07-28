@@ -2,6 +2,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/daemon_client.dart';
+import 'agents_provider.dart';
 import 'daemon_providers.dart';
 
 /// Registered projects, fetched on (re)connect. [add] registers a new path
@@ -115,15 +116,27 @@ class WorktreeAgentContext {
     this.projectPath,
     this.branch,
     this.isWorktree = false,
+    this.workspaceId,
   });
 
   final String? projectPath;
   final String? branch;
   final bool isWorktree;
+  final String? workspaceId;
 }
 
 final worktreeAgentContextProvider =
     Provider.family<WorktreeAgentContext, String>((ref, worktreePath) {
+      final agents = ref.watch(agentsProvider).values;
+      String? workspaceId;
+      for (final agent in agents) {
+        if (resolveWorktreeKey(agent) == worktreePath &&
+            agent.workspaceId != null &&
+            agent.workspaceId!.isNotEmpty) {
+          workspaceId = agent.workspaceId;
+          break;
+        }
+      }
       final projects =
           ref.watch(projectsProvider).value ?? const <ProjectInfo>[];
       for (final project in projects) {
@@ -137,10 +150,11 @@ final worktreeAgentContextProvider =
             projectPath: worktree.projectPath,
             branch: worktree.isMain ? null : worktree.branch,
             isWorktree: !worktree.isMain,
+            workspaceId: workspaceId,
           );
         }
       }
-      return const WorktreeAgentContext();
+      return WorktreeAgentContext(workspaceId: workspaceId);
     });
 
 /// Local branches of one project (family arg: the project's path), most

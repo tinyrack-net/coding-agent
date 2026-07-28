@@ -67,8 +67,10 @@ void main() {
 
   group('versionMismatchMessage', () {
     test('names the remote version and the supported major', () {
-      final message =
-          versionMismatchMessage(hello('2.3.0'), appDaemonVersion: '1.4.0');
+      final message = versionMismatchMessage(
+        hello('2.3.0'),
+        appDaemonVersion: '1.4.0',
+      );
       expect(message, contains('원격 데몬 v2.3.0'));
       expect(message, contains('v1.x만 지원합니다'));
       expect(message, contains('데몬 또는 앱을 업데이트하세요'));

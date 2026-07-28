@@ -16,8 +16,7 @@ bool _isExcluded(String cwd, String path) =>
     p.split(p.relative(path, from: cwd)).any(_excludedDirs.contains);
 
 Future<String> grepSearch(String cwd, String pattern, {String? path}) async {
-  final root =
-      Directory(path == null ? cwd : resolveSandboxedPath(cwd, path));
+  final root = Directory(path == null ? cwd : resolveSandboxedPath(cwd, path));
   if (!root.existsSync()) {
     throw ToolExecutionException('path not found: ${path ?? '.'}');
   }
@@ -41,8 +40,10 @@ Future<String> grepSearch(String cwd, String pattern, {String? path}) async {
     final lines = content.split('\n');
     for (var i = 0; i < lines.length && matches.length < _maxMatches; i++) {
       if (regex.hasMatch(lines[i])) {
-        matches.add('${p.relative(entity.path, from: cwd)}:${i + 1}: '
-            '${lines[i].trim()}');
+        matches.add(
+          '${p.relative(entity.path, from: cwd)}:${i + 1}: '
+          '${lines[i].trim()}',
+        );
       }
     }
   }

@@ -17,7 +17,19 @@ void main() {
       mode: AgentMode.plan,
       runState: AgentRunState.running,
       createdAtMs: 123,
+      updatedAt: '2026-07-26T01:02:03.000Z',
       sessionId: 's1',
+      workspaceId: 'wks_1',
+      parentAgentId: 'parent-1',
+      requiresAttention: true,
+      attentionReason: AgentAttentionReason.error,
+      attentionTimestamp: '2026-07-25T23:59:00.000Z',
+      archivedAt: '2026-07-26T00:00:00.000Z',
+      currentModeId: 'acceptEdits',
+      featureValues: {'fast_mode': true},
+      lastUserMessageAt: '2026-07-26T01:01:00.000Z',
+      lastError: 'provider failed',
+      labels: {'source': 'schedule'},
     );
 
     test('round-trips with all fields', () {
@@ -30,7 +42,19 @@ void main() {
       expect(decoded.mode, AgentMode.plan);
       expect(decoded.runState, AgentRunState.running);
       expect(decoded.createdAtMs, 123);
+      expect(decoded.updatedAt, '2026-07-26T01:02:03.000Z');
       expect(decoded.sessionId, 's1');
+      expect(decoded.workspaceId, 'wks_1');
+      expect(decoded.parentAgentId, 'parent-1');
+      expect(decoded.requiresAttention, isTrue);
+      expect(decoded.attentionReason, AgentAttentionReason.error);
+      expect(decoded.attentionTimestamp, '2026-07-25T23:59:00.000Z');
+      expect(decoded.archivedAt, '2026-07-26T00:00:00.000Z');
+      expect(decoded.currentModeId, 'acceptEdits');
+      expect(decoded.featureValues, {'fast_mode': true});
+      expect(decoded.lastUserMessageAt, '2026-07-26T01:01:00.000Z');
+      expect(decoded.lastError, 'provider failed');
+      expect(decoded.labels, {'source': 'schedule'});
     });
 
     test('omits sessionId from json when null', () {
@@ -47,6 +71,7 @@ void main() {
       expect(noSession.toJson().containsKey('sessionId'), isFalse);
       final decoded = AgentSummary.fromJson(noSession.toJson());
       expect(decoded.sessionId, isNull);
+      expect(decoded.workspaceId, isNull);
     });
 
     test('fromJson applies defaults for missing optional fields', () {
@@ -59,10 +84,21 @@ void main() {
       expect(decoded.mode, AgentMode.normal);
       expect(decoded.runState, AgentRunState.idle);
       expect(decoded.createdAtMs, 0);
+      expect(decoded.updatedAt, isNull);
       expect(decoded.sessionId, isNull);
       expect(decoded.projectPath, isNull);
       expect(decoded.branch, isNull);
       expect(decoded.isWorktree, isFalse);
+      expect(decoded.parentAgentId, isNull);
+      expect(decoded.requiresAttention, isFalse);
+      expect(decoded.attentionReason, isNull);
+      expect(decoded.attentionTimestamp, isNull);
+      expect(decoded.archivedAt, isNull);
+      expect(decoded.currentModeId, isNull);
+      expect(decoded.featureValues, isEmpty);
+      expect(decoded.lastUserMessageAt, isNull);
+      expect(decoded.lastError, isNull);
+      expect(decoded.labels, isEmpty);
     });
 
     test('round-trips worktree fields and omits isWorktree when false', () {
@@ -75,17 +111,20 @@ void main() {
         mode: AgentMode.normal,
         runState: AgentRunState.idle,
         createdAtMs: 0,
+        workspaceId: 'wks_4',
         projectPath: 'C:/repo',
         branch: 'feature/x',
         isWorktree: true,
       );
       final json = worktreeAgent.toJson();
       expect(json['projectPath'], 'C:/repo');
+      expect(json['workspaceId'], 'wks_4');
       expect(json['branch'], 'feature/x');
       expect(json['isWorktree'], isTrue);
 
       final decoded = AgentSummary.fromJson(roundTrip(json));
       expect(decoded.projectPath, 'C:/repo');
+      expect(decoded.workspaceId, 'wks_4');
       expect(decoded.branch, 'feature/x');
       expect(decoded.isWorktree, isTrue);
 
@@ -112,6 +151,10 @@ void main() {
       expect(updated.title, full.title);
       expect(updated.runState, AgentRunState.error);
       expect(updated.sessionId, 's2');
+      expect(updated.parentAgentId, 'parent-1');
+      expect(updated.requiresAttention, isTrue);
+      expect(updated.attentionReason, AgentAttentionReason.error);
+      expect(updated.lastError, 'provider failed');
     });
 
     test('copyWith with no args keeps original values', () {
@@ -120,6 +163,42 @@ void main() {
       expect(same.mode, full.mode);
       expect(same.runState, full.runState);
       expect(same.sessionId, full.sessionId);
+      expect(same.parentAgentId, full.parentAgentId);
+      expect(same.attentionReason, full.attentionReason);
+      expect(same.lastUserMessageAt, full.lastUserMessageAt);
+      expect(same.lastError, full.lastError);
+      expect(same.labels, full.labels);
+    });
+
+    test('copyWith can detach a child and update attention', () {
+      final detached = full.copyWith(
+        clearParentAgentId: true,
+        requiresAttention: false,
+        clearAttention: true,
+      );
+      expect(detached.parentAgentId, isNull);
+      expect(detached.requiresAttention, isFalse);
+      expect(detached.attentionReason, isNull);
+      expect(detached.attentionTimestamp, isNull);
+      final recovered = detached.copyWith(lastError: null);
+      expect(recovered.lastError, isNull);
+    });
+
+    test('serializes cleared attention as explicit null wire fields', () {
+      const summary = AgentSummary(
+        agentId: 'clear',
+        title: '',
+        cwd: '',
+        provider: 'codex',
+        model: '',
+        mode: AgentMode.normal,
+        runState: AgentRunState.idle,
+        createdAtMs: 0,
+      );
+      expect(summary.toJson()['requiresAttention'], isFalse);
+      expect(summary.toJson().containsKey('attentionReason'), isTrue);
+      expect(summary.toJson()['attentionReason'], isNull);
+      expect(summary.toJson()['attentionTimestamp'], isNull);
     });
   });
 
@@ -175,6 +254,36 @@ void main() {
       expect(decoded.agent.runState, AgentRunState.awaitingPermission);
     });
 
+    test('round-trips complete Paseo usage on the agent summary', () {
+      const usage = AgentUsage(
+        inputTokens: 10,
+        cachedInputTokens: 3,
+        outputTokens: 4,
+        totalCostUsd: 0.012,
+        contextWindowMaxTokens: 200000,
+        contextWindowUsedTokens: 42000,
+      );
+      const summary = AgentSummary(
+        agentId: 'usage',
+        title: 'Usage',
+        cwd: '/work',
+        provider: 'codex',
+        model: 'gpt',
+        mode: AgentMode.normal,
+        runState: AgentRunState.running,
+        createdAtMs: 1,
+        lastUsage: usage,
+      );
+      final decoded = AgentSummary.fromJson(roundTrip(summary.toJson()));
+      expect(decoded.lastUsage?.inputTokens, 10);
+      expect(decoded.lastUsage?.cachedInputTokens, 3);
+      expect(decoded.lastUsage?.outputTokens, 4);
+      expect(decoded.lastUsage?.totalCostUsd, 0.012);
+      expect(decoded.lastUsage?.contextWindowMaxTokens, 200000);
+      expect(decoded.lastUsage?.contextWindowUsedTokens, 42000);
+      expect(decoded.copyWith(title: 'new').lastUsage?.inputTokens, 10);
+    });
+
     test('fromJson throws when agent key missing', () {
       expect(() => AgentStatePayload.fromJson(const {}), throwsA(anything));
     });
@@ -190,8 +299,9 @@ void main() {
           ErrorItem(id: 'i2', message: 'boom'),
         ],
       );
-      final decoded =
-          TimelineFetchResponse.fromJson(roundTrip(response.toJson()));
+      final decoded = TimelineFetchResponse.fromJson(
+        roundTrip(response.toJson()),
+      );
       expect(decoded.epoch, 1);
       expect(decoded.lastSeq, 10);
       expect(decoded.items, hasLength(2));
@@ -210,8 +320,9 @@ void main() {
   group('AgentConversationClearResponse', () {
     test('round-trips the cleared count', () {
       const response = AgentConversationClearResponse(cleared: 3);
-      final decoded =
-          AgentConversationClearResponse.fromJson(roundTrip(response.toJson()));
+      final decoded = AgentConversationClearResponse.fromJson(
+        roundTrip(response.toJson()),
+      );
       expect(decoded.cleared, 3);
     });
 

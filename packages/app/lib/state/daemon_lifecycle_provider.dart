@@ -14,12 +14,13 @@ final desktopShellProvider = Provider<bool>((_) => isDesktopShell);
 /// Overridable in tests to inject a fake supervisor.
 final daemonSupervisorFactoryProvider =
     Provider<DaemonSupervisor Function(ConnectionSettings settings)>(
-  (_) => (settings) => DaemonSupervisor(
-        host: settings.host,
-        port: settings.port,
-        fallbackSpawner: spawnEmbeddedDaemon,
-      ),
-);
+      (_) =>
+          (settings) => DaemonSupervisor(
+            host: settings.host,
+            port: settings.port,
+            fallbackSpawner: spawnEmbeddedDaemon,
+          ),
+    );
 
 /// Manages the local daemon's lifetime on desktop. State is:
 /// - `null` → remote/unmanaged (non-desktop shell or non-loopback host)
@@ -30,10 +31,10 @@ class DaemonLifecycleNotifier extends AsyncNotifier<DaemonStatus?> {
 
   @override
   Future<DaemonStatus?> build() async {
-    final settings = ref.watch(connectionSettingsProvider);
+    final settings = ref.watch(effectiveConnectionSettingsProvider);
     final desktop = ref.watch(desktopShellProvider);
 
-    if (!desktop || !isLoopbackHost(settings.host)) {
+    if (!desktop || settings.isRelay || !isLoopbackHost(settings.host)) {
       _supervisor = null;
       _wireTray();
       _pushToTray(null);
@@ -106,8 +107,8 @@ class DaemonLifecycleNotifier extends AsyncNotifier<DaemonStatus?> {
 
 final daemonLifecycleProvider =
     AsyncNotifierProvider<DaemonLifecycleNotifier, DaemonStatus?>(
-  DaemonLifecycleNotifier.new,
-  // No Riverpod auto-retry: a spawn failure is surfaced once and the daemon
-  // client's own reconnect loop does the retrying (see daemonClientProvider).
-  retry: (retryCount, error) => null,
-);
+      DaemonLifecycleNotifier.new,
+      // No Riverpod auto-retry: a spawn failure is surfaced once and the daemon
+      // client's own reconnect loop does the retrying (see daemonClientProvider).
+      retry: (retryCount, error) => null,
+    );

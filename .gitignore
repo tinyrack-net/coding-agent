@@ -37,7 +37,10 @@ packages/daemon/build/
 # Test coverage output
 coverage/
 packages/*/coverage/
+packages/*/coverage-*/
+packages/*/coverage_*/
 
 # Local secrets (API keys etc.)
 .env
 paseo.json
+.tinyrack-agent/

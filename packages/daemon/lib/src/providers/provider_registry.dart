@@ -26,13 +26,15 @@ class ProviderRegistry {
           models = await backend.fetchModels(key);
         }
       }
-      infos.add(ProviderInfo(
-        id: entry.id,
-        displayName: entry.displayName,
-        configured: configured,
-        models: models,
-        unavailableReason: configured ? null : 'no API key configured',
-      ));
+      infos.add(
+        ProviderInfo(
+          id: entry.id,
+          displayName: entry.displayName,
+          configured: configured,
+          models: models,
+          unavailableReason: configured ? null : 'no API key configured',
+        ),
+      );
     }
     return infos;
   }

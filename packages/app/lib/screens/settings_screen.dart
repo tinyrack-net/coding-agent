@@ -1,8 +1,11 @@
 import 'package:agent_protocol/agent_protocol.dart';
+import 'package:daemon_lifecycle/daemon_lifecycle.dart' as lifecycle;
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/app_diagnostic_report.dart';
 import '../core/daemon_client.dart';
 import '../core/desktop/desktop_shell.dart';
 import '../core/provider_display.dart';
@@ -11,7 +14,10 @@ import '../state/agents_provider.dart';
 import '../state/connection_settings_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/desktop_settings_provider.dart';
+import '../state/host_registry_provider.dart';
 import '../widgets/fluent/toast.dart';
+import 'host_settings_sections.dart';
+import 'keyboard_shortcuts_settings_section.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key, required this.section});
@@ -22,12 +28,190 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return switch (section) {
       'general' => _ConnectionSettingsSection(key: const ValueKey('general')),
-      'providers' =>
-        _ProviderCredentialsSection(key: const ValueKey('providers')),
+      'agents' => const HostAgentsSettingsSection(key: ValueKey('agents')),
+      'workspaces' => const HostWorkspacesSettingsSection(
+        key: ValueKey('workspaces'),
+      ),
+      'terminals' => const HostTerminalsSettingsSection(
+        key: ValueKey('terminals'),
+      ),
+      'providers' => _ProviderCredentialsSection(
+        key: const ValueKey('providers'),
+      ),
+      'keyboard' => const KeyboardShortcutsSettingsSection(
+        key: ValueKey('keyboard'),
+      ),
       'desktop' => _DesktopSettingsSection(key: const ValueKey('desktop')),
+      'diagnostics' => const _DiagnosticsSettingsSection(
+        key: ValueKey('diagnostics'),
+      ),
       'reset' => _DataResetSection(key: const ValueKey('reset')),
       _ => _ConnectionSettingsSection(key: const ValueKey('general')),
     };
+  }
+}
+
+class _DiagnosticsSettingsSection extends ConsumerStatefulWidget {
+  const _DiagnosticsSettingsSection({super.key});
+
+  @override
+  ConsumerState<_DiagnosticsSettingsSection> createState() =>
+      _DiagnosticsSettingsSectionState();
+}
+
+class _DiagnosticsSettingsSectionState
+    extends ConsumerState<_DiagnosticsSettingsSection> {
+  String? _diagnostic;
+  Object? _error;
+  bool _loading = false;
+  int _runId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_collect);
+  }
+
+  Future<void> _collect() async {
+    final runId = ++_runId;
+    setState(() {
+      _loading = true;
+      _diagnostic = null;
+      _error = null;
+    });
+    final registry = ref.read(hostRegistryProvider);
+    final client = ref.read(daemonClientProvider);
+    final sections = <String>[
+      formatAppDiagnosticHeader(
+        collectedAt: DateTime.now(),
+        appVersion: lifecycle.daemonVersion,
+        platform: kIsWeb ? 'web' : defaultTargetPlatform.name,
+        isDesktopApp: isDesktopShell,
+        hostCount: registry.hosts.length,
+      ),
+    ];
+    try {
+      final host = registry.activeHost;
+      if (host != null) {
+        HostConnection? active;
+        for (final connection in host.connections) {
+          if (connection.id == host.preferredConnectionId) {
+            active = connection;
+            break;
+          }
+        }
+        sections.add(
+          formatHostDiagnosticSection(
+            host: host,
+            status: client.currentState.name,
+            activeConnection: active == null
+                ? 'none'
+                : describeConnectionKind(active),
+          ),
+        );
+      }
+      sections.add(formatServerInfoSection(client.serverInfo));
+      if (client.currentState == DaemonConnectionState.connected &&
+          client.serverInfo?.features['daemonDiagnostics'] == true) {
+        sections.add(await client.getDiagnostics());
+      } else {
+        sections.add(
+          formatDiagnosticSection('Daemon diagnostics', const [
+            ('Status', 'unsupported or host is not connected'),
+          ]),
+        );
+      }
+      if (!mounted || runId != _runId) return;
+      setState(() {
+        _diagnostic = redactAppDiagnosticReport(
+          sections.join('\n\n'),
+          registry.hosts,
+        );
+        _loading = false;
+      });
+    } catch (error) {
+      sections.add(
+        formatDiagnosticSection('Host diagnostics', [('Error', '$error')]),
+      );
+      if (!mounted || runId != _runId) return;
+      setState(() {
+        _diagnostic = redactAppDiagnosticReport(
+          sections.join('\n\n'),
+          registry.hosts,
+        );
+        _error = error;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _copy() async {
+    final diagnostic = _diagnostic;
+    if (diagnostic == null) return;
+    await Clipboard.setData(ClipboardData(text: diagnostic));
+    if (mounted) AppToast.show(context, 'Diagnostic copied.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaffoldPage.scrollable(
+      key: const Key('app-diagnostics-page'),
+      header: const PageHeader(title: Text('Diagnostics')),
+      children: [
+        const Text(
+          'Collect app, host, connection, and daemon diagnostics. '
+          'Connection secrets are removed before display or copy.',
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Button(
+              key: const Key('copy-diagnostic'),
+              onPressed: _diagnostic == null ? null : _copy,
+              child: const Text('Copy diagnostic'),
+            ),
+            const SizedBox(width: 8),
+            Button(
+              key: const Key('refresh-diagnostic'),
+              onPressed: _loading ? null : _collect,
+              child: Text(_loading ? 'Running diagnostic…' : 'Refresh'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (_loading && _diagnostic == null)
+          const Card(
+            child: Row(
+              children: [
+                ProgressRing(strokeWidth: 2),
+                SizedBox(width: 12),
+                Text('Running diagnostic…'),
+              ],
+            ),
+          )
+        else if (_diagnostic != null)
+          Card(
+            key: const Key('diagnostic-report'),
+            child: SizedBox(
+              width: double.infinity,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 240),
+                child: SelectableText(
+                  _diagnostic!,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                ),
+              ),
+            ),
+          ),
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Some diagnostics failed: $_error',
+            style: TextStyle(color: Colors.red),
+          ),
+        ],
+      ],
+    );
   }
 }
 
@@ -65,7 +249,9 @@ class _ConnectionSettingsSectionState
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    await ref.read(connectionSettingsProvider.notifier).save(
+    await ref
+        .read(connectionSettingsProvider.notifier)
+        .save(
           host: _host.text.trim(),
           port: int.parse(_port.text.trim()),
           token: _token.text.trim(),
@@ -83,13 +269,13 @@ class _ConnectionSettingsSectionState
       DaemonConnectionState.connected => (Colors.green, 'Connected'),
       DaemonConnectionState.connecting => (Colors.yellow, 'Connecting…'),
       DaemonConnectionState.disconnected => (
-          Colors.red,
-          'Disconnected (retrying)',
-        ),
+        Colors.red,
+        'Disconnected (retrying)',
+      ),
       DaemonConnectionState.versionMismatch => (
-          Colors.orange,
-          'Version mismatch',
-        ),
+        Colors.orange,
+        'Version mismatch',
+      ),
     };
     final settings = ref.watch(connectionSettingsProvider);
     final rejectedHello = client.rejectedHello;
@@ -136,8 +322,8 @@ class _ConnectionSettingsSectionState
                     placeholder: '127.0.0.1 or a LAN address',
                     validator: (value) =>
                         (value == null || value.trim().isEmpty)
-                            ? 'Host is required'
-                            : null,
+                        ? 'Host is required'
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -159,10 +345,7 @@ class _ConnectionSettingsSectionState
                 const SizedBox(height: 16),
                 InfoLabel(
                   label: 'Token (optional)',
-                  child: TextFormBox(
-                    controller: _token,
-                    obscureText: true,
-                  ),
+                  child: TextFormBox(controller: _token, obscureText: true),
                 ),
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
@@ -200,7 +383,9 @@ class _DesktopSettingsSection extends ConsumerWidget {
     if (!isDesktopShell) {
       return ScaffoldPage(
         header: const PageHeader(title: Text('Desktop')),
-        content: const Center(child: Text('Desktop settings are only available on Windows/macOS.')),
+        content: const Center(
+          child: Text('Desktop settings are only available on Windows/macOS.'),
+        ),
       );
     }
     final desktop = ref.watch(desktopSettingsProvider);
@@ -307,8 +492,11 @@ class _ProviderCredentialsSectionState
       AppToast.show(context, '${providerDisplayName(id.name)} API key saved');
     } catch (e) {
       if (!mounted) return;
-      AppToast.show(context, 'Failed to save key: $e',
-          severity: InfoBarSeverity.error);
+      AppToast.show(
+        context,
+        'Failed to save key: $e',
+        severity: InfoBarSeverity.error,
+      );
     } finally {
       if (mounted) setState(() => _busy[id] = false);
     }
@@ -318,16 +506,19 @@ class _ProviderCredentialsSectionState
     setState(() => _busy[id] = true);
     try {
       final apiKey = _controllers[id]!.text.trim();
-      final result = await ref.read(providerCredentialActionsProvider).testKey(
-            id,
-            apiKey: apiKey.isEmpty ? null : apiKey,
-          );
+      final result = await ref
+          .read(providerCredentialActionsProvider)
+          .testKey(id, apiKey: apiKey.isEmpty ? null : apiKey);
       if (!mounted) return;
       setState(() => _testResults[id] = result);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _testResults[id] =
-          ProviderCredentialTestResult(ok: false, error: '$e'));
+      setState(
+        () => _testResults[id] = ProviderCredentialTestResult(
+          ok: false,
+          error: '$e',
+        ),
+      );
     } finally {
       if (mounted) setState(() => _busy[id] = false);
     }
@@ -545,8 +736,8 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
       final summary = clearedAgents == null
           ? 'All data has been reset.'
           : 'All data has been reset '
-              '(${clearedAgents == 0 ? 'no' : clearedAgents} '
-              'conversation${clearedAgents == 1 ? '' : 's'} wiped).';
+                '(${clearedAgents == 0 ? 'no' : clearedAgents} '
+                'conversation${clearedAgents == 1 ? '' : 's'} wiped).';
       AppToast.show(context, summary);
     } else {
       AppToast.show(
@@ -569,9 +760,7 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
           constraints: const BoxConstraints(maxWidth: 480),
           child: ListView(
             padding: const EdgeInsets.all(24),
-            children: [
-              _buildResetCard(context),
-            ],
+            children: [_buildResetCard(context)],
           ),
         ),
       ),
@@ -616,7 +805,9 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
                         width: 16,
                         height: 16,
                         child: ProgressRing(
-                            strokeWidth: 2, activeColor: Colors.white),
+                          strokeWidth: 2,
+                          activeColor: Colors.white,
+                        ),
                       )
                     : const Icon(FluentIcons.reset, size: 16),
                 const SizedBox(width: 6),

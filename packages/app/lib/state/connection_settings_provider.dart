@@ -1,5 +1,8 @@
+import 'package:agent_protocol/agent_protocol.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'host_registry_provider.dart';
 
 /// Where the app connects to the daemon (persisted, editable in settings).
 class ConnectionSettings {
@@ -7,23 +10,44 @@ class ConnectionSettings {
     this.host = '127.0.0.1',
     this.port = 6868,
     this.token,
+    this.useTls = false,
+    this.relayServerId,
+    this.daemonPublicKeyB64,
   });
 
   final String host;
   final int port;
   final String? token;
+  final bool useTls;
+  final String? relayServerId;
+  final String? daemonPublicKeyB64;
 
-  Uri get uri => Uri(scheme: 'ws', host: host, port: port);
+  bool get isRelay => relayServerId != null;
+
+  Uri get uri => isRelay
+      ? Uri.parse(
+          buildRelayWebSocketUrl(
+            endpoint: normalizeHostPort('$host:$port'),
+            useTls: useTls,
+            serverId: relayServerId!,
+            role: RelayRole.client,
+          ),
+        )
+      : Uri(scheme: useTls ? 'wss' : 'ws', host: host, port: port);
 
   @override
   bool operator ==(Object other) =>
       other is ConnectionSettings &&
       other.host == host &&
       other.port == port &&
-      other.token == token;
+      other.token == token &&
+      other.useTls == useTls &&
+      other.relayServerId == relayServerId &&
+      other.daemonPublicKeyB64 == daemonPublicKeyB64;
 
   @override
-  int get hashCode => Object.hash(host, port, token);
+  int get hashCode =>
+      Object.hash(host, port, token, useTls, relayServerId, daemonPublicKeyB64);
 }
 
 /// Loads persisted settings on startup and saves edits from the settings UI.
@@ -95,5 +119,54 @@ class ConnectionSettingsNotifier extends Notifier<ConnectionSettings> {
 
 final connectionSettingsProvider =
     NotifierProvider<ConnectionSettingsNotifier, ConnectionSettings>(
-  ConnectionSettingsNotifier.new,
-);
+      ConnectionSettingsNotifier.new,
+    );
+
+/// Resolves the preferred usable WebSocket transport for one Paseo host.
+///
+/// Pipe and Unix-socket transports remain registered but are skipped until
+/// the Flutter transport layer supports them.
+ConnectionSettings? connectionSettingsForHost(HostProfile host) {
+  final ordered = <HostConnection>[
+    if (host.preferredConnectionId case final preferred?)
+      ...host.connections.where((connection) => connection.id == preferred),
+    ...host.connections.where(
+      (connection) => connection.id != host.preferredConnectionId,
+    ),
+  ];
+  for (final connection in ordered) {
+    switch (connection) {
+      case RelayHostConnection():
+        final endpoint = parseHostPort(connection.relayEndpoint);
+        return ConnectionSettings(
+          host: endpoint.host,
+          port: endpoint.port,
+          useTls: connection.useTls ?? endpoint.port == 443,
+          relayServerId: host.serverId,
+          daemonPublicKeyB64: connection.daemonPublicKeyB64,
+        );
+      case DirectTcpHostConnection():
+        final endpoint = parseHostPort(connection.endpoint);
+        return ConnectionSettings(
+          host: endpoint.host,
+          port: endpoint.port,
+          token: connection.password,
+          useTls: connection.useTls,
+        );
+      case DirectSocketHostConnection() || DirectPipeHostConnection():
+        continue;
+    }
+  }
+  return null;
+}
+
+/// Temporary v1 compatibility view over the Paseo host registry. Once the
+/// registry has an active direct connection it is authoritative; otherwise the
+/// old editable settings remain the bootstrap target.
+final effectiveConnectionSettingsProvider = Provider<ConnectionSettings>((ref) {
+  final legacy = ref.watch(connectionSettingsProvider);
+  final activeHost = ref.watch(activeHostProvider);
+  return activeHost == null
+      ? legacy
+      : connectionSettingsForHost(activeHost) ?? legacy;
+});

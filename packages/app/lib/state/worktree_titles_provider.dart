@@ -49,5 +49,5 @@ class WorktreeTitlesNotifier extends Notifier<Map<String, String>> {
 
 final worktreeTitlesProvider =
     NotifierProvider<WorktreeTitlesNotifier, Map<String, String>>(
-  WorktreeTitlesNotifier.new,
-);
+      WorktreeTitlesNotifier.new,
+    );

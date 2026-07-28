@@ -23,49 +23,77 @@ class FakeSession implements AgentSession {
 }
 
 class FakeClient implements AgentClient {
-  final List<({String cwd, String model, AgentMode mode, String? sessionId})>
-      calls = [];
+  final List<
+    ({
+      String cwd,
+      Map<String, Object?> featureValues,
+      String model,
+      AgentMode mode,
+      String? modeId,
+      String? sessionId,
+      String? thinkingOptionId,
+    })
+  >
+  calls = [];
 
   @override
   Future<AgentSession> createSession({
     required String cwd,
     required String model,
     required AgentMode mode,
+    String? modeId,
+    String? thinkingOptionId,
+    Map<String, Object?> featureValues = const {},
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
   }) async {
-    calls.add((cwd: cwd, model: model, mode: mode, sessionId: sessionId));
+    calls.add((
+      cwd: cwd,
+      featureValues: featureValues,
+      model: model,
+      mode: mode,
+      modeId: modeId,
+      sessionId: sessionId,
+      thinkingOptionId: thinkingOptionId,
+    ));
     return FakeSession();
   }
 }
 
 void main() {
-  test('createSession forwards all arguments and returns a session',
-      () async {
+  test('createSession forwards all arguments and returns a session', () async {
     final client = FakeClient();
     final session = await client.createSession(
       cwd: '/tmp/work',
       model: 'claude-sonnet-5',
       mode: AgentMode.normal,
+      modeId: 'accept-edits',
+      thinkingOptionId: 'high',
+      featureValues: const {'webSearch': true},
     );
 
     expect(session, isA<AgentSession>());
     expect(client.calls.single.cwd, '/tmp/work');
     expect(client.calls.single.model, 'claude-sonnet-5');
     expect(client.calls.single.mode, AgentMode.normal);
+    expect(client.calls.single.modeId, 'accept-edits');
+    expect(client.calls.single.thinkingOptionId, 'high');
+    expect(client.calls.single.featureValues, {'webSearch': true});
     expect(client.calls.single.sessionId, isNull);
   });
 
-  test('createSession passes through an optional sessionId to resume',
-      () async {
-    final client = FakeClient();
-    await client.createSession(
-      cwd: '/tmp/work',
-      model: 'gpt-5.4',
-      mode: AgentMode.plan,
-      sessionId: 'prior-session',
-    );
-    expect(client.calls.single.sessionId, 'prior-session');
-    expect(client.calls.single.mode, AgentMode.plan);
-  });
+  test(
+    'createSession passes through an optional sessionId to resume',
+    () async {
+      final client = FakeClient();
+      await client.createSession(
+        cwd: '/tmp/work',
+        model: 'gpt-5.4',
+        mode: AgentMode.plan,
+        sessionId: 'prior-session',
+      );
+      expect(client.calls.single.sessionId, 'prior-session');
+      expect(client.calls.single.mode, AgentMode.plan);
+    },
+  );
 }

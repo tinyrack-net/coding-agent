@@ -33,8 +33,8 @@ class NativeSession implements AgentSession {
     required this.mode,
     required this.apiKey,
     List<LlmMessage>? initialMessages,
-  })  : _messages = List.of(initialMessages ?? const []),
-        _executor = ToolExecutor(cwd: cwd) {
+  }) : _messages = List.of(initialMessages ?? const []),
+       _executor = ToolExecutor(cwd: cwd) {
     _events = StreamController<ProviderEvent>.broadcast(
       onListen: () => _events.add(SessionStarted(sessionId: _uuid.v4())),
     );
@@ -89,31 +89,41 @@ class NativeSession implements AgentSession {
             apiKey: apiKey,
           )
           .listen(
-        (event) {
-          switch (event) {
-            case LlmTextDelta(:final text):
-              textBuffer.write(text);
-              _events.add(AssistantTextDelta(itemId: assistantItemId, text: text));
-            case LlmToolCallDelta(:final index, :final id, :final name, :final argumentsChunk):
-              final builder =
-                  toolCallBuilders.putIfAbsent(index, _ToolCallBuilder.new);
-              if (id != null) builder.id = id;
-              if (name != null) builder.name = name;
-              if (argumentsChunk != null) builder.arguments.write(argumentsChunk);
-            case LlmStreamDone(finishReason: final reason):
-              finishReason = reason;
-            case LlmStreamError(:final message):
-              streamError = message;
-          }
-        },
-        onDone: () {
-          if (!completer.isCompleted) completer.complete();
-        },
-        onError: (Object e) {
-          streamError = '$e';
-          if (!completer.isCompleted) completer.complete();
-        },
-      );
+            (event) {
+              switch (event) {
+                case LlmTextDelta(:final text):
+                  textBuffer.write(text);
+                  _events.add(
+                    AssistantTextDelta(itemId: assistantItemId, text: text),
+                  );
+                case LlmToolCallDelta(
+                  :final index,
+                  :final id,
+                  :final name,
+                  :final argumentsChunk,
+                ):
+                  final builder = toolCallBuilders.putIfAbsent(
+                    index,
+                    _ToolCallBuilder.new,
+                  );
+                  if (id != null) builder.id = id;
+                  if (name != null) builder.name = name;
+                  if (argumentsChunk != null)
+                    builder.arguments.write(argumentsChunk);
+                case LlmStreamDone(finishReason: final reason):
+                  finishReason = reason;
+                case LlmStreamError(:final message):
+                  streamError = message;
+              }
+            },
+            onDone: () {
+              if (!completer.isCompleted) completer.complete();
+            },
+            onError: (Object e) {
+              streamError = '$e';
+              if (!completer.isCompleted) completer.complete();
+            },
+          );
 
       await completer.future;
       _activeStream = null;
@@ -121,10 +131,12 @@ class NativeSession implements AgentSession {
 
       if (_interruptRequested) {
         if (textBuffer.isNotEmpty) {
-          _events.add(AssistantMessageComplete(
-            itemId: assistantItemId,
-            fullText: textBuffer.toString(),
-          ));
+          _events.add(
+            AssistantMessageComplete(
+              itemId: assistantItemId,
+              fullText: textBuffer.toString(),
+            ),
+          );
         }
         _events.add(const TurnFailed(error: 'interrupted'));
         return;
@@ -136,25 +148,31 @@ class NativeSession implements AgentSession {
       }
 
       if (textBuffer.isNotEmpty) {
-        _events.add(AssistantMessageComplete(
-          itemId: assistantItemId,
-          fullText: textBuffer.toString(),
-        ));
+        _events.add(
+          AssistantMessageComplete(
+            itemId: assistantItemId,
+            fullText: textBuffer.toString(),
+          ),
+        );
       }
 
       final toolCalls = toolCallBuilders.values
           .where((b) => b.name != null)
-          .map((b) => LlmToolCall(
-                id: b.id ?? _uuid.v4(),
-                name: b.name!,
-                argumentsJson: b.arguments.toString(),
-              ))
+          .map(
+            (b) => LlmToolCall(
+              id: b.id ?? _uuid.v4(),
+              name: b.name!,
+              argumentsJson: b.arguments.toString(),
+            ),
+          )
           .toList();
 
-      _messages.add(LlmAssistantMessage(
-        text: textBuffer.isEmpty ? null : textBuffer.toString(),
-        toolCalls: toolCalls,
-      ));
+      _messages.add(
+        LlmAssistantMessage(
+          text: textBuffer.isEmpty ? null : textBuffer.toString(),
+          toolCalls: toolCalls,
+        ),
+      );
 
       if (toolCalls.isEmpty || finishReason != LlmFinishReason.toolCalls) {
         _events.add(const TurnCompleted());
@@ -186,51 +204,63 @@ class NativeSession implements AgentSession {
       args = const {};
     }
 
-    _events.add(ToolCallStarted(
-      itemId: itemId,
-      toolName: call.name,
-      status: ToolCallStatus.pending,
-      detail: GenericDetail(input: args),
-    ));
-
-    if (mode == AgentMode.plan && ToolExecutor.mutatingTools.contains(call.name)) {
-      _events.add(ToolCallUpdated(
+    _events.add(
+      ToolCallStarted(
         itemId: itemId,
         toolName: call.name,
-        status: ToolCallStatus.error,
+        status: ToolCallStatus.pending,
         detail: GenericDetail(input: args),
-      ));
-      return 'error: "${call.name}" is not allowed in plan mode';
-    }
+      ),
+    );
 
-    final requiresApproval =
-        mode != AgentMode.fullAccess && ToolExecutor.mutatingTools.contains(call.name);
-    if (requiresApproval) {
-      final decision = await _awaitPermission(call.name, args);
-      if (decision == PermissionDecision.deny) {
-        _events.add(ToolCallUpdated(
+    if (mode == AgentMode.plan &&
+        ToolExecutor.mutatingTools.contains(call.name)) {
+      _events.add(
+        ToolCallUpdated(
           itemId: itemId,
           toolName: call.name,
           status: ToolCallStatus.error,
           detail: GenericDetail(input: args),
-        ));
+        ),
+      );
+      return 'error: "${call.name}" is not allowed in plan mode';
+    }
+
+    final requiresApproval =
+        mode != AgentMode.fullAccess &&
+        ToolExecutor.mutatingTools.contains(call.name);
+    if (requiresApproval) {
+      final decision = await _awaitPermission(call.name, args);
+      if (decision == PermissionDecision.deny) {
+        _events.add(
+          ToolCallUpdated(
+            itemId: itemId,
+            toolName: call.name,
+            status: ToolCallStatus.error,
+            detail: GenericDetail(input: args),
+          ),
+        );
         return 'denied by user';
       }
     }
 
-    _events.add(ToolCallStarted(
-      itemId: itemId,
-      toolName: call.name,
-      status: ToolCallStatus.running,
-      detail: GenericDetail(input: args),
-    ));
+    _events.add(
+      ToolCallStarted(
+        itemId: itemId,
+        toolName: call.name,
+        status: ToolCallStatus.running,
+        detail: GenericDetail(input: args),
+      ),
+    );
     final result = await _executor.execute(call.name, args);
-    _events.add(ToolCallUpdated(
-      itemId: itemId,
-      toolName: call.name,
-      status: result.isError ? ToolCallStatus.error : ToolCallStatus.success,
-      detail: result.detail,
-    ));
+    _events.add(
+      ToolCallUpdated(
+        itemId: itemId,
+        toolName: call.name,
+        status: result.isError ? ToolCallStatus.error : ToolCallStatus.success,
+        detail: result.detail,
+      ),
+    );
     return result.content;
   }
 
@@ -239,14 +269,16 @@ class NativeSession implements AgentSession {
     Map<String, Object?> args,
   ) {
     final completer = Completer<PermissionDecision>();
-    _events.add(PermissionRequested(
-      permissionId: _uuid.v4(),
-      toolName: toolName,
-      detail: GenericDetail(input: args),
-      respond: (decision, {message}) async {
-        if (!completer.isCompleted) completer.complete(decision);
-      },
-    ));
+    _events.add(
+      PermissionRequested(
+        permissionId: _uuid.v4(),
+        toolName: toolName,
+        detail: GenericDetail(input: args),
+        respond: (decision, {message}) async {
+          if (!completer.isCompleted) completer.complete(decision);
+        },
+      ),
+    );
     return completer.future;
   }
 

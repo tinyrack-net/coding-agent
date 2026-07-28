@@ -8,6 +8,7 @@ import 'package:coding_agent_app/state/workspace_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'support/legacy_agent_list_fetch_mixin.dart';
 
 const _projectA = ProjectInfo(path: '/repo-a', name: 'repo-a', isGitRepo: true);
 const _projectB = ProjectInfo(path: '/repo-b', name: 'repo-b', isGitRepo: true);
@@ -74,7 +75,7 @@ const _orphanAgent = AgentSummary(
 /// `projects_screen_test.dart` so each notifier's own connect-triggered
 /// `refresh()` populates state naturally instead of racing a manual
 /// `.upsert()` call.
-class FakeDaemonClient extends DaemonClient {
+class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
   FakeDaemonClient({
     this.agents = const [],
     this.projects = const [_projectA, _projectB],
@@ -239,6 +240,43 @@ void main() {
 
     expect(groups.projectSections, isEmpty);
   });
+
+  test(
+    'a non-git project with an owned agent forms a project section',
+    () async {
+      const localProject = ProjectInfo(
+        path: '/local-proj',
+        name: 'local-proj',
+        isGitRepo: false,
+      );
+      const localAgent = AgentSummary(
+        agentId: 'local',
+        title: 'Local',
+        cwd: '/local-proj',
+        provider: 'codex',
+        model: 'gpt',
+        mode: AgentMode.normal,
+        runState: AgentRunState.idle,
+        createdAtMs: 1,
+      );
+      final container = await makeContainer(
+        [localAgent],
+        projects: [localProject],
+      );
+
+      expect(resolveAgentProjectPath(localAgent), '/local-proj');
+      final groups = container.read(sidebarGroupsProvider);
+      expect(groups.projectSections, hasLength(1));
+      expect(groups.projectSections.single.project.path, localProject.path);
+      expect(groups.projectSections.single.rows.single.worktree, isNull);
+      expect(
+        groups.projectSections.single.rows.single.agents.map(
+          (agent) => agent.agentId,
+        ),
+        [localAgent.agentId],
+      );
+    },
+  );
 
   test('a git project with only an idle worktree still shows a section with '
       'an agent-less row', () async {

@@ -19,7 +19,9 @@ void registerWorkspaceHandlers(
 }) {
   router.on(MessageTypes.projectListRequest, (connection, payload) async {
     final list = await projects.list();
-    return {'projects': [for (final project in list) project.toJson()]};
+    return {
+      'projects': [for (final project in list) project.toJson()],
+    };
   });
 
   router.on(MessageTypes.projectAddRequest, (connection, payload) async {
@@ -32,11 +34,13 @@ void registerWorkspaceHandlers(
     }
     final normalized = p.normalize(p.absolute(path));
     final isGitRepo = await git.isGitRepo(normalized);
-    final project = await projects.add(ProjectInfo(
-      path: normalized,
-      name: p.basename(normalized),
-      isGitRepo: isGitRepo,
-    ));
+    final project = await projects.add(
+      ProjectInfo(
+        path: normalized,
+        name: p.basename(normalized),
+        isGitRepo: isGitRepo,
+      ),
+    );
     return {'project': project.toJson()};
   });
 
@@ -49,7 +53,9 @@ void registerWorkspaceHandlers(
       );
     }
     final worktrees = await _git(() => git.listWorktrees(projectPath));
-    return {'worktrees': [for (final w in worktrees) w.toJson()]};
+    return {
+      'worktrees': [for (final w in worktrees) w.toJson()],
+    };
   });
 
   router.on(MessageTypes.worktreeCreateRequest, (connection, payload) async {
@@ -63,10 +69,14 @@ void registerWorkspaceHandlers(
     }
     final baseRef = payload['baseRef'];
     if (baseRef != null && baseRef is! String) {
-      throw RpcException(RpcErrorCodes.invalidPayload, 'baseRef must be a string');
+      throw RpcException(
+        RpcErrorCodes.invalidPayload,
+        'baseRef must be a string',
+      );
     }
     final worktree = await _git(
-      () => git.createWorktree(projectPath, branch, baseRef: baseRef as String?),
+      () =>
+          git.createWorktree(projectPath, branch, baseRef: baseRef as String?),
     );
     return {'worktree': worktree.toJson()};
   });
@@ -81,8 +91,10 @@ void registerWorkspaceHandlers(
     }
     final branches = await _git(() => git.listBranches(projectPath));
     final current = await _git(() => git.currentBranch(projectPath));
-    return BranchListResponse(branches: branches, currentBranch: current)
-        .toJson();
+    return BranchListResponse(
+      branches: branches,
+      currentBranch: current,
+    ).toJson();
   });
 
   router.on(MessageTypes.worktreeArchiveRequest, (connection, payload) async {
@@ -110,10 +122,14 @@ void registerWorkspaceHandlers(
     }
     final baseRef = payload['baseRef'];
     if (baseRef != null && baseRef is! String) {
-      throw RpcException(RpcErrorCodes.invalidPayload, 'baseRef must be a string');
+      throw RpcException(
+        RpcErrorCodes.invalidPayload,
+        'baseRef must be a string',
+      );
     }
-    final response =
-        await _git(() => git.diff(cwd, baseRef: baseRef as String?));
+    final response = await _git(
+      () => git.diff(cwd, baseRef: baseRef as String?),
+    );
     return response.toJson();
   });
 }

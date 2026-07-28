@@ -27,10 +27,7 @@ final class LlmAssistantMessage extends LlmMessage {
 }
 
 final class LlmToolResultMessage extends LlmMessage {
-  const LlmToolResultMessage({
-    required this.toolCallId,
-    required this.content,
-  });
+  const LlmToolResultMessage({required this.toolCallId, required this.content});
   final String toolCallId;
   final String content;
 }

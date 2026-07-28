@@ -12,30 +12,39 @@ import '../providers/agent_client.dart';
 import '../providers/agent_session.dart';
 import '../providers/provider_event.dart';
 import '../server/rpc_router.dart';
+import '../utils/path_identity.dart';
 import 'agent_store.dart';
+import 'provider_subagent_store.dart';
 import 'timeline_store.dart';
 
-typedef PermissionRequestedBroadcast = void Function(
-  String agentId,
-  String permissionId,
-  String toolName,
-  ToolCallDetail detail,
-);
-typedef PermissionResolvedBroadcast = void Function(
-  String permissionId,
-  PermissionDecision decision,
-);
+typedef PermissionRequestedBroadcast =
+    void Function(
+      String agentId,
+      String permissionId,
+      String toolName,
+      ToolCallDetail detail,
+    );
+typedef PermissionResolvedBroadcast =
+    void Function(String permissionId, PermissionDecision decision);
+typedef AgentAttentionBroadcast =
+    void Function(
+      String agentId,
+      AgentAttentionReason reason,
+      String timestamp,
+    );
 
 final class AgentRuntime {
   AgentRuntime({
     required this.summary,
     required this.timeline,
     this.archived = false,
+    this.internal = false,
   });
 
   AgentSummary summary;
-  final TimelineStore timeline;
+  TimelineStore timeline;
   bool archived;
+  final bool internal;
 
   AgentSession? session;
   StreamSubscription<ProviderEvent>? sessionSub;
@@ -48,6 +57,40 @@ final class AgentRuntime {
   final Map<String, StringBuffer> textBuffers = {};
 }
 
+final class AgentRunOutcome {
+  const AgentRunOutcome({
+    required this.summary,
+    required this.output,
+    required this.timeline,
+  });
+
+  final AgentSummary summary;
+  final String? output;
+  final List<TimelineItem> timeline;
+}
+
+final class ManagedImportableProviderSession {
+  const ManagedImportableProviderSession({
+    required this.provider,
+    required this.session,
+  });
+
+  final String provider;
+  final ImportableProviderSession session;
+}
+
+final class ImportedProviderSession {
+  const ImportedProviderSession({
+    required this.summary,
+    required this.timelineSize,
+    required this.reactivated,
+  });
+
+  final AgentSummary summary;
+  final int timelineSize;
+  final bool reactivated;
+}
+
 class AgentManager {
   AgentManager({
     required Map<String, AgentClient> clients,
@@ -57,44 +100,437 @@ class AgentManager {
     this.onState,
     this.onPermissionRequested,
     this.onPermissionResolved,
-  })  : _clients = clients,
-        _store = store,
-        broker = broker ?? PermissionBroker();
+    this.onAttention,
+    void Function(ProviderSubagentUpdate update)? onProviderSubagentUpdate,
+  }) : _clients = clients,
+       _store = store,
+       broker = broker ?? PermissionBroker(),
+       providerSubagents = ProviderSubagentStore(
+         onUpdate: onProviderSubagentUpdate,
+       );
 
   final Map<String, AgentClient> _clients;
   final AgentStore _store;
   final PermissionBroker broker;
+  final ProviderSubagentStore providerSubagents;
   final _uuid = const Uuid();
 
   void Function(AgentStreamPayload payload)? onStream;
   void Function(AgentStatePayload payload)? onState;
   PermissionRequestedBroadcast? onPermissionRequested;
   PermissionResolvedBroadcast? onPermissionResolved;
+  AgentAttentionBroadcast? onAttention;
 
   final Map<String, AgentRuntime> _runtimes = {};
+  final Map<String, List<Completer<void>>> _stateWaiters = {};
+  final Map<String, Future<void>> _providerSessionImportMutations = {};
 
   /// Restore persisted agents (sessions are recreated lazily on next prompt).
   Future<void> load() async {
     for (final record in await _store.loadAll()) {
       final runtime = AgentRuntime(
         // A restored agent has no live session; coerce transient states.
-        summary: record.summary.copyWith(runState: AgentRunState.idle),
+        summary: record.summary.copyWith(
+          runState: record.archived ? AgentRunState.closed : AgentRunState.idle,
+        ),
         timeline: TimelineStore(
           agentId: record.summary.agentId,
           epoch: record.epoch,
           items: record.items,
+          rows: record.rows,
+          lastSeq: record.lastSeq,
         ),
         archived: record.archived,
+        internal: record.internal,
       );
       runtime.timeline.onItem = _onTimelineItem;
       _runtimes[record.summary.agentId] = runtime;
     }
   }
 
-  List<AgentSummary> list() => [
-        for (final r in _runtimes.values)
-          if (!r.archived) r.summary,
-      ];
+  List<AgentSummary> list({bool includeArchived = false}) => [
+    for (final r in _runtimes.values)
+      if (!r.internal && (!r.archived || includeArchived)) r.summary,
+  ];
+
+  bool isProviderAvailable(String provider) => _clients.containsKey(provider);
+
+  Future<List<AgentSlashCommand>> listCommands({
+    required String agentId,
+    ListCommandsDraftConfig? draftConfig,
+  }) async {
+    final runtime = _runtimes[agentId];
+    if (runtime != null && !runtime.archived) {
+      if (runtime.session == null) await _startSession(runtime);
+      final session = runtime.session;
+      if (session is CommandListingAgentSession) {
+        return session.listCommands();
+      }
+      throw UnsupportedError('Agent does not support listing commands');
+    }
+
+    if (draftConfig == null) {
+      throw StateError('Agent not found: $agentId');
+    }
+    final model = draftConfig.model?.trim();
+    if (model == null || model.isEmpty) return const [];
+    final client = _clients[draftConfig.provider];
+    if (client == null) {
+      throw StateError(
+        "Provider '${draftConfig.provider}' is not available. "
+        'Please ensure the CLI is installed.',
+      );
+    }
+    if (client is DraftCommandListingAgentClient) {
+      return client.listCommands(draftConfig);
+    }
+
+    final session = await client.createSession(
+      cwd: draftConfig.cwd,
+      model: model,
+      mode: AgentMode.normal,
+      modeId: draftConfig.modeId,
+      thinkingOptionId: draftConfig.thinkingOptionId,
+      featureValues: draftConfig.featureValues ?? const {},
+    );
+    try {
+      if (session is! CommandListingAgentSession) {
+        throw UnsupportedError(
+          "Provider '${draftConfig.provider}' does not support listing commands",
+        );
+      }
+      return session.listCommands();
+    } finally {
+      await session.dispose();
+    }
+  }
+
+  Future<List<AgentFeature>> listFeatures(
+    ListCommandsDraftConfig draftConfig,
+  ) async {
+    final model = draftConfig.model?.trim();
+    if (model == null || model.isEmpty) return const [];
+    final client = _clients[draftConfig.provider];
+    if (client == null) {
+      throw StateError(
+        "Provider '${draftConfig.provider}' is not available. "
+        'Please ensure the CLI is installed.',
+      );
+    }
+    if (client is DraftFeatureListingAgentClient) {
+      return client.listFeatures(draftConfig);
+    }
+
+    final session = await client.createSession(
+      cwd: draftConfig.cwd,
+      model: model,
+      mode: AgentMode.normal,
+      modeId: draftConfig.modeId,
+      thinkingOptionId: draftConfig.thinkingOptionId,
+      featureValues: draftConfig.featureValues ?? const {},
+    );
+    try {
+      return session is FeatureListingAgentSession
+          ? session.features
+          : const [];
+    } finally {
+      await session.dispose();
+    }
+  }
+
+  Future<List<ManagedImportableProviderSession>> listImportableSessions({
+    int? limit,
+    Set<String>? providerFilter,
+    String? cwd,
+  }) async {
+    final results = <ManagedImportableProviderSession>[];
+    for (final entry in _clients.entries) {
+      if (providerFilter != null && !providerFilter.contains(entry.key)) {
+        continue;
+      }
+      final client = entry.value;
+      if (client is! ImportableAgentClient) continue;
+      final importableClient = client as ImportableAgentClient;
+      try {
+        final sessions = await importableClient.listImportableSessions(
+          ListImportableSessionsOptions(limit: limit, cwd: cwd),
+        );
+        results.addAll(
+          sessions.map(
+            (session) => ManagedImportableProviderSession(
+              provider: entry.key,
+              session: session,
+            ),
+          ),
+        );
+      } on Object {
+        // Paseo isolates provider discovery failures so one missing/broken
+        // executable does not make the aggregate recent-sessions RPC fail.
+      }
+    }
+    return results;
+  }
+
+  /// Imports or reactivates one provider-native session using the frozen
+  /// Paseo 0.2.0 identity and duplicate rules.
+  Future<ImportedProviderSession> importProviderSession({
+    required String provider,
+    required String providerHandleId,
+    required String cwd,
+    required String workspaceId,
+    Map<String, String> labels = const {},
+  }) {
+    final key = '$provider\u0000$providerHandleId';
+    return _serializeProviderSessionImport(
+      key,
+      () => _importProviderSessionNow(
+        provider: provider,
+        providerHandleId: providerHandleId,
+        cwd: cwd,
+        workspaceId: workspaceId,
+        labels: labels,
+      ),
+    );
+  }
+
+  Future<T> _serializeProviderSessionImport<T>(
+    String key,
+    Future<T> Function() operation,
+  ) async {
+    final previous = _providerSessionImportMutations[key];
+    final gate = Completer<void>();
+    final current = gate.future;
+    _providerSessionImportMutations[key] = current;
+    if (previous != null) {
+      try {
+        await previous;
+      } on Object {
+        // A failed predecessor must not poison the serialized mutation lane.
+      }
+    }
+    try {
+      return await operation();
+    } finally {
+      if (!gate.isCompleted) gate.complete();
+      if (identical(_providerSessionImportMutations[key], current)) {
+        _providerSessionImportMutations.remove(key);
+      }
+    }
+  }
+
+  Future<ImportedProviderSession> _importProviderSessionNow({
+    required String provider,
+    required String providerHandleId,
+    required String cwd,
+    required String workspaceId,
+    required Map<String, String> labels,
+  }) async {
+    if (!_clients.containsKey(provider)) {
+      throw StateError('unsupported provider "$provider"');
+    }
+    final matches = [
+      for (final runtime in _runtimes.values)
+        if (!runtime.internal &&
+            runtime.summary.provider == provider &&
+            runtime.summary.sessionId == providerHandleId)
+          runtime,
+    ];
+    final active = matches.where((runtime) => !runtime.archived).firstOrNull;
+    if (active != null) {
+      throw StateError(
+        'Provider session is already imported: $providerHandleId',
+      );
+    }
+    final archived = matches.where((runtime) => runtime.archived).firstOrNull;
+    if (archived != null) {
+      if (!realpathAwarePathMatcher(cwd)(archived.summary.cwd)) {
+        throw StateError(
+          'Provider session cwd does not match import cwd: $providerHandleId',
+        );
+      }
+      return _reactivateImportedProviderSession(
+        archived,
+        workspaceId: workspaceId,
+        labels: labels,
+      );
+    }
+
+    final agentId = _uuid.v4();
+    final createdAt = DateTime.now().toUtc();
+    final runtime = AgentRuntime(
+      summary: AgentSummary(
+        agentId: agentId,
+        title: 'Agent',
+        cwd: cwd,
+        provider: provider,
+        model: '',
+        mode: AgentMode.normal,
+        runState: AgentRunState.initializing,
+        createdAtMs: createdAt.millisecondsSinceEpoch,
+        updatedAt: createdAt.toIso8601String(),
+        sessionId: providerHandleId,
+        workspaceId: workspaceId,
+        parentAgentId: parentAgentIdFromLabels(labels),
+        labels: Map.unmodifiable(labels),
+      ),
+      timeline: TimelineStore(agentId: agentId),
+    );
+    runtime.timeline.onItem = _onTimelineItem;
+    _runtimes[agentId] = runtime;
+    try {
+      await _startSession(runtime);
+      if (runtime.summary.runState == AgentRunState.initializing) {
+        runtime.summary = runtime.summary.copyWith(
+          runState: AgentRunState.idle,
+          updatedAt: DateTime.now().toUtc().toIso8601String(),
+        );
+      }
+      _persist(runtime);
+      await _store.flush();
+      _broadcastState(runtime);
+      return ImportedProviderSession(
+        summary: runtime.summary,
+        timelineSize: runtime.timeline.snapshot().length,
+        reactivated: false,
+      );
+    } catch (_) {
+      await runtime.sessionSub?.cancel();
+      await runtime.session?.dispose();
+      runtime.timeline.dispose();
+      _runtimes.remove(agentId);
+      rethrow;
+    }
+  }
+
+  Future<ImportedProviderSession> _reactivateImportedProviderSession(
+    AgentRuntime runtime, {
+    required String workspaceId,
+    required Map<String, String> labels,
+  }) async {
+    final previousSummary = runtime.summary;
+    final previousArchived = runtime.archived;
+    final previousEpoch = runtime.timeline.epoch;
+    final previousLastSeq = runtime.timeline.lastSeq;
+    final previousItems = runtime.timeline.snapshot();
+    final previousRows = runtime.timeline.snapshotRows();
+    runtime.archived = false;
+    final mergedLabels = <String, String>{...runtime.summary.labels, ...labels};
+    if (runtime.summary.labels.containsKey(paseoParentAgentIdLabel) ||
+        labels.containsKey(paseoParentAgentIdLabel)) {
+      final requestedParentAgentId = parentAgentIdFromLabels(labels);
+      if (requestedParentAgentId == null) {
+        mergedLabels.remove(paseoParentAgentIdLabel);
+      } else {
+        mergedLabels[paseoParentAgentIdLabel] = requestedParentAgentId;
+      }
+    }
+    final parentAgentId = parentAgentIdFromLabels(mergedLabels);
+    runtime.summary = runtime.summary.copyWith(
+      workspaceId: workspaceId,
+      runState: AgentRunState.initializing,
+      updatedAt: DateTime.now().toUtc().toIso8601String(),
+      archivedAt: null,
+      requiresAttention: false,
+      clearAttention: true,
+      parentAgentId: parentAgentId,
+      clearParentAgentId: parentAgentId == null,
+      labels: mergedLabels,
+    );
+    try {
+      await _startSession(runtime);
+      if (runtime.summary.runState == AgentRunState.initializing) {
+        runtime.summary = runtime.summary.copyWith(
+          runState: AgentRunState.idle,
+          updatedAt: DateTime.now().toUtc().toIso8601String(),
+        );
+      }
+      _persist(runtime);
+      await _store.flush();
+      _broadcastState(runtime);
+      return ImportedProviderSession(
+        summary: runtime.summary,
+        timelineSize: runtime.timeline.snapshot().length,
+        reactivated: true,
+      );
+    } catch (_) {
+      await runtime.sessionSub?.cancel();
+      await runtime.session?.dispose();
+      runtime.sessionSub = null;
+      runtime.session = null;
+      runtime.timeline.dispose();
+      runtime.timeline = TimelineStore(
+        agentId: previousSummary.agentId,
+        epoch: previousEpoch,
+        lastSeq: previousLastSeq,
+        items: previousItems,
+        rows: previousRows,
+      )..onItem = _onTimelineItem;
+      runtime.summary = previousSummary;
+      runtime.archived = previousArchived;
+      _persist(runtime);
+      await _store.flush();
+      rethrow;
+    }
+  }
+
+  AgentSummary? get(String agentId, {bool includeArchived = true}) {
+    final runtime = _runtimes[agentId];
+    if (runtime == null || (!includeArchived && runtime.archived)) return null;
+    return runtime.summary;
+  }
+
+  /// Resolves the frozen Paseo identifier contract: exact id, unique id
+  /// prefix, then exact full title. Archived agents remain addressable.
+  AgentSummary resolveIdentifier(String identifier) {
+    final trimmed = identifier.trim();
+    if (trimmed.isEmpty) {
+      throw RpcException(
+        RpcErrorCodes.notFound,
+        'Agent identifier cannot be empty',
+      );
+    }
+    final agents = list(includeArchived: true);
+    final exact = agents.where((agent) => agent.agentId == trimmed).firstOrNull;
+    if (exact != null) return exact;
+
+    final prefixMatches = [
+      for (final agent in agents)
+        if (agent.agentId.startsWith(trimmed)) agent,
+    ];
+    if (prefixMatches.length == 1) return prefixMatches.single;
+    if (prefixMatches.length > 1) {
+      throw RpcException(
+        RpcErrorCodes.notFound,
+        'Agent identifier "$trimmed" is ambiguous '
+        '(${_identifierSamples(prefixMatches)})',
+      );
+    }
+
+    final titleMatches = [
+      for (final agent in agents)
+        if (agent.title == trimmed) agent,
+    ];
+    if (titleMatches.length == 1) return titleMatches.single;
+    if (titleMatches.length > 1) {
+      throw RpcException(
+        RpcErrorCodes.notFound,
+        'Agent title "$trimmed" is ambiguous '
+        '(${_identifierSamples(titleMatches)})',
+      );
+    }
+    throw RpcException(RpcErrorCodes.notFound, 'Agent not found: $trimmed');
+  }
+
+  String _identifierSamples(List<AgentSummary> agents) {
+    final samples = agents
+        .take(5)
+        .map(
+          (agent) =>
+              agent.agentId.substring(0, agent.agentId.length.clamp(0, 8)),
+        )
+        .join(', ');
+    return agents.length > 5 ? '$samples, …' : samples;
+  }
 
   AgentRuntime _runtime(String agentId) {
     final runtime = _runtimes[agentId];
@@ -109,10 +545,20 @@ class AgentManager {
     required String provider,
     required String model,
     required AgentMode mode,
+    String? modeId,
+    String? thinkingOptionId,
+    Map<String, Object?> featureValues = const {},
     String? title,
+    String? workspaceId,
     String? projectPath,
     String? branch,
     bool isWorktree = false,
+    String? parentAgentId,
+    String? initialPrompt,
+    String? clientMessageId,
+    List<AgentPromptImage> images = const [],
+    List<AgentAttachment> attachments = const [],
+    bool internal = false,
   }) async {
     final client = _clients[provider];
     if (client == null) {
@@ -121,7 +567,11 @@ class AgentManager {
         'unsupported provider "$provider" (supported: ${_clients.keys.join(', ')})',
       );
     }
+    if (parentAgentId != null) {
+      _runtime(parentAgentId);
+    }
     final agentId = _uuid.v4();
+    final createdAt = DateTime.now().toUtc();
     final runtime = AgentRuntime(
       summary: AgentSummary(
         agentId: agentId,
@@ -131,12 +581,19 @@ class AgentManager {
         model: model,
         mode: mode,
         runState: AgentRunState.initializing,
-        createdAtMs: DateTime.now().millisecondsSinceEpoch,
+        createdAtMs: createdAt.millisecondsSinceEpoch,
+        updatedAt: createdAt.toIso8601String(),
+        workspaceId: workspaceId,
         projectPath: projectPath,
         branch: branch,
         isWorktree: isWorktree,
+        parentAgentId: parentAgentId,
+        thinkingOptionId: thinkingOptionId,
+        currentModeId: modeId,
+        featureValues: featureValues,
       ),
       timeline: TimelineStore(agentId: agentId),
+      internal: internal,
     );
     runtime.timeline.onItem = _onTimelineItem;
     _runtimes[agentId] = runtime;
@@ -148,6 +605,19 @@ class AgentManager {
     }
     _persist(runtime);
     _broadcastState(runtime);
+    if ((initialPrompt?.isNotEmpty ?? false) ||
+        images.isNotEmpty ||
+        attachments.isNotEmpty) {
+      unawaited(
+        prompt(
+          agentId,
+          initialPrompt ?? '',
+          images: images,
+          attachments: attachments,
+          clientMessageId: clientMessageId,
+        ),
+      );
+    }
     return runtime.summary;
   }
 
@@ -157,6 +627,9 @@ class AgentManager {
       cwd: runtime.summary.cwd,
       model: runtime.summary.model,
       mode: runtime.summary.mode,
+      modeId: runtime.summary.currentModeId,
+      thinkingOptionId: runtime.summary.thinkingOptionId,
+      featureValues: runtime.summary.featureValues,
       sessionId: runtime.summary.sessionId,
       initialHistory: runtime.timeline.snapshot(),
     );
@@ -164,31 +637,75 @@ class AgentManager {
     runtime.sessionSub = session.events.listen(
       (event) => _onProviderEvent(runtime, event),
     );
+    if (session is HistoryRestoringAgentSession) {
+      final history = session.restoredHistory;
+      if (history != null) {
+        runtime.timeline.rebuild(history);
+        runtime.textBuffers.clear();
+        runtime.currentTurnId = null;
+        runtime.interruptRequested = false;
+        _persist(runtime);
+      }
+    }
+    if (session is ProviderSubagentRestoringAgentSession) {
+      providerSubagents.replace(
+        runtime.summary.agentId,
+        runtime.summary.provider,
+        session.restoredProviderSubagents,
+      );
+    }
   }
 
-  Future<void> prompt(String agentId, String text) async {
+  Future<void> prompt(
+    String agentId,
+    String text, {
+    List<AgentPromptImage> images = const [],
+    List<AgentAttachment> attachments = const [],
+    String? clientMessageId,
+  }) async {
     final runtime = _runtime(agentId);
+    runtime.summary = runtime.summary.copyWith(lastError: null);
     if (runtime.session == null) {
       // Session died earlier: recreate, resuming the provider conversation.
       try {
         await _startSession(runtime);
       } catch (e) {
-        runtime.timeline.upsert(ErrorItem(
-          id: _uuid.v4(),
-          message: 'failed to restart session: $e',
-        ));
+        runtime.timeline.upsert(
+          ErrorItem(id: _uuid.v4(), message: 'failed to restart session: $e'),
+        );
         _setRunState(runtime, AgentRunState.error);
         return;
       }
     }
     runtime.interruptRequested = false;
-    runtime.timeline.upsert(UserMessageItem(id: _uuid.v4(), text: text));
+    runtime.summary = runtime.summary.copyWith(
+      lastUserMessageAt: DateTime.now().toUtc().toIso8601String(),
+    );
+    runtime.timeline.upsert(
+      UserMessageItem(
+        id: clientMessageId?.trim().isNotEmpty == true
+            ? clientMessageId!.trim()
+            : _uuid.v4(),
+        text: text,
+        clientMessageId: clientMessageId?.trim().isNotEmpty == true
+            ? clientMessageId!.trim()
+            : null,
+        attachments: attachments,
+      ),
+    );
     final turnId = 'turn_${_uuid.v4()}';
     runtime.currentTurnId = turnId;
     runtime.timeline.upsert(TurnItem(id: turnId, phase: TurnPhase.started));
     _setRunState(runtime, AgentRunState.running);
     try {
-      await runtime.session!.prompt(text);
+      final session = runtime.session!;
+      if (session is ImagePromptAgentSession) {
+        await session.promptWithImagesAndAttachments(text, images, attachments);
+      } else if (session is StructuredPromptAgentSession) {
+        await session.promptWithAttachments(text, attachments);
+      } else {
+        await session.prompt(_renderPrompt(text, attachments));
+      }
     } catch (e) {
       runtime.timeline.upsert(
         ErrorItem(id: _uuid.v4(), message: 'prompt failed: $e'),
@@ -198,16 +715,184 @@ class AgentManager {
     }
   }
 
+  Future<AgentRunOutcome> runAndWait(
+    String agentId,
+    String text, {
+    Duration timeout = const Duration(hours: 24),
+  }) async {
+    final runtime = _runtime(agentId);
+    if (runtime.currentTurnId != null ||
+        runtime.summary.runState == AgentRunState.running ||
+        runtime.summary.runState == AgentRunState.awaitingPermission) {
+      throw StateError('Agent $agentId already has an active run');
+    }
+    final beforeSeq = runtime.timeline.lastSeq;
+    await prompt(agentId, text);
+    final deadline = DateTime.now().add(timeout);
+    while (true) {
+      final current = _runtime(agentId);
+      final state = current.summary.runState;
+      if (state == AgentRunState.awaitingPermission) {
+        throw StateError('Agent $agentId is waiting for permission');
+      }
+      if (state == AgentRunState.error) {
+        throw StateError(_lastError(current) ?? 'Agent $agentId failed');
+      }
+      if (current.currentTurnId == null && state == AgentRunState.idle) {
+        final timeline = current.timeline.fetch(afterSeq: beforeSeq).items;
+        final output = timeline
+            .whereType<AssistantMessageItem>()
+            .where((item) => item.complete)
+            .lastOrNull
+            ?.text
+            .trim();
+        return AgentRunOutcome(
+          summary: current.summary,
+          output: output == null || output.isEmpty ? null : output,
+          timeline: timeline,
+        );
+      }
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) {
+        throw TimeoutException('Agent $agentId run timed out', timeout);
+      }
+      final waiter = Completer<void>();
+      _stateWaiters.putIfAbsent(agentId, () => []).add(waiter);
+      try {
+        await waiter.future.timeout(remaining);
+      } finally {
+        _stateWaiters[agentId]?.remove(waiter);
+        if (_stateWaiters[agentId]?.isEmpty ?? false) {
+          _stateWaiters.remove(agentId);
+        }
+      }
+    }
+  }
+
+  String? _lastError(AgentRuntime runtime) {
+    for (final item in runtime.timeline.snapshot().reversed) {
+      switch (item) {
+        case ErrorItem(:final message):
+          return message;
+        case TurnItem(:final errorMessage) when errorMessage != null:
+          return errorMessage;
+        default:
+          continue;
+      }
+    }
+    return null;
+  }
+
+  String _renderPrompt(String text, List<AgentAttachment> attachments) {
+    if (attachments.isEmpty) return text;
+    final parts = <String>[
+      if (text.trim().isNotEmpty) text.trim(),
+      for (final attachment in attachments)
+        if (attachment case TextAgentAttachment(text: final value))
+          value.trim(),
+    ]..removeWhere((part) => part.isEmpty);
+    return parts.join('\n\n');
+  }
+
   Future<void> interrupt(String agentId) async {
     final runtime = _runtime(agentId);
     runtime.interruptRequested = true;
     await runtime.session?.interrupt();
   }
 
+  Future<void> ensureLoaded(String agentId) async {
+    final runtime = _runtime(agentId);
+    if (runtime.session != null) return;
+    await _startSession(runtime);
+  }
+
+  Future<AgentProviderNotice?> setModeId(String agentId, String modeId) async {
+    final mode = _modeFromId(modeId);
+    await ensureLoaded(agentId);
+    final runtime = _runtime(agentId);
+    final session = runtime.session;
+    if (session is! ConfigurableAgentSession) {
+      throw UnsupportedError('Agent session does not support setting modes');
+    }
+    final notice = await session.setMode(modeId);
+    runtime.summary = runtime.summary.copyWith(
+      mode: mode,
+      currentModeId: modeId,
+    );
+    _persist(runtime);
+    _broadcastState(runtime);
+    return notice;
+  }
+
+  Future<void> setModelId(String agentId, String? modelId) async {
+    await ensureLoaded(agentId);
+    final runtime = _runtime(agentId);
+    final session = runtime.session;
+    if (session is! ConfigurableAgentSession) {
+      throw UnsupportedError('Agent session does not support setting models');
+    }
+    final normalized = modelId?.trim();
+    await session.setModel(
+      normalized == null || normalized.isEmpty ? null : normalized,
+    );
+    runtime.summary = runtime.summary.copyWith(
+      model: normalized == null || normalized.isEmpty ? null : normalized,
+    );
+    _persist(runtime);
+    _broadcastState(runtime);
+  }
+
+  Future<AgentProviderNotice?> setThinkingOption(
+    String agentId,
+    String? thinkingOptionId,
+  ) async {
+    await ensureLoaded(agentId);
+    final runtime = _runtime(agentId);
+    final session = runtime.session;
+    if (session is! ConfigurableAgentSession) {
+      throw UnsupportedError(
+        'Agent session does not support setting thinking options',
+      );
+    }
+    final normalized = thinkingOptionId?.trim();
+    final value = normalized == null || normalized.isEmpty ? null : normalized;
+    final notice = await session.setThinkingOption(value);
+    runtime.summary = runtime.summary.copyWith(thinkingOptionId: value);
+    _persist(runtime);
+    _broadcastState(runtime);
+    return notice;
+  }
+
+  Future<void> setFeature(
+    String agentId,
+    String featureId,
+    Object? value,
+  ) async {
+    await ensureLoaded(agentId);
+    final runtime = _runtime(agentId);
+    final session = runtime.session;
+    if (session is! ConfigurableAgentSession) {
+      throw UnsupportedError('Agent session does not support setting features');
+    }
+    await session.setFeature(featureId, value);
+    runtime.summary = runtime.summary.copyWith(
+      featureValues: {...runtime.summary.featureValues, featureId: value},
+    );
+    _persist(runtime);
+    _broadcastState(runtime);
+  }
+
   Future<AgentSummary> setMode(String agentId, AgentMode mode) async {
     final runtime = _runtime(agentId);
     // M1: stored only; the flag applies when the next session is spawned.
-    runtime.summary = runtime.summary.copyWith(mode: mode);
+    runtime.summary = runtime.summary.copyWith(
+      mode: mode,
+      currentModeId: switch (mode) {
+        AgentMode.plan => 'plan',
+        AgentMode.normal => 'normal',
+        AgentMode.fullAccess => 'full-access',
+      },
+    );
     _persist(runtime);
     _broadcastState(runtime);
     return runtime.summary;
@@ -223,16 +908,63 @@ class AgentManager {
 
   Future<void> archive(String agentId) async {
     final runtime = _runtime(agentId);
+    await _archiveTree(runtime);
+    await _store.flush();
+  }
+
+  Future<void> _archiveTree(AgentRuntime runtime) async {
+    final children = [
+      for (final candidate in _runtimes.values)
+        if (!candidate.archived &&
+            candidate.summary.parentAgentId == runtime.summary.agentId)
+          candidate,
+    ];
+    for (final child in children) {
+      await _archiveTree(child);
+    }
+
     runtime.archived = true;
+    runtime.summary = runtime.summary.copyWith(
+      runState: AgentRunState.closed,
+      archivedAt: DateTime.now().toUtc().toIso8601String(),
+      requiresAttention: false,
+      clearAttention: true,
+    );
     final session = runtime.session;
     runtime.session = null;
     await runtime.sessionSub?.cancel();
     runtime.sessionSub = null;
-    await broker.autoDenyForAgent(agentId);
+    await broker.autoDenyForAgent(runtime.summary.agentId);
     await session?.dispose();
     runtime.timeline.flushAll();
+    providerSubagents.clear(runtime.summary.agentId);
+    _persist(runtime);
+    _broadcastState(runtime);
+  }
+
+  Future<AgentSummary> detach(String agentId) async {
+    final runtime = _runtime(agentId);
+    if (runtime.summary.parentAgentId == null) {
+      return runtime.summary;
+    }
+    runtime.summary = runtime.summary.copyWith(clearParentAgentId: true);
     _persist(runtime);
     await _store.flush();
+    _broadcastState(runtime);
+    return runtime.summary;
+  }
+
+  Future<AgentSummary> clearAttention(String agentId) async {
+    final runtime = _runtime(agentId);
+    if (!runtime.summary.requiresAttention) return runtime.summary;
+    runtime.summary = runtime.summary.copyWith(
+      requiresAttention: false,
+      clearAttention: true,
+    );
+    _persist(runtime);
+    await _store.flush();
+    _broadcastState(runtime);
+    return runtime.summary;
   }
 
   TimelineFetchResponse fetchTimeline(
@@ -247,6 +979,28 @@ class AgentManager {
       return timeline.fetch();
     }
     return timeline.fetch(afterSeq: afterSeq ?? 0);
+  }
+
+  ({AgentSummary agent, int epoch, int lastSeq, List<TimelineRow> rows})
+  fetchCanonicalTimeline(String agentId) {
+    final runtime = _runtime(agentId);
+    return (
+      agent: runtime.summary,
+      epoch: runtime.timeline.epoch,
+      lastSeq: runtime.timeline.lastSeq,
+      rows: runtime.timeline.snapshotRows(),
+    );
+  }
+
+  /// Appends or replaces a daemon-owned lifecycle item on an active agent.
+  ///
+  /// Paseo uses this for setup/terminal bootstrap work that is initiated by
+  /// the daemon rather than emitted by the provider process.
+  bool upsertTimelineItem(String agentId, TimelineItem item) {
+    final runtime = _runtimes[agentId];
+    if (runtime == null || runtime.archived) return false;
+    runtime.timeline.upsert(item);
+    return true;
   }
 
   Future<void> respondPermission(String permissionId, String decision) =>
@@ -284,6 +1038,7 @@ class AgentManager {
 
       // Wipe the timeline (bumps epoch, clears items).
       runtime.timeline.clear();
+      providerSubagents.clear(runtime.summary.agentId);
 
       // Null the session id so the next prompt starts a fresh provider
       // session, and force run state back to idle. We can't go through
@@ -301,6 +1056,14 @@ class AgentManager {
         runState: AgentRunState.idle,
         createdAtMs: s.createdAtMs,
         sessionId: null,
+        workspaceId: s.workspaceId,
+        projectPath: s.projectPath,
+        branch: s.branch,
+        isWorktree: s.isWorktree,
+        lastUsage: s.lastUsage,
+        parentAgentId: s.parentAgentId,
+        requiresAttention: false,
+        archivedAt: s.archivedAt,
       );
 
       _persist(runtime);
@@ -313,6 +1076,14 @@ class AgentManager {
   }
 
   Future<void> dispose() async {
+    for (final waiters in _stateWaiters.values) {
+      for (final waiter in waiters) {
+        if (!waiter.isCompleted) {
+          waiter.completeError(StateError('Agent manager disposed'));
+        }
+      }
+    }
+    _stateWaiters.clear();
     for (final runtime in _runtimes.values) {
       await runtime.sessionSub?.cancel();
       await runtime.session?.dispose();
@@ -336,57 +1107,128 @@ class AgentManager {
         }
 
       case AssistantTextDelta(:final itemId, :final text):
-        final buffer =
-            runtime.textBuffers.putIfAbsent(itemId, StringBuffer.new)
-              ..write(text);
-        runtime.timeline.upsertCoalesced(AssistantMessageItem(
-          id: itemId,
-          text: buffer.toString(),
-          complete: false,
-        ));
+        final buffer = runtime.textBuffers.putIfAbsent(itemId, StringBuffer.new)
+          ..write(text);
+        runtime.timeline.upsertCoalesced(
+          AssistantMessageItem(
+            id: itemId,
+            text: buffer.toString(),
+            complete: false,
+          ),
+        );
 
       case ReasoningDelta(:final itemId, :final text):
-        final buffer =
-            runtime.textBuffers.putIfAbsent(itemId, StringBuffer.new)
-              ..write(text);
-        runtime.timeline.upsertCoalesced(ReasoningItem(
-          id: itemId,
-          text: buffer.toString(),
-          complete: false,
-        ));
+        final buffer = runtime.textBuffers.putIfAbsent(itemId, StringBuffer.new)
+          ..write(text);
+        runtime.timeline.upsertCoalesced(
+          ReasoningItem(id: itemId, text: buffer.toString(), complete: false),
+        );
 
       case AssistantMessageComplete(:final itemId, :final fullText):
         runtime.textBuffers.remove(itemId);
-        runtime.timeline.upsert(AssistantMessageItem(
-          id: itemId,
-          text: fullText,
-          complete: true,
-        ));
+        runtime.timeline.upsert(
+          AssistantMessageItem(id: itemId, text: fullText, complete: true),
+        );
 
       case ReasoningComplete(:final itemId, :final fullText):
         runtime.textBuffers.remove(itemId);
-        runtime.timeline.upsert(ReasoningItem(
-          id: itemId,
-          text: fullText,
-          complete: true,
-        ));
+        runtime.timeline.upsert(
+          ReasoningItem(id: itemId, text: fullText, complete: true),
+        );
 
-      case ToolCallStarted(:final itemId, :final toolName, :final status, :final detail):
-      case ToolCallUpdated(:final itemId, :final toolName, :final status, :final detail):
-        runtime.timeline.upsert(ToolCallItem(
-          id: itemId,
-          toolName: toolName,
-          status: status,
-          detail: detail,
-        ));
+      case ToolCallStarted(
+        :final itemId,
+        :final toolName,
+        :final status,
+        :final detail,
+      ):
+      case ToolCallUpdated(
+        :final itemId,
+        :final toolName,
+        :final status,
+        :final detail,
+      ):
+        runtime.timeline.upsert(
+          ToolCallItem(
+            id: itemId,
+            toolName: toolName,
+            status: status,
+            detail: detail,
+          ),
+        );
 
       case PermissionRequested(
-          :final permissionId,
-          :final toolName,
-          :final detail,
-          :final respond,
-        ):
-        _onPermissionRequested(runtime, permissionId, toolName, detail, respond);
+        :final permissionId,
+        :final toolName,
+        :final detail,
+        :final respond,
+      ):
+        _onPermissionRequested(
+          runtime,
+          permissionId,
+          toolName,
+          detail,
+          respond,
+        );
+
+      case UsageUpdated(:final usage):
+        runtime.summary = runtime.summary.copyWith(lastUsage: usage);
+        _persist(runtime);
+        _broadcastState(runtime);
+
+      case CompactionUpdated(
+        :final itemId,
+        :final status,
+        :final trigger,
+        :final preTokens,
+      ):
+        runtime.timeline.upsert(
+          CompactionItem(
+            id: itemId,
+            status: status,
+            trigger: trigger,
+            preTokens: preTokens,
+          ),
+        );
+
+      case ProviderSubagentUpserted(
+        :final subagentId,
+        :final title,
+        :final description,
+        :final status,
+        :final toolCallId,
+        :final cwd,
+      ):
+        if (!runtime.internal) {
+          providerSubagents.upsert(
+            parentAgentId: runtime.summary.agentId,
+            provider: runtime.summary.provider,
+            subagentId: subagentId,
+            title: title,
+            description: description,
+            status: status,
+            toolCallId: toolCallId,
+            cwd: cwd,
+          );
+        }
+
+      case ProviderSubagentTimelineChanged(
+        :final subagentId,
+        :final item,
+        :final timestamp,
+      ):
+        if (!runtime.internal) {
+          providerSubagents.appendTimeline(
+            parentAgentId: runtime.summary.agentId,
+            provider: runtime.summary.provider,
+            subagentId: subagentId,
+            item: item,
+            timestamp: timestamp,
+          );
+        }
+
+      case ProviderSubagentRemoved(:final subagentId):
+        assert(subagentId.isNotEmpty);
 
       case TurnCompleted():
         runtime.timeline.flushAll();
@@ -416,27 +1258,31 @@ class AgentManager {
     PermissionRespond respond,
   ) {
     final itemId = 'perm_$permissionId';
-    runtime.timeline.upsert(PermissionItem(
-      id: itemId,
-      permissionId: permissionId,
-      toolName: toolName,
-      status: PermissionStatus.pending,
-      detail: detail,
-    ));
+    runtime.timeline.upsert(
+      PermissionItem(
+        id: itemId,
+        permissionId: permissionId,
+        toolName: toolName,
+        status: PermissionStatus.pending,
+        detail: detail,
+      ),
+    );
     broker.register(
       permissionId: permissionId,
       agentId: runtime.summary.agentId,
       respond: respond,
       onResolved: (decision) {
-        runtime.timeline.upsert(PermissionItem(
-          id: itemId,
-          permissionId: permissionId,
-          toolName: toolName,
-          status: decision == PermissionDecision.allow
-              ? PermissionStatus.allowed
-              : PermissionStatus.denied,
-          detail: detail,
-        ));
+        runtime.timeline.upsert(
+          PermissionItem(
+            id: itemId,
+            permissionId: permissionId,
+            toolName: toolName,
+            status: decision == PermissionDecision.allow
+                ? PermissionStatus.allowed
+                : PermissionStatus.denied,
+            detail: detail,
+          ),
+        );
         if (runtime.summary.runState == AgentRunState.awaitingPermission) {
           _setRunState(runtime, AgentRunState.running);
         }
@@ -444,6 +1290,11 @@ class AgentManager {
       },
     );
     _setRunState(runtime, AgentRunState.awaitingPermission);
+    onAttention?.call(
+      runtime.summary.agentId,
+      AgentAttentionReason.permission,
+      DateTime.now().toUtc().toIso8601String(),
+    );
     onPermissionRequested?.call(
       runtime.summary.agentId,
       permissionId,
@@ -486,34 +1337,91 @@ class AgentManager {
   }
 
   void _setRunState(AgentRuntime runtime, AgentRunState state) {
-    if (runtime.summary.runState == state) return;
-    runtime.summary = runtime.summary.copyWith(runState: state);
+    final previous = runtime.summary.runState;
+    if (previous == state) return;
+    final timestamp = DateTime.now().toUtc().toIso8601String();
+    var summary = runtime.summary.copyWith(
+      runState: state,
+      updatedAt: timestamp,
+    );
+    if (state == AgentRunState.error) {
+      summary = summary.copyWith(lastError: _lastError(runtime));
+    } else if (state == AgentRunState.idle) {
+      summary = summary.copyWith(lastError: null);
+    }
+    if (!runtime.internal && !summary.requiresAttention) {
+      final reason = switch ((previous, state)) {
+        (AgentRunState.running, AgentRunState.idle) =>
+          AgentAttentionReason.finished,
+        (_, AgentRunState.error) when previous != AgentRunState.error =>
+          AgentAttentionReason.error,
+        _ => null,
+      };
+      if (reason != null) {
+        summary = summary.copyWith(
+          requiresAttention: true,
+          attentionReason: reason,
+          attentionTimestamp: timestamp,
+        );
+        onAttention?.call(summary.agentId, reason, timestamp);
+      }
+    }
+    runtime.summary = summary;
     _persist(runtime);
     _broadcastState(runtime);
   }
 
   void _broadcastState(AgentRuntime runtime) {
-    onState?.call(AgentStatePayload(agent: runtime.summary));
+    if (!runtime.internal) {
+      onState?.call(AgentStatePayload(agent: runtime.summary));
+    }
+    for (final waiter
+        in _stateWaiters.remove(runtime.summary.agentId) ?? const []) {
+      if (!waiter.isCompleted) waiter.complete();
+    }
   }
 
   void _onTimelineItem(String agentId, int epoch, int seq, TimelineItem item) {
-    onStream?.call(AgentStreamPayload(
-      agentId: agentId,
-      epoch: epoch,
-      seq: seq,
-      item: item,
-    ));
     final runtime = _runtimes[agentId];
+    if (runtime?.internal != true) {
+      onStream?.call(
+        AgentStreamPayload(
+          agentId: agentId,
+          epoch: epoch,
+          seq: seq,
+          item: item,
+          provider: runtime?.summary.provider ?? 'codex',
+          timestamp: DateTime.now().toUtc().toIso8601String(),
+        ),
+      );
+    }
     if (runtime != null) _persist(runtime);
   }
 
   void _persist(AgentRuntime runtime) {
-    _store.scheduleSave(PersistedAgent(
-      summary: runtime.summary,
-      archived: runtime.archived,
-      epoch: runtime.timeline.epoch,
-      lastSeq: runtime.timeline.lastSeq,
-      items: runtime.timeline.snapshot(),
-    ));
+    if (runtime.internal) return;
+    _store.scheduleSave(
+      PersistedAgent(
+        summary: runtime.summary,
+        archived: runtime.archived,
+        epoch: runtime.timeline.epoch,
+        lastSeq: runtime.timeline.lastSeq,
+        items: runtime.timeline.snapshot(),
+        rows: runtime.timeline.snapshotRows(),
+      ),
+    );
   }
 }
+
+AgentMode _modeFromId(String modeId) => switch (modeId) {
+  'read-only' ||
+  'plan' ||
+  'https://agentclientprotocol.com/protocol/session-modes#plan' =>
+    AgentMode.plan,
+  'full-access' ||
+  'fullAccess' ||
+  'bypassPermissions' ||
+  'allow-all' ||
+  'full' => AgentMode.fullAccess,
+  _ => AgentMode.normal,
+};

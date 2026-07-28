@@ -80,6 +80,8 @@ Future<void> main(List<String> args) async {
           'permission $toolName [${status.name}]',
         TurnItem(:final phase) => 'turn ${phase.name}',
         UserMessageItem(:final text) => 'user ${_trunc(text)}',
+        TodoItem(:final items) => 'todo ${items.length} items',
+        CompactionItem(:final status) => 'compaction ${status.name}',
         ErrorItem(:final message) => 'error $message',
       };
       stdout.writeln('[seq ${payload.seq}] ${item.kind}: $desc');
@@ -125,9 +127,9 @@ Future<void> main(List<String> args) async {
     final state = manager.list().single.runState;
     if (state == AgentRunState.idle || state == AgentRunState.error) {
       final timeline = manager.fetchTimeline(agent.agentId);
-      final hasTurnEnd = timeline.items
-          .whereType<TurnItem>()
-          .any((i) => i.phase != TurnPhase.started);
+      final hasTurnEnd = timeline.items.whereType<TurnItem>().any(
+        (i) => i.phase != TurnPhase.started,
+      );
       if (hasTurnEnd) {
         t.cancel();
         done.complete();
@@ -147,11 +149,11 @@ Future<void> main(List<String> args) async {
   final content = wroteFile ? hello.readAsStringSync() : '-';
   final editedFile = content.trim() == 'hi there';
   final ranBash = timeline.whereType<ToolCallItem>().any(
-        (i) => i.toolName == 'bash' && i.status == ToolCallStatus.success,
-      );
-  final gotAssistantReply = timeline
-      .whereType<AssistantMessageItem>()
-      .any((i) => i.complete && i.text.trim().isNotEmpty);
+    (i) => i.toolName == 'bash' && i.status == ToolCallStatus.success,
+  );
+  final gotAssistantReply = timeline.whereType<AssistantMessageItem>().any(
+    (i) => i.complete && i.text.trim().isNotEmpty,
+  );
 
   stdout.writeln('--- results ---');
   stdout.writeln('assistant replied: $gotAssistantReply');

@@ -56,26 +56,32 @@ List<DiffFile> parseUnifiedDiff(String diffOutput) {
           continue;
         }
         if (l.startsWith('+')) {
-          hunkLines.add(DiffLine(
-            type: DiffLineType.add,
-            text: l.substring(1),
-            newLineNo: newNo++,
-          ));
+          hunkLines.add(
+            DiffLine(
+              type: DiffLineType.add,
+              text: l.substring(1),
+              newLineNo: newNo++,
+            ),
+          );
           file.additions++;
         } else if (l.startsWith('-')) {
-          hunkLines.add(DiffLine(
-            type: DiffLineType.del,
-            text: l.substring(1),
-            oldLineNo: oldNo++,
-          ));
+          hunkLines.add(
+            DiffLine(
+              type: DiffLineType.del,
+              text: l.substring(1),
+              oldLineNo: oldNo++,
+            ),
+          );
           file.deletions++;
         } else if (l.startsWith(' ')) {
-          hunkLines.add(DiffLine(
-            type: DiffLineType.context,
-            text: l.substring(1),
-            oldLineNo: oldNo++,
-            newLineNo: newNo++,
-          ));
+          hunkLines.add(
+            DiffLine(
+              type: DiffLineType.context,
+              text: l.substring(1),
+              oldLineNo: oldNo++,
+              newLineNo: newNo++,
+            ),
+          );
         } else if (l.isEmpty) {
           // Either a truly empty context line (rare; git emits ' ') or the
           // trailing newline of the whole output. Treat as end-of-hunk only
@@ -84,12 +90,14 @@ List<DiffFile> parseUnifiedDiff(String diffOutput) {
               newNo - hunk.newStart >= hunk.newCount) {
             break;
           }
-          hunkLines.add(DiffLine(
-            type: DiffLineType.context,
-            text: '',
-            oldLineNo: oldNo++,
-            newLineNo: newNo++,
-          ));
+          hunkLines.add(
+            DiffLine(
+              type: DiffLineType.context,
+              text: '',
+              oldLineNo: oldNo++,
+              newLineNo: newNo++,
+            ),
+          );
         } else {
           break; // Unknown line — end of hunk.
         }
@@ -213,8 +221,9 @@ String _unquotePath(String raw) {
   var rest = line.substring('diff --git '.length).trim();
   if (rest.startsWith('"')) {
     // Quoted paths: "a/x" "b/y"
-    final m = RegExp(r'^("(?:[^"\\]|\\.)*")\s+("(?:[^"\\]|\\.)*")$')
-        .firstMatch(rest);
+    final m = RegExp(
+      r'^("(?:[^"\\]|\\.)*")\s+("(?:[^"\\]|\\.)*")$',
+    ).firstMatch(rest);
     if (m != null) {
       return (
         _stripPrefix(_unquotePath(m.group(1)!)),

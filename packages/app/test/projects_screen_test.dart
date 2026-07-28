@@ -5,11 +5,16 @@ import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'support/legacy_agent_list_fetch_mixin.dart';
 
 const _project = ProjectInfo(path: '/repo', name: 'repo', isGitRepo: true);
 
-const _mainWorktree =
-    WorktreeInfo(path: '/repo', branch: 'main', projectPath: '/repo', isMain: true);
+const _mainWorktree = WorktreeInfo(
+  path: '/repo',
+  branch: 'main',
+  projectPath: '/repo',
+  isMain: true,
+);
 
 const _idleWorktree = WorktreeInfo(
   path: '/repo-wt/idle',
@@ -37,12 +42,12 @@ const _owner = AgentSummary(
   isWorktree: true,
 );
 
-class FakeDaemonClient extends DaemonClient {
+class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
   FakeDaemonClient() : super(uri: Uri.parse('ws://fake'));
 
   final requests = <(String, Map<String, Object?>)>[];
   Map<String, Object?> Function(String type, Map<String, Object?> payload)
-      onRequest = (type, payload) => const {};
+  onRequest = (type, payload) => const {};
 
   @override
   Stream<RpcEvent> get events => const Stream.empty();
@@ -123,14 +128,12 @@ void main() {
 
     // The main worktree has no archive/open actions.
     final mainTile = find.widgetWithText(ListTile, 'main');
-    expect(
-      tester.widget<ListTile>(mainTile).trailing,
-      isNull,
-    );
+    expect(tester.widget<ListTile>(mainTile).trailing, isNull);
   });
 
-  testWidgets('archiving an idle worktree requests worktree.archive',
-      (tester) async {
+  testWidgets('archiving an idle worktree requests worktree.archive', (
+    tester,
+  ) async {
     final client = FakeDaemonClient()
       ..onRequest = (type, payload) {
         if (type == MessageTypes.projectListRequest) {
@@ -150,13 +153,16 @@ void main() {
     await tester.tap(find.text('repo'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byWidgetPredicate(
-      (w) => w is Tooltip && w.message == 'Archive worktree',
-    ));
+    await tester.tap(
+      find.byWidgetPredicate(
+        (w) => w is Tooltip && w.message == 'Archive worktree',
+      ),
+    );
     await tester.pumpAndSettle();
 
-    final archived = client.requests
-        .singleWhere((r) => r.$1 == MessageTypes.worktreeArchiveRequest);
+    final archived = client.requests.singleWhere(
+      (r) => r.$1 == MessageTypes.worktreeArchiveRequest,
+    );
     expect(archived.$2['path'], '/repo-wt/idle');
   });
 }

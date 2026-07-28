@@ -1,41 +1,123 @@
+import 'dart:async';
+
+import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/daemon_client.dart';
+import '../core/desktop/desktop_shell.dart';
 import '../core/provider_display.dart';
 import '../core/theme.dart';
 import '../core/worktree_actions.dart';
+import '../state/agent_attention.dart';
 import '../state/agents_provider.dart';
+import '../state/daemon_providers.dart';
+import '../state/provider_subagents_provider.dart';
+import '../state/subagents_provider.dart';
 import '../state/timeline_provider.dart';
+import '../state/worktree_tabs_provider.dart';
+import '../workspace/workspace_tab_model.dart';
 import '../widgets/composer.dart';
 import '../widgets/fluent/toast.dart';
+import '../widgets/subagents_track.dart';
 import '../widgets/timeline_item_tile.dart';
 
 /// Chat view for one agent: timeline list (auto-stick to bottom) + composer.
 /// Chat-only — diff and terminal are sibling top-level tabs at the worktree
 /// level (see `WorktreeTabbedPane`), not nested inside an agent's tab.
 class AgentChatScreen extends ConsumerStatefulWidget {
-  const AgentChatScreen({super.key, required this.agentId});
+  const AgentChatScreen({
+    super.key,
+    required this.agentId,
+    this.isScreenFocused = true,
+  });
 
   final String agentId;
+  final bool isScreenFocused;
 
   @override
   ConsumerState<AgentChatScreen> createState() => _AgentChatScreenState();
 }
 
-class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
+class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
+    with WidgetsBindingObserver {
   final _scrollController = ScrollController();
   bool _stickToBottom = true;
+  bool _hasSeenAttentionState = false;
+  bool _lastRequiresAttention = false;
+  bool _deferredFocusEntryClear = false;
+  bool _attentionClearInFlight = false;
+  bool _historyEdgeReady = false;
+  bool _loadingOlder = false;
+  late bool _isAppVisible;
+  AgentSummary? _observedAgent;
+  DaemonClient? _observedClient;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    windowFocusedNotifier.addListener(_onWindowFocusChanged);
+    _isAppVisible = _computeAppVisibility();
     _scrollController.addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _historyEdgeReady = true;
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    windowFocusedNotifier.removeListener(_onWindowFocusChanged);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void deactivate() {
+    unawaited(_clearAttentionOnBlur());
+    super.deactivate();
+  }
+
+  @override
+  void didUpdateWidget(covariant AgentChatScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isScreenFocused && !widget.isScreenFocused) {
+      unawaited(_clearAttentionOnBlur());
+    } else if (!oldWidget.isScreenFocused &&
+        widget.isScreenFocused &&
+        _isAppVisible) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _clearAttention(AgentAttentionClearTrigger.focusEntry),
+      );
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _updateAppVisibility();
+  }
+
+  bool _computeAppVisibility() {
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    final lifecycleVisible =
+        lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    final windowVisible = !isDesktopShell || windowFocusedNotifier.value;
+    return lifecycleVisible && windowVisible;
+  }
+
+  void _onWindowFocusChanged() => _updateAppVisibility();
+
+  void _updateAppVisibility() {
+    final next = _computeAppVisibility();
+    if (next == _isAppVisible) return;
+    final resumed = !_isAppVisible && next;
+    _isAppVisible = next;
+    if (resumed && mounted && widget.isScreenFocused) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _clearAttention(AgentAttentionClearTrigger.focusEntry),
+      );
+    }
   }
 
   void _onScroll() {
@@ -45,6 +127,50 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     if (nearBottom != _stickToBottom) {
       setState(() => _stickToBottom = nearBottom);
     }
+    if (_historyEdgeReady &&
+        position.pixels <= 96 &&
+        !_loadingOlder &&
+        ref.read(timelineProvider(widget.agentId)).hasOlder) {
+      unawaited(_loadOlder());
+    }
+  }
+
+  Future<void> _loadOlder() async {
+    if (_loadingOlder || !_scrollController.hasClients) return;
+    _loadingOlder = true;
+    final beforeExtent = _scrollController.position.maxScrollExtent;
+    final beforePixels = _scrollController.position.pixels;
+    try {
+      final loaded = await ref
+          .read(timelineProvider(widget.agentId).notifier)
+          .loadOlder();
+      if (!loaded || !mounted) {
+        if (mounted) {
+          final error = ref.read(timelineProvider(widget.agentId)).error;
+          if (error != null) {
+            AppToast.show(
+              context,
+              'Failed to load older messages: $error',
+              severity: InfoBarSeverity.error,
+            );
+          }
+        }
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_scrollController.hasClients) return;
+        final addedExtent =
+            _scrollController.position.maxScrollExtent - beforeExtent;
+        _scrollController.jumpTo(
+          (beforePixels + addedExtent).clamp(
+            _scrollController.position.minScrollExtent,
+            _scrollController.position.maxScrollExtent,
+          ),
+        );
+      });
+    } finally {
+      _loadingOlder = false;
+    }
   }
 
   void _scrollToBottom() {
@@ -52,13 +178,203 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
   }
 
+  void _observeAttention(AgentSummary? agent) {
+    if (agent == null) return;
+    _observedAgent = agent;
+    if (!_hasSeenAttentionState) {
+      _hasSeenAttentionState = true;
+      _lastRequiresAttention = agent.requiresAttention;
+      if (agent.requiresAttention && _isAppVisible && widget.isScreenFocused) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _clearAttention(AgentAttentionClearTrigger.focusEntry),
+        );
+      }
+      return;
+    }
+    if (!_lastRequiresAttention &&
+        agent.requiresAttention &&
+        _isAppVisible &&
+        widget.isScreenFocused) {
+      _deferredFocusEntryClear = true;
+    } else if (!agent.requiresAttention) {
+      _deferredFocusEntryClear = false;
+    }
+    _lastRequiresAttention = agent.requiresAttention;
+  }
+
+  Future<void> _clearAttention(AgentAttentionClearTrigger trigger) async {
+    if (_attentionClearInFlight || !mounted) return;
+    final agent = ref.read(agentSummaryProvider(widget.agentId));
+    final connected =
+        ref.read(daemonClientProvider).currentState ==
+        DaemonConnectionState.connected;
+    if (!shouldClearAgentAttention(
+      agentId: agent?.agentId,
+      isConnected: connected,
+      requiresAttention: agent?.requiresAttention ?? false,
+      attentionReason: agent?.attentionReason,
+      trigger: trigger,
+      hasDeferredFocusEntryClear: _deferredFocusEntryClear,
+    )) {
+      return;
+    }
+    _attentionClearInFlight = true;
+    _deferredFocusEntryClear = false;
+    try {
+      await ref.read(agentActionsProvider).clearAttention(widget.agentId);
+    } on Object {
+      // Attention clear is acknowledgement bookkeeping and must not block
+      // viewing or composing when a connection races away.
+    } finally {
+      _attentionClearInFlight = false;
+    }
+  }
+
+  Future<void> _clearAttentionOnBlur() async {
+    if (_attentionClearInFlight) return;
+    final agent = _observedAgent;
+    final client = _observedClient;
+    if (agent == null ||
+        client == null ||
+        !shouldClearAgentAttention(
+          agentId: agent.agentId,
+          isConnected: client.currentState == DaemonConnectionState.connected,
+          requiresAttention: agent.requiresAttention,
+          attentionReason: agent.attentionReason,
+          trigger: AgentAttentionClearTrigger.agentBlur,
+          hasDeferredFocusEntryClear: _deferredFocusEntryClear,
+        )) {
+      return;
+    }
+    _attentionClearInFlight = true;
+    _deferredFocusEntryClear = false;
+    try {
+      final response = await client.request(
+        MessageTypes.agentAttentionClearRequest,
+        {'agentId': agent.agentId},
+      );
+      if (mounted && response['agent'] is Map<String, Object?>) {
+        final cleared = AgentSummary.fromJson(
+          response['agent']! as Map<String, Object?>,
+        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ref.read(agentsProvider.notifier).upsert(cleared);
+          }
+        });
+      }
+    } on Object {
+      // Blur acknowledgement is best effort when navigation races disconnect.
+    } finally {
+      _attentionClearInFlight = false;
+    }
+  }
+
+  Future<bool> _confirmSubagent(SubagentConfirmation confirmation) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => ContentDialog(
+        title: Text(confirmation.title),
+        content: Text(confirmation.message),
+        actions: [
+          Button(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(confirmation.confirmLabel),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<void> _archiveSubagent(PaseoSubagentRow child) async {
+    if (!await _confirmSubagent(resolveArchiveSubagentConfirmation(child))) {
+      return;
+    }
+    try {
+      await ref.read(agentActionsProvider).archive(child.id);
+    } on Object catch (error) {
+      if (mounted) {
+        AppToast.show(
+          context,
+          'Failed to archive subagent: $error',
+          severity: InfoBarSeverity.error,
+        );
+      }
+    }
+  }
+
+  Future<void> _detachSubagent(PaseoSubagentRow child) async {
+    if (!await _confirmSubagent(resolveDetachSubagentConfirmation(child))) {
+      return;
+    }
+    try {
+      await ref.read(agentActionsProvider).detach(child.id);
+      if (!mounted) return;
+      final worktree = resolveWorktreeKey(child.agent);
+      ref.read(worktreeTabsProvider(worktree).notifier).focusAgent(child.id);
+      ref.read(selectedWorktreeProvider.notifier).select(worktree);
+    } on Object catch (error) {
+      if (mounted) {
+        AppToast.show(
+          context,
+          'Failed to detach subagent: $error',
+          severity: InfoBarSeverity.error,
+        );
+      }
+    }
+  }
+
+  Future<void> _handleClientSlashCommand(
+    ComposerClientSlashCommand command,
+  ) async {
+    final agent = ref.read(agentSummaryProvider(widget.agentId));
+    if (agent == null) return;
+    if (command == ComposerClientSlashCommand.exit) {
+      await archiveAgentWithWorktreeConfirm(context, ref, agent);
+      return;
+    }
+
+    final worktree = resolveWorktreeKey(agent);
+    ref
+        .read(worktreeTabsProvider(worktree).notifier)
+        .focusOpenIntentTarget(
+          WorkspaceDraftTabTarget(
+            draftId: 'new',
+            setup: WorkspaceDraftTabSetup(
+              provider: agent.provider,
+              cwd: agent.cwd,
+              modeId: agent.currentModeId,
+              model: agent.model,
+              thinkingOptionId: agent.thinkingOptionId,
+              featureValues: agent.featureValues,
+            ),
+          ),
+        );
+    ref.read(selectedWorktreeProvider.notifier).select(worktree);
+    try {
+      await ref.read(agentActionsProvider).archive(agent.agentId);
+    } on Object catch (error) {
+      if (!mounted) return;
+      AppToast.show(
+        context,
+        'Failed to start a fresh draft: $error',
+        severity: InfoBarSeverity.error,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    _observedClient = ref.watch(daemonClientProvider);
     final agent = ref.watch(agentSummaryProvider(widget.agentId));
-    final count = ref.watch(timelineCountProvider(widget.agentId));
-    final loading = ref.watch(
-      timelineProvider(widget.agentId).select((s) => s.loading),
-    );
+    final timeline = ref.watch(timelineProvider(widget.agentId));
+    final subagents = ref.watch(subagentsForParentProvider(widget.agentId));
+    _observeAttention(agent);
 
     // While stuck to bottom, follow new/updated content.
     ref.listen(timelineProvider(widget.agentId), (previous, next) {
@@ -94,18 +410,57 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                 icon: const Icon(FluentIcons.archive),
                 onPressed: agent == null
                     ? null
-                    : () => archiveAgentWithWorktreeConfirm(context, ref, agent),
+                    : () =>
+                          archiveAgentWithWorktreeConfirm(context, ref, agent),
               ),
             ),
           ),
         ),
+        if (subagents.isNotEmpty)
+          SubagentsTrack(
+            rows: subagents,
+            onOpenPaseoSubagent: (child) {
+              final worktree = resolveWorktreeKey(child.agent);
+              ref
+                  .read(worktreeTabsProvider(worktree).notifier)
+                  .focusAgent(child.id);
+              ref.read(selectedWorktreeProvider.notifier).select(worktree);
+            },
+            onOpenProviderSubagent: (child) {
+              if (agent == null) return;
+              ref
+                  .read(
+                    worktreeTabsProvider(resolveWorktreeKey(agent)).notifier,
+                  )
+                  .focusProviderSubagent(child.parentAgentId, child.id);
+            },
+            onArchivePaseoSubagent: (child) {
+              unawaited(_archiveSubagent(child));
+            },
+            onDetachPaseoSubagent: (child) {
+              unawaited(_detachSubagent(child));
+            },
+            onHideFinishedProviderSubagents: () => ref
+                .read(providerSubagentsProvider(widget.agentId).notifier)
+                .hideFinished(),
+          ),
         const Divider(),
-        ..._chatChildren(context, count, loading),
+        ..._chatChildren(
+          context,
+          timeline.displayItems.length,
+          timeline.loading,
+          timeline.loadingOlder,
+        ),
       ],
     );
   }
 
-  List<Widget> _chatChildren(BuildContext context, int count, bool loading) {
+  List<Widget> _chatChildren(
+    BuildContext context,
+    int count,
+    bool loading,
+    bool loadingOlder,
+  ) {
     return [
       Expanded(
         child: loading && count == 0
@@ -117,12 +472,28 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                   style: TextStyle(color: context.tokens.outline),
                 ),
               )
-            : ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                itemCount: count,
-                itemBuilder: (context, index) =>
-                    _TimelineRow(agentId: widget.agentId, index: index),
+            : Stack(
+                children: [
+                  ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    itemCount: count,
+                    itemBuilder: (context, index) =>
+                        _TimelineRow(agentId: widget.agentId, index: index),
+                  ),
+                  if (loadingOlder)
+                    const Align(
+                      alignment: Alignment.topCenter,
+                      child: Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: ProgressRing(strokeWidth: 2),
+                        ),
+                      ),
+                    ),
+                ],
               ),
       ),
       if (!_stickToBottom)
@@ -147,7 +518,16 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
           ),
         ),
       const Divider(),
-      Composer(agentId: widget.agentId),
+      Composer(
+        agentId: widget.agentId,
+        keyboardActionsEnabled: widget.isScreenFocused,
+        onClientSlashCommand: (command) =>
+            unawaited(_handleClientSlashCommand(command)),
+        onInputFocus: () =>
+            unawaited(_clearAttention(AgentAttentionClearTrigger.inputFocus)),
+        onPromptSend: () =>
+            unawaited(_clearAttention(AgentAttentionClearTrigger.promptSend)),
+      ),
     ];
   }
 }
@@ -162,15 +542,16 @@ class _TimelineRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final item = ref.watch(
-      timelineProvider(
-        agentId,
-      ).select((s) => index < s.items.length ? s.items[index] : null),
+      timelineProvider(agentId).select(
+        (s) => index < s.displayItems.length ? s.displayItems[index] : null,
+      ),
     );
     if (item == null) return const SizedBox.shrink();
     final agent = ref.watch(agentSummaryProvider(agentId));
     return TimelineItemTile(
-      key: ValueKey(item.id),
-      item: item,
+      key: ValueKey(item.item.id),
+      item: item.item,
+      userMessage: item.userMessage,
       providerLabel: providerDisplayName(agent?.provider),
       onPermissionDecision: (permissionId, decision) async {
         try {
@@ -179,8 +560,11 @@ class _TimelineRow extends ConsumerWidget {
               .respondPermission(permissionId, decision);
         } catch (e) {
           if (!context.mounted) return;
-          AppToast.show(context, 'Failed to respond: $e',
-              severity: InfoBarSeverity.error);
+          AppToast.show(
+            context,
+            'Failed to respond: $e',
+            severity: InfoBarSeverity.error,
+          );
         }
       },
     );

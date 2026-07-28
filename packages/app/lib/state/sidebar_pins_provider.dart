@@ -44,5 +44,6 @@ class SidebarPinsNotifier extends Notifier<Set<String>> {
   bool isPinned(String worktreeKey) => state.contains(worktreeKey);
 }
 
-final sidebarPinsProvider =
-    NotifierProvider<SidebarPinsNotifier, Set<String>>(SidebarPinsNotifier.new);
+final sidebarPinsProvider = NotifierProvider<SidebarPinsNotifier, Set<String>>(
+  SidebarPinsNotifier.new,
+);

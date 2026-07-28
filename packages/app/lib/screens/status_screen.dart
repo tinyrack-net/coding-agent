@@ -45,15 +45,15 @@ class StatusScreen extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                  switch (connection) {
-                    DaemonConnectionState.connected => 'Daemon connected',
-                    DaemonConnectionState.connecting => 'Connecting…',
-                    DaemonConnectionState.disconnected =>
-                      'Daemon not reachable (retrying)',
-                    DaemonConnectionState.versionMismatch =>
-                      'Incompatible daemon version',
-                  },
-                  style: context.textStyles.titleMedium,
+                    switch (connection) {
+                      DaemonConnectionState.connected => 'Daemon connected',
+                      DaemonConnectionState.connecting => 'Connecting…',
+                      DaemonConnectionState.disconnected =>
+                        'Daemon not reachable (retrying)',
+                      DaemonConnectionState.versionMismatch =>
+                        'Incompatible daemon version',
+                    },
+                    style: context.textStyles.titleMedium,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -102,7 +102,7 @@ class StatusScreen extends ConsumerWidget {
                                   provider.configured
                                       ? '${provider.models.length} models available'
                                       : provider.unavailableReason ??
-                                          'not configured',
+                                            'not configured',
                                 ),
                               ),
                             ),

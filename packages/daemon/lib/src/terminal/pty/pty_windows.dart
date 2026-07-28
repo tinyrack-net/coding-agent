@@ -15,11 +15,6 @@ import 'package:win32/win32.dart';
 
 import 'pty.dart';
 
-/// win32 5.5.0 does not export DeleteProcThreadAttributeList; bind it here.
-final _deleteProcThreadAttributeList = DynamicLibrary.open('kernel32.dll')
-    .lookupFunction<Void Function(Pointer), void Function(Pointer)>(
-        'DeleteProcThreadAttributeList');
-
 class WindowsPty implements Pty {
   WindowsPty._({
     required int hpc,
@@ -28,11 +23,11 @@ class WindowsPty implements Pty {
     required int inputWrite,
     required int outputRead,
     required this.shell,
-  })  : _hpc = hpc,
-        _hProcess = hProcess,
-        _hThread = hThread,
-        _inputWrite = inputWrite,
-        _outputRead = outputRead {
+  }) : _hpc = hpc,
+       _hProcess = hProcess,
+       _hThread = hThread,
+       _inputWrite = inputWrite,
+       _outputRead = outputRead {
     _startReader();
     _startExitWatcher();
   }
@@ -61,54 +56,62 @@ class WindowsPty implements Pty {
     required int cols,
     required int rows,
     String? shell,
+    List<String>? arguments,
+    Map<String, String>? environment,
   }) {
     final resolvedShell = shell ?? _defaultShell();
     return using((arena) {
       // Pipe pair 1: we write -> ConPTY reads (shell stdin).
       // Pipe pair 2: ConPTY writes -> we read (shell output).
-      final inRead = arena<IntPtr>();
-      final inWrite = arena<IntPtr>();
-      final outRead = arena<IntPtr>();
-      final outWrite = arena<IntPtr>();
-      if (CreatePipe(inRead, inWrite, nullptr, 0) == 0 ||
-          CreatePipe(outRead, outWrite, nullptr, 0) == 0) {
+      final inRead = arena<Pointer<Void>>();
+      final inWrite = arena<Pointer<Void>>();
+      final outRead = arena<Pointer<Void>>();
+      final outWrite = arena<Pointer<Void>>();
+      final inputPipe = CreatePipe(inRead, inWrite, null, 0);
+      final outputPipe = CreatePipe(outRead, outWrite, null, 0);
+      if (!inputPipe.value || !outputPipe.value) {
         throw StateError('CreatePipe failed: ${GetLastError()}');
       }
 
       final size = arena<COORD>()
         ..ref.X = cols
         ..ref.Y = rows;
-      final phPC = arena<IntPtr>();
-      final hr = CreatePseudoConsole(
-          size.ref, inRead.value, outWrite.value, 0, phPC);
-      if (FAILED(hr)) {
-        throw StateError('CreatePseudoConsole failed: hr=0x${hr.toRadixString(16)}');
-      }
-      final hpc = phPC.value;
+      final pseudoConsole = CreatePseudoConsole(
+        size.ref,
+        HANDLE(inRead.value),
+        HANDLE(outWrite.value),
+        0,
+      );
+      final hpc = pseudoConsole;
 
       // ConPTY duplicated its ends; close ours.
-      CloseHandle(inRead.value);
-      CloseHandle(outWrite.value);
+      CloseHandle(HANDLE(inRead.value));
+      CloseHandle(HANDLE(outWrite.value));
 
       // Attribute list carrying PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE.
       final attrSize = arena<IntPtr>();
-      InitializeProcThreadAttributeList(nullptr, 1, 0, attrSize);
+      InitializeProcThreadAttributeList(null, 1, attrSize);
       final attrList = arena<Uint8>(attrSize.value);
-      if (InitializeProcThreadAttributeList(attrList, 1, 0, attrSize) == 0) {
+      final typedAttrList = LPPROC_THREAD_ATTRIBUTE_LIST(attrList.cast());
+      if (!InitializeProcThreadAttributeList(
+        typedAttrList,
+        1,
+        attrSize,
+      ).value) {
         ClosePseudoConsole(hpc);
         throw StateError(
-            'InitializeProcThreadAttributeList failed: ${GetLastError()}');
+          'InitializeProcThreadAttributeList failed: ${GetLastError()}',
+        );
       }
-      if (UpdateProcThreadAttribute(
-            attrList,
-            0,
-            PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
-            Pointer.fromAddress(hpc),
-            sizeOf<IntPtr>(),
-            nullptr,
-            nullptr,
-          ) ==
-          0) {
+      if (!UpdateProcThreadAttribute(
+        typedAttrList,
+        0,
+        PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
+        Pointer.fromAddress(hpc),
+        sizeOf<IntPtr>(),
+        null,
+        null,
+      ).value) {
         ClosePseudoConsole(hpc);
         throw StateError('UpdateProcThreadAttribute failed: ${GetLastError()}');
       }
@@ -120,39 +123,45 @@ class WindowsPty implements Pty {
       // writes to the daemon's console/pipes instead of the ConPTY (same
       // workaround node-pty uses).
       si.ref.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
-      si.ref.lpAttributeList = attrList.cast();
+      si.ref.lpAttributeList = typedAttrList;
 
       final pi = arena<PROCESS_INFORMATION>();
-      final cmdLine = resolvedShell.toNativeUtf16(allocator: arena);
+      final commandLine = [
+        _quoteWindowsArgument(resolvedShell),
+        for (final argument in arguments ?? const <String>[])
+          _quoteWindowsArgument(argument),
+      ].join(' ');
+      final cmdLine = commandLine.toNativeUtf16(allocator: arena);
       final cwdPtr = cwd.toNativeUtf16(allocator: arena);
+      final environmentPtr = _environmentBlock(environment, arena);
       final created = CreateProcess(
-        nullptr,
-        cmdLine,
-        nullptr,
-        nullptr,
-        FALSE,
-        EXTENDED_STARTUPINFO_PRESENT,
-        nullptr,
-        cwdPtr,
+        null,
+        PWSTR(cmdLine),
+        null,
+        null,
+        false,
+        EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+        environmentPtr,
+        PCWSTR(cwdPtr),
         si.cast(),
         pi,
       );
-      final createError = GetLastError();
-      _deleteProcThreadAttributeList(attrList);
-      if (created == 0) {
+      typedAttrList.close();
+      if (!created.value) {
         ClosePseudoConsole(hpc);
-        CloseHandle(inWrite.value);
-        CloseHandle(outRead.value);
+        CloseHandle(HANDLE(inWrite.value));
+        CloseHandle(HANDLE(outRead.value));
         throw StateError(
-            'CreateProcess("$resolvedShell") failed: $createError');
+          'CreateProcess("$resolvedShell") failed: ${created.error.code}',
+        );
       }
 
       return WindowsPty._(
         hpc: hpc,
-        hProcess: pi.ref.hProcess,
-        hThread: pi.ref.hThread,
-        inputWrite: inWrite.value,
-        outputRead: outRead.value,
+        hProcess: pi.ref.hProcess.address,
+        hThread: pi.ref.hThread.address,
+        inputWrite: inWrite.value.address,
+        outputRead: outRead.value.address,
         shell: resolvedShell,
       );
     });
@@ -167,13 +176,58 @@ class WindowsPty implements Pty {
     return Platform.environment['COMSPEC'] ?? 'cmd.exe';
   }
 
+  static String _quoteWindowsArgument(String value) {
+    if (value.isNotEmpty && !value.contains(RegExp(r'[\s"]'))) return value;
+    final out = StringBuffer('"');
+    var slashes = 0;
+    for (final rune in value.runes) {
+      if (rune == 0x5c) {
+        slashes++;
+      } else if (rune == 0x22) {
+        out
+          ..write('\\' * (slashes * 2 + 1))
+          ..write('"');
+        slashes = 0;
+      } else {
+        out
+          ..write('\\' * slashes)
+          ..writeCharCode(rune);
+        slashes = 0;
+      }
+    }
+    out
+      ..write('\\' * (slashes * 2))
+      ..write('"');
+    return out.toString();
+  }
+
+  static Pointer<Void> _environmentBlock(
+    Map<String, String>? additions,
+    Arena arena,
+  ) {
+    final merged = <String, String>{...Platform.environment, ...?additions};
+    final entries = merged.entries.toList()
+      ..sort(
+        (left, right) =>
+            left.key.toLowerCase().compareTo(right.key.toLowerCase()),
+      );
+    final text =
+        '${entries.map((entry) => '${entry.key}=${entry.value}').join('\u0000')}\u0000\u0000';
+    final units = text.codeUnits;
+    final block = arena<Uint16>(units.length);
+    for (var index = 0; index < units.length; index++) {
+      block[index] = units[index];
+    }
+    return block.cast();
+  }
+
   void _startReader() {
     final port = ReceivePort();
     port.listen((message) {
       if (message == null) {
         // Reader hit EOF/broken pipe: safe to close our read handle now.
         port.close();
-        CloseHandle(_outputRead);
+        CloseHandle(HANDLE(Pointer.fromAddress(_outputRead)));
         if (!_output.isClosed) unawaited(_output.close());
         return;
       }
@@ -201,10 +255,10 @@ class WindowsPty implements Pty {
   void _release() {
     if (_released) return;
     _released = true;
-    ClosePseudoConsole(_hpc);
-    CloseHandle(_inputWrite);
-    CloseHandle(_hThread);
-    CloseHandle(_hProcess);
+    ClosePseudoConsole(HPCON(_hpc));
+    CloseHandle(HANDLE(Pointer.fromAddress(_inputWrite)));
+    CloseHandle(HANDLE(Pointer.fromAddress(_hThread)));
+    CloseHandle(HANDLE(Pointer.fromAddress(_hProcess)));
     // _outputRead is closed by the reader listener once ReadFile fails; if the
     // reader is already done it was closed there.
   }
@@ -216,7 +270,13 @@ class WindowsPty implements Pty {
       final buf = arena<Uint8>(data.length);
       buf.asTypedList(data.length).setAll(0, data);
       final written = arena<Uint32>();
-      WriteFile(_inputWrite, buf, data.length, written, nullptr);
+      WriteFile(
+        HANDLE(Pointer.fromAddress(_inputWrite)),
+        buf,
+        data.length,
+        written,
+        null,
+      );
     });
   }
 
@@ -227,14 +287,14 @@ class WindowsPty implements Pty {
       final size = arena<COORD>()
         ..ref.X = cols
         ..ref.Y = rows;
-      ResizePseudoConsole(_hpc, size.ref);
+      ResizePseudoConsole(HPCON(_hpc), size.ref);
     });
   }
 
   @override
   void kill() {
     if (_released) return;
-    TerminateProcess(_hProcess, 1);
+    TerminateProcess(HANDLE(Pointer.fromAddress(_hProcess)), 1);
     // Exit watcher observes the termination and runs _onExited/_release.
   }
 
@@ -248,8 +308,14 @@ class WindowsPty implements Pty {
     final read = calloc<Uint32>();
     try {
       while (true) {
-        final ok = ReadFile(handle, buf, chunkSize, read, nullptr);
-        if (ok == 0 || read.value == 0) break;
+        final result = ReadFile(
+          HANDLE(Pointer.fromAddress(handle)),
+          buf,
+          chunkSize,
+          read,
+          null,
+        );
+        if (!result.value || read.value == 0) break;
         port.send(Uint8List.fromList(buf.asTypedList(read.value)));
       }
     } finally {
@@ -263,9 +329,9 @@ class WindowsPty implements Pty {
   static void _waitLoop(List<Object> args) {
     final handle = args[0] as int;
     final port = args[1] as SendPort;
-    WaitForSingleObject(handle, INFINITE);
+    WaitForSingleObject(HANDLE(Pointer.fromAddress(handle)), INFINITE);
     final code = calloc<Uint32>();
-    GetExitCodeProcess(handle, code);
+    GetExitCodeProcess(HANDLE(Pointer.fromAddress(handle)), code);
     final value = code.value;
     calloc.free(code);
     port.send(value);
