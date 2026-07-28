@@ -130,7 +130,7 @@ void main() {
       );
       final committed = <StreamingTranscriptionCommittedEvent>[];
       final transcripts = <StreamingTranscriptionEvent>[];
-    final errors = <Object?>[];
+      final errors = <Object?>[];
       final subscriptions = [
         session.committedEvents.listen(committed.add),
         session.transcriptEvents.listen(transcripts.add),

@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'sherpa/runtime_env.dart';
 import 'worker_protocol.dart';
 import 'worker_transport.dart';
 
@@ -31,20 +32,27 @@ LocalSpeechWorkerCommand resolveLocalSpeechWorkerCommand({
   bool Function(String path)? fileExists,
 }) {
   final env = environment ?? Platform.environment;
+  final os = (isWindows ?? Platform.isWindows)
+      ? 'windows'
+      : Platform.operatingSystem;
   final configured = env[localSpeechWorkerExecutableEnvironment]?.trim();
   if (configured != null && configured.isNotEmpty) {
-    return LocalSpeechWorkerCommand(executable: configured, environment: env);
+    return LocalSpeechWorkerCommand(
+      executable: configured,
+      environment: _workerEnvironment(env, configured, os),
+    );
   }
 
   final runtime = resolvedExecutable ?? Platform.resolvedExecutable;
-  final windows = isWindows ?? Platform.isWindows;
+  final windows = os == 'windows';
   final exists = fileExists ?? (path) => File(path).existsSync();
   final runtimeName = p.basenameWithoutExtension(runtime).toLowerCase();
   if (runtimeName == 'dart' || runtimeName == 'dartaotruntime') {
+    final workerEnvironment = _workerEnvironment(env, runtime, os);
     return LocalSpeechWorkerCommand(
       executable: runtime,
       arguments: const ['run', 'agent_daemon:local_speech_worker'],
-      environment: env,
+      environment: workerEnvironment,
     );
   }
 
@@ -58,7 +66,39 @@ LocalSpeechWorkerCommand resolveLocalSpeechWorkerCommand({
       'Set $localSpeechWorkerExecutableEnvironment to its path.',
     );
   }
-  return LocalSpeechWorkerCommand(executable: sibling, environment: env);
+  return LocalSpeechWorkerCommand(
+    executable: sibling,
+    environment: _workerEnvironment(env, sibling, os),
+  );
+}
+
+Map<String, String> _workerEnvironment(
+  Map<String, String> environment,
+  String executable,
+  String operatingSystem,
+) {
+  final libraryDirectory = resolveSherpaLibraryDirectory(
+    environment: environment,
+    resolvedExecutable: executable,
+    operatingSystem: operatingSystem,
+  );
+  var result = libraryDirectory == null
+      ? Map<String, String>.from(environment)
+      : applySherpaLoaderEnvironment(
+          environment: environment,
+          libraryDirectory: libraryDirectory,
+          operatingSystem: operatingSystem,
+        );
+  try {
+    final sileroAsset = resolveBundledSileroVadModelPath(
+      environment: result,
+      resolvedExecutable: executable,
+    );
+    result = {...result, sileroVadAssetEnvironment: sileroAsset};
+  } on StateError {
+    // The worker reports the actionable missing-asset error if VAD is used.
+  }
+  return result;
 }
 
 Future<LocalSpeechWorkerTransport> startLocalSpeechWorkerProcess({

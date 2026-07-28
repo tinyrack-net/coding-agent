@@ -25,13 +25,20 @@ Future<void> main() async {
   final dataDir = Directory.systemTemp.createTempSync('smoke-data-');
   const port = 6899;
 
-  final daemon = await Process.start(
-    Platform.resolvedExecutable,
-    ['run', 'agent_daemon:daemon', '--port', '$port', '--data-dir', dataDir.path],
-    workingDirectory: Directory.current.path,
-  );
-  daemon.stdout.transform(utf8.decoder).listen((l) => stdout.write('[daemon] $l'));
-  daemon.stderr.transform(utf8.decoder).listen((l) => stderr.write('[daemon:err] $l'));
+  final daemon = await Process.start(Platform.resolvedExecutable, [
+    'run',
+    'agent_daemon:daemon',
+    '--port',
+    '$port',
+    '--data-dir',
+    dataDir.path,
+  ], workingDirectory: Directory.current.path);
+  daemon.stdout
+      .transform(utf8.decoder)
+      .listen((l) => stdout.write('[daemon] $l'));
+  daemon.stderr
+      .transform(utf8.decoder)
+      .listen((l) => stderr.write('[daemon:err] $l'));
   await Future<void>.delayed(const Duration(seconds: 4));
 
   final channel = WebSocketChannel.connect(Uri.parse('ws://127.0.0.1:$port'));
@@ -42,12 +49,16 @@ Future<void> main() async {
 
   var nextId = 0;
   Future<Map<String, Object?>> request(
-      String type, Map<String, Object?> payload) async {
+    String type,
+    Map<String, Object?> payload,
+  ) async {
     final id = 'r${nextId++}';
-    channel.sink.add(jsonEncode(
-        RpcRequest(type: type, requestId: id, payload: payload).toJson()));
-    final response =
-        await frames.firstWhere((f) => f['requestId'] == id);
+    channel.sink.add(
+      jsonEncode(
+        RpcRequest(type: type, requestId: id, payload: payload).toJson(),
+      ),
+    );
+    final response = await frames.firstWhere((f) => f['requestId'] == id);
     if (response['error'] != null) {
       throw StateError('rpc error: ${response['error']}');
     }
@@ -58,16 +69,21 @@ Future<void> main() async {
   frames.listen((f) {
     if (f['type'] == MessageTypes.permissionRequestedEvent) {
       final payload = f['payload'] as Map<String, Object?>;
-      stdout.writeln('[smoke] permission requested for ${payload['toolName']} '
-          '-> responding allow');
-      unawaited(request(MessageTypes.permissionRespondRequest, {
-        'permissionId': payload['permissionId'],
-        'decision': 'allow',
-      }));
+      stdout.writeln(
+        '[smoke] permission requested for ${payload['toolName']} '
+        '-> responding allow',
+      );
+      unawaited(
+        request(MessageTypes.permissionRespondRequest, {
+          'permissionId': payload['permissionId'],
+          'decision': 'allow',
+        }),
+      );
     }
     if (f['type'] == MessageTypes.agentStreamEvent) {
-      final payload =
-          AgentStreamPayload.fromJson(f['payload'] as Map<String, Object?>);
+      final payload = AgentStreamPayload.fromJson(
+        f['payload'] as Map<String, Object?>,
+      );
       final item = payload.item;
       final summary = switch (item) {
         AssistantMessageItem(:final text, :final complete) =>
@@ -80,14 +96,17 @@ Future<void> main() async {
       };
       stdout.writeln('[stream] seq=${payload.seq} $summary');
       if (item is TurnItem &&
-          (item.phase == TurnPhase.completed || item.phase == TurnPhase.failed)) {
+          (item.phase == TurnPhase.completed ||
+              item.phase == TurnPhase.failed)) {
         if (!done.isCompleted) done.complete();
       }
     }
   });
 
-  await request(MessageTypes.clientHelloRequest,
-      const ClientHello(clientName: 'smoke', clientVersion: '0').toJson());
+  await request(
+    MessageTypes.clientHelloRequest,
+    const ClientHello(clientName: 'smoke', clientVersion: '0').toJson(),
+  );
   stdout.writeln('[smoke] hello ok');
 
   await request(MessageTypes.providerCredentialSetRequest, {
@@ -103,27 +122,32 @@ Future<void> main() async {
     'mode': 'normal',
     'title': 'ws-smoke',
   });
-  final agent =
-      AgentSummary.fromJson(created['agent'] as Map<String, Object?>);
+  final agent = AgentSummary.fromJson(created['agent'] as Map<String, Object?>);
   stdout.writeln('[smoke] created agent ${agent.agentId}');
 
   await request(MessageTypes.agentPromptRequest, {
     'agentId': agent.agentId,
-    'text': 'Create a file named pong.txt containing exactly "pong". '
+    'text':
+        'Create a file named pong.txt containing exactly "pong". '
         'Then reply with one short sentence.',
   });
 
   await done.future.timeout(const Duration(minutes: 3));
 
-  final fetch = await request(MessageTypes.agentTimelineFetchRequest,
-      {'agentId': agent.agentId});
+  final fetch = await request(MessageTypes.agentTimelineFetchRequest, {
+    'agentId': agent.agentId,
+  });
   final timeline = TimelineFetchResponse.fromJson(fetch);
-  stdout.writeln('[smoke] fetch: epoch=${timeline.epoch} '
-      'lastSeq=${timeline.lastSeq} items=${timeline.items.length}');
+  stdout.writeln(
+    '[smoke] fetch: epoch=${timeline.epoch} '
+    'lastSeq=${timeline.lastSeq} items=${timeline.items.length}',
+  );
 
   final pong = File('${tempDir.path}${Platform.pathSeparator}pong.txt');
-  stdout.writeln('[smoke] pong.txt exists=${pong.existsSync()} '
-      'content=${pong.existsSync() ? pong.readAsStringSync().trim() : '-'}');
+  stdout.writeln(
+    '[smoke] pong.txt exists=${pong.existsSync()} '
+    'content=${pong.existsSync() ? pong.readAsStringSync().trim() : '-'}',
+  );
 
   await channel.sink.close(1000);
   daemon.kill();

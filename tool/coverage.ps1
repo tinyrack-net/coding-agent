@@ -48,6 +48,9 @@ $packages = @(
     @{ Name = 'daemon'; Path = 'packages/daemon'; Flutter = $false; Exclude = @(
         '*/pty/pty_unix.dart'
         '*/pty/pty_windows.dart'
+        # Sherpa's production adapter is exercised in its isolated worker
+        # process because loading ONNX into the coverage VM is unsafe.
+        '*/voice/local/sherpa/native.dart'
         # The process composition root only wires already-tested services and
         # platform/process callbacks. Its assembled HTTP/WS behavior is covered
         # by daemon_v2_workspace_e2e_test.dart and daemon_lock_test.dart.

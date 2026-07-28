@@ -22,18 +22,14 @@ Future<void> main() async {
   var ok = false;
   Process? daemon;
   try {
-    daemon = await Process.start(
-      Platform.resolvedExecutable,
-      [
-        'run',
-        'agent_daemon:daemon',
-        '--port',
-        '$port',
-        '--data-dir',
-        dataDir.path,
-      ],
-      workingDirectory: Directory.current.path,
-    );
+    daemon = await Process.start(Platform.resolvedExecutable, [
+      'run',
+      'agent_daemon:daemon',
+      '--port',
+      '$port',
+      '--data-dir',
+      dataDir.path,
+    ], workingDirectory: Directory.current.path);
     daemon.stdout
         .transform(utf8.decoder)
         .listen((l) => stdout.write('[daemon] $l'));
@@ -83,10 +79,15 @@ Future<void> main() async {
 
     var nextId = 0;
     Future<Map<String, Object?>> request(
-        String type, Map<String, Object?> payload) async {
+      String type,
+      Map<String, Object?> payload,
+    ) async {
       final id = 'r${nextId++}';
-      channel.sink.add(jsonEncode(
-          RpcRequest(type: type, requestId: id, payload: payload).toJson()));
+      channel.sink.add(
+        jsonEncode(
+          RpcRequest(type: type, requestId: id, payload: payload).toJson(),
+        ),
+      );
       final response = await textFrames.stream
           .firstWhere((f) => f['requestId'] == id)
           .timeout(const Duration(seconds: 10));
@@ -96,39 +97,53 @@ Future<void> main() async {
       return (response['payload'] as Map<String, Object?>?) ?? const {};
     }
 
-    await request(MessageTypes.clientHelloRequest,
-        const ClientHello(clientName: 'smoke-terminal', clientVersion: '0').toJson());
+    await request(
+      MessageTypes.clientHelloRequest,
+      const ClientHello(
+        clientName: 'smoke-terminal',
+        clientVersion: '0',
+      ).toJson(),
+    );
     stdout.writeln('[smoke] hello ok');
 
-    final created = await request(
-        MessageTypes.terminalCreateRequest, {'cwd': tempDir.path});
+    final created = await request(MessageTypes.terminalCreateRequest, {
+      'cwd': tempDir.path,
+    });
     final terminal = created['terminal'] as Map<String, Object?>;
     final terminalId = terminal['terminalId'] as String;
-    stdout.writeln('[smoke] created terminal $terminalId '
-        'shell=${terminal['shell']} cwd=${terminal['cwd']}');
+    stdout.writeln(
+      '[smoke] created terminal $terminalId '
+      'shell=${terminal['shell']} cwd=${terminal['cwd']}',
+    );
 
     final listed = await request(MessageTypes.terminalListRequest, {});
     stdout.writeln(
-        '[smoke] list has ${(listed['terminals'] as List).length} terminal(s)');
+      '[smoke] list has ${(listed['terminals'] as List).length} terminal(s)',
+    );
 
-    final subscribed = await request(
-        MessageTypes.terminalSubscribeRequest, {'terminalId': terminalId});
+    final subscribed = await request(MessageTypes.terminalSubscribeRequest, {
+      'terminalId': terminalId,
+    });
     final slotId = (subscribed['slotId'] as num).toInt();
     stdout.writeln('[smoke] subscribed slotId=$slotId');
 
     // Give the shell a moment to paint its prompt, then type the command.
     await Future<void>.delayed(const Duration(seconds: 3));
-    channel.sink.add(TerminalFrame(
-      opcode: TerminalOpcode.input,
-      slotId: slotId,
-      payload: utf8.encode('echo conpty-ok\r'),
-    ).encode());
+    channel.sink.add(
+      TerminalFrame(
+        opcode: TerminalOpcode.input,
+        slotId: slotId,
+        payload: utf8.encode('echo conpty-ok\r'),
+      ).encode(),
+    );
 
     // Collect output for a few seconds.
     await Future<void>.delayed(const Duration(seconds: 5));
     final combined = utf8.decode(output.toBytes(), allowMalformed: true);
-    stdout.writeln('[smoke] snapshotSeen=$snapshotSeen '
-        'outputFrames=$outputFrames bytes=${output.length}');
+    stdout.writeln(
+      '[smoke] snapshotSeen=$snapshotSeen '
+      'outputFrames=$outputFrames bytes=${output.length}',
+    );
     if (!snapshotSeen) {
       throw StateError('no snapshot frame received after subscribe');
     }
@@ -138,18 +153,22 @@ Future<void> main() async {
     }
     stdout.writeln('[smoke] found "conpty-ok" in terminal output');
 
-    channel.sink.add(TerminalFrame.resize(slotId, cols: 100, rows: 30).encode());
+    channel.sink.add(
+      TerminalFrame.resize(slotId, cols: 100, rows: 30).encode(),
+    );
     await Future<void>.delayed(const Duration(seconds: 1));
     stdout.writeln('[smoke] resize frame sent');
 
     await request(MessageTypes.terminalKillRequest, {'terminalId': terminalId});
-    final exitPayload =
-        await exited.future.timeout(const Duration(seconds: 10));
+    final exitPayload = await exited.future.timeout(
+      const Duration(seconds: 10),
+    );
     if (exitPayload['terminalId'] != terminalId) {
       throw StateError('terminal.exited for wrong terminal: $exitPayload');
     }
     stdout.writeln(
-        '[smoke] terminal.exited exitCode=${exitPayload['exitCode']}');
+      '[smoke] terminal.exited exitCode=${exitPayload['exitCode']}',
+    );
 
     await channel.sink.close(1000);
     ok = true;

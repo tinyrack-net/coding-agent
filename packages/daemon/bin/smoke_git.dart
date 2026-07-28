@@ -12,11 +12,13 @@ Future<void> main() async {
   final repo = Directory.systemTemp.createTempSync('smoke-git-');
   final dataDir = Directory.systemTemp.createTempSync('smoke-git-data-');
   Future<void> git(List<String> args) async {
-    final r = await Process.run(
-      'git',
-      ['-c', 'user.email=smoke@test', '-c', 'user.name=smoke', ...args],
-      workingDirectory: repo.path,
-    );
+    final r = await Process.run('git', [
+      '-c',
+      'user.email=smoke@test',
+      '-c',
+      'user.name=smoke',
+      ...args,
+    ], workingDirectory: repo.path);
     if (r.exitCode != 0) throw StateError('git $args: ${r.stderr}');
   }
 
@@ -28,10 +30,14 @@ Future<void> main() async {
   File('${repo.path}/new.txt').writeAsStringSync('untracked\n');
 
   const port = 6898;
-  final daemon = await Process.start(
-    Platform.resolvedExecutable,
-    ['run', 'agent_daemon:daemon', '--port', '$port', '--data-dir', dataDir.path],
-  );
+  final daemon = await Process.start(Platform.resolvedExecutable, [
+    'run',
+    'agent_daemon:daemon',
+    '--port',
+    '$port',
+    '--data-dir',
+    dataDir.path,
+  ]);
   daemon.stderr.transform(utf8.decoder).listen(stderr.write);
   await Future<void>.delayed(const Duration(seconds: 4));
 
@@ -54,10 +60,15 @@ Future<bool> _run(int port, String repoPath) async {
       .asBroadcastStream();
   var nextId = 0;
   Future<Map<String, Object?>> request(
-      String type, Map<String, Object?> payload) async {
+    String type,
+    Map<String, Object?> payload,
+  ) async {
     final id = 'r${nextId++}';
-    channel.sink.add(jsonEncode(
-        RpcRequest(type: type, requestId: id, payload: payload).toJson()));
+    channel.sink.add(
+      jsonEncode(
+        RpcRequest(type: type, requestId: id, payload: payload).toJson(),
+      ),
+    );
     final response = await frames.firstWhere((f) => f['requestId'] == id);
     if (response['error'] != null) {
       throw StateError('rpc error: ${response['error']}');
@@ -65,28 +76,45 @@ Future<bool> _run(int port, String repoPath) async {
     return (response['payload'] as Map<String, Object?>?) ?? const {};
   }
 
-  await request(MessageTypes.clientHelloRequest,
-      const ClientHello(clientName: 'smoke', clientVersion: '0').toJson());
+  await request(
+    MessageTypes.clientHelloRequest,
+    const ClientHello(clientName: 'smoke', clientVersion: '0').toJson(),
+  );
 
-  final added =
-      await request(MessageTypes.projectAddRequest, {'path': repoPath});
-  final project = ProjectInfo.fromJson(added['project'] as Map<String, Object?>);
-  stdout.writeln('[smoke] project added: ${project.name} git=${project.isGitRepo}');
+  final added = await request(MessageTypes.projectAddRequest, {
+    'path': repoPath,
+  });
+  final project = ProjectInfo.fromJson(
+    added['project'] as Map<String, Object?>,
+  );
+  stdout.writeln(
+    '[smoke] project added: ${project.name} git=${project.isGitRepo}',
+  );
 
-  final wt = await request(MessageTypes.worktreeCreateRequest,
-      {'projectPath': repoPath, 'branch': 'feature-x'});
-  final worktree = WorktreeInfo.fromJson(wt['worktree'] as Map<String, Object?>);
-  stdout.writeln('[smoke] worktree: ${worktree.path} branch=${worktree.branch}');
+  final wt = await request(MessageTypes.worktreeCreateRequest, {
+    'projectPath': repoPath,
+    'branch': 'feature-x',
+  });
+  final worktree = WorktreeInfo.fromJson(
+    wt['worktree'] as Map<String, Object?>,
+  );
+  stdout.writeln(
+    '[smoke] worktree: ${worktree.path} branch=${worktree.branch}',
+  );
 
-  final listed = await request(
-      MessageTypes.worktreeListRequest, {'projectPath': repoPath});
+  final listed = await request(MessageTypes.worktreeListRequest, {
+    'projectPath': repoPath,
+  });
   stdout.writeln('[smoke] worktrees: ${(listed['worktrees'] as List).length}');
 
   final diff = DiffResponse.fromJson(
-      await request(MessageTypes.diffGetRequest, {'cwd': repoPath}));
+    await request(MessageTypes.diffGetRequest, {'cwd': repoPath}),
+  );
   for (final file in diff.files) {
-    stdout.writeln('[smoke] diff: ${file.status.name} ${file.path} '
-        '+${file.additions}/-${file.deletions} hunks=${file.hunks.length}');
+    stdout.writeln(
+      '[smoke] diff: ${file.status.name} ${file.path} '
+      '+${file.additions}/-${file.deletions} hunks=${file.hunks.length}',
+    );
   }
 
   await request(MessageTypes.worktreeArchiveRequest, {'path': worktree.path});

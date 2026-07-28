@@ -5,6 +5,7 @@ import 'package:agent_daemon/src/voice/local/config.dart';
 import 'package:agent_daemon/src/voice/local/model_catalog.dart';
 import 'package:agent_daemon/src/voice/local/model_downloader.dart';
 import 'package:agent_daemon/src/voice/local/runtime.dart';
+import 'package:agent_daemon/src/voice/local/worker_client.dart';
 import 'package:agent_daemon/src/voice/openai/config.dart';
 import 'package:agent_daemon/src/voice/openai/stt.dart';
 import 'package:agent_daemon/src/voice/speech_provider.dart';
@@ -101,6 +102,81 @@ void main() {
       computeRequiredLocalModelIds(providers: providers, models: models),
       isEmpty,
     );
+  });
+
+  test('local runtime fills every requested worker-backed service', () {
+    const providers = RequestedSpeechProviders(
+      dictationStt: RequestedSpeechProvider(
+        provider: SpeechProviderId.local,
+        explicit: true,
+      ),
+      voiceTurnDetection: RequestedSpeechProvider(
+        provider: SpeechProviderId.local,
+        explicit: true,
+      ),
+      voiceStt: RequestedSpeechProvider(
+        provider: SpeechProviderId.local,
+        explicit: true,
+      ),
+      voiceTts: RequestedSpeechProvider(
+        provider: SpeechProviderId.local,
+        explicit: true,
+      ),
+    );
+    final result = initializeLocalSpeechServices(
+      services: const SpeechRuntimeReconciliation(),
+      providers: providers,
+      config: const LocalSpeechProviderConfig(
+        modelsDirectory: 'models',
+        models: models,
+      ),
+    );
+
+    expect(result.turnDetection, isA<WorkerBackedTurnDetectionProvider>());
+    expect(result.voiceStt, isA<WorkerBackedSpeechToTextProvider>());
+    expect(result.dictationStt, isA<WorkerBackedSpeechToTextProvider>());
+    expect(result.voiceTts, isA<WorkerBackedTextToSpeechProvider>());
+    result.cleanup();
+  });
+
+  test('local runtime preserves services already supplied by OpenAI', () {
+    const providers = RequestedSpeechProviders(
+      dictationStt: RequestedSpeechProvider(
+        provider: SpeechProviderId.local,
+        explicit: true,
+      ),
+      voiceTurnDetection: RequestedSpeechProvider(
+        provider: SpeechProviderId.local,
+        explicit: true,
+      ),
+      voiceStt: RequestedSpeechProvider(
+        provider: SpeechProviderId.local,
+        explicit: true,
+      ),
+      voiceTts: RequestedSpeechProvider(
+        provider: SpeechProviderId.local,
+        explicit: true,
+      ),
+    );
+    final existingStt = _FakeStt();
+    final existingTts = _FakeTts();
+    final result = initializeLocalSpeechServices(
+      services: SpeechRuntimeReconciliation(
+        voiceStt: existingStt,
+        voiceTts: existingTts,
+      ),
+      providers: providers,
+      config: const LocalSpeechProviderConfig(
+        modelsDirectory: 'models',
+        models: models,
+      ),
+    );
+
+    expect(result.voiceStt, same(existingStt));
+    expect(result.voiceTts, same(existingTts));
+    expect(result.turnDetection, isA<WorkerBackedTurnDetectionProvider>());
+    expect(result.dictationStt, isA<WorkerBackedSpeechToTextProvider>());
+    result.cleanup();
   });
 
   test('model management preserves services and cleanup', () async {

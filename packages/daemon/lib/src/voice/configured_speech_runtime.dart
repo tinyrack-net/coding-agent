@@ -22,11 +22,16 @@ SpeechRuntime createConfiguredSpeechRuntime({
     config: runtimeConfig,
     logger: logger,
     reconcile: () async => services ??= attachLocalModelManagement(
-      services: initializeOpenAiSpeechServices(
+      services: initializeLocalSpeechServices(
+        services: initializeOpenAiSpeechServices(
+          providers: runtimeConfig.providers,
+          config: openAiConfig,
+          logger: logger,
+          client: sharedOpenAiClient,
+        ),
         providers: runtimeConfig.providers,
-        config: openAiConfig,
+        config: localConfig,
         logger: logger,
-        client: sharedOpenAiClient,
       ),
       providers: runtimeConfig.providers,
       config: localConfig,

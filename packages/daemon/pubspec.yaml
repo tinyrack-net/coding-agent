@@ -22,6 +22,12 @@ dependencies:
     path: ../relay
   shelf: ^1.4.2
   shelf_web_socket: ^3.0.0
+  sherpa_onnx: 1.12.28
+  sherpa_onnx_android: 1.12.28
+  sherpa_onnx_ios: 1.12.28
+  sherpa_onnx_linux: 1.12.28
+  sherpa_onnx_macos: 1.12.28
+  sherpa_onnx_windows: 1.12.28
   web_socket_channel: ^3.0.0
   path: ^1.9.0
   qr: ^4.0.0

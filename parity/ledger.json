@@ -12699,12 +12699,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/runtime.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/voice/local/runtime.dart; packages/daemon/lib/src/voice/configured_speech_runtime.dart",
       "evidence": [
-        "packages/daemon/test/voice/local_speech_runtime_test.dart"
+        "packages/daemon/test/voice/local_speech_runtime_test.dart",
+        "packages/daemon/test/voice/local_worker_process_transport_test.dart"
       ],
-      "notes": "Local availability, configured model resolution, required-model computation, model readiness, downloader attachment, and OpenAI composition are ported. Worker-backed turn detection, STT, TTS, worker cleanup, and local voice TTS fallback remain."
+      "notes": "Local model readiness and download management now compose worker-backed VAD, voice and dictation STT, and TTS without replacing OpenAI services; cleanup releases the shared lazy worker."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/sherpa/model-catalog.ts",
@@ -12726,64 +12727,84 @@
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/sherpa/sherpa-offline-recognizer.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/local/sherpa/offline_recognizer.dart; packages/daemon/lib/src/voice/local/sherpa/native.dart",
+      "evidence": [
+        "packages/daemon/test/voice/sherpa_runtime_test.dart",
+        "packages/daemon/test/voice/sherpa_native_smoke_test.dart"
+      ],
+      "notes": "Frozen transducer paths, feature/model settings, decode lifecycle, result trimming, file validation, and best-effort native cleanup are ported."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/sherpa/sherpa-onnx-node-loader.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/local/sherpa/runtime_env.dart; packages/daemon/lib/src/voice/local/sherpa/native.dart; tool/build_daemon.ps1; tool/build_daemon_macos.sh; tool/build_daemon_linux.sh",
+      "evidence": [
+        "packages/daemon/test/voice/sherpa_runtime_env_test.dart",
+        "packages/daemon/test/voice/sherpa_native_smoke_test.dart"
+      ],
+      "notes": "Sherpa 1.12.28 is pinned across Dart platform packages, native libraries resolve from packaged or pub-cache locations, Windows registers the DLL directory ahead of System32, and all desktop builds package the worker runtime."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/sherpa/sherpa-parakeet-realtime-session.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/local/sherpa/parakeet_stt.dart",
+      "evidence": [
+        "packages/daemon/test/voice/sherpa_runtime_test.dart",
+        "packages/daemon/test/voice/local_worker_dispatcher_test.dart"
+      ],
+      "notes": "Realtime dictation preserves throttled partial decoding, pending decode serialization, forced commit, clear, close, and committed/final event ordering."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/sherpa/sherpa-parakeet-stt.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/local/sherpa/parakeet_stt.dart; packages/daemon/lib/src/voice/local/sherpa/offline_recognizer.dart",
+      "evidence": [
+        "packages/daemon/test/voice/sherpa_runtime_test.dart",
+        "packages/daemon/test/voice/local_worker_dispatcher_test.dart"
+      ],
+      "notes": "PCM/WAV parsing, silence threshold, resampling, bounded gain, one-shot transcription, voice streaming commits, and realtime session construction match the frozen provider."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/sherpa/sherpa-runtime-env.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/local/sherpa/runtime_env.dart; packages/daemon/lib/src/voice/local/worker_process_transport.dart",
+      "evidence": [
+        "packages/daemon/test/voice/sherpa_runtime_env_test.dart",
+        "packages/daemon/test/voice/sherpa_native_smoke_test.dart"
+      ],
+      "notes": "Pinned platform library naming, pub-cache and packaged resolution, loader environment, Windows DLL search registration, Silero asset lookup, and worker environment propagation are ported."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/sherpa/sherpa-tts.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/local/sherpa/tts.dart; packages/daemon/lib/src/voice/local/sherpa/native.dart",
+      "evidence": [
+        "packages/daemon/test/voice/sherpa_runtime_test.dart",
+        "packages/daemon/test/voice/local_worker_dispatcher_test.dart"
+      ],
+      "notes": "Kokoro model validation and exact native config, speaker/speed controls, float-to-PCM16 conversion, sample-rate fallback, chunking, and cleanup are ported."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/sherpa/silero-vad-provider.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/voice/silero_vad_provider.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/silero_vad_provider.dart; packages/daemon/lib/src/voice/local/sherpa/native.dart; packages/daemon/lib/src/voice/local/worker_dispatcher.dart; packages/daemon/lib/src/voice/local/sherpa/assets/silero_vad.onnx",
       "evidence": [
-        "packages/daemon/test/voice/turn_detection_test.dart"
+        "packages/daemon/test/voice/turn_detection_test.dart",
+        "packages/daemon/test/voice/local_worker_dispatcher_test.dart",
+        "packages/daemon/test/voice/sherpa_native_smoke_test.dart"
       ],
-      "notes": "Model deployment with non-empty reuse, empty/missing copy, logging, local provider identity, config forwarding, logger scoping, and session construction are ported. Bundled asset path resolution and a production Sherpa native backend factory remain."
+      "notes": "The bundled frozen Silero model is deployed and executed through the production Sherpa backend with exact provider/session configuration."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/sherpa/silero-vad-session.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/voice/silero_vad_session.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/voice/silero_vad_session.dart; packages/daemon/lib/src/voice/local/sherpa/native.dart",
       "evidence": [
         "packages/daemon/test/voice/turn_detection_test.dart",
-        "packages/daemon/test/voice/audio_test.dart"
+        "packages/daemon/test/voice/sherpa_native_smoke_test.dart"
       ],
-      "notes": "Frozen defaults and native backend config, PCM16-to-Float32 windowing, confirming/speaking/ending state transitions, confirmation and silence timing, resume, flush force/discard, reset/close, disconnected and backend errors, and bounded sample buffering are ported behind an injectable backend. The production Sherpa ONNX native adapter remains."
+      "notes": "The fully tested frozen VAD state machine is connected to the production Sherpa VoiceActivityDetector and verified against the bundled ONNX model."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/worker-bytes.ts",
@@ -12806,13 +12827,14 @@
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/worker-process.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/voice/local/worker_process_transport.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/bin/local_speech_worker.dart; packages/daemon/lib/src/voice/local/worker_dispatcher.dart; packages/daemon/lib/src/voice/local/worker_process_transport.dart",
       "evidence": [
+        "packages/daemon/test/voice/local_worker_dispatcher_test.dart",
         "packages/daemon/test/voice/local_worker_process_transport_test.dart",
-        "packages/daemon/test/fixtures/local_speech_echo_worker.dart"
+        "packages/daemon/test/voice/sherpa_native_smoke_test.dart"
       ],
-      "notes": "Tinyrack worker command resolution, separate-process lifecycle, ordered JSON-lines transport, concurrent write backpressure, stderr and malformed-output propagation, and packaged/development executable selection are ported. The production Sherpa request dispatcher, engine caches, session tracking, and native cleanup remain."
+      "notes": "The production JSON-lines worker dispatches and caches VAD, STT, dictation, and TTS engines, tracks sessions and subscriptions, normalizes errors, cleans native resources, and runs as a packaged sibling executable."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/providers/local/worker-protocol.ts",
