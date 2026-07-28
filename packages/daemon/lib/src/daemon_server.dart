@@ -85,6 +85,8 @@ import 'workspace/workspace_scripts_service.dart';
 import 'workspace/workspace_setup_service.dart';
 import 'workspace/worktree_terminal_bootstrap_service.dart';
 import 'workspace/workspace_v2_service.dart';
+import 'workspace/workspace_auto_name.dart';
+import 'workspace/worktree_branch_name_generator.dart';
 import 'voice/voice_bridge_registry.dart';
 import 'voice/speech_provider.dart';
 import 'voice/speech_readiness.dart';
@@ -837,12 +839,23 @@ Future<DaemonServerHandle> startDaemonServer({
   final terminalBootstrap = WorktreeTerminalBootstrapService.forManager(
     terminals,
   );
+  final branchNameGenerator = WorktreeBranchNameGenerator(
+    manager: manager,
+    providerCatalog: paseoProviderCatalog,
+    configuredProviders: () => configStore.config.metadataGenerationProviders,
+  );
+  final workspaceAutoName = WorkspaceAutoName(
+    workspaces: workspaceRegistries.workspaces,
+    git: gitService,
+    generate: branchNameGenerator.call,
+  );
   workspaceV2 = WorkspaceV2Service(
     registries: workspaceRegistries,
     git: gitService,
     gitSnapshots: workspaceGitObserverBackend,
     workspaceSetup: workspaceSetup,
     terminalBootstrap: terminalBootstrap,
+    workspaceAutoName: workspaceAutoName,
     appendAgentTimeline: manager.upsertTimelineItem,
     listAgents: manager.list,
     listTerminalContributions: terminals.listActivityContributions,

@@ -72,6 +72,17 @@ void main() {
   });
 
   group('worktrees', () {
+    test('probes and renames the current local branch', () async {
+      expect(await service.localBranchExists(repo, 'main'), isTrue);
+      expect(await service.localBranchExists(repo, 'missing'), isFalse);
+      expect(
+        await service.renameCurrentBranch(repo, 'renamed-main'),
+        'renamed-main',
+      );
+      expect(await service.currentBranch(repo), 'renamed-main');
+      expect(await service.localBranchExists(repo, 'renamed-main'), isTrue);
+    });
+
     test('create, list, archive round-trip', () async {
       final created = await service.createWorktree(repo, 'feature/login');
       expect(created.branch, 'feature/login');

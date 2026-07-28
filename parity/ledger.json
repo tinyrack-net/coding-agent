@@ -10815,10 +10815,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-response-loop.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/agent/structured_generation.dart; packages/daemon/lib/src/agent/agent_manager.dart",
+      "evidence": [
+        "packages/daemon/test/agent/structured_generation_test.dart; packages/daemon/test/agent_manager_test.dart"
+      ],
+      "notes": "Transient internal agents, provider fallback, JSON extraction, schema-guided retry, cleanup, and non-persistence are implemented. Dedicated fake-provider retry and aggregate-error evidence remains."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-run-state.ts",
@@ -11034,14 +11036,11 @@
     {
       "id": "source-unit:packages/server/src/server/agent/prompt-attachments.ts",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/agent_attachment.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/providers/paseo/codex_agent_session.dart; packages/daemon/lib/src/providers/paseo/claude_agent_session.dart",
+      "implementation": "packages/protocol/lib/src/messages/agent_attachment.dart; packages/daemon/lib/src/agent/first_agent_context.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/providers/paseo/codex_agent_session.dart; packages/daemon/lib/src/providers/paseo/claude_agent_session.dart",
       "evidence": [
-        "packages/daemon/test/agent_manager_test.dart",
-        "packages/daemon/test/providers/paseo/codex_agent_session_test.dart",
-        "packages/daemon/test/providers/paseo/claude_agent_client_test.dart",
-        "packages/protocol/test/agent_attachment_test.dart"
+        "packages/daemon/test/agent/first_agent_context_test.dart; packages/daemon/test/agent_manager_test.dart; packages/daemon/test/providers/paseo/codex_agent_session_test.dart; packages/daemon/test/providers/paseo/claude_agent_client_test.dart; packages/protocol/test/agent_attachment_test.dart"
       ],
-      "notes": "Prompt images use the frozen separate base64 image array. Claude receives blocks in exact chat-history, user text, supported native image, then other context order; Codex receives separate text blocks in the corresponding text order. Forge change request, issue, review, uploaded-file rendering, Codex image materialization, and the full app image picker remain."
+      "notes": "Frozen first-agent metadata seed fencing now joins prompt and semantic text attachments. Existing prompt image and provider rendering coverage remains; forge, issue, review, uploaded-file, Codex image materialization, and full app picker remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/provider-history-timestamps.ts",
@@ -11761,10 +11760,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/structured-generation-providers.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/agent/structured_generation.dart",
+      "evidence": [
+        "packages/daemon/test/agent/structured_generation_test.dart"
+      ],
+      "notes": "Configured provider resolution, no-snapshot fully explicit fast path, wait fallback, preferred model order, thinking defaults, readiness filtering, and deduplication are implemented. Current composer selection fallback remains."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/stt-debug.ts",
@@ -12296,12 +12297,11 @@
     {
       "id": "source-unit:packages/server/src/server/paseo-worktree-service.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/git/worktree_metadata.dart",
+      "implementation": "packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/workspace/workspace_auto_name.dart; packages/daemon/lib/src/git/worktree_metadata.dart; packages/daemon/lib/src/git/git_service.dart",
       "evidence": [
-        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
-        "packages/daemon/test/worktree_metadata_test.dart"
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/workspace/workspace_auto_name_test.dart; packages/daemon/test/worktree_metadata_test.dart; packages/daemon/test/git_service_test.dart"
       ],
-      "notes": "New branch-off worktrees now persist the frozen v2 pending first-agent branch auto-name marker while reused worktrees are left untouched. Structured context generation, guarded rename, workspace title persistence, and the full auto-name lifecycle remain pending."
+      "notes": "Branch-off creation and the first-agent pending-to-attempted lifecycle now include guarded rename, collision suffixing, user-change protection, and workspace branch/title persistence. Broader worktree service parity remains."
     },
     {
       "id": "source-unit:packages/server/src/server/path-utils.ts",
@@ -13204,10 +13204,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/workspace-auto-name.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/workspace/workspace_auto_name.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/daemon_server.dart",
+      "evidence": [
+        "packages/daemon/test/workspace/workspace_auto_name_test.dart"
+      ],
+      "notes": "First-agent worktree and directory auto-name scheduling, guarded title persistence, pending/attempted state, user branch/title protection, collision suffixing, and asynchronous failure isolation are implemented. Git mutation notification parity and live-provider E2E evidence remain."
     },
     {
       "id": "source-unit:packages/server/src/server/workspace-bootstrap-dedupe.ts",
@@ -13344,10 +13346,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/worktree-branch-name-generator.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/workspace/worktree_branch_name_generator.dart; packages/daemon/lib/src/agent/structured_generation.dart",
+      "evidence": [
+        "packages/daemon/test/agent/structured_generation_test.dart; packages/daemon/test/workspace/workspace_auto_name_test.dart"
+      ],
+      "notes": "Frozen metadata prompt contract, JSON schema, provider fallback, retry validation, branch validation, and paseo.json style overrides are implemented. Live provider smoke remains."
     },
     {
       "id": "source-unit:packages/server/src/server/worktree-core.ts",
@@ -13372,12 +13376,11 @@
     {
       "id": "source-unit:packages/server/src/server/worktree-session.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "implementation": "packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/workspace/workspace_auto_name.dart",
       "evidence": [
-        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
-        "packages/daemon/test/workspace/workspace_setup_service_test.dart"
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart; packages/daemon/test/workspace/workspace_setup_service_test.dart; packages/daemon/test/workspace/workspace_auto_name_test.dart"
       ],
-      "notes": "Directory/worktree creation, dirty-protected archive, cached setup status, sequential background setup progress, runtime environment registration, agent-continuation setup/terminal bootstrap, failed-agent cleanup, and final workspace projection are implemented; remaining session orchestration is incomplete."
+      "notes": "Directory/worktree creation now schedules first-agent metadata generation independently from setup and continuation. Dirty-protected archive, setup status/progress, runtime environment, terminal bootstrap, failed-agent cleanup, and projection exist; remaining session orchestration is incomplete."
     },
     {
       "id": "source-unit:packages/server/src/server/worktree/commands.ts",

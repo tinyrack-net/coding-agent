@@ -19,6 +19,7 @@ import 'mnemonic_worktree_slug.dart';
 import 'polling_workspace_git_backend.dart';
 import 'workspace_git_observer_service.dart';
 import 'workspace_registry.dart';
+import 'workspace_auto_name.dart';
 import 'workspace_setup_service.dart';
 import 'worktree_terminal_bootstrap_service.dart';
 
@@ -56,6 +57,7 @@ final class WorkspaceV2Service {
     this.gitSnapshots,
     this.workspaceSetup,
     this.terminalBootstrap,
+    this.workspaceAutoName,
     bool Function(String agentId, TimelineItem item)? appendAgentTimeline,
     String Function()? workspaceIdFactory,
     String Function()? worktreeSlugFactory,
@@ -78,6 +80,7 @@ final class WorkspaceV2Service {
   final PollingWorkspaceGitBackend? gitSnapshots;
   final WorkspaceSetupService? workspaceSetup;
   final WorktreeTerminalBootstrapService? terminalBootstrap;
+  final WorkspaceAutoName? workspaceAutoName;
   final WorkspaceV2Broadcast _broadcast;
   final Iterable<AgentSummary> Function() _listAgents;
   final Iterable<TerminalWorkspaceContribution> Function()
@@ -152,6 +155,7 @@ final class WorkspaceV2Service {
         title,
       ),
     };
+    workspaceAutoName?.schedule(workspace, firstAgentContext);
     _ensureGitSnapshot(workspace);
     final setup = workspaceSetup;
     if (source is WorktreeWorkspaceCreateSource && setup != null) {
@@ -488,6 +492,7 @@ final class WorkspaceV2Service {
         WorktreeWorkspaceCreateSource source => _createWorktree(source, title),
       };
       final (workspace, project) = await created;
+      workspaceAutoName?.schedule(workspace, request.firstAgentContext);
       _ensureGitSnapshot(workspace);
       final setup = workspaceSetup;
       if (request.source is WorktreeWorkspaceCreateSource && setup != null) {

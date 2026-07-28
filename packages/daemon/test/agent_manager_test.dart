@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:agent_daemon/src/agent/agent_manager.dart';
 import 'package:agent_daemon/src/agent/agent_store.dart';
+import 'package:agent_daemon/src/agent/structured_generation.dart';
 import 'package:agent_daemon/src/providers/agent_client.dart';
 import 'package:agent_daemon/src/providers/agent_session.dart';
 import 'package:agent_daemon/src/providers/provider_event.dart';
@@ -251,6 +252,60 @@ void main() {
           attentionEvents.add((agentId, reason, timestamp)),
     );
   });
+
+  test(
+    'structured generation retries invalid JSON and discards internal agent',
+    () async {
+      final future = generateStructuredAgentResponseWithFallback(
+        manager: manager,
+        cwd: tempDir.path,
+        providers: const [
+          StructuredGenerationProvider(
+            provider: 'claude',
+            model: 'claude-haiku',
+          ),
+        ],
+        prompt: 'Generate metadata.',
+        jsonSchema: const {
+          'type': 'object',
+          'required': ['title'],
+          'properties': {
+            'title': {'type': 'string'},
+          },
+        },
+        validate: (value) =>
+            value['title'] is String ? null : 'title is required',
+      );
+      while (client.sessions.isEmpty ||
+          client.sessions.single.prompts.isEmpty) {
+        await pumpEventQueue();
+      }
+      final session = client.sessions.single;
+      session.emit(
+        const AssistantMessageComplete(
+          itemId: 'invalid',
+          fullText: '{"wrong":true}',
+        ),
+      );
+      session.emit(const TurnCompleted());
+      while (session.prompts.length < 2) {
+        await pumpEventQueue();
+      }
+      session.emit(
+        const AssistantMessageComplete(
+          itemId: 'valid',
+          fullText: '```json\n{"title":"Fixed"}\n```',
+        ),
+      );
+      session.emit(const TurnCompleted());
+
+      expect(await future, {'title': 'Fixed'});
+      expect(session.prompts, hasLength(2));
+      expect(session.prompts.last, contains('previous response did not match'));
+      expect(session.disposed, isTrue);
+      expect(manager.list(), isEmpty);
+    },
+  );
 
   tearDown(() async {
     await manager.dispose();

@@ -1115,6 +1115,23 @@ class AgentManager {
     await _store.flush();
   }
 
+  /// Removes a transient metadata-generation agent after its provider session
+  /// has been closed. Internal agents are never persisted or broadcast.
+  Future<void> discardInternalAgent(String agentId) async {
+    final runtime = _runtime(agentId);
+    if (!runtime.internal) {
+      throw StateError('Only internal agents can be discarded');
+    }
+    if (runtime.session != null ||
+        runtime.summary.runState != AgentRunState.closed) {
+      await close(agentId);
+    }
+    _runtimes.remove(agentId);
+    _stateWaiters.remove(agentId);
+    providerSubagents.clear(agentId);
+    runtime.timeline.dispose();
+  }
+
   Future<void> ensureLoaded(String agentId) async {
     final runtime = _runtime(agentId);
     if (runtime.session != null) return;

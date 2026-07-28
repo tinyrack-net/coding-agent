@@ -81,6 +81,20 @@ class GitService {
     return (!result.ok || name.isEmpty || name == 'HEAD') ? 'main' : name;
   }
 
+  Future<bool> localBranchExists(String projectPath, String branch) async {
+    final result = await runner.run(
+      ['show-ref', '--verify', '--quiet', 'refs/heads/$branch'],
+      cwd: projectPath,
+      check: false,
+    );
+    return result.ok;
+  }
+
+  Future<String> renameCurrentBranch(String projectPath, String branch) async {
+    await runner.run(['branch', '-m', branch], cwd: projectPath);
+    return currentBranch(projectPath);
+  }
+
   /// Resolves the repository's default branch using Paseo's precedence:
   /// origin/HEAD first, then local `main`, then local `master`.
   Future<String> resolveDefaultBranch(String projectPath) async {
