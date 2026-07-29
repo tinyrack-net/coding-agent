@@ -10230,7 +10230,7 @@
     },
     {
       "id": "source-unit:packages/cli/src/output/index.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
@@ -10252,7 +10252,7 @@
         "packages/daemon/test/daemon_schedule_e2e_test.dart",
         "packages/daemon/test/cli/agent_command_test.dart"
       ],
-      "notes": "The shared Dart output entrypoint covers typed result/schema serialization, JSON, YAML, quiet, table, errors, ANSI status color, headers, no-color, equals/compact format flags, and option termination. It is used by the full non-streaming agent command family plus import/run, chat, clone, heartbeat, Hub, permit, provider, schedule, script, workspace, worktree, terminal result actions, non-streaming loop actions, and daemon result actions; remaining streaming or special CLI families are tracked separately."
+      "notes": "The shared Dart output surface covers typed result/schema serialization, JSON and NDJSON, YAML and document streaming, quiet, table, errors, ANSI color, headers, no-color, equals/compact format flags, and option termination. All structured command consumers are connected; frozen direct and streaming command boundaries remain intentionally direct."
     },
     {
       "id": "source-unit:packages/cli/src/output/json.ts",
@@ -10363,7 +10363,7 @@
     },
     {
       "id": "source-unit:packages/cli/src/output/with-output.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/agent_output_schemas.dart; packages/daemon/lib/src/cli/agent_import_command.dart; packages/daemon/lib/src/cli/agent_run_command.dart; packages/daemon/lib/src/cli/clone_command.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/lib/src/cli/worktree_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/hub_command.dart; packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/script_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/terminal_command.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_invocation_test.dart",
@@ -10387,7 +10387,7 @@
         "packages/daemon/test/cli/workspace_command_test.dart",
         "packages/daemon/test/cli/worktree_command_test.dart"
       ],
-      "notes": "Global and local options feed shared result and error rendering for agent import/run, chat, clone, heartbeat, Hub, permit, provider, schedule, script, workspace, worktree, terminal result actions, non-streaming loop actions, and daemon result actions while capture/send-keys and other direct or streaming actions retain their frozen boundaries; remaining JSON-only command families still need migration."
+      "notes": "Global and local options feed shared result and error rendering across every frozen withOutput command family, including output-schema JSON forcing and structured failures. Attach/log streams, loop logs, terminal capture/send-keys, pairing, startup, onboarding, and hooks retain the same direct boundaries as frozen Paseo."
     },
     {
       "id": "source-unit:packages/cli/src/output/yaml.ts",
