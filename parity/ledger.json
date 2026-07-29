@@ -6739,12 +6739,12 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/schedules-screen.tsx",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/screens/schedules_screen.dart",
       "evidence": [
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": null
+      "notes": "The Flutter schedules screen now matches the frozen focused-route body contract across connecting, load-error, globally empty, filtered-empty, and content states. It derives agent-target readiness per host, resolves and sorts rows newest-first with stable ties, resets a removed host filter permanently to All hosts, preserves active/ended partitioning, and routes create/edit to the shared sheet. The toolbar uses the frozen adaptive 12/24px inset, 32px host filter, 32px status control with exact 28px pills, and compact outline create action without narrow-screen overflow. The scroll body uses the frozen 16px top/24px bottom rhythm, adaptive host-error banner geometry and palette, centered active/ended empty states, Tinyrack-branded external schedules help, stable interaction keys, and accessible filter/link labels. Focused widget regressions cover compact multi-host geometry and tokens, help launch, newest-first ordering, host removal/reappearance, load recovery, derived states, filters, and host-scoped edits."
     },
     {
       "id": "source-unit:packages/app/src/screens/sessions-screen.tsx",

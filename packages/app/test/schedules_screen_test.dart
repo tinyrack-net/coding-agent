@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/composer/create_agent_preferences.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
+import 'package:coding_agent_app/core/external_url_launcher.dart';
 import 'package:coding_agent_app/core/theme.dart';
 import 'package:coding_agent_app/screens/schedules_screen.dart';
 import 'package:coding_agent_app/state/appearance_provider.dart';
@@ -28,6 +29,7 @@ void main() {
     expect(find.text('Schedules'), findsOneWidget);
     expect(find.text('No active schedules'), findsOneWidget);
     expect(find.text('Schedules run agents on a cadence.'), findsOneWidget);
+    expect(find.text('See docs'), findsOneWidget);
     expect(find.text('New schedule'), findsOneWidget);
 
     await tester.tap(find.text('New schedule'));
@@ -58,6 +60,18 @@ void main() {
           .onPressed,
       isNull,
     );
+  });
+
+  testWidgets('empty state opens the Tinyrack schedules help route', (
+    tester,
+  ) async {
+    final launcher = _FakeExternalUrlLauncher();
+    await _pump(tester, const [], launcher: launcher);
+
+    await tester.tap(find.byKey(const ValueKey('schedules-docs')));
+    await tester.pumpAndSettle();
+
+    expect(launcher.opened, ['https://tinyrack.net/docs/schedules']);
   });
 
   testWidgets('create form uses the frozen compact bottom-sheet geometry', (
@@ -182,6 +196,132 @@ void main() {
     expect(find.text('Active schedule'), findsNothing);
     expect(find.text('Ended schedule'), findsOneWidget);
     expect(find.text('Finished'), findsOneWidget);
+  });
+
+  testWidgets('compact screen keeps the frozen toolbar and list insets', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 700);
+    addTearDown(tester.view.reset);
+    await _pumpWithNotifier(
+      tester,
+      _FakeSchedulesNotifier([_schedule(id: 'compact-screen')]),
+      hosts: _twoHosts,
+    );
+
+    final toolbar = tester.getRect(
+      find.byKey(const ValueKey('schedules-filter-row')),
+    );
+    final filter = tester.getRect(
+      find.byKey(const ValueKey('schedules-status-filter')),
+    );
+    final create = tester.getRect(find.byKey(const ValueKey('schedules-new')));
+    final hostFilter = tester.getRect(
+      find.byKey(const ValueKey('schedules-host-filter-trigger')),
+    );
+    final activeSegment = tester.getRect(
+      find.byKey(const ValueKey('schedules-filter-active')),
+    );
+    final endedSegment = tester.getRect(
+      find.byKey(const ValueKey('schedules-filter-ended')),
+    );
+    final card = tester.getRect(
+      find.byKey(const ValueKey('schedules-table-card')),
+    );
+    expect(toolbar.left, 0);
+    expect(toolbar.right, 390);
+    expect(filter.height, 32);
+    expect(hostFilter.height, 32);
+    expect(activeSegment.size, const Size(64, 28));
+    expect(endedSegment.size, const Size(66, 28));
+    expect(create.size, const Size(146, 32));
+    expect(
+      find.byKey(const ValueKey('schedules-host-filter-trigger')),
+      findsOneWidget,
+    );
+    expect(create.right, lessThanOrEqualTo(378));
+    expect(card.left, 12);
+    expect(card.right, 378);
+    final activeDecoration =
+        tester
+                .widget<Container>(
+                  find
+                      .descendant(
+                        of: find.byKey(
+                          const ValueKey('schedules-filter-active'),
+                        ),
+                        matching: find.byType(Container),
+                      )
+                      .last,
+                )
+                .decoration
+            as BoxDecoration;
+    expect(
+      activeDecoration.color,
+      paseoPaletteFor(AppThemeName.dark).foreground,
+    );
+    expect(activeDecoration.borderRadius, BorderRadius.circular(9999));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('screen sorts visible schedules newest first', (tester) async {
+    await _pump(tester, [
+      _schedule(
+        id: 'older',
+        name: 'Older schedule',
+        createdAt: '2026-07-27T00:00:00.000Z',
+      ),
+      _schedule(
+        id: 'newer',
+        name: 'Newer schedule',
+        createdAt: '2026-07-28T00:00:00.000Z',
+      ),
+    ]);
+
+    expect(
+      tester.getTopLeft(find.text('Newer schedule')).dy,
+      lessThan(tester.getTopLeft(find.text('Older schedule')).dy),
+    );
+  });
+
+  testWidgets('host error banner uses frozen compact geometry and palette', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 700);
+    addTearDown(tester.view.reset);
+    final notifier = _FakeSchedulesNotifier.aggregated(
+      AggregatedSchedulesState(
+        schedules: [
+          AggregatedSchedule(
+            serverId: 'server-a',
+            serverName: 'Local',
+            schedule: _schedule(id: 'active'),
+          ),
+        ],
+        hostErrors: const [
+          ScheduleHostError(
+            serverId: 'server-b',
+            serverName: 'Remote',
+            message: 'offline',
+          ),
+        ],
+      ),
+    );
+    await _pumpWithNotifier(tester, notifier);
+
+    final bannerFinder = find.byKey(const ValueKey('schedules-host-errors'));
+    final rect = tester.getRect(bannerFinder);
+    expect(rect.left, 12);
+    expect(rect.right, 378);
+    final decoration =
+        tester.widget<Container>(bannerFinder).decoration! as BoxDecoration;
+    expect(
+      (decoration.border! as Border).top.color,
+      paseoPaletteFor(AppThemeName.dark).border,
+    );
+    expect(decoration.borderRadius, BorderRadius.circular(8));
   });
 
   testWidgets('table uses frozen desktop card geometry and tokens', (
@@ -918,6 +1058,49 @@ void main() {
     expect(find.text('Active schedule'), findsNothing);
   });
 
+  testWidgets('removed host resets the filter before a matching host returns', (
+    tester,
+  ) async {
+    final registry = _ScheduleHostRegistry(_twoHosts);
+    final notifier = _FakeSchedulesNotifier.aggregated(
+      AggregatedSchedulesState(
+        schedules: [
+          AggregatedSchedule(
+            serverId: 'server-a',
+            serverName: 'Local',
+            schedule: _schedule(id: 'local'),
+          ),
+          AggregatedSchedule(
+            serverId: 'server-b',
+            serverName: 'Remote',
+            schedule: _schedule(id: 'remote', name: 'Remote schedule'),
+          ),
+        ],
+      ),
+    );
+    await _pumpWithNotifier(
+      tester,
+      notifier,
+      hosts: _twoHosts,
+      hostRegistry: registry,
+    );
+
+    await tester.tap(find.text('All hosts'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remote').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Active schedule'), findsNothing);
+
+    registry.replace(_oneHost);
+    await tester.pumpAndSettle();
+    registry.replace(_twoHosts);
+    await tester.pumpAndSettle();
+
+    expect(find.text('All hosts'), findsOneWidget);
+    expect(find.text('Active schedule'), findsOneWidget);
+    expect(find.text('Remote schedule'), findsOneWidget);
+  });
+
   testWidgets('derived ended states override raw schedule status', (
     tester,
   ) async {
@@ -1059,11 +1242,13 @@ Future<void> _pump(
   WidgetTester tester,
   List<ScheduleSummary> schedules, {
   AppThemeName themeName = AppThemeName.dark,
+  ExternalUrlLauncher? launcher,
 }) async {
   await _pumpWithNotifier(
     tester,
     _FakeSchedulesNotifier(schedules),
     themeName: themeName,
+    launcher: launcher,
   );
 }
 
@@ -1071,33 +1256,40 @@ Future<void> _pumpWithNotifier(
   WidgetTester tester,
   _FakeSchedulesNotifier notifier, {
   List<HostProfile> hosts = _oneHost,
+  _ScheduleHostRegistry? hostRegistry,
   Map<String, Map<String, AgentSummary>> agentDirectories = const {},
   bool settle = true,
   bool supportsWorkspaceMultiplicity = true,
   bool projectsAreGit = true,
   CreateAgentPreferencesService? preferencesService,
   AppThemeName themeName = AppThemeName.dark,
+  ExternalUrlLauncher? launcher,
 }) async {
+  final effectiveHosts = hostRegistry?.hosts ?? hosts;
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         aggregatedSchedulesProvider.overrideWith(() => notifier),
-        hostRegistryProvider.overrideWith(() => _ScheduleHostRegistry(hosts)),
+        hostRegistryProvider.overrideWith(
+          () => hostRegistry ?? _ScheduleHostRegistry(effectiveHosts),
+        ),
         agentDirectoryReplicaStoreProvider.overrideWith(
           () => _ScheduleAgentStore(agentDirectories),
         ),
         scheduleProjectTargetsProvider.overrideWith(
           () => _ScheduleProjectTargets(
-            _targetsFor(hosts, isGit: projectsAreGit),
+            _targetsFor(effectiveHosts, isGit: projectsAreGit),
           ),
         ),
         hostRuntimeClientsProvider.overrideWithValue({
-          for (final host in hosts)
+          for (final host in effectiveHosts)
             host.serverId: _ScheduleSnapshotClient(
               host.serverId,
               supportsWorkspaceMultiplicity: supportsWorkspaceMultiplicity,
             ),
         }),
+        if (launcher != null)
+          externalUrlLauncherProvider.overrideWithValue(launcher),
       ],
       child: FluentApp(
         theme: buildAppTheme(themeName),
@@ -1113,6 +1305,16 @@ Future<void> _pumpWithNotifier(
     await tester.pumpAndSettle();
   } else {
     await tester.pump();
+  }
+}
+
+final class _FakeExternalUrlLauncher implements ExternalUrlLauncher {
+  final opened = <String>[];
+
+  @override
+  Future<bool> open(String url) async {
+    opened.add(url);
+    return true;
   }
 }
 
@@ -1305,13 +1507,27 @@ final class _ErrorSchedulesNotifier extends _FakeSchedulesNotifier {
 }
 
 final class _ScheduleHostRegistry extends HostRegistryNotifier {
-  _ScheduleHostRegistry(this.hosts);
+  _ScheduleHostRegistry(List<HostProfile> hosts) : _hosts = hosts;
 
-  final List<HostProfile> hosts;
+  List<HostProfile> _hosts;
+
+  List<HostProfile> get hosts => _hosts;
 
   @override
-  HostRegistryState build() =>
-      HostRegistryState(hosts: hosts, activeServerId: 'server-a', loaded: true);
+  HostRegistryState build() => HostRegistryState(
+    hosts: _hosts,
+    activeServerId: 'server-a',
+    loaded: true,
+  );
+
+  void replace(List<HostProfile> hosts) {
+    _hosts = hosts;
+    state = HostRegistryState(
+      hosts: hosts,
+      activeServerId: 'server-a',
+      loaded: true,
+    );
+  }
 }
 
 final class _ScheduleAgentStore extends AgentDirectoryReplicaStoreNotifier {
@@ -1402,6 +1618,7 @@ ScheduleSummary _schedule({
   String? name,
   ScheduleTarget? target,
   String? expiresAt,
+  String createdAt = '2026-07-27T00:00:00.000Z',
 }) => ScheduleSummary(
   id: id,
   name:
@@ -1422,8 +1639,8 @@ ScheduleSummary _schedule({
         ),
       ),
   status: status,
-  createdAt: '2026-07-27T00:00:00.000Z',
-  updatedAt: '2026-07-27T00:00:00.000Z',
+  createdAt: createdAt,
+  updatedAt: createdAt,
   nextRunAt: status == ScheduleStatus.active
       ? '2026-07-27T00:05:00.000Z'
       : null,

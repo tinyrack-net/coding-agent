@@ -8,6 +8,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../composer/create_agent_preferences.dart';
 import '../composer/provider_model_selection.dart';
 import '../core/daemon_client.dart';
+import '../core/external_url_launcher.dart';
 import '../core/theme.dart';
 import '../providers/providers_snapshot.dart';
 import '../state/agents_provider.dart';
@@ -29,6 +30,7 @@ enum _ScheduleFilter { active, ended }
 enum _ScheduleDerivedState { active, paused, expired, finished, targetGone }
 
 const _allScheduleHosts = '__all__';
+const _schedulesDocsUrl = 'https://tinyrack.net/docs/schedules';
 
 // Lucide 0.546.0, ISC. Matches the frozen Paseo schedule option glyphs.
 const _lucideFolderSvg = '''
@@ -79,6 +81,12 @@ class _SchedulesScreenState extends ConsumerState<SchedulesScreen> {
   Widget build(BuildContext context) {
     final schedules = ref.watch(aggregatedSchedulesProvider);
     final hosts = ref.watch(hostRegistryProvider).hosts;
+    ref.listen(hostRegistryProvider, (previous, next) {
+      if (_selectedHost != _allScheduleHosts &&
+          !next.hosts.any((host) => host.serverId == _selectedHost)) {
+        setState(() => _selectedHost = _allScheduleHosts);
+      }
+    });
     final agentDirectories = ref.watch(agentDirectoryReplicaStoreProvider);
     final projectTargets =
         ref.watch(scheduleProjectTargetsProvider).value?.targets ??
@@ -92,27 +100,19 @@ class _SchedulesScreenState extends ConsumerState<SchedulesScreen> {
     return ScaffoldPage(
       header: const PageHeader(title: Text('Schedules')),
       content: schedules.when(
-        loading: () => const Center(child: ProgressRing()),
+        loading: () => const _ScheduleLoadingState(),
         error: (error, _) => _ScheduleLoadError(
           onRetry: () =>
               ref.read(aggregatedSchedulesProvider.notifier).reload(),
         ),
         data: (state) {
           if (state.connecting && state.schedules.isEmpty) {
-            return const Center(child: ProgressRing());
+            return const _ScheduleLoadingState();
           }
           if (state.schedules.isEmpty) {
-            return Column(
-              children: [
-                if (state.hostErrors.isNotEmpty)
-                  _ScheduleHostErrors(errors: state.hostErrors),
-                Expanded(
-                  child: _ScheduleEmptyState(
-                    ended: false,
-                    onCreate: () => _showForm(),
-                  ),
-                ),
-              ],
+            return _SchedulesEmptyBody(
+              errors: state.hostErrors,
+              onCreate: () => _showForm(),
             );
           }
           final now = DateTime.now();
@@ -125,92 +125,60 @@ class _SchedulesScreenState extends ConsumerState<SchedulesScreen> {
                 now: now,
               ),
           ];
-          final visible = rows
-              .where((row) {
-                if (selectedHost != _allScheduleHosts &&
-                    row.entry.serverId != selectedHost) {
-                  return false;
-                }
-                final ended =
-                    row.state != _ScheduleDerivedState.active &&
-                    row.state != _ScheduleDerivedState.paused;
-                return _filter == _ScheduleFilter.ended ? ended : !ended;
-              })
-              .toList(growable: false);
+          final visible = rows.where((row) {
+            if (selectedHost != _allScheduleHosts &&
+                row.entry.serverId != selectedHost) {
+              return false;
+            }
+            final ended =
+                row.state != _ScheduleDerivedState.active &&
+                row.state != _ScheduleDerivedState.paused;
+            return _filter == _ScheduleFilter.ended ? ended : !ended;
+          }).toList()..sort(_compareResolvedScheduleRows);
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-                child: Row(
-                  children: [
-                    if (hosts.length > 1) ...[
-                      ComboBox<String>(
-                        value: selectedHost,
-                        items: [
-                          const ComboBoxItem(
-                            value: _allScheduleHosts,
-                            child: Text('All hosts'),
-                          ),
-                          for (final host in hosts)
-                            ComboBoxItem(
-                              value: host.serverId,
-                              child: Text(host.label),
-                            ),
-                        ],
-                        onChanged: (value) => setState(
-                          () => _selectedHost = value ?? _allScheduleHosts,
+              _SchedulesToolbar(
+                hosts: hosts,
+                selectedHost: selectedHost,
+                filter: _filter,
+                onSelectHost: (value) => setState(() => _selectedHost = value),
+                onSelectFilter: (value) => setState(() => _filter = value),
+                onCreate: () => _showForm(),
+              ),
+              Expanded(
+                child: CustomScrollView(
+                  key: const ValueKey('schedules-list'),
+                  slivers: [
+                    const SliverPadding(padding: EdgeInsets.only(top: 16)),
+                    if (state.hostErrors.isNotEmpty) ...[
+                      SliverToBoxAdapter(
+                        child: _ScheduleHostErrors(errors: state.hostErrors),
+                      ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                    ],
+                    if (visible.isNotEmpty) ...[
+                      SliverToBoxAdapter(
+                        child: _SchedulesTable(
+                          rows: visible,
+                          singleHost: hosts.length <= 1,
+                          onEdit: (entry) => _showForm(entry),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                    ],
-                    ToggleButton(
-                      checked: _filter == _ScheduleFilter.active,
-                      onChanged: (_) =>
-                          setState(() => _filter = _ScheduleFilter.active),
-                      child: const Text('Active'),
-                    ),
-                    const SizedBox(width: 4),
-                    ToggleButton(
-                      checked: _filter == _ScheduleFilter.ended,
-                      onChanged: (_) =>
-                          setState(() => _filter = _ScheduleFilter.ended),
-                      child: const Text('Ended'),
-                    ),
-                    const Spacer(),
-                    Button(
-                      onPressed: () => _showForm(),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(FluentIcons.add, size: 14),
-                          SizedBox(width: 8),
-                          Text('New schedule'),
-                        ],
+                      const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
+                    ] else
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 24),
+                          child: _ScheduleEmptyState(
+                            ended: _filter == _ScheduleFilter.ended,
+                            onCreate: () => _showForm(),
+                          ),
+                        ),
                       ),
-                    ),
                   ],
                 ),
-              ),
-              if (state.hostErrors.isNotEmpty)
-                _ScheduleHostErrors(errors: state.hostErrors),
-              Expanded(
-                child: visible.isEmpty
-                    ? _ScheduleEmptyState(
-                        ended: _filter == _ScheduleFilter.ended,
-                        onCreate: () => _showForm(),
-                      )
-                    : ListView(
-                        key: const ValueKey('schedules-list'),
-                        padding: const EdgeInsets.only(bottom: 24),
-                        children: [
-                          _SchedulesTable(
-                            rows: visible,
-                            singleHost: hosts.length <= 1,
-                            onEdit: (entry) => _showForm(entry),
-                          ),
-                        ],
-                      ),
               ),
             ],
           );
@@ -226,6 +194,314 @@ class _SchedulesScreenState extends ConsumerState<SchedulesScreen> {
         schedule: entry?.schedule,
         serverId: entry?.serverId,
         preferencesService: widget.preferencesService,
+      ),
+    );
+  }
+}
+
+class _SchedulesToolbar extends StatelessWidget {
+  const _SchedulesToolbar({
+    required this.hosts,
+    required this.selectedHost,
+    required this.filter,
+    required this.onSelectHost,
+    required this.onSelectFilter,
+    required this.onCreate,
+  });
+
+  final List<HostProfile> hosts;
+  final String selectedHost;
+  final _ScheduleFilter filter;
+  final ValueChanged<String> onSelectHost;
+  final ValueChanged<_ScheduleFilter> onSelectFilter;
+  final VoidCallback onCreate;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact =
+        MediaQuery.sizeOf(context).width < adaptiveModalCompactBreakpoint;
+    return Padding(
+      key: const ValueKey('schedules-filter-row'),
+      padding: EdgeInsets.only(
+        left: compact ? 12 : 24,
+        top: 16,
+        right: compact ? 12 : 24,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (hosts.length > 1)
+                  _ScheduleHostFilter(
+                    key: const ValueKey('schedules-host-filter-trigger'),
+                    hosts: hosts,
+                    selectedHost: selectedHost,
+                    onSelectHost: onSelectHost,
+                  ),
+                _ScheduleStatusFilter(
+                  selected: filter,
+                  onChanged: onSelectFilter,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          _ScheduleNewButton(
+            key: const ValueKey('schedules-new'),
+            onPressed: onCreate,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScheduleHostFilter extends StatelessWidget {
+  const _ScheduleHostFilter({
+    super.key,
+    required this.hosts,
+    required this.selectedHost,
+    required this.onSelectHost,
+  });
+
+  final List<HostProfile> hosts;
+  final String selectedHost;
+  final ValueChanged<String> onSelectHost;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.paseoPalette;
+    final label = selectedHost == _allScheduleHosts
+        ? 'All hosts'
+        : hosts
+                  .where((host) => host.serverId == selectedHost)
+                  .map((host) => host.label)
+                  .firstOrNull ??
+              'All hosts';
+    return Semantics(
+      button: true,
+      label: 'Filter: $label',
+      child: DropDownButton(
+        placement: FlyoutPlacementMode.bottomLeft,
+        menuColor: palette.surface1,
+        buttonBuilder: (context, onOpen) => HoverButton(
+          onPressed: onOpen,
+          builder: (context, states) {
+            final hovered = states.contains(WidgetState.hovered);
+            final pressed = states.contains(WidgetState.pressed);
+            return Container(
+              height: 32,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: pressed
+                    ? palette.surface3
+                    : hovered
+                    ? palette.surface2
+                    : palette.surface1,
+                border: Border.all(color: palette.border),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    FluentIcons.server,
+                    size: 14,
+                    color: palette.foregroundMuted,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: palette.foreground,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(
+                    FluentIcons.chevron_down,
+                    size: 14,
+                    color: palette.foregroundMuted,
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        items: [
+          MenuFlyoutItem(
+            key: const ValueKey('schedules-host-option-all'),
+            leading: Icon(
+              selectedHost == _allScheduleHosts
+                  ? FluentIcons.check_mark
+                  : FluentIcons.server,
+              size: 14,
+            ),
+            text: const Text('All hosts'),
+            onPressed: () => onSelectHost(_allScheduleHosts),
+          ),
+          for (final host in hosts)
+            MenuFlyoutItem(
+              key: ValueKey('schedules-host-option-${host.serverId}'),
+              leading: Icon(
+                selectedHost == host.serverId
+                    ? FluentIcons.check_mark
+                    : FluentIcons.server,
+                size: 14,
+              ),
+              text: Text(host.label),
+              onPressed: () => onSelectHost(host.serverId),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScheduleNewButton extends StatelessWidget {
+  const _ScheduleNewButton({super.key, required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.paseoPalette;
+    return SizedBox(
+      width: 146,
+      height: 32,
+      child: Semantics(
+        button: true,
+        label: 'New schedule',
+        child: HoverButton(
+          onPressed: onPressed,
+          builder: (context, states) {
+            final hovered = states.contains(WidgetState.hovered);
+            final pressed = states.contains(WidgetState.pressed);
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: pressed
+                    ? palette.surface3
+                    : hovered
+                    ? palette.surface2
+                    : Colors.transparent,
+                border: Border.all(color: palette.border),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: [
+                  Icon(FluentIcons.add, size: 14, color: palette.foreground),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'New schedule',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: palette.foreground, fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ScheduleStatusFilter extends StatelessWidget {
+  const _ScheduleStatusFilter({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final _ScheduleFilter selected;
+  final ValueChanged<_ScheduleFilter> onChanged;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    key: const ValueKey('schedules-status-filter'),
+    height: 32,
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _ScheduleStatusSegment(
+          key: const ValueKey('schedules-filter-active'),
+          label: 'Active',
+          selected: selected == _ScheduleFilter.active,
+          onPressed: () => onChanged(_ScheduleFilter.active),
+        ),
+        const SizedBox(width: 4),
+        _ScheduleStatusSegment(
+          key: const ValueKey('schedules-filter-ended'),
+          label: 'Ended',
+          selected: selected == _ScheduleFilter.ended,
+          onPressed: () => onChanged(_ScheduleFilter.ended),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ScheduleStatusSegment extends StatelessWidget {
+  const _ScheduleStatusSegment({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.paseoPalette;
+    return SizedBox(
+      width: label == 'Active' ? 64 : 66,
+      height: 28,
+      child: Semantics(
+        button: true,
+        selected: selected,
+        child: HoverButton(
+          onPressed: selected ? null : onPressed,
+          builder: (context, states) {
+            final hovered = states.contains(WidgetState.hovered);
+            final pressed = states.contains(WidgetState.pressed);
+            return Container(
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected
+                    ? palette.foreground
+                    : pressed
+                    ? palette.surface3
+                    : hovered
+                    ? palette.surface2
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(9999),
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: selected ? palette.surface0 : palette.foregroundMuted,
+                  fontSize: 14,
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -275,19 +551,44 @@ class _SchedulesTable extends StatelessWidget {
   }
 }
 
+class _ScheduleLoadingState extends StatelessWidget {
+  const _ScheduleLoadingState();
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: SizedBox.square(
+      dimension: 32,
+      child: ProgressRing(activeColor: context.paseoPalette.foregroundMuted),
+    ),
+  );
+}
+
 class _ScheduleLoadError extends StatelessWidget {
   const _ScheduleLoadError({required this.onRetry});
   final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Text('Unable to load schedules'),
-        const SizedBox(height: 12),
-        Button(onPressed: onRetry, child: const Text('Try again')),
-      ],
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Unable to load schedules',
+            style: TextStyle(
+              color: context.paseoPalette.foregroundMuted,
+              fontSize: 18,
+            ),
+          ),
+          const SizedBox(height: 24),
+          HyperlinkButton(
+            key: const ValueKey('schedules-retry'),
+            onPressed: onRetry,
+            child: const Text('Try again'),
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -298,24 +599,58 @@ class _ScheduleHostErrors extends StatelessWidget {
   final List<ScheduleHostError> errors;
 
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      border: Border.all(color: context.tokens.outlineVariant),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final error in errors)
-          Text(
-            '${error.serverName}: Could not load schedules',
-            style: context.textStyles.bodySmall?.copyWith(
-              color: context.statusColors.danger,
-            ),
-          ),
-      ],
+  Widget build(BuildContext context) {
+    final compact =
+        MediaQuery.sizeOf(context).width < adaptiveModalCompactBreakpoint;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 24),
+      child: Container(
+        key: const ValueKey('schedules-host-errors'),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(color: context.paseoPalette.border),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var index = 0; index < errors.length; index++) ...[
+              if (index > 0) const SizedBox(height: 4),
+              Text(
+                '${errors[index].serverName}: Could not load schedules',
+                style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SchedulesEmptyBody extends StatelessWidget {
+  const _SchedulesEmptyBody({required this.errors, required this.onCreate});
+
+  final List<ScheduleHostError> errors;
+  final VoidCallback onCreate;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (errors.isNotEmpty) ...[
+              _ScheduleHostErrors(errors: errors),
+              const SizedBox(height: 24),
+            ],
+            _ScheduleEmptyState(ended: false, onCreate: onCreate),
+          ],
+        ),
+      ),
     ),
   );
 }
@@ -329,42 +664,82 @@ class _ScheduleEmptyState extends StatelessWidget {
   Widget build(BuildContext context) => Center(
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 420),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            FluentIcons.calendar_week,
-            size: 32,
-            color: context.tokens.onSurfaceVariant,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            ended ? 'No ended schedules' : 'No active schedules',
-            style: context.textStyles.titleSmall,
-          ),
-          if (!ended) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Schedules run agents on a cadence.',
-              style: TextStyle(color: context.tokens.onSurfaceVariant),
+      child: Semantics(
+        key: ValueKey(ended ? 'schedules-ended-empty' : 'schedules-empty'),
+        container: true,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              FluentIcons.calendar_week,
+              size: 20,
+              color: context.paseoPalette.foregroundMuted,
             ),
-            const SizedBox(height: 16),
-            Button(
-              onPressed: onCreate,
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(FluentIcons.add, size: 14),
-                  SizedBox(width: 8),
-                  Text('New schedule'),
-                ],
+            SizedBox(height: ended ? 12 : 16),
+            Text(
+              ended ? 'No ended schedules' : 'No active schedules',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: context.paseoPalette.foreground,
+                fontSize: 16,
               ),
             ),
+            if (!ended) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Schedules run agents on a cadence.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: context.paseoPalette.foregroundMuted,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _ScheduleDocsLink(key: const ValueKey('schedules-docs')),
+              const SizedBox(height: 16),
+              Button(
+                key: const ValueKey('schedules-empty-new'),
+                onPressed: onCreate,
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(FluentIcons.add, size: 14),
+                    SizedBox(width: 8),
+                    Text('New schedule'),
+                  ],
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     ),
   );
+}
+
+class _ScheduleDocsLink extends ConsumerWidget {
+  const _ScheduleDocsLink({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final muted = context.paseoPalette.foregroundMuted;
+    return Semantics(
+      link: true,
+      label: 'See docs',
+      child: HoverButton(
+        onPressed: () =>
+            ref.read(externalUrlLauncherProvider).open(_schedulesDocsUrl),
+        builder: (context, states) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('See docs', style: TextStyle(color: muted, fontSize: 12)),
+            const SizedBox(width: 4),
+            Icon(FluentIcons.open_in_new_window, size: 12, color: muted),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ScheduleRow extends ConsumerWidget {
@@ -1631,6 +2006,19 @@ final class _ResolvedScheduleRow {
   final _ScheduleDerivedState state;
   final String targetLabel;
   final String? provider;
+}
+
+int _compareResolvedScheduleRows(
+  _ResolvedScheduleRow left,
+  _ResolvedScheduleRow right,
+) {
+  final created = right.entry.schedule.createdAt.compareTo(
+    left.entry.schedule.createdAt,
+  );
+  if (created != 0) return created;
+  final host = left.entry.serverId.compareTo(right.entry.serverId);
+  if (host != 0) return host;
+  return left.entry.schedule.id.compareTo(right.entry.schedule.id);
 }
 
 _ResolvedScheduleRow _resolveSchedule(
