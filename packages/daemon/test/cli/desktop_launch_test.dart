@@ -72,6 +72,53 @@ void main() {
     ]);
   });
 
+  test('project launch passes the path directly to the desktop app', () async {
+    String? executable;
+    List<String>? arguments;
+    Map<String, String>? launchedEnvironment;
+    await launchDesktopWithProject(
+      r'C:\repo with spaces',
+      environment: const {
+        'TINYRACK_DESKTOP_EXECUTABLE': r'C:\Tinyrack.exe',
+        'ELECTRON_RUN_AS_NODE': '1',
+        'KEEP': 'yes',
+      },
+      operatingSystem: 'windows',
+      fileExists: (_) => true,
+      startProcess:
+          (value, valueArguments, {required environment, required mode}) async {
+            executable = value;
+            arguments = valueArguments;
+            launchedEnvironment = environment;
+          },
+    );
+    expect(executable, r'C:\Tinyrack.exe');
+    expect(arguments, [r'C:\repo with spaces']);
+    expect(launchedEnvironment, {
+      'TINYRACK_DESKTOP_EXECUTABLE': r'C:\Tinyrack.exe',
+      'KEEP': 'yes',
+    });
+  });
+
+  test('Linux resolves the installed executable before AppImage fallback', () {
+    expect(
+      resolveTinyrackDesktopExecutable(
+        environment: const {'HOME': '/home/test'},
+        operatingSystem: 'linux',
+        fileExists: (path) => path == '/opt/Tinyrack/tinyrack',
+      ),
+      '/opt/Tinyrack/tinyrack',
+    );
+    expect(
+      resolveTinyrackDesktopExecutable(
+        environment: const {'HOME': '/home/test'},
+        operatingSystem: 'linux',
+        fileExists: (path) => path.endsWith('Tinyrack.AppImage'),
+      ),
+      '/home/test/Applications/Tinyrack.AppImage',
+    );
+  });
+
   test('passthrough and missing desktop failures are explicit', () async {
     expect(
       launchDesktopWithAgent(

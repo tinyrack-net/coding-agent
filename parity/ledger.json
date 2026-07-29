@@ -491,10 +491,14 @@
     },
     {
       "id": "cli-command:hooks",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/hooks_command.dart;packages/daemon/lib/src/terminal/terminal_activity_hook.dart;packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/hooks_command_test.dart",
+        "packages/daemon/test/terminal_activity_hook_test.dart",
+        "packages/daemon/test/cli/cli_shell_process_test.dart"
+      ],
+      "notes": "Frozen agent/event parser, help, bounded non-TTY input, event normalization, best-effort reporting, and binary dispatch verified."
     },
     {
       "id": "cli-command:hub-cloud-device-authorization",
@@ -581,10 +585,15 @@
     },
     {
       "id": "cli-command:open",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart;packages/daemon/lib/src/cli/open_command.dart;packages/daemon/lib/src/cli/desktop_launch.dart;packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/cli_invocation_test.dart",
+        "packages/daemon/test/cli/open_command_test.dart",
+        "packages/daemon/test/cli/desktop_launch_test.dart",
+        "packages/daemon/test/cli/cli_shell_process_test.dart"
+      ],
+      "notes": "Existing directory invocation, path resolution, platform desktop discovery, environment sanitization, detached launch, and errors match Paseo with Tinyrack branding."
     },
     {
       "id": "cli-command:permit-allow",
@@ -9184,10 +9193,13 @@
     },
     {
       "id": "source-unit:packages/cli/src/classify.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart;packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/cli_invocation_test.dart",
+        "packages/daemon/test/cli/cli_shell_process_test.dart"
+      ],
+      "notes": "Frozen empty, flag, known-command, existing relative/absolute/home directory, and missing-path classification verified."
     },
     {
       "id": "source-unit:packages/cli/src/cli.ts",
@@ -9595,11 +9607,13 @@
     {
       "id": "source-unit:packages/cli/src/commands/hooks.ts",
       "status": "verified",
-      "implementation": "packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/terminal/terminal_activity_hook.dart",
+      "implementation": "packages/daemon/lib/src/cli/hooks_command.dart;packages/daemon/bin/coding_agent.dart;packages/daemon/lib/src/terminal/terminal_activity_hook.dart",
       "evidence": [
-        "packages/daemon/test/terminal_activity_hook_test.dart"
+        "packages/daemon/test/cli/hooks_command_test.dart",
+        "packages/daemon/test/terminal_activity_hook_test.dart",
+        "packages/daemon/test/cli/cli_shell_process_test.dart"
       ],
-      "notes": "Tinyrack-branded activity environment names preserve Paseo hook event mapping, bounded input and best-effort 500ms reporting semantics."
+      "notes": "Tinyrack-branded activity environment names preserve Paseo parsing, hook event mapping, bounded input and best-effort 500ms reporting semantics."
     },
     {
       "id": "source-unit:packages/cli/src/commands/hub/cloud-device-authorization.ts",
@@ -9706,10 +9720,14 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/open.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/open_command.dart;packages/daemon/lib/src/cli/desktop_launch.dart",
+      "evidence": [
+        "packages/daemon/test/cli/open_command_test.dart",
+        "packages/daemon/test/cli/desktop_launch_test.dart",
+        "packages/daemon/test/cli/cli_shell_process_test.dart"
+      ],
+      "notes": "Tinyrack-branded macOS, Linux, and Windows desktop discovery and project-path launch preserve frozen launch semantics."
     },
     {
       "id": "source-unit:packages/cli/src/commands/permit/allow.ts",
@@ -10206,10 +10224,13 @@
     },
     {
       "id": "source-unit:packages/cli/src/run.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart;packages/daemon/lib/src/cli/open_command.dart;packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/cli_invocation_test.dart",
+        "packages/daemon/test/cli/cli_shell_process_test.dart"
+      ],
+      "notes": "Known CLI argv and existing-directory open-project routing are ported; empty argv still needs the frozen onboard default."
     },
     {
       "id": "source-unit:packages/cli/src/utils/client-id.ts",

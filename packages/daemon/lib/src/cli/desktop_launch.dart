@@ -40,20 +40,70 @@ Future<void> launchDesktopWithAgent(
   }
   final cleanEnvironment = cleanDesktopLaunchEnvironment(env);
   final deepLink = buildAgentDeepLink(target);
+  await _launchDesktop(
+    desktop: desktop,
+    arguments: [deepLink],
+    operatingSystem: os,
+    environment: cleanEnvironment,
+    startProcess: startProcess,
+  );
+}
+
+Future<void> launchDesktopWithProject(
+  String projectPath, {
+  Map<String, String>? environment,
+  String? operatingSystem,
+  bool Function(String path)? fileExists,
+  DesktopProcessStarter? startProcess,
+}) async {
+  final env = Map<String, String>.from(environment ?? Platform.environment);
+  if (env['TINYRACK_DESKTOP_CLI'] == '1') {
+    throw StateError(
+      'Cannot open Tinyrack Desktop while running in desktop CLI '
+      'passthrough mode.',
+    );
+  }
+  final os = operatingSystem ?? Platform.operatingSystem;
+  final desktop = resolveTinyrackDesktopExecutable(
+    environment: env,
+    operatingSystem: os,
+    fileExists: fileExists,
+  );
+  if (desktop == null) {
+    throw StateError(
+      'Tinyrack desktop app not found. Install Tinyrack Desktop first.',
+    );
+  }
+  await _launchDesktop(
+    desktop: desktop,
+    arguments: [projectPath],
+    operatingSystem: os,
+    environment: cleanDesktopLaunchEnvironment(env),
+    startProcess: startProcess,
+  );
+}
+
+Future<void> _launchDesktop({
+  required String desktop,
+  required List<String> arguments,
+  required String operatingSystem,
+  required Map<String, String> environment,
+  DesktopProcessStarter? startProcess,
+}) async {
   final starter = startProcess ?? _startDetached;
-  if (os == 'macos') {
+  if (operatingSystem == 'macos') {
     await starter(
       'open',
-      ['-n', '-g', '-a', desktop, '--args', deepLink],
-      environment: cleanEnvironment,
+      ['-n', '-g', '-a', desktop, '--args', ...arguments],
+      environment: environment,
       mode: ProcessStartMode.detached,
     );
     return;
   }
   await starter(
     desktop,
-    [deepLink],
-    environment: cleanEnvironment,
+    arguments,
+    environment: environment,
     mode: ProcessStartMode.detached,
   );
 }
@@ -69,21 +119,28 @@ String? resolveTinyrackDesktopExecutable({
     return exists(explicit) ? explicit : null;
   }
   final home = environment['HOME'] ?? environment['USERPROFILE'];
+  final pathContext = operatingSystem == 'windows' ? p.windows : p.posix;
   final candidates = switch (operatingSystem) {
     'macos' => [
       '/Applications/Tinyrack.app',
-      if (home != null) p.join(home, 'Applications', 'Tinyrack.app'),
+      if (home != null) pathContext.join(home, 'Applications', 'Tinyrack.app'),
     ],
     'linux' => [
       '/usr/bin/tinyrack',
       '/opt/Tinyrack/tinyrack',
-      if (home != null) p.join(home, 'Applications', 'Tinyrack.AppImage'),
+      if (home != null)
+        pathContext.join(home, 'Applications', 'Tinyrack.AppImage'),
     ],
     'windows' => [
       if (environment['LOCALAPPDATA'] case final localAppData?)
-        p.join(localAppData, 'Programs', 'Tinyrack', 'coding_agent_app.exe'),
+        pathContext.join(
+          localAppData,
+          'Programs',
+          'Tinyrack',
+          'coding_agent_app.exe',
+        ),
       if (environment['LOCALAPPDATA'] case final localAppData?)
-        p.join(localAppData, 'Programs', 'Tinyrack', 'Tinyrack.exe'),
+        pathContext.join(localAppData, 'Programs', 'Tinyrack', 'Tinyrack.exe'),
     ],
     _ => const <String>[],
   };

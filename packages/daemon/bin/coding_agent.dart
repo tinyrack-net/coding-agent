@@ -1,10 +1,11 @@
-import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_daemon/src/cli/daemon_command.dart';
 import 'package:agent_daemon/src/cli/chat_command.dart';
 import 'package:agent_daemon/src/cli/clone_command.dart';
+import 'package:agent_daemon/src/cli/cli_invocation.dart';
+import 'package:agent_daemon/src/cli/hooks_command.dart';
+import 'package:agent_daemon/src/cli/open_command.dart';
 import 'package:agent_daemon/src/cli/agent_attach_command.dart';
 import 'package:agent_daemon/src/cli/agent_import_command.dart';
 import 'package:agent_daemon/src/cli/agent_command.dart';
@@ -20,9 +21,21 @@ import 'package:agent_daemon/src/cli/script_command.dart';
 import 'package:agent_daemon/src/cli/terminal_command.dart';
 import 'package:agent_daemon/src/cli/workspace_command.dart';
 import 'package:agent_daemon/src/cli/worktree_command.dart';
-import 'package:agent_daemon/src/terminal/terminal_activity_hook.dart';
 
 Future<void> main(List<String> arguments) async {
+  final invocation = classifyCliInvocation(
+    arguments: arguments,
+    knownCommands: _knownCommands,
+    currentDirectory: Directory.current.path,
+  );
+  if (invocation case OpenProjectCliInvocation(:final resolvedPath)) {
+    exitCode = await runOpenProjectInvocation(projectPath: resolvedPath);
+    return;
+  }
+  if (arguments.isNotEmpty && arguments.first == 'hooks') {
+    exitCode = await runHooksCommand(arguments: arguments.sublist(1));
+    return;
+  }
   if (arguments.isNotEmpty && arguments[0] == 'run') {
     exitCode = await runAgentRunCommand(arguments: arguments.sublist(1));
     return;
@@ -132,18 +145,6 @@ Future<void> main(List<String> arguments) async {
     exitCode = await runWorktreeCommand(arguments: arguments.sublist(1));
     return;
   }
-  if (arguments.length >= 3 && arguments.first == 'hooks') {
-    final input = stdin.hasTerminal ? null : await _readHookInput();
-    await reportTerminalHookActivity(
-      provider: arguments[1],
-      event: arguments[2],
-      environment: Platform.environment,
-      input: input,
-      inputIsTerminal: stdin.hasTerminal,
-    );
-    return;
-  }
-
   stderr.writeln(
     'Usage: coding-agent daemon '
     '<start|status|stop|restart|set-password|pair> ...\n'
@@ -181,18 +182,36 @@ Future<void> main(List<String> arguments) async {
   exitCode = 64;
 }
 
-Future<String?> _readHookInput() async {
-  final iterator = StreamIterator<List<int>>(stdin);
-  final bytes = <int>[];
-  try {
-    while (await iterator.moveNext().timeout(
-      const Duration(milliseconds: 100),
-    )) {
-      bytes.addAll(iterator.current);
-    }
-    return utf8.decode(bytes, allowMalformed: true);
-  } on TimeoutException {
-    await iterator.cancel();
-    return null;
-  }
-}
+const _knownCommands = {
+  'run',
+  'import',
+  'agent',
+  'ls',
+  'attach',
+  'inspect',
+  'logs',
+  'stop',
+  'send',
+  'wait',
+  'archive',
+  'delete',
+  'daemon',
+  'start',
+  'status',
+  'restart',
+  'onboard',
+  'chat',
+  'clone',
+  'hub',
+  'schedule',
+  'heartbeat',
+  'loop',
+  'permit',
+  'script',
+  'provider',
+  'speech',
+  'terminal',
+  'workspace',
+  'worktree',
+  'hooks',
+};
