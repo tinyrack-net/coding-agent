@@ -316,6 +316,74 @@ void main() {
     expect(empty, isEmpty);
   });
 
+  test('shared output aliases and JSON precedence match frozen CLI', () async {
+    final parsed = ScriptCliInvocation.parse(const [
+      'ls',
+      '--format=yaml',
+      '--json',
+      '--no-color',
+    ]);
+    expect(parsed.output.format, 'json');
+    expect(parsed.output.noColor, isTrue);
+
+    Future<Map<String, Object?>> request(Map<String, Object?> message) async =>
+        {
+          'requestId': message['requestId'],
+          'workspaceId': 'workspace-1',
+          'scripts': [_script()],
+          'error': null,
+        };
+    final yaml = StringBuffer();
+    expect(
+      await runScriptCommand(
+        arguments: const ['ls', '--workspace=workspace-1', '-oyaml'],
+        request: request,
+        writeOutput: yaml.write,
+      ),
+      0,
+    );
+    expect(yaml.toString(), startsWith('- scriptName: dev'));
+
+    final single = StringBuffer();
+    expect(
+      await runScriptCommand(
+        arguments: const [
+          'start',
+          'dev',
+          '--workspace=workspace-1',
+          '--format=yaml',
+        ],
+        request: (message) async => {
+          'requestId': message['requestId'],
+          'workspaceId': 'workspace-1',
+          'scriptName': 'dev',
+          'script': _script(),
+          'error': null,
+        },
+        writeOutput: single.write,
+      ),
+      0,
+    );
+    expect(single.toString(), startsWith('scriptName: dev'));
+  });
+
+  test('script failures honor YAML output', () async {
+    final error = StringBuffer();
+    expect(
+      await runScriptCommand(
+        arguments: const ['ls', '--workspace', 'workspace-1', '--format=yaml'],
+        request: (_) async => throw StateError('offline'),
+        writeError: error.write,
+      ),
+      1,
+    );
+    expect(error.toString(), contains('code: WORKSPACE_SCRIPT_LIST_FAILED'));
+    expect(
+      error.toString(),
+      contains('message: "Failed to list workspace scripts: offline"'),
+    );
+  });
+
   test('list rejects malformed script entries at the CLI boundary', () async {
     final error = StringBuffer();
     expect(

@@ -1,10 +1,10 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
 
 import '../server/daemon_config.dart';
+import 'cli_output.dart';
 import 'terminal_command.dart';
 
 typedef ScriptRpcRequester =
@@ -25,8 +25,9 @@ Future<int> runScriptCommand({
     output(_scriptHelp(arguments.firstOrNull));
     return 0;
   }
+  ScriptCliInvocation? invocation;
   try {
-    final invocation = ScriptCliInvocation.parse(arguments);
+    invocation = ScriptCliInvocation.parse(arguments);
     final env = environment ?? Platform.environment;
     var send = request;
     if (send == null) {
@@ -58,19 +59,24 @@ Future<int> runScriptCommand({
       send,
       currentDirectory ?? Directory.current.path,
     );
-    output(_render(result, invocation));
+    final rendered = renderCliOutput(result, invocation.output);
+    if (rendered.isNotEmpty) output('$rendered\n');
     return 0;
   } on FormatException catch (error) {
     errorOutput('${error.message}\n$scriptUsage\n');
     return 64;
   } on ScriptCommandException catch (error) {
-    _writeCommandError(errorOutput, error, arguments);
+    _writeCommandError(
+      errorOutput,
+      error,
+      options: invocation?.output ?? const CliOutputOptions(),
+    );
     return 1;
   } on Object catch (error) {
     _writeCommandError(
       errorOutput,
       ScriptCommandException('WORKSPACE_SCRIPT_ERROR', _errorText(error)),
-      arguments,
+      options: invocation?.output ?? const CliOutputOptions(),
     );
     return 1;
   } finally {
@@ -85,9 +91,7 @@ final class ScriptCliInvocation {
     required this.cwd,
     required this.workspaceId,
     required this.host,
-    required this.format,
-    required this.quiet,
-    required this.headers,
+    required this.output,
   });
 
   final String action;
@@ -95,9 +99,7 @@ final class ScriptCliInvocation {
   final String? cwd;
   final String? workspaceId;
   final String? host;
-  final String format;
-  final bool quiet;
-  final bool headers;
+  final CliOutputOptions output;
 
   static ScriptCliInvocation parse(List<String> arguments) {
     if (arguments.isEmpty) {
@@ -112,10 +114,28 @@ final class ScriptCliInvocation {
     String? workspaceId;
     String? host;
     var format = 'table';
+    var json = false;
     var quiet = false;
     var headers = true;
+    var color = true;
     for (var index = 1; index < arguments.length; index++) {
       final argument = arguments[index];
+      if (_splitLongOption(argument) case (final option, final value)) {
+        switch (option) {
+          case '--cwd':
+            cwd = value;
+            continue;
+          case '--workspace':
+            workspaceId = value;
+            continue;
+          case '--host':
+            host = value;
+            continue;
+          case '--format':
+            format = normalizeCliOutputFormat(value);
+            continue;
+        }
+      }
       switch (argument) {
         case '--cwd':
           cwd = _requiredValue(arguments, ++index, argument);
@@ -124,23 +144,29 @@ final class ScriptCliInvocation {
         case '--host':
           host = _requiredValue(arguments, ++index, argument);
         case '--json':
-          format = 'json';
+          json = true;
         case '-o' || '--format':
-          format = _requiredValue(arguments, ++index, argument);
-          if (!const {'table', 'json', 'yaml'}.contains(format)) {
-            throw FormatException('Unknown output format: $format');
-          }
+          format = normalizeCliOutputFormat(
+            _requiredValue(arguments, ++index, argument),
+          );
         case '-q' || '--quiet':
           quiet = true;
         case '--no-headers':
           headers = false;
         case '--no-color':
-          break;
+          color = false;
         default:
-          if (argument.startsWith('-')) {
+          if (argument.startsWith('--format=')) {
+            format = normalizeCliOutputFormat(
+              argument.substring('--format='.length),
+            );
+          } else if (argument.startsWith('-o') && argument.length > 2) {
+            format = normalizeCliOutputFormat(argument.substring(2));
+          } else if (argument.startsWith('-')) {
             throw FormatException('Unknown option: $argument');
+          } else {
+            positionals.add(argument);
           }
-          positionals.add(argument);
       }
     }
     if (action == 'ls' && positionals.isNotEmpty) {
@@ -156,20 +182,27 @@ final class ScriptCliInvocation {
       cwd: cwd,
       workspaceId: _nonEmpty(workspaceId),
       host: host,
-      format: format,
-      quiet: quiet,
-      headers: headers,
+      output: CliOutputOptions(
+        format: json ? 'json' : format,
+        quiet: quiet,
+        noHeaders: !headers,
+        noColor: !color,
+      ),
     );
   }
 }
 
-Future<_ScriptCommandResult> _execute(
+Future<CliOutputResult> _execute(
   ScriptCliInvocation invocation,
   ScriptRpcRequester request,
   String currentDirectory,
 ) async {
-  final operationCode =
-      'WORKSPACE_SCRIPT_${invocation.action.toUpperCase()}_FAILED';
+  final operationCode = switch (invocation.action) {
+    'ls' => 'WORKSPACE_SCRIPT_LIST_FAILED',
+    'start' => 'WORKSPACE_SCRIPT_START_FAILED',
+    'stop' => 'WORKSPACE_SCRIPT_STOP_FAILED',
+    _ => throw StateError('Unhandled script action'),
+  };
   final workspaceId = await _resolveWorkspaceId(
     invocation,
     request,
@@ -196,7 +229,12 @@ Future<_ScriptCommandResult> _execute(
   }, code: operationCode);
   final error = _nonEmpty(response['error']?.toString());
   if (error != null) {
-    throw ScriptCommandException(operationCode, error);
+    throw ScriptCommandException(
+      operationCode,
+      invocation.action == 'ls'
+          ? 'Failed to list workspace scripts: $error'
+          : error,
+    );
   }
   if (invocation.action == 'ls') {
     final scripts = response['scripts'];
@@ -216,7 +254,7 @@ Future<_ScriptCommandResult> _execute(
       }
       rows.add(_scriptRow(script.cast<String, Object?>(), operationCode));
     }
-    return _ScriptCommandResult.list(rows);
+    return CliOutputResult.list(rows: rows, schema: _workspaceScriptSchema);
   }
   final script = response['script'];
   if (script is! Map) {
@@ -225,8 +263,9 @@ Future<_ScriptCommandResult> _execute(
       "Script '${invocation.scriptName}' did not return status metadata",
     );
   }
-  return _ScriptCommandResult.single(
-    _scriptRow(script.cast<String, Object?>(), operationCode),
+  return CliOutputResult.single(
+    row: _scriptRow(script.cast<String, Object?>(), operationCode),
+    schema: _workspaceScriptSchema,
   );
 }
 
@@ -300,7 +339,16 @@ Future<Map<String, Object?>> _request(
   } on ScriptCommandException {
     rethrow;
   } on Object catch (error) {
-    throw ScriptCommandException(code, _errorText(error));
+    final action = switch (code) {
+      'WORKSPACE_SCRIPT_LIST_FAILED' => 'list workspace scripts',
+      'WORKSPACE_SCRIPT_START_FAILED' => 'start workspace script',
+      'WORKSPACE_SCRIPT_STOP_FAILED' => 'stop workspace script',
+      _ => 'manage workspace scripts',
+    };
+    throw ScriptCommandException(
+      code,
+      'Failed to $action: ${_errorText(error)}',
+    );
   }
 }
 
@@ -318,119 +366,51 @@ Map<String, Object?> _scriptRow(
   }
 }
 
-final class _ScriptCommandResult {
-  const _ScriptCommandResult._({required this.rows, required this.single});
-
-  factory _ScriptCommandResult.list(List<Map<String, Object?>> rows) =>
-      _ScriptCommandResult._(rows: List.unmodifiable(rows), single: false);
-
-  factory _ScriptCommandResult.single(Map<String, Object?> row) =>
-      _ScriptCommandResult._(rows: [Map.unmodifiable(row)], single: true);
-
-  final List<Map<String, Object?>> rows;
-  final bool single;
-}
-
-String _render(_ScriptCommandResult result, ScriptCliInvocation invocation) {
-  if (invocation.quiet) {
-    return result.rows.map((row) => row['scriptName']).join('\n') +
-        (result.rows.isEmpty ? '' : '\n');
-  }
-  final value = result.single ? result.rows.single : result.rows;
-  if (invocation.format == 'json') {
-    return '${const JsonEncoder.withIndent('  ').convert(value)}\n';
-  }
-  if (invocation.format == 'yaml') {
-    return result.single
-        ? _yamlMap(result.rows.single)
-        : _yamlList(result.rows);
-  }
-  const columns = [
-    ('NAME', 'scriptName', 20),
-    ('TYPE', 'type', 9),
-    ('LIFECYCLE', 'lifecycle', 10),
-    ('HEALTH', 'health', 10),
-    ('PORT', 'port', 7),
-    ('PROXY URL', 'proxyUrl', 42),
-    ('TERMINAL', 'terminalId', 12),
-  ];
-  final displayRows = [
-    for (final row in result.rows)
-      {
-        for (final column in columns)
-          column.$2:
-              row[column.$2] ??
-              (const {
-                    'health',
-                    'port',
-                    'proxyUrl',
-                    'terminalId',
-                  }.contains(column.$2)
-                  ? '-'
-                  : ''),
-      },
-  ];
-  final widths = [
-    for (final column in columns)
-      [
-        column.$1.length,
-        column.$3,
-        for (final row in displayRows) '${row[column.$2]}'.length,
-      ].reduce((a, b) => a > b ? a : b),
-  ];
-  String line(List<String> cells) => [
-    for (var index = 0; index < cells.length; index++)
-      cells[index].padRight(widths[index]),
-  ].join('  ').trimRight();
-  return [
-        if (invocation.headers) line([for (final column in columns) column.$1]),
-        for (final row in displayRows)
-          line([for (final column in columns) '${row[column.$2]}']),
-      ].join('\n') +
-      (invocation.headers || displayRows.isNotEmpty ? '\n' : '');
-}
-
-String _yamlList(List<Map<String, Object?>> rows) {
-  if (rows.isEmpty) return '[]\n';
-  return '${[
-    for (final row in rows) ['- ${row.entries.first.key}: ${_yamlScalar(row.entries.first.value)}', for (final entry in row.entries.skip(1)) '  ${entry.key}: ${_yamlScalar(entry.value)}'].join('\n'),
-  ].join('\n')}\n';
-}
-
-String _yamlMap(Map<String, Object?> row) =>
-    '${[for (final entry in row.entries) '${entry.key}: ${_yamlScalar(entry.value)}'].join('\n')}\n';
-
-String _yamlScalar(Object? value) {
-  if (value == null) return 'null';
-  if (value is num || value is bool) return '$value';
-  final text = '$value';
-  if (text.isNotEmpty &&
-      !RegExp(
-        r'''[:#\[\]{},&*!|>'"%@`]|^\s|\s$|^(null|true|false|~)$''',
-        caseSensitive: false,
-      ).hasMatch(text)) {
-    return text;
-  }
-  return jsonEncode(text);
-}
+final _workspaceScriptSchema = CliOutputSchema(
+  idField: (row) => '${row['scriptName']}',
+  columns: [
+    CliOutputColumn(
+      header: 'NAME',
+      field: (row) => row['scriptName'],
+      width: 20,
+    ),
+    CliOutputColumn(header: 'TYPE', field: (row) => row['type'], width: 9),
+    CliOutputColumn(
+      header: 'LIFECYCLE',
+      field: (row) => row['lifecycle'],
+      width: 10,
+    ),
+    CliOutputColumn(
+      header: 'HEALTH',
+      field: (row) => row['health'] ?? '-',
+      width: 10,
+    ),
+    CliOutputColumn(
+      header: 'PORT',
+      field: (row) => row['port'] ?? '-',
+      width: 7,
+    ),
+    CliOutputColumn(
+      header: 'PROXY URL',
+      field: (row) => row['proxyUrl'] ?? '-',
+      width: 42,
+    ),
+    CliOutputColumn(
+      header: 'TERMINAL',
+      field: (row) => row['terminalId'] ?? '-',
+      width: 12,
+    ),
+  ],
+);
 
 void _writeCommandError(
   void Function(String value) write,
-  ScriptCommandException error,
-  List<String> arguments,
-) {
-  if (arguments.contains('--json')) {
-    write(
-      '${const JsonEncoder.withIndent('  ').convert({
-        'error': {'code': error.code, 'message': error.message, if (error.details != null) 'details': error.details},
-      })}\n',
-    );
-  } else {
-    write(
-      'Error: ${error.message}\n'
-      '${error.details == null ? '' : '${error.details}\n'}',
-    );
-  }
+  ScriptCommandException error, {
+  required CliOutputOptions options,
+}) {
+  write(
+    '${renderCliError(code: error.code, message: error.message, details: error.details, options: options)}\n',
+  );
 }
 
 String _requiredValue(List<String> arguments, int index, String option) {
@@ -438,6 +418,13 @@ String _requiredValue(List<String> arguments, int index, String option) {
     throw FormatException('$option requires a value');
   }
   return arguments[index];
+}
+
+(String, String)? _splitLongOption(String argument) {
+  if (!argument.startsWith('--')) return null;
+  final separator = argument.indexOf('=');
+  if (separator < 3) return null;
+  return (argument.substring(0, separator), argument.substring(separator + 1));
 }
 
 String? _nonEmpty(String? value) {
