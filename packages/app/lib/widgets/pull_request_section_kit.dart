@@ -298,6 +298,10 @@ enum PullRequestGlyphKind {
   circleDot,
   circleSlash,
   messageSquare,
+  gitPullRequest,
+  gitPullRequestDraft,
+  gitPullRequestClosed,
+  gitMerge,
 }
 
 class PullRequestGlyph extends StatelessWidget {
@@ -383,6 +387,41 @@ class PullRequestGlyphPainter extends CustomPainter {
           ..lineTo(19, 3)
           ..quadraticBezierTo(21, 3, 21, 5)
           ..close();
+        canvas.drawPath(path, paint);
+      case PullRequestGlyphKind.gitPullRequest:
+        canvas.drawCircle(const Offset(18, 18), 3, paint);
+        canvas.drawCircle(const Offset(6, 6), 3, paint);
+        final path = Path()
+          ..moveTo(13, 6)
+          ..lineTo(16, 6)
+          ..quadraticBezierTo(18, 6, 18, 8)
+          ..lineTo(18, 15);
+        canvas.drawPath(path, paint);
+        _path(canvas, paint, const [Offset(6, 9), Offset(6, 21)]);
+      case PullRequestGlyphKind.gitPullRequestDraft:
+        canvas.drawCircle(const Offset(18, 18), 3, paint);
+        canvas.drawCircle(const Offset(6, 6), 3, paint);
+        _path(canvas, paint, const [Offset(18, 6), Offset(18, 5)]);
+        _path(canvas, paint, const [Offset(18, 11), Offset(18, 10)]);
+        _path(canvas, paint, const [Offset(6, 9), Offset(6, 21)]);
+      case PullRequestGlyphKind.gitPullRequestClosed:
+        canvas.drawCircle(const Offset(6, 6), 3, paint);
+        _path(canvas, paint, const [Offset(6, 9), Offset(6, 21)]);
+        _path(canvas, paint, const [Offset(21, 3), Offset(15, 9)]);
+        _path(canvas, paint, const [Offset(21, 9), Offset(15, 3)]);
+        _path(canvas, paint, const [Offset(18, 11.5), Offset(18, 15)]);
+        canvas.drawCircle(const Offset(18, 18), 3, paint);
+      case PullRequestGlyphKind.gitMerge:
+        canvas.drawCircle(const Offset(18, 18), 3, paint);
+        canvas.drawCircle(const Offset(6, 6), 3, paint);
+        final path = Path()
+          ..moveTo(6, 21)
+          ..lineTo(6, 9)
+          ..arcToPoint(
+            const Offset(15, 18),
+            radius: const Radius.circular(9),
+            clockwise: false,
+          );
         canvas.drawPath(path, paint);
     }
     canvas.restore();

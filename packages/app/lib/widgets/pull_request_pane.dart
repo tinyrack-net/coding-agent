@@ -364,6 +364,7 @@ class _PullRequestHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text.rich(
+                  key: const ValueKey('pr-pane-title'),
                   TextSpan(
                     text: status.title,
                     children: [
@@ -376,64 +377,83 @@ class _PullRequestHeader extends StatelessWidget {
                         ),
                     ],
                   ),
-                  style: const TextStyle(fontSize: 14, height: 1.55),
+                  style: TextStyle(
+                    fontSize: 16,
+                    height: 22 / 16,
+                    color: context.paseoPalette.foreground,
+                  ),
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(state.icon, size: 14, color: state.color),
-                    const SizedBox(width: 4),
-                    Text(
-                      state.label,
-                      style: TextStyle(fontSize: 11, color: state.color),
-                    ),
-                    if (approvals != null) ...[
-                      const SizedBox(width: 8),
-                      Icon(
-                        FluentIcons.completed,
-                        key: const ValueKey('pr-pane-approvals-icon'),
-                        size: 11,
-                        color: approvals.given >= approvals.required
-                            ? context.statusColors.success
-                            : context.tokens.onSurfaceVariant,
+                ConstrainedBox(
+                  key: const ValueKey('pr-pane-meta-line'),
+                  constraints: const BoxConstraints(minHeight: 16),
+                  child: Row(
+                    children: [
+                      PullRequestGlyph(
+                        key: const ValueKey('pr-pane-state-icon'),
+                        kind: state.glyph,
+                        size: 14,
+                        color: state.color,
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '${approvals.given} of ${approvals.required} approvals',
-                        key: const ValueKey('pr-pane-approvals'),
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: context.tokens.onSurfaceVariant,
+                        state.label,
+                        key: const ValueKey('pr-pane-state'),
+                        style: TextStyle(fontSize: 12, color: state.color),
+                      ),
+                      if (approvals != null) ...[
+                        const SizedBox(width: 4),
+                        Row(
+                          key: const ValueKey('pr-pane-approvals'),
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            PullRequestGlyph(
+                              key: const ValueKey('pr-pane-approvals-icon'),
+                              kind: PullRequestGlyphKind.circleCheck,
+                              size: 11,
+                              color: approvals.given >= approvals.required
+                                  ? context.paseoPalette.statusSuccess
+                                  : context.paseoPalette.foregroundMuted,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${approvals.given} of ${approvals.required} approvals',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: context.paseoPalette.foregroundMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (repository.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            repository,
+                            key: const ValueKey('pr-pane-repository'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: context.paseoPalette.foregroundMuted,
+                            ),
+                          ),
+                        ),
+                      ] else
+                        const Spacer(),
+                      const SizedBox(width: 8),
+                      Opacity(
+                        key: const ValueKey('pr-pane-header-link-icon'),
+                        opacity: hovered ? 1 : 0,
+                        child: Icon(
+                          FluentIcons.open_in_new_window,
+                          size: 12,
+                          color: context.paseoPalette.foregroundMuted,
                         ),
                       ),
                     ],
-                    if (repository.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          repository,
-                          key: const ValueKey('pr-pane-repository'),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: context.tokens.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ] else
-                      const Spacer(),
-                    const SizedBox(width: 4),
-                    Opacity(
-                      key: const ValueKey('pr-pane-header-link-icon'),
-                      opacity: hovered ? 1 : 0,
-                      child: Icon(
-                        FluentIcons.open_in_new_window,
-                        size: 12,
-                        color: context.tokens.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
@@ -2134,34 +2154,34 @@ class _PaneMessage extends StatelessWidget {
   }
 }
 
-({IconData icon, Color color, String label}) _statePresentation(
+({PullRequestGlyphKind glyph, Color color, String label}) _statePresentation(
   BuildContext context,
   CheckoutPrStatus status,
 ) {
   if (status.isMerged) {
     return (
-      icon: FluentIcons.branch_merge,
-      color: const Color(0xffa371f7),
+      glyph: PullRequestGlyphKind.gitMerge,
+      color: context.paseoPalette.statusMerged,
       label: 'Merged',
     );
   }
   if (status.isDraft) {
     return (
-      icon: FluentIcons.branch_fork2,
-      color: context.tokens.onSurfaceVariant,
+      glyph: PullRequestGlyphKind.gitPullRequestDraft,
+      color: context.paseoPalette.foregroundMuted,
       label: 'Draft',
     );
   }
   if (status.state.toUpperCase() == 'OPEN') {
     return (
-      icon: FluentIcons.branch_fork2,
-      color: context.statusColors.success,
+      glyph: PullRequestGlyphKind.gitPullRequest,
+      color: context.paseoPalette.statusSuccess,
       label: 'Open',
     );
   }
   return (
-    icon: FluentIcons.branch_fork2,
-    color: context.statusColors.danger,
+    glyph: PullRequestGlyphKind.gitPullRequestClosed,
+    color: context.paseoPalette.statusDanger,
     label: 'Closed',
   );
 }

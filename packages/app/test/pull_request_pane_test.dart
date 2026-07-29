@@ -841,6 +841,15 @@ void main() {
       find.byKey(const ValueKey('pr-pane-approvals-icon')),
       findsOneWidget,
     );
+    final approvalGlyph = tester.widget<PullRequestGlyph>(
+      find.byKey(const ValueKey('pr-pane-approvals-icon')),
+    );
+    expect(approvalGlyph.kind, PullRequestGlyphKind.circleCheck);
+    expect(approvalGlyph.size, 11);
+    expect(
+      tester.widget<Text>(find.text('1 of 2 approvals')).style?.fontSize,
+      12,
+    );
   });
 
   testWidgets(
@@ -862,6 +871,27 @@ void main() {
       expect(find.byKey(const ValueKey('pr-pane-repository')), findsOneWidget);
       expect(find.text('tinyrack/coding-agent'), findsOneWidget);
       expect(find.textContaining('pr-pane → main'), findsNothing);
+      final title = tester.widget<Text>(
+        find.byKey(const ValueKey('pr-pane-title')),
+      );
+      expect(title.style?.fontSize, 16);
+      expect(title.style?.height, 22 / 16);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('pr-pane-repository')))
+            .style
+            ?.fontSize,
+        12,
+      );
+      final stateGlyph = tester.widget<PullRequestGlyph>(
+        find.byKey(const ValueKey('pr-pane-state-icon')),
+      );
+      expect(stateGlyph.kind, PullRequestGlyphKind.gitPullRequest);
+      expect(stateGlyph.size, 14);
+      expect(
+        tester.getSize(find.byKey(const ValueKey('pr-pane-meta-line'))).height,
+        greaterThanOrEqualTo(16),
+      );
       expect(tester.widget<Opacity>(linkIcon).opacity, 0);
 
       final hoverDetector = tester.widget<FocusableActionDetector>(
@@ -2115,6 +2145,27 @@ void main() {
       await _tapPullRequestTab(tester);
       await tester.pump(const Duration(milliseconds: 150));
       expect(find.text(variant.label), findsOneWidget);
+      final glyph = tester.widget<PullRequestGlyph>(
+        find.byKey(const ValueKey('pr-pane-state-icon')),
+      );
+      expect(glyph.kind, switch (variant.label) {
+        'Merged' => PullRequestGlyphKind.gitMerge,
+        'Draft' => PullRequestGlyphKind.gitPullRequestDraft,
+        _ => PullRequestGlyphKind.gitPullRequestClosed,
+      });
+      expect(glyph.color, switch (variant.label) {
+        'Merged' => paseoPaletteFor(AppThemeName.dark).statusMerged,
+        'Draft' => paseoPaletteFor(AppThemeName.dark).foregroundMuted,
+        _ => paseoPaletteFor(AppThemeName.dark).statusDanger,
+      });
+      expect(glyph.size, 14);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('pr-pane-state')))
+            .style
+            ?.fontSize,
+        12,
+      );
     });
   }
 
