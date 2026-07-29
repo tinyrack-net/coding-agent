@@ -91,67 +91,57 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
           final gitlabPipeline = gitlabFacts == null
               ? null
               : deriveGitlabPipelineSummary(gitlabFacts);
-          return Column(
+          return ListView(
             children: [
               _Toolbar(
-                url: status.url,
                 forge: status.forge,
                 onOpen: () => _openExternalUrl(context, ref, status.url),
                 refreshSupported: refreshSupported,
                 refreshing: _refreshing,
                 onRefresh: _refreshCheckout,
               ),
-              Expanded(
-                child: ListView(
-                  children: [
-                    _PullRequestHeader(
-                      status: status,
-                      onOpen: () => _openExternalUrl(context, ref, status.url),
-                    ),
-                    if (gitlabPipeline != null && forgeProvidersEnabled)
-                      _GitLabPipelineSection(
-                        key: const ValueKey('gitlab-pipeline'),
-                        cwd: widget.cwd,
-                        status: status,
-                        summary: gitlabPipeline,
-                        cacheRevision: data.pipelineCacheRevision,
-                        canFetchCheckDetails: canFetchForgeCheckDetails,
-                        open: _checksOpen,
-                        onToggle: () =>
-                            setState(() => _checksOpen = !_checksOpen),
-                      )
-                    else
-                      PullRequestSection(
-                        title: 'Checks',
-                        open: _checksOpen,
-                        summary: _CheckSummary(checks: checks),
-                        onToggle: () =>
-                            setState(() => _checksOpen = !_checksOpen),
-                        child: _ChecksSection(
-                          cwd: widget.cwd,
-                          status: status,
-                          checks: checks,
-                        ),
-                      ),
-                    const Divider(),
-                    PullRequestSection(
-                      title: 'Activity',
-                      open: _activityOpen,
-                      summary: _ActivitySummary(items: data.timeline),
-                      onToggle: () =>
-                          setState(() => _activityOpen = !_activityOpen),
-                      child: _PrActionsPlatformScope(
-                        isWeb: widget.webOverride ?? kIsWeb,
-                        child: _ActivitySection(
-                          cwd: widget.cwd,
-                          status: status,
-                          items: data.timeline,
-                          error: data.timelineError,
-                          truncated: data.timelineTruncated,
-                        ),
-                      ),
-                    ),
-                  ],
+              _PullRequestHeader(
+                status: status,
+                onOpen: () => _openExternalUrl(context, ref, status.url),
+              ),
+              if (gitlabPipeline != null && forgeProvidersEnabled)
+                _GitLabPipelineSection(
+                  key: const ValueKey('gitlab-pipeline'),
+                  cwd: widget.cwd,
+                  status: status,
+                  summary: gitlabPipeline,
+                  cacheRevision: data.pipelineCacheRevision,
+                  canFetchCheckDetails: canFetchForgeCheckDetails,
+                  open: _checksOpen,
+                  onToggle: () => setState(() => _checksOpen = !_checksOpen),
+                )
+              else
+                PullRequestSection(
+                  title: 'Checks',
+                  open: _checksOpen,
+                  summary: _CheckSummary(checks: checks),
+                  onToggle: () => setState(() => _checksOpen = !_checksOpen),
+                  child: _ChecksSection(
+                    cwd: widget.cwd,
+                    status: status,
+                    checks: checks,
+                  ),
+                ),
+              const Divider(),
+              PullRequestSection(
+                title: 'Activity',
+                open: _activityOpen,
+                summary: _ActivitySummary(items: data.timeline),
+                onToggle: () => setState(() => _activityOpen = !_activityOpen),
+                child: _PrActionsPlatformScope(
+                  isWeb: widget.webOverride ?? kIsWeb,
+                  child: _ActivitySection(
+                    cwd: widget.cwd,
+                    status: status,
+                    items: data.timeline,
+                    error: data.timelineError,
+                    truncated: data.timelineTruncated,
+                  ),
                 ),
               ),
             ],
@@ -180,7 +170,6 @@ class _PrActionsPlatformScope extends InheritedWidget {
 
 class _Toolbar extends StatelessWidget {
   const _Toolbar({
-    required this.url,
     required this.forge,
     required this.onOpen,
     required this.refreshSupported,
@@ -188,7 +177,6 @@ class _Toolbar extends StatelessWidget {
     required this.onRefresh,
   });
 
-  final String url;
   final String forge;
   final VoidCallback onOpen;
   final bool refreshSupported;
@@ -198,8 +186,9 @@ class _Toolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: const ValueKey('pr-pane-toolbar'),
       height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(color: context.tokens.outlineVariant),
@@ -207,48 +196,122 @@ class _Toolbar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Tooltip(
-            message: url,
-            child: Button(
-              onPressed: onOpen,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ForgeBrandIcon(
-                    iconKind: getForgeDefinitionOrNeutral(
-                      forge.toLowerCase(),
-                    ).iconKind,
-                    size: 12,
-                    color: FluentTheme.of(
-                      context,
-                    ).resources.textFillColorPrimary,
-                  ),
-                  const SizedBox(width: 4),
-                  const Text('View'),
-                  const SizedBox(width: 4),
-                  const Icon(FluentIcons.open_in_new_window, size: 12),
-                ],
-              ),
-            ),
-          ),
+          _ToolbarViewButton(onPressed: onOpen),
           const Spacer(),
           if (refreshSupported)
-            Tooltip(
-              message: refreshing
-                  ? 'Refreshing'
-                  : 'Refresh ${getForgeDefinitionOrNeutral(forge.toLowerCase()).displayName} state',
-              child: IconButton(
-                key: const ValueKey('pr-pane-refresh'),
-                icon: refreshing
+            _ToolbarRefreshButton(
+              forge: forge,
+              refreshing: refreshing,
+              onPressed: refreshing ? null : onRefresh,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ToolbarViewButton extends StatelessWidget {
+  const _ToolbarViewButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return HoverButton(
+      key: const ValueKey('pr-pane-view-pr'),
+      semanticLabel: 'View',
+      onPressed: onPressed,
+      builder: (context, states) {
+        final hovered = states.contains(WidgetState.hovered);
+        final pressed = states.contains(WidgetState.pressed);
+        final color = hovered
+            ? context.paseoPalette.foreground
+            : context.paseoPalette.foregroundMuted;
+        return Opacity(
+          opacity: pressed ? .85 : 1,
+          child: Container(
+            key: const ValueKey('pr-pane-view-pr-content'),
+            height: 24,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              border: Border.all(color: Colors.transparent),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  FluentIcons.open_in_new_window,
+                  key: const ValueKey('pr-pane-view-pr-icon'),
+                  size: 12,
+                  color: color,
+                ),
+                const SizedBox(width: 4),
+                Text('View', style: TextStyle(fontSize: 12, color: color)),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ToolbarRefreshButton extends StatelessWidget {
+  const _ToolbarRefreshButton({
+    required this.forge,
+    required this.refreshing,
+    required this.onPressed,
+  });
+
+  final String forge;
+  final bool refreshing;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = getForgeDefinitionOrNeutral(forge.toLowerCase()).displayName;
+    final label = refreshing ? 'Refreshing' : 'Refresh git and $brand state';
+    return Tooltip(
+      message: label,
+      child: HoverButton(
+        key: const ValueKey('pr-pane-refresh'),
+        semanticLabel: label,
+        onPressed: onPressed,
+        builder: (context, states) {
+          final active =
+              states.contains(WidgetState.hovered) ||
+              states.contains(WidgetState.pressed);
+          return Container(
+            key: const ValueKey('pr-pane-refresh-content'),
+            width: 22,
+            height: 22,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: active
+                  ? context.paseoPalette.surface2
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: SizedBox.square(
+              key: const ValueKey('pr-pane-refresh-icon-slot'),
+              dimension: 16,
+              child: Center(
+                child: refreshing
                     ? const SizedBox.square(
                         dimension: 14,
                         child: ProgressRing(strokeWidth: 2),
                       )
-                    : const Icon(FluentIcons.refresh, size: 14),
-                onPressed: refreshing ? null : onRefresh,
+                    : Icon(
+                        FluentIcons.refresh,
+                        size: 14,
+                        color: context.paseoPalette.foregroundMuted,
+                      ),
               ),
             ),
-        ],
+          );
+        },
       ),
     );
   }

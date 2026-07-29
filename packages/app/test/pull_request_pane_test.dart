@@ -4,6 +4,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/core/external_url_launcher.dart';
 import 'package:coding_agent_app/core/theme.dart';
+import 'package:coding_agent_app/state/appearance_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/pull_request_provider.dart';
 import 'package:coding_agent_app/state/workspace_attachments_provider.dart';
@@ -1197,6 +1198,54 @@ void main() {
     expect(find.byKey(const ValueKey('pr-pane-refresh')), findsNothing);
   });
 
+  testWidgets('PR toolbar matches frozen geometry and scroll ownership', (
+    tester,
+  ) async {
+    await _pumpPane(tester, _FakeDaemonClient());
+    await tester.pumpAndSettle();
+
+    final toolbar = find.byKey(
+      const ValueKey('pr-pane-toolbar'),
+      skipOffstage: false,
+    );
+    final view = find.byKey(const ValueKey('pr-pane-view-pr'));
+    final viewContent = find.byKey(const ValueKey('pr-pane-view-pr-content'));
+    final refreshContent = find.byKey(
+      const ValueKey('pr-pane-refresh-content'),
+    );
+    final refreshSlot = find.byKey(const ValueKey('pr-pane-refresh-icon-slot'));
+    expect(tester.getSize(toolbar).height, 36);
+    expect(tester.getSize(viewContent).height, 24);
+    expect(tester.getSize(refreshContent), const Size.square(22));
+    expect(tester.getSize(refreshSlot), const Size.square(16));
+    final viewIcon = tester.widget<Icon>(
+      find.byKey(const ValueKey('pr-pane-view-pr-icon')),
+    );
+    expect(viewIcon.icon, FluentIcons.open_in_new_window);
+    expect(viewIcon.size, 12);
+    expect(tester.widget<Text>(find.text('View')).style?.fontSize, 12);
+    expect(
+      find.ancestor(of: view, matching: find.byType(Tooltip)),
+      findsNothing,
+    );
+
+    final hoverDetector = tester.widget<FocusableActionDetector>(
+      find.descendant(of: view, matching: find.byType(FocusableActionDetector)),
+    );
+    hoverDetector.onShowHoverHighlight!(true);
+    await tester.pump();
+    expect(
+      tester
+          .widget<Icon>(find.byKey(const ValueKey('pr-pane-view-pr-icon')))
+          .color,
+      paseoPaletteFor(AppThemeName.dark).foreground,
+    );
+    expect(
+      find.ancestor(of: toolbar, matching: find.byType(ListView)),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('refresh disables duplicate actions while checkout is pending', (
     tester,
   ) async {
@@ -1209,20 +1258,20 @@ void main() {
         .where((request) => request['type'] == CheckoutPrStatusRequest.type)
         .length;
 
-    final startRefresh = tester.widget<IconButton>(refresh).onPressed!;
+    final startRefresh = tester.widget<HoverButton>(refresh).onPressed!;
     startRefresh();
     startRefresh();
     await tester.pump();
 
     expect(client.checkoutRefreshRequests, 1);
     expect(find.byType(ProgressRing), findsOneWidget);
-    expect(tester.widget<IconButton>(refresh).onPressed, isNull);
+    expect(tester.widget<HoverButton>(refresh).onPressed, isNull);
 
     gate.complete();
     await tester.pumpAndSettle();
 
     expect(find.byType(ProgressRing), findsNothing);
-    expect(tester.widget<IconButton>(refresh).onPressed, isNotNull);
+    expect(tester.widget<HoverButton>(refresh).onPressed, isNotNull);
     expect(client.checkoutRefreshRequests, 1);
     expect(
       client.nativeRequests
@@ -1245,7 +1294,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('refresh unavailable'), findsOneWidget);
-    expect(tester.widget<IconButton>(refresh).onPressed, isNotNull);
+    expect(tester.widget<HoverButton>(refresh).onPressed, isNotNull);
     expect(client.checkoutRefreshRequests, 1);
     await tester.pump(const Duration(seconds: 5));
   });
