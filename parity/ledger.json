@@ -3319,10 +3319,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/settings-textarea.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/settings_text_area.dart; packages/app/lib/screens/host_settings_sections.dart",
+      "evidence": [
+        "packages/app/test/settings_text_area_test.dart",
+        "packages/app/test/settings_screen_test.dart"
+      ],
+      "notes": "Flutter now exposes reusable SettingsTextArea and SettingsTextAreaCard controls matching the frozen Paseo contract: a controlled accessible multiline input with 14px foreground text, 12px vertical and 16px horizontal padding, 96px height, top alignment, muted placeholder, transparent input chrome, and a clipped surface1 card with the border token and 8px radius. The existing host append-system-prompt editor uses the shared control, with focused tests covering tokens, geometry, multiline edits, custom text overrides, accessibility, and the real reset/save integration flow."
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar-agent-list-skeleton.tsx",

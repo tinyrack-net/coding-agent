@@ -361,6 +361,15 @@ void main() {
       await tester.tap(find.text('Edit'));
       await tester.pumpAndSettle();
       expect(find.text('Append system prompt'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('host-append-system-prompt-card')),
+        findsOneWidget,
+      );
+      final keyedInput = find.byKey(
+        const ValueKey('host-append-system-prompt-input'),
+      );
+      expect(keyedInput, findsOneWidget);
+      expect(tester.getSize(keyedInput).height, 96);
       final input = find.byType(TextBox);
       expect(tester.widget<TextBox>(input).controller!.text, 'Existing');
 

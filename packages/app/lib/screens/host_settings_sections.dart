@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../state/daemon_config_provider.dart';
 import '../widgets/fluent/toast.dart';
+import '../widgets/settings_text_area.dart';
 
 class HostAgentsSettingsSection extends ConsumerWidget {
   const HostAgentsSettingsSection({super.key});
@@ -355,14 +356,12 @@ class _SystemPromptDialogState extends State<_SystemPromptDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Semantics(
-              label: 'Append system prompt',
-              child: TextBox(
-                controller: _controller,
-                placeholder: 'Always keep replies concise.',
-                minLines: 6,
-                maxLines: 10,
-              ),
+            SettingsTextAreaCard(
+              key: const ValueKey('host-append-system-prompt-card'),
+              inputKey: const ValueKey('host-append-system-prompt-input'),
+              accessibilityLabel: 'Append system prompt',
+              controller: _controller,
+              placeholder: 'Always keep replies concise.',
             ),
             if (_error != null) ...[
               const SizedBox(height: 8),
