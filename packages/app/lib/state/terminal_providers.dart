@@ -31,6 +31,7 @@ class TerminalSessionState {
     this.exitCode,
     this.errorMessage,
     this.pendingModifiers = PendingTerminalModifiers.empty,
+    this.terminalId,
   });
 
   /// The xterm emulator instance rendered by TerminalView. Long-lived: it
@@ -40,6 +41,7 @@ class TerminalSessionState {
   final int? exitCode;
   final String? errorMessage;
   final PendingTerminalModifiers pendingModifiers;
+  final String? terminalId;
 
   TerminalSessionState copyWith({
     Terminal? terminal,
@@ -47,12 +49,14 @@ class TerminalSessionState {
     int? exitCode,
     String? errorMessage,
     PendingTerminalModifiers? pendingModifiers,
+    String? terminalId,
   }) => TerminalSessionState(
     terminal: terminal ?? this.terminal,
     status: status ?? this.status,
     exitCode: exitCode ?? this.exitCode,
     errorMessage: errorMessage ?? this.errorMessage,
     pendingModifiers: pendingModifiers ?? this.pendingModifiers,
+    terminalId: terminalId ?? this.terminalId,
   );
 }
 
@@ -309,7 +313,10 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
         ),
       );
 
-      state = state.copyWith(status: TerminalSessionStatus.running);
+      state = state.copyWith(
+        status: TerminalSessionStatus.running,
+        terminalId: terminalId,
+      );
     } catch (e) {
       if (generation != _generation) return;
       state = state.copyWith(

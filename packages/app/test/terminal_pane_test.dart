@@ -589,6 +589,97 @@ void main() {
   });
 
   testWidgets(
+    'attach overlay waits for both subscription and current renderer readiness',
+    (tester) async {
+      final fake = FakeDaemonClient();
+      fake.pendingSubscribe = Completer<Map<String, Object?>>();
+      final container = ProviderContainer(
+        overrides: [daemonClientProvider.overrideWithValue(fake)],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const FluentApp(
+            home: ScaffoldPage(
+              content: TerminalPane(worktreePath: _worktreePath, tabId: _tabId),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        container.read(terminalSessionProvider(_key)).status,
+        TerminalSessionStatus.starting,
+      );
+      expect(
+        find.byKey(const ValueKey('terminal-attach-loading')),
+        findsOneWidget,
+      );
+
+      fake.pendingSubscribe!.complete({
+        'type': 'subscribe_terminal_response',
+        'payload': {
+          'terminalId': 'term-1',
+          'slot': 1,
+          'error': null,
+          'requestId': 'subscribe',
+        },
+      });
+      await tester.pump();
+
+      final attached = container.read(terminalSessionProvider(_key));
+      expect(attached.status, TerminalSessionStatus.running);
+      expect(attached.terminalId, 'term-1');
+      expect(
+        find.byKey(const ValueKey('terminal-attach-loading')),
+        findsOneWidget,
+      );
+
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('terminal-attach-loading')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('attach overlay stays hidden for an unfocused workspace', (
+    tester,
+  ) async {
+    final fake = FakeDaemonClient();
+    fake.pendingSubscribe = Completer<Map<String, Object?>>();
+    final container = ProviderContainer(
+      overrides: [daemonClientProvider.overrideWithValue(fake)],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const FluentApp(
+          home: ScaffoldPage(
+            content: TerminalPane(
+              worktreePath: _worktreePath,
+              tabId: _tabId,
+              isWorkspaceFocused: false,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      container.read(terminalSessionProvider(_key)).status,
+      TerminalSessionStatus.starting,
+    );
+    expect(find.byKey(const ValueKey('terminal-attach-loading')), findsNothing);
+  });
+
+  testWidgets(
     'mobile virtual keyboard consumes one-shot modifiers and sends keys',
     (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;

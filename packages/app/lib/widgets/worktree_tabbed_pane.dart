@@ -264,6 +264,7 @@ class WorktreeTabbedPane extends ConsumerWidget {
       worktreePath: worktreePath,
       tabId: tab.tabId,
       workspaceId: workspaceId,
+      isWorkspaceFocused: isActive,
       onOpenWorkspaceFile: onOpenWorkspaceFile,
     ),
     WorktreeTabKind.agent => AgentChatScreen(

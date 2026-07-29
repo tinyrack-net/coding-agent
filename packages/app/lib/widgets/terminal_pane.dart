@@ -15,6 +15,7 @@ import '../terminal/terminal_flutter_keys.dart';
 import '../terminal/terminal_keys.dart';
 import '../terminal/terminal_local_link_provider.dart';
 import '../terminal/terminal_platform.dart';
+import '../terminal/terminal_renderer_readiness.dart';
 import '../workspace/workspace_file_open.dart';
 import '../keyboard/shortcut_engine.dart';
 import '../keyboard/shortcut_focus_scope.dart';
@@ -28,11 +29,13 @@ class TerminalPane extends ConsumerStatefulWidget {
     required this.tabId,
     this.onOpenWorkspaceFile,
     this.workspaceId,
+    this.isWorkspaceFocused = true,
   });
 
   final String worktreePath;
   final String tabId;
   final String? workspaceId;
+  final bool isWorkspaceFocused;
   final void Function(WorkspaceFileOpenRequest request)? onOpenWorkspaceFile;
 
   @override
@@ -51,6 +54,8 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   TerminalLocalFileLink? _hoveredLink;
   List<Rect> _hoverUnderlineRects = const [];
   int _hoverRequest = 0;
+  String? _rendererReadyStreamKey;
+  String? _scheduledRendererStreamKey;
 
   TerminalSessionKey get _key => (
     worktreePath: widget.worktreePath,
@@ -131,9 +136,34 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
     _focusNode.requestFocus();
   }
 
+  void _scheduleRendererReady(String streamKey) {
+    if (_scheduledRendererStreamKey == streamKey) return;
+    final previousStreamKey = _scheduledRendererStreamKey;
+    if (previousStreamKey != null) {
+      _rendererReadyStreamKey = applyTerminalRendererReadyChange(
+        _rendererReadyStreamKey,
+        TerminalRendererReadyChange(
+          streamKey: previousStreamKey,
+          isReady: false,
+        ),
+      );
+    }
+    _scheduledRendererStreamKey = streamKey;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _scheduledRendererStreamKey != streamKey) return;
+      final nextReadyStreamKey = applyTerminalRendererReadyChange(
+        _rendererReadyStreamKey,
+        TerminalRendererReadyChange(streamKey: streamKey, isReady: true),
+      );
+      if (nextReadyStreamKey == _rendererReadyStreamKey) return;
+      setState(() => _rendererReadyStreamKey = nextReadyStreamKey);
+    });
+  }
+
   @override
   void dispose() {
     _hoverRequest++;
+    _scheduledRendererStreamKey = null;
     _focusNode.dispose();
     super.dispose();
   }
@@ -272,6 +302,19 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
       _hoveredLink = null;
       _hoverUnderlineRects = const [];
     }
+    final terminalStreamKey =
+        '${widget.workspaceId ?? widget.worktreePath}:'
+        '${session.terminalId ?? 'pending:${widget.tabId}'}';
+    _scheduleRendererReady(terminalStreamKey);
+    final showLoadingOverlay = shouldShowTerminalLoadingOverlay(
+      isWorkspaceFocused: widget.isWorkspaceFocused,
+      hasStreamError:
+          session.status == TerminalSessionStatus.error ||
+          session.status == TerminalSessionStatus.exited,
+      isAttaching: session.status == TerminalSessionStatus.starting,
+      rendererReadyStreamKey: _rendererReadyStreamKey,
+      terminalStreamKey: terminalStreamKey,
+    );
 
     return Column(
       children: [
@@ -356,6 +399,14 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
                       ),
                     ),
                   ),
+                  if (showLoadingOverlay)
+                    const IgnorePointer(
+                      child: ColoredBox(
+                        key: ValueKey('terminal-attach-loading'),
+                        color: Color(0x29000000),
+                        child: Center(child: ProgressRing()),
+                      ),
+                    ),
                   IgnorePointer(
                     child: AnimatedOpacity(
                       key: const ValueKey('terminal-drop-overlay'),

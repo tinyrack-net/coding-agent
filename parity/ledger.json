@@ -3643,12 +3643,13 @@
     {
       "id": "source-unit:packages/app/src/components/terminal-pane.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/widgets/terminal_pane.dart; packages/app/lib/terminal/terminal_local_link_provider.dart; packages/app/lib/workspace/workspace_file_open.dart; packages/app/lib/widgets/worktree_tabbed_pane.dart",
+      "implementation": "packages/app/lib/widgets/terminal_pane.dart; packages/app/lib/state/terminal_providers.dart; packages/app/lib/terminal/terminal_renderer_readiness.dart; packages/app/lib/terminal/terminal_local_link_provider.dart; packages/app/lib/workspace/workspace_file_open.dart; packages/app/lib/widgets/worktree_tabbed_pane.dart",
       "evidence": [
         "packages/app/test/terminal_pane_test.dart",
+        "packages/app/test/terminal_renderer_readiness_test.dart",
         "packages/app/test/worktree_tabbed_pane_test.dart"
       ],
-      "notes": "TerminalPane now composes the daemon terminal with asynchronous local-file resolution, hover decoration, and main/side workspace-file activation. Upstream pane focus claims, visibility/refit coordination, browser/mobile bridges, and remaining context actions are still incomplete."
+      "notes": "TerminalPane composes the daemon terminal with renderer-and-subscription readiness loading, focused-pane gating, asynchronous local-file resolution, hover decoration, and main/side workspace-file activation. Upstream focus claims, visibility/refit coordination, browser/mobile bridges, and remaining context actions are still incomplete."
     },
     {
       "id": "source-unit:packages/app/src/components/toast-host.tsx",
@@ -8619,10 +8620,13 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/terminal-renderer-readiness.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/terminal/terminal_renderer_readiness.dart; packages/app/lib/widgets/terminal_pane.dart; packages/app/lib/state/terminal_providers.dart",
+      "evidence": [
+        "packages/app/test/terminal_renderer_readiness_test.dart",
+        "packages/app/test/terminal_pane_test.dart"
+      ],
+      "notes": "Matches the frozen stream-key readiness reducer, stale unmount protection, current-renderer snapshot replay predicate, and focused attach/error loading-overlay gate. Flutter ties readiness to the rendered TerminalView frame and terminal subscription identity."
     },
     {
       "id": "source-unit:packages/app/src/utils/test-daemon-connection.ts",
