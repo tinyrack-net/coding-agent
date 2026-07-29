@@ -834,6 +834,60 @@ void main() {
     });
   });
 
+  test('schedule schemas preserve exact table widths and inspect JSON', () async {
+    final schedule = {
+      ..._schedule(),
+      'name': null,
+      'cadence': {
+        'type': 'cron',
+        'expression': '0 9 * * *',
+        'timezone': 'Asia/Seoul',
+      },
+      'target': {
+        'type': 'new-agent',
+        'config': {'provider': 'codex', 'cwd': 'C:/repo', 'model': 'gpt-5.4'},
+      },
+    };
+    var table = '';
+    expect(
+      await runScheduleCommand(
+        arguments: ['ls'],
+        request: (_) async => {
+          'schedules': [schedule],
+          'error': null,
+        },
+        writeOutput: (value) => table += value,
+      ),
+      0,
+    );
+
+    final cadence = 'cron:0 9 * * * (Asia/Seoul)';
+    final target = 'new-agent:codex/gpt-5.4';
+    expect(
+      table,
+      '${[
+        ['ID'.padRight(10), 'NAME'.padRight(20), 'CADENCE'.padRight(cadence.length), 'TARGET'.padRight(target.length), 'STATUS'.padRight(12), 'NEXT RUN'.padRight(24)].join('  '),
+        ['deadbeef'.padRight(10), ''.padRight(20), cadence, target, 'active'.padRight(12), '2026-07-27T00:05:00.000Z'].join('  '),
+      ].join('\n')}\n',
+    );
+
+    var inspectJson = '';
+    expect(
+      await runScheduleCommand(
+        arguments: ['inspect', 'deadbeef', '--json'],
+        request: (_) async => {'schedule': schedule, 'error': null},
+        writeOutput: (value) => inspectJson += value,
+      ),
+      0,
+    );
+    expect(jsonDecode(inspectJson), schedule);
+    expect(
+      (jsonDecode(inspectJson) as Map)['runs'],
+      isA<List>(),
+      reason: 'inspect JSON serializes the full record, not key/value rows',
+    );
+  });
+
   test('help and action-specific option boundaries are exposed', () async {
     for (final arguments in [
       ['--help'],

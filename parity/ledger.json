@@ -9693,12 +9693,12 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/schema.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
       "evidence": [
         "packages/daemon/test/cli/schedule_command_test.dart"
       ],
-      "notes": null
+      "notes": "Ports the frozen schedule list, inspect, and log output schemas: exact headers and minimum width hints, untruncated content-driven expansion, null-to-empty table cells, cadence and target projection including timezone and model suffixes, seven-character log agent ids, raw full-record inspect JSON serialization, and stable projected JSON rows."
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/shared.ts",
