@@ -403,12 +403,12 @@
     {
       "id": "cli-command:clone",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/clone_command.dart;packages/daemon/bin/coding_agent.dart;packages/daemon/lib/src/workspace/project_github_clone_service.dart",
+      "implementation": "packages/daemon/lib/src/cli/clone_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/workspace/project_github_clone_service.dart",
       "evidence": [
         "packages/daemon/test/cli/clone_command_test.dart",
         "packages/daemon/test/daemon_clone_cli_e2e_test.dart"
       ],
-      "notes": "Paseo clone validation, protocol selection, daemon capability gating, output modes, safe staging, project registration, and failure behavior ported."
+      "notes": "Paseo clone validation, protocol selection, daemon capability gating, shared single-result output and structured errors, Commander option forms, safe staging, project registration, and failure behavior are ported."
     },
     {
       "id": "cli-command:daemon-local-daemon",
@@ -9526,13 +9526,13 @@
     {
       "id": "source-unit:packages/cli/src/commands/clone.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/clone_command.dart;packages/daemon/bin/coding_agent.dart;packages/daemon/lib/src/workspace/project_github_clone_service.dart",
+      "implementation": "packages/daemon/lib/src/cli/clone_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/workspace/project_github_clone_service.dart",
       "evidence": [
         "packages/daemon/test/cli/clone_command_test.dart",
         "packages/daemon/test/daemon_clone_cli_e2e_test.dart",
         "packages/daemon/test/workspace/project_github_clone_service_test.dart"
       ],
-      "notes": "Frozen clone command and server-side clone lifecycle ported through the real WebSocket boundary."
+      "notes": "Frozen clone schema, validation, daemon capability and request lifecycle, shared output/error rendering, and Commander option forms are ported through the real WebSocket boundary."
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/index.ts",
@@ -10232,6 +10232,7 @@
         "packages/daemon/test/cli/agent_import_command_test.dart",
         "packages/daemon/test/cli/agent_run_command_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/clone_command_test.dart",
         "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/hub_command_test.dart",
@@ -10243,7 +10244,7 @@
         "packages/daemon/test/terminal_command_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "The shared Dart output entrypoint exports typed result, schema, custom serialization, JSON, YAML, quiet, table, and error rendering used by agent import/run, chat, heartbeat, Hub, permit, provider, schedule, script, terminal result actions, non-streaming loop actions, and daemon result actions; remaining CLI families still need migration."
+      "notes": "The shared Dart output entrypoint exports typed result, schema, custom serialization, JSON, YAML, quiet, table, and error rendering used by agent import/run, chat, clone, heartbeat, Hub, permit, provider, schedule, script, terminal result actions, non-streaming loop actions, and daemon result actions; remaining CLI families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/json.ts",
@@ -10254,6 +10255,7 @@
         "packages/daemon/test/cli/agent_import_command_test.dart",
         "packages/daemon/test/cli/agent_run_command_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/clone_command_test.dart",
         "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
@@ -10280,6 +10282,7 @@
         "packages/daemon/test/cli/agent_import_command_test.dart",
         "packages/daemon/test/cli/agent_run_command_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/clone_command_test.dart",
         "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
@@ -10296,6 +10299,7 @@
         "packages/daemon/test/cli/agent_import_command_test.dart",
         "packages/daemon/test/cli/agent_run_command_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/clone_command_test.dart",
         "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
@@ -10312,6 +10316,7 @@
         "packages/daemon/test/cli/agent_import_command_test.dart",
         "packages/daemon/test/cli/agent_run_command_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/clone_command_test.dart",
         "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
@@ -10322,13 +10327,14 @@
     {
       "id": "source-unit:packages/cli/src/output/types.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/agent_output_schemas.dart; packages/daemon/lib/src/cli/agent_import_command.dart; packages/daemon/lib/src/cli/agent_run_command.dart; packages/daemon/lib/src/cli/provider_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/agent_output_schemas.dart; packages/daemon/lib/src/cli/agent_import_command.dart; packages/daemon/lib/src/cli/agent_run_command.dart; packages/daemon/lib/src/cli/clone_command.dart; packages/daemon/lib/src/cli/provider_command.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_invocation_test.dart",
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/agent_import_command_test.dart",
         "packages/daemon/test/cli/agent_run_command_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/clone_command_test.dart",
         "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
@@ -10340,7 +10346,7 @@
     {
       "id": "source-unit:packages/cli/src/output/with-output.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/agent_output_schemas.dart; packages/daemon/lib/src/cli/agent_import_command.dart; packages/daemon/lib/src/cli/agent_run_command.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/hub_command.dart; packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/script_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/terminal_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/agent_output_schemas.dart; packages/daemon/lib/src/cli/agent_import_command.dart; packages/daemon/lib/src/cli/agent_run_command.dart; packages/daemon/lib/src/cli/clone_command.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/hub_command.dart; packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/script_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/terminal_command.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_invocation_test.dart",
         "packages/daemon/test/cli/cli_root_output_process_test.dart",
@@ -10348,6 +10354,7 @@
         "packages/daemon/test/cli/agent_import_command_test.dart",
         "packages/daemon/test/cli/agent_run_command_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/clone_command_test.dart",
         "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/hub_command_test.dart",
@@ -10360,7 +10367,7 @@
         "packages/daemon/test/daemon_schedule_e2e_test.dart",
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": "Global and local options feed shared result and error rendering for agent import/run, chat, heartbeat, Hub, permit, provider, schedule, script, terminal result actions, non-streaming loop actions, and daemon result actions while capture/send-keys and other direct or streaming actions retain their frozen boundaries; remaining JSON-only command families still need migration."
+      "notes": "Global and local options feed shared result and error rendering for agent import/run, chat, clone, heartbeat, Hub, permit, provider, schedule, script, terminal result actions, non-streaming loop actions, and daemon result actions while capture/send-keys and other direct or streaming actions retain their frozen boundaries; remaining JSON-only command families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/yaml.ts",
@@ -10371,6 +10378,7 @@
         "packages/daemon/test/cli/agent_import_command_test.dart",
         "packages/daemon/test/cli/agent_run_command_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/clone_command_test.dart",
         "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",

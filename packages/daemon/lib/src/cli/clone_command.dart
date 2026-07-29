@@ -1,10 +1,9 @@
-import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_output.dart';
 import 'terminal_command.dart';
 
 const cloneCommandTimeout = Duration(minutes: 5, seconds: 15);
@@ -38,14 +37,18 @@ Future<int> runCloneCommand({
     return 0;
   }
 
-  late final CloneCliInvocation invocation;
+  CloneCliInvocation? invocation;
   try {
     invocation = CloneCliInvocation.parse(arguments);
   } on FormatException catch (error) {
     errorOutput('${error.message}\n$cloneUsage\n');
     return 64;
   } on CloneCommandException catch (error) {
-    _renderError(errorOutput, error, json: _requestsJson(arguments));
+    _renderError(
+      errorOutput,
+      error,
+      invocation?.output ?? _recoverCloneOutputOptions(arguments),
+    );
     return 1;
   }
 
@@ -89,10 +92,14 @@ Future<int> runCloneCommand({
       'projectId': response.project!.projectId,
       'projectName': response.project!.projectDisplayName,
     };
-    output(_render(row, invocation));
+    final rendered = renderCliOutput(
+      CliOutputResult.single(row: row, schema: _cloneSchema),
+      invocation.output,
+    );
+    if (rendered.isNotEmpty) output('$rendered\n');
     return 0;
   } on CloneCommandException catch (error) {
-    _renderError(errorOutput, error, json: invocation.json);
+    _renderError(errorOutput, error, invocation.output);
     return 1;
   } on Object catch (error) {
     _renderError(
@@ -101,7 +108,7 @@ Future<int> runCloneCommand({
         'CLONE_FAILED',
         'Failed to clone GitHub repo: ${_errorText(error)}',
       ),
-      json: invocation.json,
+      invocation.output,
     );
     return 1;
   } finally {
@@ -168,20 +175,14 @@ final class CloneCliInvocation {
     required this.targetDirectory,
     required this.protocol,
     required this.host,
-    required this.json,
-    required this.format,
-    required this.quiet,
-    required this.headers,
+    required this.output,
   });
 
   final String repo;
   final String targetDirectory;
   final ProjectGithubCloneProtocol? protocol;
   final String? host;
-  final bool json;
-  final String format;
-  final bool quiet;
-  final bool headers;
+  final CliOutputOptions output;
 
   static CloneCliInvocation parse(List<String> arguments) {
     final positional = <String>[];
@@ -192,39 +193,67 @@ final class CloneCliInvocation {
     var format = 'table';
     var quiet = false;
     var headers = true;
+    var color = true;
+    var positionalOnly = false;
     for (var index = 0; index < arguments.length; index++) {
       final argument = arguments[index];
+      if (!positionalOnly) {
+        final longOption = _splitLongOption(argument);
+        if (longOption != null) {
+          final (option, value) = longOption;
+          switch (option) {
+            case '--dir':
+              targetDirectory = value;
+              continue;
+            case '--protocol':
+              protocol = _parseCloneProtocol(value);
+              continue;
+            case '--host':
+              host = value;
+              continue;
+            case '--format':
+              format = normalizeCliOutputFormat(value);
+              continue;
+          }
+        }
+      }
+      if (!positionalOnly && argument == '--') {
+        positionalOnly = true;
+        continue;
+      }
+      if (positionalOnly) {
+        positional.add(argument);
+        continue;
+      }
       switch (argument) {
         case '--dir':
           targetDirectory = _requiredValue(arguments, ++index, argument);
         case '--protocol':
-          final value = _requiredValue(arguments, ++index, argument);
-          if (!const {'https', 'ssh'}.contains(value)) {
-            throw FormatException('--protocol must be one of: https, ssh');
-          }
-          protocol = ProjectGithubCloneProtocol.values.byName(value);
+          protocol = _parseCloneProtocol(
+            _requiredValue(arguments, ++index, argument),
+          );
         case '--host':
           host = _requiredValue(arguments, ++index, argument);
         case '--json':
           json = true;
-          format = 'json';
         case '-o' || '--format':
-          format = _requiredValue(arguments, ++index, argument).toLowerCase();
-          if (format == 'cli') format = 'table';
-          if (!const {'table', 'json', 'yaml'}.contains(format)) {
-            throw FormatException('Unsupported output format: $format');
-          }
+          format = normalizeCliOutputFormat(
+            _requiredValue(arguments, ++index, argument),
+          );
         case '-q' || '--quiet':
           quiet = true;
         case '--no-headers':
           headers = false;
         case '--no-color':
-          break;
+          color = false;
         default:
-          if (argument.startsWith('-')) {
+          if (argument.startsWith('-o') && argument.length > 2) {
+            format = normalizeCliOutputFormat(argument.substring(2));
+          } else if (argument.startsWith('-')) {
             throw FormatException('Unknown option: $argument');
+          } else {
+            positional.add(argument);
           }
-          positional.add(argument);
       }
     }
     if (positional.length != 1) {
@@ -255,63 +284,48 @@ final class CloneCliInvocation {
       targetDirectory: target,
       protocol: protocol,
       host: host,
-      json: json || format == 'json',
-      format: format,
-      quiet: quiet,
-      headers: headers,
+      output: CliOutputOptions(
+        format: json ? 'json' : format,
+        quiet: quiet,
+        noHeaders: !headers,
+        noColor: !color,
+      ),
     );
   }
 }
 
-String _render(Map<String, Object?> row, CloneCliInvocation invocation) {
-  if (invocation.quiet) return '${row['projectId']}\n';
-  if (invocation.format == 'json') {
-    return '${const JsonEncoder.withIndent('  ').convert(row)}\n';
-  }
-  if (invocation.format == 'yaml') {
-    return '${[for (final entry in row.entries) '${entry.key}: ${jsonEncode(entry.value)}'].join('\n')}\n';
-  }
-  const columns = [
-    ('REPO', 'repo', 28),
-    ('PROJECT', 'projectName', 28),
-    ('PATH', 'checkoutPath', 56),
-  ];
-  final widths = [
-    for (final column in columns)
-      math.max(
-        math.max(column.$1.length, column.$3),
-        '${row[column.$2] ?? ''}'.length,
-      ),
-  ];
-  String line(Iterable<String> cells) {
-    final values = cells.toList();
-    return [
-      for (var index = 0; index < values.length; index++)
-        values[index].padRight(widths[index]),
-    ].join('  ').trimRight();
-  }
-
-  return '${[
-    if (invocation.headers) line([for (final column in columns) column.$1]),
-    line([for (final column in columns) '${row[column.$2] ?? ''}']),
-  ].join('\n')}\n';
-}
+final _cloneSchema = CliOutputSchema(
+  idField: (row) => '${row['projectId']}',
+  columns: [
+    CliOutputColumn(header: 'REPO', field: (row) => row['repo'], width: 28),
+    CliOutputColumn(
+      header: 'PROJECT',
+      field: (row) => row['projectName'],
+      width: 28,
+    ),
+    CliOutputColumn(
+      header: 'PATH',
+      field: (row) => row['checkoutPath'],
+      width: 56,
+    ),
+  ],
+);
 
 void _renderError(
   void Function(String value) write,
-  CloneCommandException error, {
-  required bool json,
-}) {
-  if (json) {
-    write(
-      '${const JsonEncoder.withIndent('  ').convert({
-        'error': {'code': error.code, 'message': error.message, if (error.details != null) 'details': error.details},
-      })}\n',
-    );
-    return;
+  CloneCommandException error,
+  CliOutputOptions options,
+) {
+  write(
+    '${renderCliError(code: error.code, message: error.message, details: error.details, options: options)}\n',
+  );
+}
+
+ProjectGithubCloneProtocol _parseCloneProtocol(String value) {
+  if (!const {'https', 'ssh'}.contains(value)) {
+    throw FormatException('--protocol must be one of: https, ssh');
   }
-  write('Error: ${error.message}\n');
-  if (error.details != null) write('${error.details}\n');
+  return ProjectGithubCloneProtocol.values.byName(value);
 }
 
 String _requiredValue(List<String> arguments, int index, String option) {
@@ -321,15 +335,58 @@ String _requiredValue(List<String> arguments, int index, String option) {
   return arguments[index];
 }
 
-bool _requestsJson(List<String> arguments) {
-  if (arguments.contains('--json')) return true;
-  for (var index = 0; index < arguments.length - 1; index++) {
-    if ((arguments[index] == '--format' || arguments[index] == '-o') &&
-        arguments[index + 1].toLowerCase() == 'json') {
-      return true;
+(String, String)? _splitLongOption(String argument) {
+  if (!argument.startsWith('--')) return null;
+  final separator = argument.indexOf('=');
+  if (separator < 3) return null;
+  return (argument.substring(0, separator), argument.substring(separator + 1));
+}
+
+CliOutputOptions _recoverCloneOutputOptions(List<String> arguments) {
+  var format = 'table';
+  var json = false;
+  var quiet = false;
+  var noHeaders = false;
+  var noColor = false;
+  for (var index = 0; index < arguments.length; index++) {
+    final argument = arguments[index];
+    if (argument == '--') {
+      break;
+    } else if (argument == '--json') {
+      json = true;
+    } else if (argument == '-q' || argument == '--quiet') {
+      quiet = true;
+    } else if (argument == '--no-headers') {
+      noHeaders = true;
+    } else if (argument == '--no-color') {
+      noColor = true;
+    } else if (argument == '-o' || argument == '--format') {
+      if (index + 1 < arguments.length) {
+        format = _safeCloneOutputFormat(arguments[++index], format);
+      }
+    } else if (argument.startsWith('--format=')) {
+      format = _safeCloneOutputFormat(
+        argument.substring('--format='.length),
+        format,
+      );
+    } else if (argument.startsWith('-o') && argument.length > 2) {
+      format = _safeCloneOutputFormat(argument.substring(2), format);
     }
   }
-  return false;
+  return CliOutputOptions(
+    format: json ? 'json' : format,
+    quiet: quiet,
+    noHeaders: noHeaders,
+    noColor: noColor,
+  );
+}
+
+String _safeCloneOutputFormat(String value, String fallback) {
+  try {
+    return normalizeCliOutputFormat(value);
+  } on FormatException {
+    return fallback;
+  }
 }
 
 String _errorText(Object error) => switch (error) {

@@ -87,7 +87,7 @@ void main() {
           '--format',
           'yaml',
         ],
-        contains('projectId: "project-1"'),
+        contains('projectId: project-1'),
       ),
     ]) {
       var output = '';
@@ -102,6 +102,61 @@ void main() {
       );
       expect(output, testCase.$2);
     }
+  });
+
+  test('supports shared output aliases and frozen option forms', () async {
+    final parsed = CloneCliInvocation.parse(const [
+      '--dir= C:/src ',
+      '--protocol=ssh',
+      '--host=ws://127.0.0.1:7777',
+      '--format=yaml',
+      '--json',
+      '--no-color',
+      'owner/repo',
+    ]);
+    expect(parsed.targetDirectory, 'C:/src');
+    expect(parsed.protocol, ProjectGithubCloneProtocol.ssh);
+    expect(parsed.host, 'ws://127.0.0.1:7777');
+    expect(parsed.output.format, 'json');
+    expect(parsed.output.noColor, isTrue);
+
+    var output = '';
+    expect(
+      await runCloneCommand(
+        arguments: const [
+          '--dir',
+          'C:/src',
+          '--protocol',
+          'https',
+          '-ocli',
+          '--no-headers',
+          '--',
+          'owner/repo',
+        ],
+        connect: ({required host, required environment}) async =>
+            _FakeCloneClient(),
+        writeOutput: (value) => output += value,
+      ),
+      0,
+    );
+    expect(output, contains('owner/repo'));
+    expect(output, isNot(contains('REPO')));
+  });
+
+  test('shared yaml renders validation errors before connection', () async {
+    var error = '';
+    expect(
+      await runCloneCommand(
+        arguments: const ['owner/repo', '--protocol', 'https', '--format=yaml'],
+        connect: ({required host, required environment}) async =>
+            fail('must not connect'),
+        writeError: (value) => error += value,
+      ),
+      1,
+    );
+    expect(error, contains('error:'));
+    expect(error, contains('code: INVALID_ARGUMENT'));
+    expect(error, contains('message: --dir is required'));
   });
 
   test('rejects malformed options before connecting', () async {
