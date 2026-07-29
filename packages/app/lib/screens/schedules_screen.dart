@@ -7,7 +7,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../composer/create_agent_preferences.dart';
 import '../composer/provider_model_selection.dart';
-import '../core/daemon_client.dart';
 import '../core/external_url_launcher.dart';
 import '../core/theme.dart';
 import '../providers/providers_snapshot.dart';
@@ -23,6 +22,7 @@ import '../widgets/adaptive_modal_sheet.dart';
 import '../widgets/combined_model_selector.dart';
 import '../widgets/fluent/form_text_input.dart';
 import '../widgets/fluent/select_field.dart';
+import '../widgets/host_status_dot.dart';
 import '../widgets/provider_icon.dart';
 
 enum _ScheduleFilter { active, ended }
@@ -1320,10 +1320,13 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                         id: host.serverId,
                         value: host.serverId,
                         label: host.label,
-                        leading: _hostStatusDot(
-                          host.serverId,
-                          hostClients[host.serverId]?.currentState ==
-                              DaemonConnectionState.connected,
+                        leading: Center(
+                          child: HostStatusDot(
+                            key: ValueKey(
+                              'schedule-host-status-${host.serverId}',
+                            ),
+                            serverId: host.serverId,
+                          ),
                         ),
                       ),
                   ],
@@ -1630,20 +1633,6 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
       ),
     );
   }
-
-  Widget _hostStatusDot(String serverId, bool connected) => Center(
-    child: Container(
-      key: ValueKey('schedule-host-status-$serverId'),
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(
-        color: connected
-            ? context.statusColors.success
-            : context.statusColors.neutral,
-        shape: BoxShape.circle,
-      ),
-    ),
-  );
 
   Widget _providerEditor({
     required ProvidersSnapshotState? snapshot,

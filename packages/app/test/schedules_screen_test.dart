@@ -14,6 +14,7 @@ import 'package:coding_agent_app/state/schedule_project_targets_provider.dart';
 import 'package:coding_agent_app/state/schedules_provider.dart';
 import 'package:coding_agent_app/widgets/adaptive_modal_sheet.dart';
 import 'package:coding_agent_app/widgets/fluent/select_field.dart';
+import 'package:coding_agent_app/widgets/host_status_dot.dart';
 import 'package:coding_agent_app/widgets/provider_icon.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1171,7 +1172,15 @@ void main() {
 
   testWidgets('create form targets the selected host', (tester) async {
     final notifier = _FakeSchedulesNotifier(const []);
-    await _pumpWithNotifier(tester, notifier, hosts: _twoHosts);
+    await _pumpWithNotifier(
+      tester,
+      notifier,
+      hosts: _twoHosts,
+      hostStates: const {
+        'server-a': DaemonConnectionState.connected,
+        'server-b': DaemonConnectionState.connecting,
+      },
+    );
 
     await tester.tap(find.text('New schedule'));
     await tester.pumpAndSettle();
@@ -1188,6 +1197,22 @@ void main() {
       find.byKey(const ValueKey('schedule-host-status-server-b')),
       findsOneWidget,
     );
+    BoxDecoration hostDotDecoration(String serverId) =>
+        tester
+                .widget<DecoratedBox>(
+                  find
+                      .descendant(
+                        of: find.byKey(
+                          ValueKey('schedule-host-status-$serverId'),
+                        ),
+                        matching: find.byType(DecoratedBox),
+                      )
+                      .last,
+                )
+                .decoration
+            as BoxDecoration;
+    expect(hostDotDecoration('server-a').color, hostStatusOnlineColor);
+    expect(hostDotDecoration('server-b').color, hostStatusConnectingColor);
     await tester.tap(find.text('Remote').last);
     await tester.pumpAndSettle();
     await _selectScheduleProject(tester, 'Remote project');
@@ -1261,6 +1286,7 @@ Future<void> _pumpWithNotifier(
   bool settle = true,
   bool supportsWorkspaceMultiplicity = true,
   bool projectsAreGit = true,
+  Map<String, DaemonConnectionState> hostStates = const {},
   CreateAgentPreferencesService? preferencesService,
   AppThemeName themeName = AppThemeName.dark,
   ExternalUrlLauncher? launcher,
@@ -1288,6 +1314,11 @@ Future<void> _pumpWithNotifier(
               supportsWorkspaceMultiplicity: supportsWorkspaceMultiplicity,
             ),
         }),
+        hostConnectionStateProvider.overrideWith(
+          (ref, serverId) => Stream.value(
+            hostStates[serverId] ?? DaemonConnectionState.connected,
+          ),
+        ),
         if (launcher != null)
           externalUrlLauncherProvider.overrideWithValue(launcher),
       ],

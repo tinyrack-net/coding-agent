@@ -129,8 +129,13 @@ final daemonClientProvider = Provider<DaemonClient>((ref) {
 final hostConnectionStateProvider = StreamProvider.autoDispose
     .family<DaemonConnectionState, String>((ref, serverId) {
       final client = ref.watch(hostDaemonClientProvider(serverId));
-      return client?.connectionState ??
-          Stream.value(DaemonConnectionState.disconnected);
+      if (client == null) {
+        return Stream.value(DaemonConnectionState.disconnected);
+      }
+      return (() async* {
+        yield client.currentState;
+        yield* client.connectionState;
+      })();
     });
 
 final connectionStateProvider = StreamProvider<DaemonConnectionState>((ref) {

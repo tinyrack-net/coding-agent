@@ -2791,10 +2791,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/host-status-dot.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/host_status_dot.dart;packages/app/lib/state/daemon_providers.dart;packages/app/lib/screens/schedules_screen.dart",
+      "evidence": [
+        "packages/app/test/host_status_dot_test.dart",
+        "packages/app/test/schedules_screen_test.dart"
+      ],
+      "notes": "The shared host indicator maps the runtime connection states to the frozen online/connecting/offline contract, renders the exact 8px green-400/amber-500/red-500 dot, and is used by the schedule host selector."
     },
     {
       "id": "source-unit:packages/app/src/components/hosts/host-filter.tsx",
