@@ -1,13 +1,20 @@
+import 'dart:async';
+
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../composer/provider_model_selection.dart';
 import '../core/theme.dart';
+import '../providers/providers_snapshot.dart';
 import '../state/agents_provider.dart';
+import '../state/daemon_providers.dart';
 import '../state/host_registry_provider.dart';
+import '../state/providers_snapshot_provider.dart';
 import '../state/schedule_form_model.dart';
 import '../state/schedule_project_targets_provider.dart';
 import '../state/schedules_provider.dart';
+import '../widgets/combined_model_selector.dart';
 import '../widgets/fluent/toast.dart';
 
 enum _ScheduleFilter { active, ended }
@@ -553,11 +560,13 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
   late final TextEditingController _name;
   late final TextEditingController _prompt;
   late final TextEditingController _cron;
-  late final TextEditingController _provider;
-  late final TextEditingController _model;
   late final TextEditingController _cwd;
   late final TextEditingController _maxRuns;
   String? _serverId;
+  String? _provider;
+  String? _model;
+  String? _modeId;
+  String? _thinkingOptionId;
   late final String _timezone;
   var _isolation = 'local';
   var _archiveOnFinish = true;
@@ -578,8 +587,10 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     _prompt = TextEditingController(text: schedule?.prompt ?? '');
     _cron = TextEditingController(text: cadence.expression);
     _timezone = cadence.timezone ?? 'UTC';
-    _provider = TextEditingController(text: config?.provider ?? 'codex');
-    _model = TextEditingController(text: config?.model ?? '');
+    _provider = config?.provider;
+    _model = config?.model;
+    _modeId = config?.modeId;
+    _thinkingOptionId = config?.thinkingOptionId;
     _cwd = TextEditingController(text: config?.cwd ?? '');
     _maxRuns = TextEditingController(text: schedule?.maxRuns?.toString() ?? '');
     _serverId =
@@ -592,15 +603,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
 
   @override
   void dispose() {
-    for (final controller in [
-      _name,
-      _prompt,
-      _cron,
-      _provider,
-      _model,
-      _cwd,
-      _maxRuns,
-    ]) {
+    for (final controller in [_name, _prompt, _cron, _cwd, _maxRuns]) {
       controller.dispose();
     }
     super.dispose();
@@ -614,6 +617,37 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     final projectTargets =
         ref.watch(scheduleProjectTargetsProvider).value?.targets ??
         const <ScheduleProjectTarget>[];
+    final client = _serverId == null
+        ? null
+        : ref.watch(hostRuntimeClientsProvider)[_serverId];
+    final snapshotScope =
+        newAgent && client != null && _cwd.text.trim().isNotEmpty
+        ? ProvidersSnapshotScope(
+            client: client,
+            serverId: _serverId,
+            cwd: _cwd.text,
+          )
+        : null;
+    final snapshot = snapshotScope == null
+        ? null
+        : ref.watch(providersSnapshotProvider(snapshotScope));
+    final providerSelection = resolveScheduleProviderSelection(
+      entries: snapshot?.entries,
+      selectedProvider: _provider,
+      selectedModel: _model,
+      selectedModeId: _modeId,
+      selectedThinkingOptionId: _thinkingOptionId,
+    );
+    if (providerSelection.isAvailable) {
+      _provider = providerSelection.provider;
+      _model = providerSelection.model.isEmpty ? null : providerSelection.model;
+      _modeId = providerSelection.modeId.isEmpty
+          ? null
+          : providerSelection.modeId;
+      _thinkingOptionId = providerSelection.thinkingOptionId.isEmpty
+          ? null
+          : providerSelection.thinkingOptionId;
+    }
     return ContentDialog(
       constraints: const BoxConstraints(maxWidth: 560),
       title: Text(editing ? 'Edit schedule' : 'New schedule'),
@@ -638,6 +672,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                   onChanged: (value) => setState(() {
                     _serverId = value;
                     _cwd.clear();
+                    _clearProviderSelection();
                   }),
                 ),
                 const SizedBox(height: 12),
@@ -646,9 +681,13 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
               _field('Prompt', _prompt, maxLines: 4),
               _cadenceEditor(),
               if (newAgent) ...[
-                _field('Provider', _provider),
-                _field('Model', _model, placeholder: 'Provider default'),
                 _projectSelector(projectTargets),
+                _providerEditor(
+                  snapshot: snapshot,
+                  scope: snapshotScope,
+                  selection: providerSelection,
+                  hasClient: client != null,
+                ),
                 const SizedBox(height: 12),
                 const Text('Isolation'),
                 const SizedBox(height: 6),
@@ -838,6 +877,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
               setState(() {
                 _serverId = target.serverId;
                 _cwd.text = target.cwd;
+                _clearProviderSelection();
               });
             },
           ),
@@ -846,10 +886,167 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     );
   }
 
+  Widget _providerEditor({
+    required ProvidersSnapshotState? snapshot,
+    required ProvidersSnapshotScope? scope,
+    required ScheduleProviderSelection selection,
+    required bool hasClient,
+  }) {
+    if (_cwd.text.trim().isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: 12),
+        child: Text('Select a project to choose a model.'),
+      );
+    }
+    if (!hasClient) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: 12),
+        child: Text('Host is not connected.'),
+      );
+    }
+    if (snapshot?.supportsSnapshot == false) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: 12),
+        child: Text('Update the host to use provider discovery.'),
+      );
+    }
+    if (snapshot == null || (snapshot.isLoading && snapshot.entries == null)) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: 12),
+        child: Center(child: ProgressRing()),
+      );
+    }
+    if (snapshot.error != null && snapshot.entries == null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text('Failed to load providers: ${snapshot.error}'),
+      );
+    }
+    if (!selection.isAvailable) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: 12),
+        child: Text(
+          'No agent providers are available. '
+          'Install or enable a provider on this host and try again.',
+        ),
+      );
+    }
+
+    final selectorProviders = buildSelectableProviderSelectorProviders(
+      snapshot.entries,
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Model'),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: ComboBox<String>(
+                  key: const ValueKey('schedule-provider-selector'),
+                  value: selection.provider,
+                  items: [
+                    for (final provider in selection.providers)
+                      ComboBoxItem(
+                        value: provider.provider,
+                        child: Text(provider.label ?? provider.provider),
+                      ),
+                  ],
+                  onChanged: _submitting
+                      ? null
+                      : (value) {
+                          if (value == null) return;
+                          setState(() {
+                            _provider = value;
+                            _model = null;
+                            _modeId = null;
+                            _thinkingOptionId = null;
+                          });
+                        },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: CombinedModelSelector(
+                  providers: selectorProviders,
+                  selectedProvider: selection.provider,
+                  selectedModel: selection.model,
+                  isLoading: snapshot.isLoading || snapshot.isFetching,
+                  disabled: _submitting,
+                  onSelect: (provider, model) => setState(() {
+                    _provider = provider;
+                    _model = model.isEmpty ? null : model;
+                    _modeId = null;
+                    _thinkingOptionId = null;
+                  }),
+                  onOpen: scope == null
+                      ? null
+                      : () => ref
+                            .read(providersSnapshotProvider(scope).notifier)
+                            .refetchIfStale(selection.provider),
+                  onRetryProvider: scope == null
+                      ? null
+                      : (provider) => unawaited(
+                          ref
+                              .read(providersSnapshotProvider(scope).notifier)
+                              .refresh([provider]),
+                        ),
+                  isRetryingProvider: snapshot.isRefreshing,
+                ),
+              ),
+            ],
+          ),
+          if (selection.modes.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Text('Mode'),
+            const SizedBox(height: 6),
+            ComboBox<String>(
+              key: const ValueKey('schedule-mode-selector'),
+              value: selection.modeId,
+              items: [
+                for (final mode in selection.modes)
+                  ComboBoxItem(value: mode.id, child: Text(mode.label)),
+              ],
+              onChanged: _submitting
+                  ? null
+                  : (value) => setState(() => _modeId = value),
+            ),
+          ],
+          if (selection.thinkingOptions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Text('Thinking'),
+            const SizedBox(height: 6),
+            ComboBox<String>(
+              key: const ValueKey('schedule-thinking-selector'),
+              value: selection.thinkingOptionId,
+              items: [
+                for (final option in selection.thinkingOptions)
+                  ComboBoxItem(value: option.id, child: Text(option.label)),
+              ],
+              onChanged: _submitting
+                  ? null
+                  : (value) => setState(() => _thinkingOptionId = value),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _clearProviderSelection() {
+    _provider = null;
+    _model = null;
+    _modeId = null;
+    _thinkingOptionId = null;
+  }
+
   Future<void> _submit() async {
     final prompt = _prompt.text.trim();
     final cron = _cron.text.trim();
-    final provider = _provider.text.trim();
+    final provider = _provider?.trim() ?? '';
     final cwd = _cwd.text.trim();
     final maxRuns = _maxRuns.text.trim().isEmpty
         ? null
@@ -894,7 +1091,9 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
             config: ScheduleNewAgentConfig(
               provider: provider,
               cwd: cwd,
-              model: _model.text.trim().isEmpty ? null : _model.text.trim(),
+              model: _model,
+              modeId: _modeId,
+              thinkingOptionId: _thinkingOptionId,
               isolation: _isolation,
               archiveOnFinish: _archiveOnFinish,
             ),
@@ -912,7 +1111,9 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
           changes['newAgentConfig'] = {
             'provider': provider,
             'cwd': cwd,
-            'model': _model.text.trim().isEmpty ? null : _model.text.trim(),
+            'model': _model,
+            'modeId': _modeId,
+            'thinkingOptionId': _thinkingOptionId,
             'isolation': _isolation,
             'archiveOnFinish': _archiveOnFinish,
           };

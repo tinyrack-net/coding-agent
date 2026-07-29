@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:agent_protocol/agent_protocol.dart';
+import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/core/theme.dart';
 import 'package:coding_agent_app/screens/schedules_screen.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
+import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/host_registry_provider.dart';
 import 'package:coding_agent_app/state/schedule_project_targets_provider.dart';
 import 'package:coding_agent_app/state/schedules_provider.dart';
@@ -126,20 +130,40 @@ void main() {
     final fields = find.byType(TextBox);
     await tester.enterText(fields.at(1), 'Run tests');
     await tester.enterText(fields.at(2), '*/5 * * * *');
-    await tester.enterText(fields.at(3), 'codex');
-    await tester.enterText(fields.at(4), 'gpt-5.4');
     final projectPicker = find.byType(ComboBox<String>).at(1);
     await tester.ensureVisible(projectPicker);
     await tester.tap(projectPicker);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Local project').last);
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextBox).at(5), '2');
+    expect(find.text('GPT 5.4'), findsOneWidget);
+    expect(find.text('Mode'), findsOneWidget);
+    expect(find.text('Thinking'), findsOneWidget);
+    final modeSelector = find.byKey(const ValueKey('schedule-mode-selector'));
+    await tester.ensureVisible(modeSelector);
+    await tester.tap(modeSelector);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Plan').last);
+    await tester.pumpAndSettle();
+    final thinkingSelector = find.byKey(
+      const ValueKey('schedule-thinking-selector'),
+    );
+    await tester.ensureVisible(thinkingSelector);
+    await tester.tap(thinkingSelector);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Medium').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextBox).at(3), '2');
     await tester.tap(find.text('Create schedule'));
     await tester.pumpAndSettle();
 
     expect(notifier.createdPrompt, 'Run tests');
     expect(notifier.createdMaxRuns, 2);
+    final config = (notifier.createdTarget! as NewAgentScheduleTarget).config;
+    expect(config.provider, 'codex');
+    expect(config.model, 'gpt-5.4');
+    expect(config.modeId, 'plan');
+    expect(config.thinkingOptionId, 'medium');
     expect(find.text('Create schedule'), findsNothing);
   });
 
@@ -370,7 +394,6 @@ void main() {
     final fields = find.byType(TextBox);
     await tester.enterText(fields.at(1), 'Run tests');
     await tester.enterText(fields.at(2), '*/5 * * * *');
-    await tester.enterText(fields.at(3), 'codex');
     await tester.tap(find.text('Create schedule'));
     await tester.pumpAndSettle();
 
@@ -400,6 +423,10 @@ Future<void> _pumpWithNotifier(
         scheduleProjectTargetsProvider.overrideWith(
           () => _ScheduleProjectTargets(_targetsFor(hosts)),
         ),
+        hostRuntimeClientsProvider.overrideWithValue({
+          for (final host in hosts)
+            host.serverId: _ScheduleSnapshotClient(host.serverId),
+        }),
       ],
       child: FluentApp(theme: buildAppTheme(), home: const SchedulesScreen()),
     ),
@@ -420,6 +447,7 @@ class _FakeSchedulesNotifier extends AggregatedSchedulesNotifier {
   String? createdPrompt;
   String? createdServerId;
   int? createdMaxRuns;
+  ScheduleTarget? createdTarget;
   final resumed = <String>[];
   final paused = <String>[];
   final ran = <String>[];
@@ -456,6 +484,7 @@ class _FakeSchedulesNotifier extends AggregatedSchedulesNotifier {
     createdServerId = serverId;
     createdPrompt = prompt;
     createdMaxRuns = maxRuns;
+    createdTarget = target;
     return _schedule(id: 'created');
   }
 
@@ -493,6 +522,64 @@ class _FakeSchedulesNotifier extends AggregatedSchedulesNotifier {
   Future<void> delete(String serverId, String scheduleId) async {
     deleted.add(scheduleId);
   }
+}
+
+final class _ScheduleSnapshotClient extends DaemonClient {
+  _ScheduleSnapshotClient(String serverId)
+    : super(uri: Uri.parse('ws://fake-$serverId')) {
+    serverInfo = ServerInfoStatus(
+      serverId: serverId,
+      hostname: serverId,
+      version: '0.2.0',
+      desktopManaged: false,
+      features: const {'providersSnapshot': true},
+    );
+  }
+
+  @override
+  DaemonConnectionState get currentState => DaemonConnectionState.connected;
+
+  @override
+  Stream<DaemonConnectionState> get connectionState =>
+      const Stream<DaemonConnectionState>.empty();
+
+  @override
+  Stream<ProvidersSnapshotUpdate> get providersSnapshotUpdates =>
+      const Stream<ProvidersSnapshotUpdate>.empty();
+
+  @override
+  Future<GetProvidersSnapshotResponse> fetchProvidersSnapshot({
+    String? cwd,
+    Duration timeout = const Duration(seconds: 30),
+  }) async => const GetProvidersSnapshotResponse(
+    requestId: 'snapshot',
+    generatedAt: '2026-07-29T00:00:00.000Z',
+    entries: [
+      ProviderSnapshotEntry(
+        provider: 'codex',
+        label: 'Codex',
+        status: ProviderCatalogStatus.ready,
+        defaultModeId: 'agent',
+        modes: [
+          ProviderMode(id: 'agent', label: 'Agent'),
+          ProviderMode(id: 'plan', label: 'Plan'),
+        ],
+        models: [
+          ProviderModelDefinition(
+            provider: 'codex',
+            id: 'gpt-5.4',
+            label: 'GPT 5.4',
+            isDefault: true,
+            defaultThinkingOptionId: 'high',
+            thinkingOptions: [
+              ProviderSelectOption(id: 'medium', label: 'Medium'),
+              ProviderSelectOption(id: 'high', label: 'High'),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
 }
 
 final class _ErrorSchedulesNotifier extends _FakeSchedulesNotifier {

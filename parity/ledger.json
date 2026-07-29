@@ -6578,7 +6578,7 @@
         "packages/app/test/schedule_form_model_test.dart",
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": null
+      "notes": "Provider/model/mode/thinking selection now resolves only ready enabled providers from the selected host and project snapshot, resets incompatible values on scope or model changes, and submits the resolved option ids. Remaining form-model parity includes preferences, capability-driven isolation disclosure, and the complete target-kind state machine."
     },
     {
       "id": "source-unit:packages/app/src/schedules/schedule-project-targets.ts",
@@ -6592,17 +6592,23 @@
     },
     {
       "id": "source-unit:packages/app/src/schedules/use-schedule-form-model.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/schedule_form_model.dart; packages/app/lib/screens/schedules_screen.dart",
+      "evidence": [
+        "packages/app/test/schedule_form_model_test.dart",
+        "packages/app/test/schedules_screen_test.dart"
+      ],
+      "notes": "The stateful Flutter dialog owns one form model for its lifetime and applies host, project, and provider changes. Frozen preference and full target-kind synchronization remain."
     },
     {
       "id": "source-unit:packages/app/src/schedules/use-schedule-form-provider-snapshot.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/screens/schedules_screen.dart; packages/app/lib/state/providers_snapshot_provider.dart",
+      "evidence": [
+        "packages/app/test/schedules_screen_test.dart",
+        "packages/app/test/providers_snapshot_provider_test.dart"
+      ],
+      "notes": "The form enables the snapshot only for a new-agent target with a selected host and non-empty project cwd, and applies host-scoped loading, error, refresh, and entry updates. The remaining gap is preference-driven synchronization through the full form model."
     },
     {
       "id": "source-unit:packages/app/src/screens/agent/agent-ready-screen-bottom-anchor.ts",

@@ -2,6 +2,97 @@ import 'package:agent_protocol/agent_protocol.dart';
 
 const customCronPresetId = 'custom';
 
+final class ScheduleProviderSelection {
+  const ScheduleProviderSelection({
+    required this.providers,
+    required this.provider,
+    required this.model,
+    required this.modeId,
+    required this.thinkingOptionId,
+    required this.modes,
+    required this.thinkingOptions,
+  });
+
+  final List<ProviderSnapshotEntry> providers;
+  final String provider;
+  final String model;
+  final String modeId;
+  final String thinkingOptionId;
+  final List<ProviderMode> modes;
+  final List<ProviderSelectOption> thinkingOptions;
+
+  bool get isAvailable => providers.isNotEmpty && provider.isNotEmpty;
+}
+
+ScheduleProviderSelection resolveScheduleProviderSelection({
+  required List<ProviderSnapshotEntry>? entries,
+  String? selectedProvider,
+  String? selectedModel,
+  String? selectedModeId,
+  String? selectedThinkingOptionId,
+}) {
+  final providers = [
+    for (final entry in entries ?? const <ProviderSnapshotEntry>[])
+      if (entry.enabled && entry.status == ProviderCatalogStatus.ready) entry,
+  ];
+  if (providers.isEmpty) {
+    return const ScheduleProviderSelection(
+      providers: [],
+      provider: '',
+      model: '',
+      modeId: '',
+      thinkingOptionId: '',
+      modes: [],
+      thinkingOptions: [],
+    );
+  }
+
+  final requestedProvider = selectedProvider?.trim() ?? '';
+  final provider = providers.firstWhere(
+    (entry) => entry.provider == requestedProvider,
+    orElse: () => providers.first,
+  );
+  final models = provider.models ?? const <ProviderModelDefinition>[];
+  final requestedModel = selectedModel?.trim() ?? '';
+  final model =
+      models.where((entry) => entry.id == requestedModel).firstOrNull ??
+      models.where((entry) => entry.isDefault == true).firstOrNull ??
+      models.firstOrNull;
+  final modes = provider.modes ?? const <ProviderMode>[];
+  final requestedMode = selectedModeId?.trim() ?? '';
+  final modeId = modes.any((entry) => entry.id == requestedMode)
+      ? requestedMode
+      : modes.any((entry) => entry.id == provider.defaultModeId)
+      ? provider.defaultModeId!
+      : modes.firstOrNull?.id ?? '';
+  final thinkingOptions =
+      model?.thinkingOptions ?? const <ProviderSelectOption>[];
+  final requestedThinking = selectedThinkingOptionId?.trim() ?? '';
+  final thinkingOptionId =
+      thinkingOptions.any((entry) => entry.id == requestedThinking)
+      ? requestedThinking
+      : thinkingOptions.any(
+          (entry) => entry.id == model?.defaultThinkingOptionId,
+        )
+      ? model!.defaultThinkingOptionId!
+      : thinkingOptions
+                .where((entry) => entry.isDefault == true)
+                .firstOrNull
+                ?.id ??
+            thinkingOptions.firstOrNull?.id ??
+            '';
+
+  return ScheduleProviderSelection(
+    providers: List.unmodifiable(providers),
+    provider: provider.provider,
+    model: model?.id ?? '',
+    modeId: modeId,
+    thinkingOptionId: thinkingOptionId,
+    modes: List.unmodifiable(modes),
+    thinkingOptions: List.unmodifiable(thinkingOptions),
+  );
+}
+
 final class ScheduleCadencePreset {
   const ScheduleCadencePreset({
     required this.id,
@@ -146,3 +237,7 @@ String _everyMsToCronExpression(int everyMs) {
 }
 
 String _pad2(int value) => value < 10 ? '0$value' : '$value';
+
+extension<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
+}

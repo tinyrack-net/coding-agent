@@ -3,6 +3,112 @@ import 'package:coding_agent_app/state/schedule_form_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('provider selection resolves frozen defaults from ready entries', () {
+    final selection = resolveScheduleProviderSelection(
+      entries: const [
+        ProviderSnapshotEntry(
+          provider: 'disabled',
+          status: ProviderCatalogStatus.ready,
+          enabled: false,
+        ),
+        ProviderSnapshotEntry(
+          provider: 'codex',
+          status: ProviderCatalogStatus.ready,
+          defaultModeId: 'plan',
+          modes: [
+            ProviderMode(id: 'agent', label: 'Agent'),
+            ProviderMode(id: 'plan', label: 'Plan'),
+          ],
+          models: [
+            ProviderModelDefinition(
+              provider: 'codex',
+              id: 'small',
+              label: 'Small',
+            ),
+            ProviderModelDefinition(
+              provider: 'codex',
+              id: 'large',
+              label: 'Large',
+              isDefault: true,
+              defaultThinkingOptionId: 'high',
+              thinkingOptions: [
+                ProviderSelectOption(id: 'medium', label: 'Medium'),
+                ProviderSelectOption(id: 'high', label: 'High'),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    expect(selection.providers.map((entry) => entry.provider), ['codex']);
+    expect(selection.provider, 'codex');
+    expect(selection.model, 'large');
+    expect(selection.modeId, 'plan');
+    expect(selection.thinkingOptionId, 'high');
+    expect(selection.isAvailable, isTrue);
+  });
+
+  test('provider and model changes discard incompatible option ids', () {
+    final selection = resolveScheduleProviderSelection(
+      entries: const [
+        ProviderSnapshotEntry(
+          provider: 'codex',
+          status: ProviderCatalogStatus.ready,
+          defaultModeId: 'agent',
+          modes: [ProviderMode(id: 'agent', label: 'Agent')],
+          models: [
+            ProviderModelDefinition(
+              provider: 'codex',
+              id: 'gpt',
+              label: 'GPT',
+              thinkingOptions: [
+                ProviderSelectOption(
+                  id: 'medium',
+                  label: 'Medium',
+                  isDefault: true,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+      selectedProvider: 'missing',
+      selectedModel: 'missing',
+      selectedModeId: 'plan',
+      selectedThinkingOptionId: 'high',
+    );
+
+    expect(selection.provider, 'codex');
+    expect(selection.model, 'gpt');
+    expect(selection.modeId, 'agent');
+    expect(selection.thinkingOptionId, 'medium');
+  });
+
+  test('loading, unavailable, and disabled providers cannot submit', () {
+    final selection = resolveScheduleProviderSelection(
+      entries: const [
+        ProviderSnapshotEntry(
+          provider: 'loading',
+          status: ProviderCatalogStatus.loading,
+        ),
+        ProviderSnapshotEntry(
+          provider: 'offline',
+          status: ProviderCatalogStatus.unavailable,
+        ),
+        ProviderSnapshotEntry(
+          provider: 'disabled',
+          status: ProviderCatalogStatus.ready,
+          enabled: false,
+        ),
+      ],
+    );
+
+    expect(selection.isAvailable, isFalse);
+    expect(selection.provider, isEmpty);
+    expect(selection.model, isEmpty);
+  });
+
   test('cadence presets match frozen Paseo options', () {
     expect(
       scheduleCadencePresets.map(
