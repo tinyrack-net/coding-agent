@@ -4941,13 +4941,14 @@
     {
       "id": "source-unit:packages/app/src/git/diff-pane.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/widgets/diff/diff_view.dart; packages/app/lib/core/diff_layout.dart; packages/app/lib/core/diff_rendering.dart",
+      "implementation": "packages/app/lib/widgets/diff/diff_view.dart; packages/app/lib/core/diff_layout.dart; packages/app/lib/core/diff_rendering.dart; packages/app/lib/core/diff_tree.dart",
       "evidence": [
         "packages/app/test/diff_view_test.dart",
         "packages/app/test/diff_layout_test.dart",
-        "packages/app/test/diff_rendering_test.dart"
+        "packages/app/test/diff_rendering_test.dart",
+        "packages/app/test/diff_tree_test.dart"
       ],
-      "notes": "The Flutter diff pane has responsive file selection, unified hunks, binary and empty states, horizontal scrolling, stable blank-row geometry, and the frozen split/unified review-target layout model. Paseo's split-view renderer, inline review comments, selection toolbar, tree integration, controls, metrics, and full diff-pane orchestration remain unported."
+      "notes": "The Flutter diff pane has responsive file selection, a compressed collapsible tree navigator on wide layouts, unified hunks, binary and empty states, horizontal scrolling, stable blank-row geometry, and the frozen split/unified review-target layout model. Paseo's split-view renderer, inline review comments, selection toolbar, persisted tree/flat controls on every form factor, metrics, and full diff-pane orchestration remain unported."
     },
     {
       "id": "source-unit:packages/app/src/git/diff-scroll.ts",
@@ -4960,10 +4961,13 @@
     },
     {
       "id": "source-unit:packages/app/src/git/diff-tree.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/diff_tree.dart; packages/app/lib/widgets/diff/diff_view.dart",
+      "evidence": [
+        "packages/app/test/diff_tree_test.dart",
+        "packages/app/test/diff_view_test.dart"
+      ],
+      "notes": "Ports the complete frozen tree contract and applies it to the wide Flutter Changes navigator: virtual root, full-path directory identities, directory-first ASCII ordering, single-child chain compression keyed by the deepest path, linear descendant stat aggregation, collapse filtering, full directory collection, basename file rows, and interactive stable-path folder collapse."
     },
     {
       "id": "source-unit:packages/app/src/git/forge-icon.tsx",

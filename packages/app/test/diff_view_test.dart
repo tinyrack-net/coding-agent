@@ -110,10 +110,12 @@ void main() {
     await tester.pumpWidget(_wrap(const DiffView(diff: _diff)));
 
     // All file rows are listed with their add/del counts.
-    expect(find.text('lib/new_file.dart'), findsOneWidget);
-    expect(find.text('lib/changed.dart'), findsOneWidget);
-    expect(find.text('lib/gone.dart'), findsOneWidget);
-    expect(find.text('assets/logo.png'), findsOneWidget);
+    expect(find.text('new_file.dart'), findsOneWidget);
+    expect(find.text('changed.dart'), findsOneWidget);
+    expect(find.text('gone.dart'), findsOneWidget);
+    expect(find.text('logo.png'), findsOneWidget);
+    expect(find.text('assets'), findsOneWidget);
+    expect(find.text('lib'), findsOneWidget);
     expect(find.text('+2'), findsNWidgets(2)); // added + modified files
     expect(find.text('-1'), findsNWidgets(2)); // modified + deleted files
 
@@ -127,7 +129,7 @@ void main() {
 
     // Select the modified file: both hunks, colored add/del rows, context
     // rows without a tint, and old/new line numbers.
-    await tester.tap(find.text('lib/changed.dart'));
+    await tester.tap(find.text('changed.dart'));
     await tester.pumpAndSettle();
     expect(find.text('@@ -1,3 +1,3 @@'), findsOneWidget);
     expect(find.text('@@ -10,1 +10,2 @@'), findsOneWidget);
@@ -144,14 +146,23 @@ void main() {
     expect(find.text('11'), findsOneWidget); // new line number of second hunk
 
     // Deleted file.
-    await tester.tap(find.text('lib/gone.dart'));
+    await tester.tap(find.text('gone.dart'));
     await tester.pumpAndSettle();
     expect(find.text('deleted line'), findsOneWidget);
 
     // Binary file placeholder.
-    await tester.tap(find.text('assets/logo.png'));
+    await tester.tap(find.text('logo.png'));
     await tester.pumpAndSettle();
     expect(find.text('Binary file'), findsOneWidget);
+
+    // Folder rows aggregate stats and retain their stable path when collapsed.
+    expect(find.text('+4'), findsOneWidget);
+    expect(find.text('-2'), findsOneWidget);
+    await tester.tap(find.text('lib'));
+    await tester.pumpAndSettle();
+    expect(find.text('new_file.dart'), findsNothing);
+    expect(find.text('changed.dart'), findsNothing);
+    expect(find.text('gone.dart'), findsNothing);
   });
 
   testWidgets('narrow layout: collapsible file sections', (tester) async {
@@ -194,7 +205,7 @@ void main() {
     );
     await tester.pumpWidget(_wrap(const DiffView(diff: renamed)));
 
-    expect(find.text('lib/old_name.dart → lib/new_name.dart'), findsOneWidget);
+    expect(find.text('old_name.dart → new_name.dart'), findsOneWidget);
     expect(find.byIcon(FluentIcons.move_to_folder), findsOneWidget);
   });
 
@@ -315,7 +326,7 @@ void main() {
       await tester.pumpWidget(_wrap(const DiffView(diff: twoFiles)));
 
       // Select the second file (index 1).
-      await tester.tap(find.text('lib/b.dart'));
+      await tester.tap(find.text('b.dart'));
       await tester.pumpAndSettle();
       expect(find.text('b changed'), findsOneWidget);
 
