@@ -2,6 +2,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../core/theme.dart';
+import 'diff_scroll.dart';
 import 'diff_stat.dart';
 
 /// Color/icon/letter mapping for a diff file status.
@@ -199,14 +200,16 @@ class _FileDiffBody extends StatelessWidget {
         ),
       );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final hunk in file.hunks) ...[
-          _HunkHeader(header: hunk.header),
-          for (final line in hunk.lines) _DiffLineRow(line: line),
+    return DiffScroll(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final hunk in file.hunks) ...[
+            _HunkHeader(header: hunk.header),
+            for (final line in hunk.lines) _DiffLineRow(line: line),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -287,11 +290,10 @@ class _DiffLineRow extends StatelessWidget {
             width: 12,
             child: Text(marker, style: _monoStyle.copyWith(color: textColor)),
           ),
-          Expanded(
-            child: Text(
-              line.text,
-              style: _monoStyle.copyWith(color: textColor),
-            ),
+          Text(
+            line.text,
+            softWrap: false,
+            style: _monoStyle.copyWith(color: textColor),
           ),
         ],
       ),

@@ -216,6 +216,45 @@ void main() {
     expect(find.text('No textual changes'), findsOneWidget);
   });
 
+  testWidgets('long diff lines remain single-line and scroll horizontally', (
+    tester,
+  ) async {
+    final longLine = 'final value = "${List.filled(160, 'x').join()}";';
+    final diff = DiffResponse(
+      files: [
+        DiffFile(
+          path: 'lib/long.dart',
+          status: DiffFileStatus.modified,
+          additions: 1,
+          deletions: 0,
+          hunks: [
+            DiffHunk(
+              header: '@@ -1 +1 @@',
+              lines: [
+                DiffLine(type: DiffLineType.add, text: longLine, newLineNo: 1),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.binding.setSurfaceSize(const Size(900, 400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(_wrap(DiffView(diff: diff)));
+
+    final text = tester.widget<Text>(find.text(longLine));
+    expect(text.softWrap, isFalse);
+    final scrollFinder = find.byKey(const ValueKey('diff-horizontal-scroll'));
+    final scrollable = tester.state<ScrollableState>(
+      find.descendant(of: scrollFinder, matching: find.byType(Scrollable)),
+    );
+    expect(scrollable.position.maxScrollExtent, greaterThan(0));
+
+    await tester.drag(scrollFinder, const Offset(-160, 0));
+    await tester.pumpAndSettle();
+    expect(scrollable.position.pixels, greaterThan(0));
+  });
+
   testWidgets(
     'didUpdateWidget resets the selected file index when the file list '
     'shrinks below it',

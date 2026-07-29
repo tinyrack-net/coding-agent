@@ -2556,17 +2556,23 @@
     },
     {
       "id": "source-unit:packages/app/src/components/diff-scroll.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/widgets/diff/diff_scroll.dart; packages/app/lib/widgets/diff/diff_view.dart",
+      "evidence": [
+        "packages/app/test/diff_scroll_test.dart",
+        "packages/app/test/diff_view_test.dart"
+      ],
+      "notes": "Horizontal clamped scrolling, visible indicator, width reporting, offset reporting, and non-wrapping diff integration are implemented across Flutter platforms. Remaining native parity is the optional global horizontal-scroll registry and left-edge file-explorer close-gesture arbitration, which depends on the unfinished mobile-panels gesture layer."
     },
     {
       "id": "source-unit:packages/app/src/components/diff-scroll.web.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/diff/diff_scroll.dart; packages/app/lib/widgets/diff/diff_view.dart",
+      "evidence": [
+        "packages/app/test/diff_scroll_test.dart",
+        "packages/app/test/diff_view_test.dart"
+      ],
+      "notes": "Matches the frozen web DiffScroll contract with nested horizontal scrolling, a visible horizontal indicator, viewport-width reporting after layout, preserved viewport minimum width, and non-wrapping diff-line integration."
     },
     {
       "id": "source-unit:packages/app/src/components/diff-stat.tsx",
