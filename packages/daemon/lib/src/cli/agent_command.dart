@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_protocol/agent_protocol.dart';
+import 'package:uuid/uuid.dart';
 
 import '../server/daemon_config.dart';
 import 'terminal_command.dart';
@@ -26,6 +27,7 @@ Future<int> runAgentCommand({
   }
   try {
     final invocation = AgentCliInvocation.parse(arguments);
+    String? resolvedSendPrompt;
     if (invocation.action == 'mode' &&
         !invocation.listModes &&
         (invocation.modeId == null || invocation.modeId!.isEmpty)) {
@@ -47,6 +49,16 @@ Future<int> runAgentCommand({
         details: 'Usage: coding-agent agent stop <id> | --all | --cwd <path>',
       );
     }
+    if (invocation.action == 'send') {
+      if (invocation.agentId == null || invocation.agentId!.trim().isEmpty) {
+        throw const AgentCommandException(
+          'MISSING_AGENT_ID',
+          'Agent ID is required',
+          details: 'Usage: coding-agent agent send [options] <id> [prompt]',
+        );
+      }
+      resolvedSendPrompt = await _resolveSendPrompt(invocation);
+    }
     final env = environment ?? Platform.environment;
     var send = request;
     if (send == null) {
@@ -57,7 +69,12 @@ Future<int> runAgentCommand({
           hostOverride: invocation.host,
           environment: env,
         );
-        send = client.request;
+        send = (message) => client!.request(
+          message,
+          timeout: message['type'] == WaitForFinishRequest.type
+              ? const Duration(seconds: 605)
+              : terminalDaemonRpcTimeout,
+        );
       } on Object catch (error) {
         final host = invocation.host ?? '${config.host}:${config.port}';
         throw AgentCommandException(
@@ -77,6 +94,7 @@ Future<int> runAgentCommand({
       env,
       (now ?? DateTime.now)().toUtc(),
       errorOutput,
+      resolvedSendPrompt,
     );
     output(_render(result, invocation));
     return 0;
@@ -106,6 +124,11 @@ final class AgentCliInvocation {
     required this.listModes,
     required this.stopAll,
     required this.cwd,
+    required this.promptArgument,
+    required this.promptOption,
+    required this.promptFile,
+    required this.images,
+    required this.wait,
     required this.includeArchived,
     required this.global,
     required this.labels,
@@ -122,6 +145,11 @@ final class AgentCliInvocation {
   final bool listModes;
   final bool stopAll;
   final String? cwd;
+  final String? promptArgument;
+  final String? promptOption;
+  final String? promptFile;
+  final List<String> images;
+  final bool wait;
   final bool includeArchived;
   final bool global;
   final List<String> labels;
@@ -136,7 +164,7 @@ final class AgentCliInvocation {
       throw const FormatException('Missing agent action');
     }
     final action = arguments.first;
-    if (!const {'ls', 'inspect', 'mode', 'stop'}.contains(action)) {
+    if (!const {'ls', 'inspect', 'mode', 'stop', 'send'}.contains(action)) {
       throw FormatException('Unknown agent action: $action');
     }
     final positionals = <String>[];
@@ -146,6 +174,10 @@ final class AgentCliInvocation {
     var listModes = false;
     var stopAll = false;
     String? cwd;
+    String? promptOption;
+    String? promptFile;
+    final images = <String>[];
+    var wait = true;
     String? thinking;
     String? host;
     var format = 'table';
@@ -183,6 +215,18 @@ final class AgentCliInvocation {
             throw FormatException('$argument is only valid for agent stop');
           }
           cwd = _requiredValue(arguments, ++index, argument);
+        case '--prompt':
+          _onlySend(action, argument);
+          promptOption = _requiredValue(arguments, ++index, argument);
+        case '--prompt-file':
+          _onlySend(action, argument);
+          promptFile = _requiredValue(arguments, ++index, argument);
+        case '--image':
+          _onlySend(action, argument);
+          images.add(_requiredValue(arguments, ++index, argument));
+        case '--no-wait':
+          _onlySend(action, argument);
+          wait = false;
         case '--label':
           _onlyList(action, argument);
           labels.add(_requiredValue(arguments, ++index, argument));
@@ -232,16 +276,30 @@ final class AgentCliInvocation {
     if (action == 'stop' && positionals.length > 1) {
       throw const FormatException('agent stop accepts at most one Agent ID');
     }
+    if (action == 'send' && positionals.length > 2) {
+      throw const FormatException(
+        'agent send accepts an Agent ID and optional prompt',
+      );
+    }
     final normalizedThinking = thinking?.trim();
     return AgentCliInvocation(
       action: action,
-      agentId: positionals.firstOrNull?.trim(),
+      agentId: action == 'send'
+          ? positionals.firstOrNull
+          : positionals.firstOrNull?.trim(),
       modeId: action == 'mode' && positionals.length == 2
           ? positionals[1].trim()
           : null,
       listModes: listModes,
       stopAll: stopAll,
       cwd: cwd == null || cwd.isEmpty ? null : cwd,
+      promptArgument: action == 'send' && positionals.length == 2
+          ? positionals[1]
+          : null,
+      promptOption: promptOption,
+      promptFile: promptFile,
+      images: List.unmodifiable(images),
+      wait: wait,
       includeArchived: includeArchived,
       global: global,
       labels: List.unmodifiable(labels),
@@ -260,12 +318,14 @@ Future<_AgentCommandResult> _execute(
   Map<String, String> environment,
   DateTime now,
   void Function(String value) writeWarning,
+  String? resolvedSendPrompt,
 ) async {
   return switch (invocation.action) {
     'ls' => _listAgents(invocation, request, environment, now),
     'inspect' => _inspectAgent(invocation, request, environment),
     'mode' => _modeAgent(invocation, request),
     'stop' => _stopAgents(invocation, request, writeWarning),
+    'send' => _sendAgent(invocation, resolvedSendPrompt!, request),
     _ => throw StateError('Unhandled agent action'),
   };
 }
@@ -502,6 +562,146 @@ Future<_AgentCommandResult> _modeAgent(
     'agentId': resolvedId.substring(0, resolvedId.length.clamp(0, 7)),
     'mode': invocation.modeId!,
   });
+}
+
+Future<String> _resolveSendPrompt(AgentCliInvocation invocation) async {
+  final argument = invocation.promptArgument?.trim();
+  final option = invocation.promptOption?.trim();
+  final filePath = invocation.promptFile?.trim();
+  final sourceCount = [
+    argument,
+    option,
+    filePath,
+  ].where((value) => value != null && value.isNotEmpty).length;
+  if (sourceCount > 1) {
+    throw const AgentCommandException(
+      'CONFLICTING_PROMPT_INPUT',
+      'Provide exactly one of prompt argument, --prompt, or --prompt-file',
+    );
+  }
+  if (argument != null && argument.isNotEmpty) {
+    return invocation.promptArgument!;
+  }
+  if (option != null && option.isNotEmpty) {
+    return invocation.promptOption!;
+  }
+  if (filePath == null || filePath.isEmpty) {
+    throw const AgentCommandException(
+      'MISSING_PROMPT',
+      'A prompt is required',
+      details:
+          'Usage: coding-agent agent send [options] <id> [prompt] | '
+          '--prompt <text> | --prompt-file <path>',
+    );
+  }
+  try {
+    return await File(filePath).absolute.readAsString();
+  } on Object catch (error) {
+    throw AgentCommandException(
+      'PROMPT_FILE_READ_ERROR',
+      'Failed to read prompt file: $filePath',
+      details: _errorText(error),
+    );
+  }
+}
+
+Future<_AgentCommandResult> _sendAgent(
+  AgentCliInvocation invocation,
+  String prompt,
+  AgentRpcRequester request,
+) async {
+  try {
+    final images = await Future.wait([
+      for (final path in invocation.images) _readPromptImage(path),
+    ]);
+    final sendPayload = await request(
+      SendAgentMessageRequest(
+        requestId: _requestId('agent_send'),
+        agentId: invocation.agentId!,
+        text: prompt,
+        messageId: const Uuid().v4(),
+        images: images,
+      ).toJson(),
+    );
+    final sendResponse = SendAgentMessageResponse.fromJson({
+      'type': SendAgentMessageResponse.type,
+      'payload': sendPayload,
+    });
+    if (!sendResponse.accepted) {
+      throw StateError(sendResponse.error ?? 'sendAgentMessage rejected');
+    }
+    if (!invocation.wait) {
+      return _AgentCommandResult.send({
+        'agentId': invocation.agentId!,
+        'status': 'sent',
+        'message': 'Message sent, not waiting for completion',
+      });
+    }
+
+    final waitPayload = await request(
+      WaitForFinishRequest(
+        requestId: _requestId('agent_send_wait'),
+        agentId: invocation.agentId!,
+        timeoutMs: 600000,
+      ).toJson(),
+    );
+    final waitResponse = WaitForFinishResponse.fromJson({
+      'type': WaitForFinishResponse.type,
+      'payload': waitPayload,
+    });
+    final finalId = waitResponse.finalAgent == null
+        ? invocation.agentId!
+        : _string(waitResponse.finalAgent!, 'id');
+    return switch (waitResponse.status) {
+      WaitForFinishStatus.timeout => _AgentCommandResult.send({
+        'agentId': finalId,
+        'status': 'timeout',
+        'message': 'Timed out waiting for agent to finish',
+      }),
+      WaitForFinishStatus.permission => _AgentCommandResult.send({
+        'agentId': finalId,
+        'status': 'permission',
+        'message': 'Agent is waiting for permission',
+      }),
+      WaitForFinishStatus.error => _AgentCommandResult.send({
+        'agentId': finalId,
+        'status': 'error',
+        'message': waitResponse.error ?? 'Agent finished with error',
+      }),
+      WaitForFinishStatus.idle => _AgentCommandResult.send({
+        'agentId': finalId,
+        'status': 'completed',
+        'message': 'Agent completed processing the message',
+      }),
+    };
+  } on AgentCommandException {
+    rethrow;
+  } on Object catch (error) {
+    throw AgentCommandException(
+      'SEND_FAILED',
+      'Failed to send message: ${_errorText(error)}',
+    );
+  }
+}
+
+Future<AgentPromptImage> _readPromptImage(String path) async {
+  try {
+    final data = await File(path).readAsBytes();
+    final normalized = path.toLowerCase();
+    final mimeType = switch (normalized) {
+      _ when normalized.endsWith('.png') => 'image/png',
+      _ when normalized.endsWith('.gif') => 'image/gif',
+      _ when normalized.endsWith('.webp') => 'image/webp',
+      _ => 'image/jpeg',
+    };
+    return AgentPromptImage(data: base64Encode(data), mimeType: mimeType);
+  } on Object catch (error) {
+    throw AgentCommandException(
+      'IMAGE_READ_ERROR',
+      'Failed to read image file: $path',
+      details: _errorText(error),
+    );
+  }
 }
 
 Future<_AgentCommandResult> _stopAgents(
@@ -866,12 +1066,19 @@ final class _AgentCommandResult {
         structured: Map.unmodifiable(data),
       );
 
+  factory _AgentCommandResult.send(Map<String, Object?> data) =>
+      _AgentCommandResult._(
+        rows: [Map.unmodifiable(data)],
+        kind: _AgentResultKind.send,
+        structured: Map.unmodifiable(data),
+      );
+
   final List<Map<String, Object?>> rows;
   final _AgentResultKind kind;
   final Object? structured;
 }
 
-enum _AgentResultKind { agents, inspect, modes, modeSet, stop }
+enum _AgentResultKind { agents, inspect, modes, modeSet, stop, send }
 
 String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
   if (invocation.quiet) {
@@ -881,6 +1088,7 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       _AgentResultKind.modes => 'id',
       _AgentResultKind.modeSet => 'agentId',
       _AgentResultKind.stop => 'agentIds',
+      _AgentResultKind.send => 'agentId',
     };
     if (result.kind == _AgentResultKind.stop) {
       final ids = result.rows.single['agentIds'];
@@ -915,6 +1123,11 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       ('MODE', 'mode', 20),
     ],
     _AgentResultKind.stop => const [('INTERRUPTED', 'stoppedCount', 0)],
+    _AgentResultKind.send => const [
+      ('AGENT ID', 'agentId', 12),
+      ('STATUS', 'status', 12),
+      ('MESSAGE', 'message', 40),
+    ],
     _AgentResultKind.agents => const [
       ('AGENT ID', 'shortId', 12),
       ('NAME', 'name', 20),
@@ -1094,6 +1307,12 @@ void _onlyList(String action, String option) {
   }
 }
 
+void _onlySend(String action, String option) {
+  if (action != 'send') {
+    throw FormatException('$option is only valid for agent send');
+  }
+}
+
 String _requiredValue(List<String> arguments, int index, String option) {
   if (index >= arguments.length) {
     throw FormatException('$option requires a value');
@@ -1146,6 +1365,7 @@ const agentUsage =
     '       coding-agent agent mode <id> <mode> [options]\n'
     '       coding-agent agent mode --list <id> [options]\n'
     '       coding-agent agent stop [<id>|--all|--cwd <path>] [options]\n'
+    '       coding-agent agent send <id> [prompt] [options]\n'
     '       coding-agent ls [options]\n'
     '       coding-agent inspect <id> [options]';
 
@@ -1162,6 +1382,9 @@ String _agentHelp(String? action) => switch (action) {
   'stop' =>
     'Usage: coding-agent agent stop [options] [id]\n'
         'Interrupt an agent if it is running (no-op for idle agents)\n',
+  'send' =>
+    'Usage: coding-agent agent send [options] <id> [prompt]\n'
+        'Send a message/task to an existing agent\n',
   _ =>
     'Usage: coding-agent agent [command]\n'
         'Manage agents (advanced operations)\n\n'
@@ -1170,5 +1393,6 @@ String _agentHelp(String? action) => switch (action) {
         '  inspect  Show detailed information about an agent\n'
         '  logs     View agent activity/timeline\n'
         '  mode     Change an agent\'s operational mode\n'
-        '  stop     Interrupt a running agent\n',
+        '  stop     Interrupt a running agent\n'
+        '  send     Send a message/task to an existing agent\n',
 };

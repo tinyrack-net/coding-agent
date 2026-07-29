@@ -860,6 +860,16 @@ class AgentManager {
         runtime.summary.runState == AgentRunState.awaitingPermission;
   }
 
+  bool hasClientMessageId(String agentId, String? clientMessageId) {
+    final normalized = clientMessageId?.trim();
+    if (normalized == null || normalized.isEmpty) return false;
+    final runtime = _runtimes[agentId];
+    if (runtime == null) return false;
+    return runtime.timeline.snapshot().whereType<UserMessageItem>().any(
+      (item) => item.clientMessageId == normalized,
+    );
+  }
+
   AgentClient? _clientFor(String provider) =>
       _clients[provider] ?? _clientResolver?.call(provider);
 
@@ -876,6 +886,7 @@ class AgentManager {
     String? clientMessageId,
   }) async {
     final runtime = _runtime(agentId);
+    if (hasClientMessageId(agentId, clientMessageId)) return;
     runtime.summary = runtime.summary.copyWith(lastError: null);
     if (runtime.session == null) {
       // Session died earlier: recreate, resuming the provider conversation.
@@ -1314,6 +1325,26 @@ class AgentManager {
     final runtime = _runtime(agentId);
     await _archiveTree(runtime);
     await _store.flush();
+  }
+
+  Future<AgentSummary> unarchive(String agentId) async {
+    final runtime = _runtimes[agentId];
+    if (runtime == null) {
+      throw RpcException(RpcErrorCodes.notFound, 'no agent $agentId');
+    }
+    if (!runtime.archived) return runtime.summary;
+    runtime.archived = false;
+    runtime.summary = runtime.summary.copyWith(
+      runState: AgentRunState.idle,
+      archivedAt: null,
+      requiresAttention: false,
+      clearAttention: true,
+      updatedAt: DateTime.now().toUtc().toIso8601String(),
+    );
+    _persist(runtime);
+    await _store.flush();
+    _broadcastState(runtime);
+    return runtime.summary;
   }
 
   /// Archives agents owned by one workspace without crossing workspace

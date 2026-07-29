@@ -1048,6 +1048,22 @@ Future<DaemonServerHandle> startDaemonServer({
           ) ??
           v2HandledNoResponse;
     }
+    if (message['type'] == SendAgentMessageRequest.type) {
+      return _handlePaseoSendAgentMessage(
+        manager,
+        paseoProviderCatalog,
+        connection,
+        message,
+      );
+    }
+    if (message['type'] == WaitForFinishRequest.type) {
+      return _handlePaseoWaitForFinish(
+        manager,
+        paseoProviderCatalog,
+        connection,
+        message,
+      );
+    }
     final agentTimelineResponse = _handlePaseoTimelineFetch(
       manager,
       paseoProviderCatalog,
@@ -1722,7 +1738,7 @@ Future<Map<String, Object?>?> _handlePaseoCancelAgent(
     return CancelAgentResponse(
       requestId: request.requestId!,
       agentId: request.agentId,
-      agent: _cancelAgentSnapshot(manager, providerCatalog, request.agentId),
+      agent: _paseoAgentSnapshot(manager, providerCatalog, request.agentId),
       error: null,
     ).toJson();
   } on Object catch (error) {
@@ -1730,7 +1746,7 @@ Future<Map<String, Object?>?> _handlePaseoCancelAgent(
     return CancelAgentResponse(
       requestId: request.requestId!,
       agentId: request.agentId,
-      agent: _cancelAgentSnapshotOrNull(
+      agent: _paseoAgentSnapshotOrNull(
         manager,
         providerCatalog,
         request.agentId,
@@ -1740,7 +1756,7 @@ Future<Map<String, Object?>?> _handlePaseoCancelAgent(
   }
 }
 
-Map<String, Object?> _cancelAgentSnapshot(
+Map<String, Object?> _paseoAgentSnapshot(
   AgentManager manager,
   PaseoProviderCatalogRegistry providerCatalog,
   String agentId,
@@ -1767,13 +1783,13 @@ Map<String, Object?> _cancelAgentSnapshot(
   );
 }
 
-Map<String, Object?>? _cancelAgentSnapshotOrNull(
+Map<String, Object?>? _paseoAgentSnapshotOrNull(
   AgentManager manager,
   PaseoProviderCatalogRegistry providerCatalog,
   String agentId,
 ) {
   try {
-    return _cancelAgentSnapshot(manager, providerCatalog, agentId);
+    return _paseoAgentSnapshot(manager, providerCatalog, agentId);
   } on Object {
     return null;
   }
@@ -1785,6 +1801,130 @@ String _cancelAgentError(Object error) => switch (error) {
   UnsupportedError(message: final message) => message ?? '',
   _ => '$error'.replaceFirst(RegExp(r'^[^:]+Exception: '), ''),
 };
+
+Future<Map<String, Object?>> _handlePaseoSendAgentMessage(
+  AgentManager manager,
+  PaseoProviderCatalogRegistry providerCatalog,
+  Connection connection,
+  Map<String, Object?> message,
+) async {
+  final request = SendAgentMessageRequest.fromJson(message);
+  String responseAgentId = request.agentId;
+  try {
+    final resolved = manager.resolveIdentifier(request.agentId);
+    if (!isProviderVisibleToClient(resolved.provider, connection.appVersion)) {
+      throw RpcException(
+        RpcErrorCodes.notFound,
+        'Agent not found: ${request.agentId}',
+      );
+    }
+    responseAgentId = resolved.agentId;
+    if (resolved.archivedAt != null) {
+      await manager.unarchive(resolved.agentId);
+    }
+    if (!manager.hasClientMessageId(resolved.agentId, request.messageId)) {
+      if (manager.hasActiveAgentRun(resolved.agentId)) {
+        await manager.cancelAgentRun(resolved.agentId);
+      }
+      await manager.prompt(
+        resolved.agentId,
+        request.text,
+        images: request.images,
+        attachments: request.attachments,
+        clientMessageId: request.messageId,
+      );
+    }
+    final current = manager.get(resolved.agentId, includeArchived: false);
+    final rejected = current == null || current.runState == AgentRunState.error;
+    return SendAgentMessageResponse(
+      requestId: request.requestId,
+      agentId: resolved.agentId,
+      accepted: !rejected,
+      error: rejected
+          ? (current?.lastError?.trim().isNotEmpty == true
+                ? current!.lastError
+                : 'Agent failed to start')
+          : null,
+    ).toJson();
+  } on Object catch (error) {
+    return SendAgentMessageResponse(
+      requestId: request.requestId,
+      agentId: responseAgentId,
+      accepted: false,
+      error: _cancelAgentError(error),
+    ).toJson();
+  }
+}
+
+Future<Map<String, Object?>> _handlePaseoWaitForFinish(
+  AgentManager manager,
+  PaseoProviderCatalogRegistry providerCatalog,
+  Connection connection,
+  Map<String, Object?> message,
+) async {
+  final request = WaitForFinishRequest.fromJson(message);
+  String? agentId;
+  try {
+    final resolved = manager.resolveIdentifier(request.agentId);
+    if (!isProviderVisibleToClient(resolved.provider, connection.appVersion)) {
+      throw RpcException(
+        RpcErrorCodes.notFound,
+        'Agent not found: ${request.agentId}',
+      );
+    }
+    agentId = resolved.agentId;
+    final result = await manager.waitForAgentEvent(
+      resolved.agentId,
+      waitForActive: true,
+      timeout: request.timeoutMs == null
+          ? null
+          : Duration(milliseconds: request.timeoutMs!),
+    );
+    final status = result.permission != null
+        ? WaitForFinishStatus.permission
+        : result.summary.runState == AgentRunState.error
+        ? WaitForFinishStatus.error
+        : WaitForFinishStatus.idle;
+    return WaitForFinishResponse(
+      requestId: request.requestId,
+      status: status,
+      finalAgent: _paseoAgentSnapshot(
+        manager,
+        providerCatalog,
+        resolved.agentId,
+      ),
+      error: status == WaitForFinishStatus.error
+          ? _waitForFinishError(result.summary)
+          : null,
+      lastMessage: result.lastMessage,
+    ).toJson();
+  } on TimeoutException {
+    return WaitForFinishResponse(
+      requestId: request.requestId,
+      status: WaitForFinishStatus.timeout,
+      finalAgent: agentId == null
+          ? null
+          : _paseoAgentSnapshotOrNull(manager, providerCatalog, agentId),
+      error: null,
+      lastMessage: null,
+    ).toJson();
+  } on Object catch (error) {
+    return WaitForFinishResponse(
+      requestId: request.requestId,
+      status: WaitForFinishStatus.error,
+      finalAgent: agentId == null
+          ? null
+          : _paseoAgentSnapshotOrNull(manager, providerCatalog, agentId),
+      error: _cancelAgentError(error),
+      lastMessage: null,
+    ).toJson();
+  }
+}
+
+String _waitForFinishError(AgentSummary summary) {
+  final message = summary.lastError?.trim();
+  return message == null || message.isEmpty ? 'Agent failed' : message;
+}
 
 Future<Object?> _handlePaseoFetchAgents(
   AgentManager manager,

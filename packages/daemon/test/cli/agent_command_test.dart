@@ -6,44 +6,55 @@ import 'package:agent_daemon/src/cli/agent_command.dart';
 import 'package:test/test.dart';
 
 void main() {
-  test('help, nested commands, and top-level aliases are exposed', () async {
-    for (final arguments in const [
-      ['--help'],
-      ['ls', '--help'],
-      ['inspect', '--help'],
-      ['mode', '--help'],
-      ['stop', '--help'],
-    ]) {
-      final output = StringBuffer();
-      expect(
-        await runAgentCommand(arguments: arguments, writeOutput: output.write),
-        0,
-      );
-      expect(output.toString(), contains('Usage: coding-agent agent'));
-    }
+  test(
+    'help, nested commands, and top-level aliases are exposed',
+    () async {
+      for (final arguments in const [
+        ['--help'],
+        ['ls', '--help'],
+        ['inspect', '--help'],
+        ['mode', '--help'],
+        ['stop', '--help'],
+        ['send', '--help'],
+      ]) {
+        final output = StringBuffer();
+        expect(
+          await runAgentCommand(
+            arguments: arguments,
+            writeOutput: output.write,
+          ),
+          0,
+        );
+        expect(output.toString(), contains('Usage: coding-agent agent'));
+      }
 
-    final library = await Isolate.resolvePackageUri(
-      Uri.parse('package:agent_daemon/agent_daemon.dart'),
-    );
-    final packageRoot = File.fromUri(library!).parent.parent.path;
-    for (final arguments in const [
-      ['agent', 'ls', '--help'],
-      ['agent', 'inspect', '--help'],
-      ['agent', 'mode', '--help'],
-      ['agent', 'stop', '--help'],
-      ['ls', '--help'],
-      ['inspect', '--help'],
-    ]) {
-      final result = await Process.run(Platform.resolvedExecutable, [
-        'run',
-        'agent_daemon:coding_agent',
-        ...arguments,
-      ], workingDirectory: packageRoot);
-      expect(result.exitCode, 0, reason: '$arguments');
-      expect(result.stdout, contains('Usage: coding-agent agent'));
-      expect(result.stderr, isEmpty);
-    }
-  });
+      final library = await Isolate.resolvePackageUri(
+        Uri.parse('package:agent_daemon/agent_daemon.dart'),
+      );
+      final packageRoot = File.fromUri(library!).parent.parent.path;
+      for (final arguments in const [
+        ['agent', 'ls', '--help'],
+        ['agent', 'inspect', '--help'],
+        ['agent', 'mode', '--help'],
+        ['agent', 'stop', '--help'],
+        ['agent', 'send', '--help'],
+        ['ls', '--help'],
+        ['inspect', '--help'],
+        ['stop', '--help'],
+        ['send', '--help'],
+      ]) {
+        final result = await Process.run(Platform.resolvedExecutable, [
+          'run',
+          'agent_daemon:coding_agent',
+          ...arguments,
+        ], workingDirectory: packageRoot);
+        expect(result.exitCode, 0, reason: '$arguments');
+        expect(result.stdout, contains('Usage: coding-agent agent'));
+        expect(result.stderr, isEmpty);
+      }
+    },
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
 
   test('ls builds frozen active-scope filter combinations', () async {
     Future<Map<String, Object?>> capture(
@@ -904,6 +915,238 @@ void main() {
     },
   );
 
+  test('send preserves prompt text and supports no-wait output', () async {
+    Map<String, Object?>? sent;
+    final output = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: const [
+          'send',
+          'agent-prefix',
+          '  keep surrounding whitespace  ',
+          '--no-wait',
+          '--json',
+        ],
+        request: (message) async {
+          sent = message;
+          return {
+            'requestId': message['requestId'],
+            'agentId': 'agent-canonical',
+            'accepted': true,
+            'error': null,
+          };
+        },
+        writeOutput: output.write,
+      ),
+      0,
+    );
+    expect(sent, {
+      'type': 'send_agent_message_request',
+      'requestId': isA<String>(),
+      'agentId': 'agent-prefix',
+      'text': '  keep surrounding whitespace  ',
+      'messageId': matches(
+        RegExp(
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-'
+          r'[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+        ),
+      ),
+    });
+    expect(jsonDecode(output.toString()), {
+      'agentId': 'agent-prefix',
+      'status': 'sent',
+      'message': 'Message sent, not waiting for completion',
+    });
+  });
+
+  test('send waits and maps every frozen finish status', () async {
+    for (final entry in const [
+      (
+        wire: 'idle',
+        cli: 'completed',
+        message: 'Agent completed processing the message',
+        error: null,
+      ),
+      (
+        wire: 'permission',
+        cli: 'permission',
+        message: 'Agent is waiting for permission',
+        error: null,
+      ),
+      (
+        wire: 'timeout',
+        cli: 'timeout',
+        message: 'Timed out waiting for agent to finish',
+        error: null,
+      ),
+      (
+        wire: 'error',
+        cli: 'error',
+        message: 'provider exploded',
+        error: 'provider exploded',
+      ),
+    ]) {
+      final sent = <Map<String, Object?>>[];
+      final output = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: const ['send', 'agent-pre', '--prompt', 'hello', '--json'],
+          request: (message) async {
+            sent.add(message);
+            if (message['type'] == 'send_agent_message_request') {
+              return {
+                'requestId': message['requestId'],
+                'agentId': 'agent-canonical',
+                'accepted': true,
+                'error': null,
+              };
+            }
+            return {
+              'requestId': message['requestId'],
+              'agentId': 'agent-canonical',
+              'status': entry.wire,
+              'final': _snapshot(id: 'agent-canonical'),
+              'error': entry.error,
+              'lastMessage': null,
+            };
+          },
+          writeOutput: output.write,
+        ),
+        0,
+      );
+      expect(sent.map((message) => message['type']), [
+        'send_agent_message_request',
+        'wait_for_finish_request',
+      ]);
+      expect(sent.last, {
+        'type': 'wait_for_finish_request',
+        'requestId': isA<String>(),
+        'agentId': 'agent-pre',
+        'timeoutMs': 600000,
+      });
+      expect(jsonDecode(output.toString()), {
+        'agentId': 'agent-canonical',
+        'status': entry.cli,
+        'message': entry.message,
+      });
+    }
+  });
+
+  test('send reads UTF-8 prompt files and repeated images', () async {
+    final temp = await Directory.systemTemp.createTemp('coding-agent-send-');
+    addTearDown(() => temp.delete(recursive: true));
+    final prompt = File('${temp.path}${Platform.pathSeparator}prompt.txt');
+    final png = File('${temp.path}${Platform.pathSeparator}first.png');
+    final unknown = File('${temp.path}${Platform.pathSeparator}second.bin');
+    await prompt.writeAsString('파일 프롬프트\n', encoding: utf8);
+    await png.writeAsBytes([1, 2, 3]);
+    await unknown.writeAsBytes([4, 5]);
+
+    Map<String, Object?>? sent;
+    final output = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: [
+          'send',
+          'agent',
+          '--prompt-file',
+          prompt.path,
+          '--image',
+          png.path,
+          '--image',
+          unknown.path,
+          '--no-wait',
+          '--quiet',
+        ],
+        request: (message) async {
+          sent = message;
+          return {
+            'requestId': message['requestId'],
+            'agentId': 'agent',
+            'accepted': true,
+            'error': null,
+          };
+        },
+        writeOutput: output.write,
+      ),
+      0,
+    );
+    expect(sent?['text'], '파일 프롬프트\n');
+    expect(sent?['images'], [
+      {
+        'data': base64Encode([1, 2, 3]),
+        'mimeType': 'image/png',
+      },
+      {
+        'data': base64Encode([4, 5]),
+        'mimeType': 'image/jpeg',
+      },
+    ]);
+    expect(output.toString(), 'agent\n');
+  });
+
+  test(
+    'send input and transport failures preserve frozen error codes',
+    () async {
+      Future<void> expectError(
+        List<String> arguments,
+        String code, {
+        AgentRpcRequester? request,
+      }) async {
+        final error = StringBuffer();
+        expect(
+          await runAgentCommand(
+            arguments: [...arguments, '--json'],
+            request: request,
+            writeError: error.write,
+          ),
+          1,
+        );
+        expect(
+          (jsonDecode(error.toString())
+              as Map<String, dynamic>)['error']['code'],
+          code,
+        );
+      }
+
+      await expectError(['send', 'agent'], 'MISSING_PROMPT');
+      await expectError(['send'], 'MISSING_AGENT_ID');
+      await expectError([
+        'send',
+        'agent',
+        'arg',
+        '--prompt',
+        'option',
+      ], 'CONFLICTING_PROMPT_INPUT');
+      await expectError([
+        'send',
+        'agent',
+        '--prompt-file',
+        'definitely-missing.txt',
+      ], 'PROMPT_FILE_READ_ERROR');
+      await expectError(
+        ['send', 'agent', 'prompt', '--image', 'definitely-missing.png'],
+        'IMAGE_READ_ERROR',
+        request: (_) async => throw StateError('must not connect'),
+      );
+      await expectError(
+        ['send', 'agent', 'prompt'],
+        'SEND_FAILED',
+        request: (_) async => throw StateError('socket closed'),
+      );
+      await expectError(
+        ['send', 'agent', 'prompt'],
+        'SEND_FAILED',
+        request: (message) async => {
+          'requestId': message['requestId'],
+          'agentId': 'agent',
+          'accepted': false,
+          'error': 'agent is gone',
+        },
+      );
+    },
+  );
+
   test('parser and invalid thinking errors are deterministic', () async {
     for (final arguments in const [
       <String>[],
@@ -918,6 +1161,9 @@ void main() {
       ['stop', 'one', 'two'],
       ['stop', '--cwd'],
       ['stop', '--all', '-a'],
+      ['send', 'one', 'two', 'three'],
+      ['send', 'one', 'prompt', '--no-wait=false'],
+      ['send', 'one', 'prompt', '--image'],
       ['ls', '--list'],
       ['ls', '--format', 'xml'],
     ]) {

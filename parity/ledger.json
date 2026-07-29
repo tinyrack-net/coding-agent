@@ -247,10 +247,14 @@
     },
     {
       "id": "cli-command:agent-send",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/daemon_server.dart; packages/protocol/lib/src/messages/agent_interaction.dart",
+      "evidence": [
+        "packages/daemon/test/cli/agent_command_test.dart",
+        "packages/daemon/test/daemon_agent_send_e2e_test.dart",
+        "packages/protocol/test/agent_interaction_test.dart"
+      ],
+      "notes": "Frozen prompt sources, images, no-wait and 600-second wait, status/output/error mapping, prefix resolution, unarchive, dedupe, active-run replacement, and real WebSocket lifecycle verified."
     },
     {
       "id": "cli-command:agent-stop",
@@ -8824,9 +8828,10 @@
       "evidence": [
         "packages/daemon/test/cli/agent_command_test.dart",
         "packages/daemon/test/cli/agent_logs_command_test.dart",
-        "packages/daemon/test/daemon_agent_cli_e2e_test.dart"
+        "packages/daemon/test/daemon_agent_cli_e2e_test.dart",
+        "packages/daemon/test/daemon_agent_send_e2e_test.dart"
       ],
-      "notes": "Agent ls, inspect, logs, mode, and stop dispatch are ported; remaining run, attach, open, delete, send, wait, archive, reload, detach, and update commands remain."
+      "notes": "Agent ls, inspect, logs, mode, stop, and send dispatch are ported; remaining run, attach, open, delete, wait, archive, reload, detach, and update commands remain."
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/inspect.ts",
@@ -8892,10 +8897,13 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/send.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/agent_command_test.dart",
+        "packages/daemon/test/daemon_agent_send_e2e_test.dart"
+      ],
+      "notes": "Frozen nested and primary aliases, prompt/image options, output modes, and daemon interaction are ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/stop.ts",
@@ -15082,17 +15090,23 @@
     },
     {
       "id": "wire-message:send_agent_message_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/agent_interaction.dart; packages/daemon/lib/src/daemon_server.dart",
+      "evidence": [
+        "packages/protocol/test/agent_interaction_test.dart",
+        "packages/daemon/test/daemon_agent_send_e2e_test.dart"
+      ],
+      "notes": "Typed frozen request shape, strict boundary validation, prefix lookup, unarchive, dedupe, and replacement behavior verified."
     },
     {
       "id": "wire-message:send_agent_message_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/agent_interaction.dart; packages/daemon/lib/src/daemon_server.dart",
+      "evidence": [
+        "packages/protocol/test/agent_interaction_test.dart",
+        "packages/daemon/test/daemon_agent_send_e2e_test.dart"
+      ],
+      "notes": "Typed accepted/error response and request correlation verified over the real v2 WebSocket."
     },
     {
       "id": "wire-message:set_agent_feature_request",
@@ -15378,17 +15392,23 @@
     },
     {
       "id": "wire-message:wait_for_finish_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/agent_interaction.dart; packages/daemon/lib/src/daemon_server.dart",
+      "evidence": [
+        "packages/protocol/test/agent_interaction_test.dart",
+        "packages/daemon/test/daemon_agent_send_e2e_test.dart"
+      ],
+      "notes": "Typed positive timeout and prefix-resolved active-run wait behavior verified."
     },
     {
       "id": "wire-message:wait_for_finish_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/agent_interaction.dart; packages/daemon/lib/src/daemon_server.dart",
+      "evidence": [
+        "packages/protocol/test/agent_interaction_test.dart",
+        "packages/daemon/test/daemon_agent_send_e2e_test.dart"
+      ],
+      "notes": "Idle, permission, error, and timeout responses with validated final snapshots and errors verified."
     },
     {
       "id": "wire-message:workspace_setup_status_request",
