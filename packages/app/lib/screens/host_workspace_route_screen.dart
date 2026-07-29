@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/daemon_client.dart';
+import '../core/host_route_browser.dart';
 import '../core/host_routes.dart';
 import '../state/daemon_providers.dart';
 import '../state/host_registry_provider.dart';
@@ -41,6 +42,7 @@ class _HostWorkspaceRouteScreenState
   String? _selectedWorkspaceKey;
   String? _appliedOpenIntentKey;
   String? _redirectTarget;
+  String? _canonicalizedBrowserRouteKey;
 
   void _redirect(String target) {
     if (_redirectTarget == target) return;
@@ -56,6 +58,13 @@ class _HostWorkspaceRouteScreenState
     scheduleMicrotask(() async {
       await ref.read(hostRegistryProvider.notifier).selectHost(widget.serverId);
     });
+  }
+
+  void _canonicalizeBrowserRoute() {
+    final key = '${widget.serverId}:${widget.workspaceId}';
+    if (_canonicalizedBrowserRouteKey == key) return;
+    _canonicalizedBrowserRouteKey = key;
+    stripHostWorkspaceRouteEchoSearchFromBrowserUrlAfterCommit();
   }
 
   void _selectWorkspace(String directory) {
@@ -115,6 +124,7 @@ class _HostWorkspaceRouteScreenState
       case KnownHostRouteResolution.render:
         break;
     }
+    _canonicalizeBrowserRoute();
 
     if (registry.activeServerId != widget.serverId) {
       _activateHost();

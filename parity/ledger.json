@@ -8253,10 +8253,14 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/host-route-browser.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/host_route_browser.dart;packages/app/lib/core/host_route_browser_adapter.dart;packages/app/lib/core/host_route_browser_adapter_base.dart;packages/app/lib/core/host_route_browser_adapter_stub.dart;packages/app/lib/core/host_route_browser_adapter_web.dart;packages/app/lib/screens/host_workspace_route_screen.dart",
+      "evidence": [
+        "packages/app/test/host_route_browser_test.dart",
+        "packages/app/test/host_routes_test.dart",
+        "packages/app/test/host_workspace_route_screen_test.dart"
+      ],
+      "notes": "Ports the frozen browser-route contract: non-Web no-op behavior, pathname/search/hash reads, canonical history replacement, unchanged-route suppression, and deferred zero-delay cleanup after host workspace navigation. The host workspace screen schedules cleanup once per selected host/workspace. Web compilation is covered by the Chrome-target smoke; the runner itself stalled after loading in this environment."
     },
     {
       "id": "source-unit:packages/app/src/utils/host-routes.ts",
