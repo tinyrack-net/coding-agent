@@ -89,7 +89,7 @@
       "evidence": [
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "The Flutter form distinguishes new-agent schedules from agent-target heartbeats. Heartbeat editing uses the frozen Edit heartbeat title, read-only target label, cadence-only fields, and cadence-only mutation. New-agent workspace lifecycle controls now follow the frozen host workspaceMultiplicity and Git-project disclosure rules, coerce unsupported worktree selection to local, and omit lifecycle fields for legacy hosts. Preference persistence remains."
+      "notes": "The Flutter form distinguishes new-agent schedules from agent-target heartbeats. Heartbeat editing uses the frozen Edit heartbeat title, read-only target label, cadence-only fields, and cadence-only mutation. New-agent workspace lifecycle controls follow workspaceMultiplicity and Git-project disclosure rules. Create mode loads provider/model/mode/thinking/isolation preferences, edit mode preserves stored schedule values, and successful new-agent submission persists the current selection. Remaining sheet parity includes exact disabled-submit behavior and adaptive modal geometry."
     },
     {
       "id": "app-route:/sessions",
@@ -6578,7 +6578,7 @@
         "packages/app/test/schedule_form_model_test.dart",
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "Provider/model/mode/thinking selection resolves only ready enabled providers from the selected host and project snapshot, resets incompatible values on scope or model changes, and submits the resolved option ids. Agent-target edit state exposes only the frozen read-only target and cadence. Workspace lifecycle disclosure and payload omission follow workspaceMultiplicity and Git-project capabilities. Remaining form-model parity is preference initialization and persistence."
+      "notes": "Provider/model/mode/thinking selection resolves only ready enabled providers from the selected host and project snapshot, resets incompatible values on scope or model changes, and submits the resolved option ids. Agent-target edit state exposes only the frozen read-only target and cadence. Workspace lifecycle disclosure and payload omission follow workspaceMultiplicity and Git-project capabilities. Create preferences initialize and persist without overriding edit values. Remaining form-model parity includes the exact pending provider-resolution state and derived canSubmit/disclosure transitions."
     },
     {
       "id": "source-unit:packages/app/src/schedules/schedule-project-targets.ts",
@@ -6592,23 +6592,23 @@
     },
     {
       "id": "source-unit:packages/app/src/schedules/use-schedule-form-model.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/state/schedule_form_model.dart; packages/app/lib/screens/schedules_screen.dart",
       "evidence": [
         "packages/app/test/schedule_form_model_test.dart",
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "The stateful Flutter dialog owns one form model for its lifetime, applies host/project/provider changes, resolves the frozen new-agent versus agent-target edit mode, and derives workspace lifecycle state from host/project capabilities. Frozen preference synchronization remains."
+      "notes": "The stateful Flutter dialog owns one form state for its lifetime, reacts to host and project target updates, hydrates create preferences without overriding user changes or edit values, and disposes with the dialog."
     },
     {
       "id": "source-unit:packages/app/src/schedules/use-schedule-form-provider-snapshot.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/screens/schedules_screen.dart; packages/app/lib/state/providers_snapshot_provider.dart",
       "evidence": [
         "packages/app/test/schedules_screen_test.dart",
         "packages/app/test/providers_snapshot_provider_test.dart"
       ],
-      "notes": "The form enables the snapshot only for a new-agent target with a selected host and non-empty project cwd, and applies host-scoped loading, error, refresh, and entry updates. The remaining gap is preference-driven synchronization through the full form model."
+      "notes": "The form enables provider snapshots only for new-agent targets with a selected host and non-empty project cwd, scopes requests by host and cwd, and applies loading, error, stale refetch, provider refresh, entry updates, and create preference resolution."
     },
     {
       "id": "source-unit:packages/app/src/screens/agent/agent-ready-screen-bottom-anchor.ts",

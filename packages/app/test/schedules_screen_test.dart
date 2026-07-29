@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:agent_protocol/agent_protocol.dart';
+import 'package:coding_agent_app/composer/create_agent_preferences.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/core/theme.dart';
 import 'package:coding_agent_app/screens/schedules_screen.dart';
@@ -119,7 +120,10 @@ void main() {
     tester,
   ) async {
     final notifier = _FakeSchedulesNotifier(const []);
-    await _pumpWithNotifier(tester, notifier);
+    final preferences = CreateAgentPreferencesService(
+      _MemoryPreferenceStorage(),
+    );
+    await _pumpWithNotifier(tester, notifier, preferencesService: preferences);
     await tester.tap(find.text('New schedule').last);
     await tester.pumpAndSettle();
 
@@ -164,7 +168,136 @@ void main() {
     expect(config.model, 'gpt-5.4');
     expect(config.modeId, 'plan');
     expect(config.thinkingOptionId, 'medium');
+    final stored = await preferences.load();
+    expect(stored.provider, 'codex');
+    expect(stored.providerPreferences['codex']?.model, 'gpt-5.4');
+    expect(stored.providerPreferences['codex']?.mode, 'plan');
+    expect(stored.providerPreferences['codex']?.thinkingByModel, {
+      'gpt-5.4': 'medium',
+    });
+    expect(stored.isolation, 'local');
     expect(find.text('Create schedule'), findsNothing);
+  });
+
+  testWidgets('create form applies stored provider selections', (tester) async {
+    final preferences = CreateAgentPreferencesService(
+      _MemoryPreferenceStorage({
+        'provider': 'codex',
+        'isolation': 'worktree',
+        'providerPreferences': {
+          'codex': {
+            'model': 'gpt-5.4',
+            'mode': 'plan',
+            'thinkingByModel': {'gpt-5.4': 'medium'},
+          },
+        },
+      }),
+    );
+    await _pumpWithNotifier(
+      tester,
+      _FakeSchedulesNotifier(const []),
+      preferencesService: preferences,
+    );
+    await tester.tap(find.text('New schedule').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(ComboBox<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local project').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<ComboBox<String>>(
+            find.byKey(const ValueKey('schedule-provider-selector')),
+          )
+          .value,
+      'codex',
+    );
+    expect(
+      tester
+          .widget<ComboBox<String>>(
+            find.byKey(const ValueKey('schedule-mode-selector')),
+          )
+          .value,
+      'plan',
+    );
+    expect(
+      tester
+          .widget<ComboBox<String>>(
+            find.byKey(const ValueKey('schedule-thinking-selector')),
+          )
+          .value,
+      'medium',
+    );
+    expect(
+      tester
+          .widget<ComboBox<String>>(
+            find.byKey(const ValueKey('schedule-isolation-selector')),
+          )
+          .value,
+      'worktree',
+    );
+  });
+
+  testWidgets('edit form ignores stored provider defaults', (tester) async {
+    final preferences = CreateAgentPreferencesService(
+      _MemoryPreferenceStorage({
+        'provider': 'codex',
+        'isolation': 'worktree',
+        'providerPreferences': {
+          'codex': {
+            'model': 'gpt-5.4',
+            'mode': 'plan',
+            'thinkingByModel': {'gpt-5.4': 'medium'},
+          },
+        },
+      }),
+    );
+    final schedule = _schedule(
+      id: 'edit-preferences',
+      target: const NewAgentScheduleTarget(
+        config: ScheduleNewAgentConfig(
+          provider: 'codex',
+          cwd: 'C:/repo',
+          model: 'gpt-5.4',
+          modeId: 'agent',
+          thinkingOptionId: 'high',
+          isolation: 'local',
+        ),
+      ),
+    );
+    await _pumpWithNotifier(
+      tester,
+      _FakeSchedulesNotifier([schedule]),
+      preferencesService: preferences,
+    );
+    await tester.tap(find.text('Active schedule'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<ComboBox<String>>(
+            find.byKey(const ValueKey('schedule-mode-selector')),
+          )
+          .value,
+      'agent',
+    );
+    expect(
+      tester
+          .widget<ComboBox<String>>(
+            find.byKey(const ValueKey('schedule-thinking-selector')),
+          )
+          .value,
+      'high',
+    );
+    expect(
+      tester
+          .widget<ComboBox<String>>(
+            find.byKey(const ValueKey('schedule-isolation-selector')),
+          )
+          .value,
+      'local',
+    );
   });
 
   testWidgets('legacy host omits workspace lifecycle controls and payload', (
@@ -527,6 +660,7 @@ Future<void> _pumpWithNotifier(
   bool settle = true,
   bool supportsWorkspaceMultiplicity = true,
   bool projectsAreGit = true,
+  CreateAgentPreferencesService? preferencesService,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -549,13 +683,34 @@ Future<void> _pumpWithNotifier(
             ),
         }),
       ],
-      child: FluentApp(theme: buildAppTheme(), home: const SchedulesScreen()),
+      child: FluentApp(
+        theme: buildAppTheme(),
+        home: SchedulesScreen(
+          preferencesService:
+              preferencesService ??
+              CreateAgentPreferencesService(_MemoryPreferenceStorage()),
+        ),
+      ),
     ),
   );
   if (settle) {
     await tester.pumpAndSettle();
   } else {
     await tester.pump();
+  }
+}
+
+final class _MemoryPreferenceStorage implements CreateAgentPreferenceStorage {
+  _MemoryPreferenceStorage([this.value]);
+
+  Object? value;
+
+  @override
+  Future<Object?> read() async => value;
+
+  @override
+  Future<void> write(CreateAgentPreferences preferences) async {
+    value = preferences.toJson();
   }
 }
 

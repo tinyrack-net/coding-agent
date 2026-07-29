@@ -4,6 +4,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../composer/create_agent_preferences.dart';
 import '../composer/provider_model_selection.dart';
 import '../core/theme.dart';
 import '../providers/providers_snapshot.dart';
@@ -24,7 +25,9 @@ enum _ScheduleDerivedState { active, paused, expired, finished, targetGone }
 const _allScheduleHosts = '__all__';
 
 class SchedulesScreen extends ConsumerStatefulWidget {
-  const SchedulesScreen({super.key});
+  const SchedulesScreen({super.key, this.preferencesService});
+
+  final CreateAgentPreferencesService? preferencesService;
 
   @override
   ConsumerState<SchedulesScreen> createState() => _SchedulesScreenState();
@@ -203,6 +206,7 @@ class _SchedulesScreenState extends ConsumerState<SchedulesScreen> {
       builder: (context) => _ScheduleFormDialog(
         schedule: entry?.schedule,
         serverId: entry?.serverId,
+        preferencesService: widget.preferencesService,
       ),
     );
   }
@@ -547,9 +551,14 @@ class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
 }
 
 class _ScheduleFormDialog extends ConsumerStatefulWidget {
-  const _ScheduleFormDialog({this.schedule, this.serverId});
+  const _ScheduleFormDialog({
+    this.schedule,
+    this.serverId,
+    this.preferencesService,
+  });
   final ScheduleSummary? schedule;
   final String? serverId;
+  final CreateAgentPreferencesService? preferencesService;
 
   @override
   ConsumerState<_ScheduleFormDialog> createState() =>
@@ -567,6 +576,10 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
   String? _model;
   String? _modeId;
   String? _thinkingOptionId;
+  CreateAgentPreferences _preferences = const CreateAgentPreferences();
+  late final CreateAgentPreferencesService _preferencesService;
+  var _selectionTouched = false;
+  var _isolationTouched = false;
   late final String _timezone;
   var _isolation = 'local';
   var _archiveOnFinish = true;
@@ -599,6 +612,9 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
         ref.read(hostRegistryProvider).hosts.firstOrNull?.serverId;
     _isolation = config?.isolation ?? 'local';
     _archiveOnFinish = config?.archiveOnFinish ?? true;
+    _preferencesService =
+        widget.preferencesService ?? createAgentPreferencesService;
+    unawaited(_hydratePreferences());
   }
 
   @override
@@ -607,6 +623,29 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
       controller.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _hydratePreferences() async {
+    try {
+      final preferences = await _preferencesService.load();
+      if (!mounted) return;
+      setState(() {
+        _preferences = preferences;
+        if (widget.schedule == null && !_selectionTouched) {
+          _provider = preferences.provider;
+          _model = null;
+          _modeId = null;
+          _thinkingOptionId = null;
+        }
+        if (widget.schedule == null && !_isolationTouched) {
+          _isolation = preferences.isolation == 'worktree'
+              ? 'worktree'
+              : 'local';
+        }
+      });
+    } catch (_) {
+      // Local preferences must not prevent schedule creation.
+    }
   }
 
   @override
@@ -649,12 +688,26 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     final snapshot = snapshotScope == null
         ? null
         : ref.watch(providersSnapshotProvider(snapshotScope));
+    final preferenceProvider = widget.schedule == null && !_selectionTouched
+        ? (_provider ?? _preferences.provider)
+        : _provider;
+    final providerPreferences = preferenceProvider == null
+        ? null
+        : _preferences.providerPreferences[preferenceProvider];
+    final preferenceModel = widget.schedule == null && !_selectionTouched
+        ? (_model ?? providerPreferences?.model)
+        : _model;
     final providerSelection = resolveScheduleProviderSelection(
       entries: snapshot?.entries,
-      selectedProvider: _provider,
-      selectedModel: _model,
-      selectedModeId: _modeId,
-      selectedThinkingOptionId: _thinkingOptionId,
+      selectedProvider: preferenceProvider,
+      selectedModel: preferenceModel,
+      selectedModeId: widget.schedule == null && !_selectionTouched
+          ? (_modeId ?? providerPreferences?.mode)
+          : _modeId,
+      selectedThinkingOptionId: widget.schedule == null && !_selectionTouched
+          ? (_thinkingOptionId ??
+                providerPreferences?.thinkingByModel[preferenceModel])
+          : _thinkingOptionId,
     );
     if (providerSelection.isAvailable) {
       _provider = providerSelection.provider;
@@ -724,13 +777,16 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                   const Text('Isolation'),
                   const SizedBox(height: 6),
                   ComboBox<String>(
+                    key: const ValueKey('schedule-isolation-selector'),
                     value: workspaceLifecycle.effectiveIsolation,
                     items: const [
                       ComboBoxItem(value: 'local', child: Text('Local')),
                       ComboBoxItem(value: 'worktree', child: Text('Worktree')),
                     ],
-                    onChanged: (value) =>
-                        setState(() => _isolation = value ?? 'local'),
+                    onChanged: (value) => setState(() {
+                      _isolationTouched = true;
+                      _isolation = value ?? 'local';
+                    }),
                   ),
                 ],
                 if (workspaceLifecycle.showArchiveOnFinish) ...[
@@ -1029,6 +1085,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                       : (value) {
                           if (value == null) return;
                           setState(() {
+                            _selectionTouched = true;
                             _provider = value;
                             _model = null;
                             _modeId = null;
@@ -1046,6 +1103,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                   isLoading: snapshot.isLoading || snapshot.isFetching,
                   disabled: _submitting,
                   onSelect: (provider, model) => setState(() {
+                    _selectionTouched = true;
                     _provider = provider;
                     _model = model.isEmpty ? null : model;
                     _modeId = null;
@@ -1081,7 +1139,10 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
               ],
               onChanged: _submitting
                   ? null
-                  : (value) => setState(() => _modeId = value),
+                  : (value) => setState(() {
+                      _selectionTouched = true;
+                      _modeId = value;
+                    }),
             ),
           ],
           if (selection.thinkingOptions.isNotEmpty) ...[
@@ -1097,7 +1158,10 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
               ],
               onChanged: _submitting
                   ? null
-                  : (value) => setState(() => _thinkingOptionId = value),
+                  : (value) => setState(() {
+                      _selectionTouched = true;
+                      _thinkingOptionId = value;
+                    }),
             ),
           ],
         ],
@@ -1110,6 +1174,20 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     _model = null;
     _modeId = null;
     _thinkingOptionId = null;
+  }
+
+  Future<void> _persistPreferences(String provider) async {
+    final updated = await _preferencesService.update((current) {
+      final selection = mergeCreateAgentSelectionPreferences(
+        preferences: current,
+        provider: provider,
+        modelId: _model,
+        modeId: _modeId,
+        thinkingOptionId: _thinkingOptionId,
+      );
+      return selection.copyWith(isolation: _isolation);
+    });
+    if (mounted) setState(() => _preferences = updated);
   }
 
   Future<void> _submit() async {
@@ -1168,6 +1246,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     final cadence = CronScheduleCadence(expression: cron, timezone: _timezone);
     try {
       final notifier = ref.read(aggregatedSchedulesProvider.notifier);
+      if (!agentTarget) await _persistPreferences(provider);
       if (widget.schedule == null) {
         await notifier.create(
           serverId,
