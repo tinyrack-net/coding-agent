@@ -255,6 +255,71 @@ void main() {
     );
   });
 
+  test('shared output aliases and json precedence match Paseo', () async {
+    final parsed = ProviderCliInvocation.parse(const [
+      'models',
+      'CODEX',
+      '--host=ws://127.0.0.1:7777',
+      '--format=yaml',
+      '--json',
+      '--no-color',
+    ]);
+    expect(parsed.provider, 'codex');
+    expect(parsed.host, 'ws://127.0.0.1:7777');
+    expect(parsed.output.format, 'json');
+    expect(parsed.output.noColor, isTrue);
+
+    final output = StringBuffer();
+    expect(
+      await runProviderCommand(
+        arguments: const ['models', 'codex', '-ocli', '--no-headers'],
+        request: (request) async => {
+          'provider': 'codex',
+          'models': [
+            const ProviderModelDefinition(
+              provider: 'codex',
+              id: 'auto',
+              label: 'Automatic',
+            ).toJson(),
+          ],
+          'error': null,
+          'fetchedAt': 'now',
+          'requestId': request['requestId'],
+        },
+        writeOutput: output.write,
+      ),
+      0,
+    );
+    expect(output.toString(), contains('auto'));
+    expect(output.toString(), isNot(contains('ID')));
+  });
+
+  test('provider errors support shared yaml rendering', () async {
+    final error = StringBuffer();
+    expect(
+      await runProviderCommand(
+        arguments: const ['models', 'missing', '--format=yaml'],
+        request: (request) async => {
+          'provider': 'missing',
+          'models': null,
+          'error': 'Unknown provider: missing',
+          'fetchedAt': 'now',
+          'requestId': request['requestId'],
+        },
+        writeError: error.write,
+      ),
+      1,
+    );
+    expect(error.toString(), contains('error:'));
+    expect(error.toString(), contains('code: PROVIDER_ERROR'));
+    expect(
+      error.toString(),
+      contains(
+        'message: "Failed to fetch models for missing: Unknown provider: missing"',
+      ),
+    );
+  });
+
   test(
     'parser failures use usage exit code and malformed rows are errors',
     () async {

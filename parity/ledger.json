@@ -640,20 +640,20 @@
     {
       "id": "cli-command:provider-ls",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/provider_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": null
+      "notes": "Frozen live provider projection and static discovery fallback use the shared table, JSON, YAML, quiet, header, color, alias, and structured error contracts."
     },
     {
       "id": "cli-command:provider-models",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/provider_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": null
+      "notes": "Frozen model and thinking projections use the shared output contract, including provider normalization, default-thinking fallback, global/local aliases, and structured errors."
     },
     {
       "id": "cli-command:schedule-create",
@@ -9816,29 +9816,29 @@
     {
       "id": "source-unit:packages/cli/src/commands/provider/index.ts",
       "status": "verified",
-      "implementation": "packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": null
+      "notes": "Provider subcommand registration, help, root output forwarding, and shared rendering are ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/provider/ls.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/provider_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": null
+      "notes": "Frozen live snapshot mapping, static manifest fallback, column schema, status colors, and all shared output modes are ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/provider/models.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/provider_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": null
+      "notes": "Frozen model and optional thinking schemas, normalized provider lookup, default thinking display, and shared result/error rendering are ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/create.ts",
@@ -10235,12 +10235,13 @@
         "packages/daemon/test/hub_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/permit_command_test.dart",
+        "packages/daemon/test/cli/provider_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/cli/script_command_test.dart",
         "packages/daemon/test/terminal_command_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "The shared Dart output entrypoint exports typed result, schema, custom serialization, JSON, YAML, quiet, table, and error rendering used by chat, heartbeat, Hub, permit, schedule, script, terminal result actions, non-streaming loop actions, and daemon result actions; remaining CLI families still need migration."
+      "notes": "The shared Dart output entrypoint exports typed result, schema, custom serialization, JSON, YAML, quiet, table, and error rendering used by chat, heartbeat, Hub, permit, provider, schedule, script, terminal result actions, non-streaming loop actions, and daemon result actions; remaining CLI families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/json.ts",
@@ -10345,7 +10346,7 @@
         "packages/daemon/test/daemon_schedule_e2e_test.dart",
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": "Global and local options feed shared result and error rendering for chat, heartbeat, Hub, permit, schedule, script, terminal result actions, non-streaming loop actions, and daemon result actions while capture/send-keys and other direct or streaming actions retain their frozen boundaries; remaining JSON-only command families still need migration."
+      "notes": "Global and local options feed shared result and error rendering for chat, heartbeat, Hub, permit, provider, schedule, script, terminal result actions, non-streaming loop actions, and daemon result actions while capture/send-keys and other direct or streaming actions retain their frozen boundaries; remaining JSON-only command families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/yaml.ts",

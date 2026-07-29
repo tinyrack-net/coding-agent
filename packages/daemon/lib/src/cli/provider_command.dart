@@ -1,10 +1,10 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../providers/paseo/provider_manifest.dart';
 import '../server/daemon_config.dart';
+import 'cli_output.dart';
 import 'terminal_command.dart';
 
 typedef ProviderRpcRequester =
@@ -24,8 +24,9 @@ Future<int> runProviderCommand({
     output(_providerHelp(arguments.firstOrNull));
     return 0;
   }
+  ProviderCliInvocation? invocation;
   try {
-    final invocation = ProviderCliInvocation.parse(arguments);
+    invocation = ProviderCliInvocation.parse(arguments);
     final env = environment ?? Platform.environment;
     ProviderRpcRequester? rpc = request;
     if (rpc == null) {
@@ -52,16 +53,33 @@ Future<int> runProviderCommand({
     final rows = invocation.action == 'ls'
         ? await _listProviders(invocation, rpc)
         : await _listModels(invocation, rpc!);
-    output(_renderRows(rows, invocation));
+    final schema = invocation.action == 'ls'
+        ? _providerListSchema
+        : invocation.thinking
+        ? _providerModelsThinkingSchema
+        : _providerModelsSchema;
+    final rendered = renderCliOutput(
+      CliOutputResult.list(rows: rows, schema: schema),
+      invocation.output,
+    );
+    if (rendered.isNotEmpty) output('$rendered\n');
     return 0;
   } on FormatException catch (error) {
     errorOutput('${error.message}\n$providerUsage\n');
     return 64;
   } on ProviderCommandException catch (error) {
-    _writeCommandError(errorOutput, error, arguments);
+    _writeCommandError(
+      errorOutput,
+      error,
+      options: invocation?.output ?? const CliOutputOptions(),
+    );
     return 1;
   } on Object catch (error) {
-    errorOutput('PROVIDER_ERROR: ${_errorText(error)}\n');
+    _writeCommandError(
+      errorOutput,
+      ProviderCommandException('PROVIDER_ERROR', _errorText(error)),
+      options: invocation?.output ?? const CliOutputOptions(),
+    );
     return 1;
   } finally {
     await client?.close();
@@ -73,18 +91,14 @@ final class ProviderCliInvocation {
     required this.action,
     required this.provider,
     required this.host,
-    required this.format,
-    required this.quiet,
-    required this.headers,
+    required this.output,
     required this.thinking,
   });
 
   final String action;
   final String? provider;
   final String? host;
-  final String format;
-  final bool quiet;
-  final bool headers;
+  final CliOutputOptions output;
   final bool thinking;
 
   static ProviderCliInvocation parse(List<String> arguments) {
@@ -98,37 +112,51 @@ final class ProviderCliInvocation {
     String? provider;
     String? host;
     var format = 'table';
+    var json = false;
     var quiet = false;
     var headers = true;
+    var color = true;
     var thinking = false;
     for (var index = 1; index < arguments.length; index++) {
       final argument = arguments[index];
+      if (_splitLongOption(argument) case (final option, final value)) {
+        switch (option) {
+          case '--host':
+            host = value;
+            continue;
+          case '--format':
+            format = normalizeCliOutputFormat(value);
+            continue;
+        }
+      }
       switch (argument) {
         case '--host':
           host = _requiredValue(arguments, ++index, argument);
         case '--json':
-          format = 'json';
+          json = true;
         case '-o' || '--format':
-          format = _requiredValue(arguments, ++index, argument);
-          if (!const {'table', 'json', 'yaml'}.contains(format)) {
-            throw FormatException('Unknown output format: $format');
-          }
+          format = normalizeCliOutputFormat(
+            _requiredValue(arguments, ++index, argument),
+          );
         case '-q' || '--quiet':
           quiet = true;
         case '--no-headers':
           headers = false;
         case '--no-color':
-          break;
+          color = false;
         case '--thinking' when action == 'models':
           thinking = true;
         default:
-          if (argument.startsWith('-')) {
+          if (argument.startsWith('-o') && argument.length > 2) {
+            format = normalizeCliOutputFormat(argument.substring(2));
+          } else if (argument.startsWith('-')) {
             throw FormatException('Unknown option: $argument');
+          } else {
+            if (provider != null) {
+              throw const FormatException('Only one provider may be specified');
+            }
+            provider = argument;
           }
-          if (provider != null) {
-            throw const FormatException('Only one provider may be specified');
-          }
-          provider = argument;
       }
     }
     if (action == 'ls' && provider != null) {
@@ -143,9 +171,12 @@ final class ProviderCliInvocation {
       action: action,
       provider: normalizedProvider,
       host: host,
-      format: format,
-      quiet: quiet,
-      headers: headers,
+      output: CliOutputOptions(
+        format: json ? 'json' : format,
+        quiet: quiet,
+        noHeaders: !headers,
+        noColor: !color,
+      ),
       thinking: thinking,
     );
   }
@@ -253,96 +284,69 @@ Future<List<Map<String, Object?>>> _listModels(
   ];
 }
 
-String _renderRows(
-  List<Map<String, Object?>> rows,
-  ProviderCliInvocation invocation,
-) {
-  final idField = invocation.action == 'ls' ? 'provider' : 'id';
-  if (invocation.quiet) {
-    return rows.map((row) => '${row[idField]}').join('\n') +
-        (rows.isEmpty ? '' : '\n');
-  }
-  if (invocation.format == 'json') {
-    return '${const JsonEncoder.withIndent('  ').convert(rows)}\n';
-  }
-  if (invocation.format == 'yaml') return _yamlList(rows);
-  final columns = invocation.action == 'ls'
-      ? const [
-          ('PROVIDER', 'provider', 12),
-          ('LABEL', 'label', 16),
-          ('STATUS', 'status', 12),
-          ('ENABLED', 'enabled', 10),
-          ('DEFAULT MODE', 'defaultMode', 14),
-          ('MODES', 'modes', 30),
-        ]
-      : invocation.thinking
-      ? const [
-          ('ID', 'id', 30),
-          ('MODEL', 'model', 30),
-          ('THINKING IDS', 'thinkingOptions', 40),
-          ('DEFAULT THINKING', 'defaultThinkingOptionId', 18),
-        ]
-      : const [
-          ('ID', 'id', 30),
-          ('MODEL', 'model', 30),
-          ('DESCRIPTION', 'description', 40),
-        ];
-  final widths = [
-    for (final column in columns)
-      [
-        column.$1.length,
-        column.$3,
-        for (final row in rows) _cell(row, column.$2, invocation).length,
-      ].reduce((a, b) => a > b ? a : b),
-  ];
-  String render(List<String> values) => [
-    for (var index = 0; index < values.length; index++)
-      values[index].padRight(widths[index]),
-  ].join('  ').trimRight();
-  return [
-        if (invocation.headers)
-          render([for (final column in columns) column.$1]),
-        for (final item in rows)
-          render([
-            for (final column in columns) _cell(item, column.$2, invocation),
-          ]),
-      ].join('\n') +
-      (invocation.headers || rows.isNotEmpty ? '\n' : '');
-}
+final _providerListSchema = CliOutputSchema(
+  idField: (row) => '${row['provider']}',
+  columns: [
+    CliOutputColumn(
+      header: 'PROVIDER',
+      field: (row) => row['provider'],
+      width: 12,
+    ),
+    CliOutputColumn(header: 'LABEL', field: (row) => row['label'], width: 16),
+    CliOutputColumn(
+      header: 'STATUS',
+      field: (row) => row['status'],
+      width: 12,
+      color: (value, _) => switch (value) {
+        'available' => 'green',
+        'unavailable' => 'red',
+        _ => null,
+      },
+    ),
+    CliOutputColumn(
+      header: 'ENABLED',
+      field: (row) => row['enabled'],
+      width: 10,
+    ),
+    CliOutputColumn(
+      header: 'DEFAULT MODE',
+      field: (row) => row['defaultMode'],
+      width: 14,
+    ),
+    CliOutputColumn(header: 'MODES', field: (row) => row['modes'], width: 30),
+  ],
+);
 
-String _cell(
-  Map<String, Object?> row,
-  String field,
-  ProviderCliInvocation invocation,
-) {
-  final value = row[field];
-  if (field == 'defaultThinkingOptionId' && value == null) return 'auto';
-  return value == null ? '' : '$value';
-}
+final _providerModelsSchema = CliOutputSchema(
+  idField: (row) => '${row['id']}',
+  columns: [
+    CliOutputColumn(header: 'ID', field: (row) => row['id'], width: 30),
+    CliOutputColumn(header: 'MODEL', field: (row) => row['model'], width: 30),
+    CliOutputColumn(
+      header: 'DESCRIPTION',
+      field: (row) => row['description'],
+      width: 40,
+    ),
+  ],
+);
 
-String _yamlList(List<Map<String, Object?>> rows) {
-  if (rows.isEmpty) return '[]\n';
-  return '${[
-    for (final row in rows) ['- ${row.entries.first.key}: ${_yamlScalar(row.entries.first.value)}', for (final entry in row.entries.skip(1)) '  ${entry.key}: ${_yamlScalar(entry.value)}'].join('\n'),
-  ].join('\n')}\n';
-}
-
-String _yamlScalar(Object? value) {
-  if (value == null) return 'null';
-  if (value is num || value is bool) return '$value';
-  if (value is List) {
-    return '[${value.map(_yamlScalar).join(', ')}]';
-  }
-  final text = '$value';
-  if (text.isNotEmpty &&
-      !RegExp(
-        r'''[:#\[\]{},&*!|>'"%@`]|^\s|\s$|^(null|true|false|~)$''',
-        caseSensitive: false,
-      ).hasMatch(text)) {
-    return text;
-  }
-  return jsonEncode(text);
-}
+final _providerModelsThinkingSchema = CliOutputSchema(
+  idField: (row) => '${row['id']}',
+  columns: [
+    CliOutputColumn(header: 'ID', field: (row) => row['id'], width: 30),
+    CliOutputColumn(header: 'MODEL', field: (row) => row['model'], width: 30),
+    CliOutputColumn(
+      header: 'THINKING IDS',
+      field: (row) => row['thinkingOptions'],
+      width: 40,
+    ),
+    CliOutputColumn(
+      header: 'DEFAULT THINKING',
+      field: (row) => row['defaultThinkingOptionId'] ?? 'auto',
+      width: 18,
+    ),
+  ],
+);
 
 List<T> _mapList<T>(
   Map<String, Object?> json,
@@ -362,20 +366,12 @@ List<T> _mapList<T>(
 
 void _writeCommandError(
   void Function(String value) write,
-  ProviderCommandException error,
-  List<String> arguments,
-) {
-  final json = arguments.contains('--json');
-  if (json) {
-    write(
-      '${const JsonEncoder.withIndent('  ').convert({
-        'error': {'code': error.code, 'message': error.message, if (error.details != null) 'details': error.details},
-      })}\n',
-    );
-    return;
-  }
-  write('Error: ${error.message}\n');
-  if (error.details != null) write('${error.details}\n');
+  ProviderCommandException error, {
+  required CliOutputOptions options,
+}) {
+  write(
+    '${renderCliError(code: error.code, message: error.message, details: error.details, options: options)}\n',
+  );
 }
 
 String _requiredValue(List<String> arguments, int index, String option) {
@@ -383,6 +379,13 @@ String _requiredValue(List<String> arguments, int index, String option) {
     throw FormatException('$option requires a value');
   }
   return arguments[index];
+}
+
+(String, String)? _splitLongOption(String argument) {
+  if (!argument.startsWith('--')) return null;
+  final separator = argument.indexOf('=');
+  if (separator < 3) return null;
+  return (argument.substring(0, separator), argument.substring(separator + 1));
 }
 
 String _requestId(String prefix) =>
