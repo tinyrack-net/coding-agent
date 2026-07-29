@@ -45,7 +45,7 @@ sealed class ScheduleCadence {
       ),
       'cron' => CronScheduleCadence(
         expression: _nonEmpty(json['expression'], 'cadence.expression'),
-        timezone: _optionalNonEmpty(json['timezone'], 'cadence.timezone'),
+        timezone: _optionalNonEmptyField(json, 'timezone', 'cadence.timezone'),
       ),
       _ => throw FormatException(
         'Unknown schedule cadence type: ${json['type']}',
@@ -112,6 +112,7 @@ final class ScheduleNewAgentConfig {
   final bool? archiveOnFinish;
   final String? isolation;
   final String? title;
+
   /// Distinguishes an omitted title from the explicit JSON value `null`.
   final bool hasTitle;
   final String? approvalPolicy;
@@ -125,46 +126,60 @@ final class ScheduleNewAgentConfig {
 
   factory ScheduleNewAgentConfig.fromJson(Object? value) {
     final json = _map(value, 'target.config');
-    final isolation = _optionalString(json['isolation'], 'config.isolation');
+    final isolation = _optionalStringField(
+      json,
+      'isolation',
+      'config.isolation',
+    );
     if (isolation != null && isolation != 'local' && isolation != 'worktree') {
       throw FormatException('Unknown schedule isolation: $isolation');
     }
     return ScheduleNewAgentConfig(
-      provider: _nonEmpty(json['provider'], 'config.provider'),
+      provider: _string(json['provider'], 'config.provider'),
       cwd: _nonEmpty(json['cwd'], 'config.cwd'),
-      modeId: _optionalNonEmpty(json['modeId'], 'config.modeId'),
-      model: _optionalNonEmpty(json['model'], 'config.model'),
-      thinkingOptionId: _optionalNonEmpty(
-        json['thinkingOptionId'],
+      modeId: _optionalNonEmptyField(json, 'modeId', 'config.modeId'),
+      model: _optionalNonEmptyField(json, 'model', 'config.model'),
+      thinkingOptionId: _optionalNonEmptyField(
+        json,
+        'thinkingOptionId',
         'config.thinkingOptionId',
       ),
-      archiveOnFinish: _optionalBool(
-        json['archiveOnFinish'],
+      archiveOnFinish: _optionalBoolField(
+        json,
+        'archiveOnFinish',
         'config.archiveOnFinish',
       ),
       isolation: isolation,
       title: _optionalNullableNonEmpty(json, 'title', 'config.title'),
       hasTitle: json.containsKey('title'),
-      approvalPolicy: _optionalNonEmpty(
-        json['approvalPolicy'],
+      approvalPolicy: _optionalNonEmptyField(
+        json,
+        'approvalPolicy',
         'config.approvalPolicy',
       ),
-      sandboxMode: _optionalNonEmpty(json['sandboxMode'], 'config.sandboxMode'),
-      networkAccess: _optionalBool(
-        json['networkAccess'],
+      sandboxMode: _optionalNonEmptyField(
+        json,
+        'sandboxMode',
+        'config.sandboxMode',
+      ),
+      networkAccess: _optionalBoolField(
+        json,
+        'networkAccess',
         'config.networkAccess',
       ),
-      webSearch: _optionalBool(json['webSearch'], 'config.webSearch'),
-      featureValues: _optionalMap(
-        json['featureValues'],
+      webSearch: _optionalBoolField(json, 'webSearch', 'config.webSearch'),
+      featureValues: _optionalMapField(
+        json,
+        'featureValues',
         'config.featureValues',
       ),
-      extra: _optionalMap(json['extra'], 'config.extra'),
-      systemPrompt: _optionalString(
-        json['systemPrompt'],
+      extra: _scheduleExtra(json),
+      systemPrompt: _optionalStringField(
+        json,
+        'systemPrompt',
         'config.systemPrompt',
       ),
-      mcpServers: _optionalMap(json['mcpServers'], 'config.mcpServers'),
+      mcpServers: _optionalMapField(json, 'mcpServers', 'config.mcpServers'),
     );
   }
 
@@ -258,6 +273,7 @@ final class ScheduleRun {
     required this.status,
     required this.agentId,
     required this.workspaceId,
+    this.hasWorkspaceId = false,
     required this.output,
     required this.error,
   });
@@ -269,23 +285,27 @@ final class ScheduleRun {
   final ScheduleRunStatus status;
   final String? agentId;
   final String? workspaceId;
+
+  /// Distinguishes an omitted workspace id from explicit JSON `null`.
+  final bool hasWorkspaceId;
   final String? output;
   final String? error;
 
   factory ScheduleRun.fromJson(Object? value) {
     final json = _map(value, 'run');
-    final agentId = _optionalString(json['agentId'], 'run.agentId');
+    final agentId = _requiredNullableString(json, 'agentId', 'run.agentId');
     if (agentId != null) _validateGuid(agentId, 'run.agentId');
     return ScheduleRun(
       id: _string(json['id'], 'run.id'),
       scheduledFor: _string(json['scheduledFor'], 'run.scheduledFor'),
       startedAt: _string(json['startedAt'], 'run.startedAt'),
-      endedAt: _optionalString(json['endedAt'], 'run.endedAt'),
+      endedAt: _requiredNullableString(json, 'endedAt', 'run.endedAt'),
       status: ScheduleRunStatus.fromWire(json['status']),
       agentId: agentId,
       workspaceId: _optionalString(json['workspaceId'], 'run.workspaceId'),
-      output: _optionalString(json['output'], 'run.output'),
-      error: _optionalString(json['error'], 'run.error'),
+      hasWorkspaceId: json.containsKey('workspaceId'),
+      output: _requiredNullableString(json, 'output', 'run.output'),
+      error: _requiredNullableString(json, 'error', 'run.error'),
     );
   }
 
@@ -296,7 +316,7 @@ final class ScheduleRun {
     'endedAt': endedAt,
     'status': status.wireName,
     'agentId': agentId,
-    if (workspaceId != null) 'workspaceId': workspaceId,
+    if (hasWorkspaceId || workspaceId != null) 'workspaceId': workspaceId,
     'output': output,
     'error': error,
   };
@@ -306,6 +326,7 @@ final class ScheduleRun {
     ScheduleRunStatus? status,
     Object? agentId = _absent,
     Object? workspaceId = _absent,
+    bool? hasWorkspaceId,
     Object? output = _absent,
     Object? error = _absent,
   }) => ScheduleRun(
@@ -318,6 +339,11 @@ final class ScheduleRun {
     workspaceId: identical(workspaceId, _absent)
         ? this.workspaceId
         : workspaceId as String?,
+    hasWorkspaceId:
+        hasWorkspaceId ??
+        (identical(workspaceId, _absent)
+            ? this.hasWorkspaceId
+            : workspaceId != null),
     output: identical(output, _absent) ? this.output : output as String?,
     error: identical(error, _absent) ? this.error : error as String?,
   );
@@ -358,18 +384,34 @@ final class ScheduleSummary {
     final json = _map(value, 'schedule');
     return ScheduleSummary(
       id: _string(json['id'], 'schedule.id'),
-      name: _optionalString(json['name'], 'schedule.name'),
+      name: _requiredNullableString(json, 'name', 'schedule.name'),
       prompt: _minLengthOne(json['prompt'], 'schedule.prompt'),
       cadence: ScheduleCadence.fromJson(json['cadence']),
       target: ScheduleTarget.fromJson(json['target']),
       status: ScheduleStatus.fromWire(json['status']),
       createdAt: _string(json['createdAt'], 'schedule.createdAt'),
       updatedAt: _string(json['updatedAt'], 'schedule.updatedAt'),
-      nextRunAt: _optionalString(json['nextRunAt'], 'schedule.nextRunAt'),
-      lastRunAt: _optionalString(json['lastRunAt'], 'schedule.lastRunAt'),
-      pausedAt: _optionalString(json['pausedAt'], 'schedule.pausedAt'),
-      expiresAt: _optionalString(json['expiresAt'], 'schedule.expiresAt'),
-      maxRuns: _optionalPositiveInt(json['maxRuns'], 'schedule.maxRuns'),
+      nextRunAt: _requiredNullableString(
+        json,
+        'nextRunAt',
+        'schedule.nextRunAt',
+      ),
+      lastRunAt: _requiredNullableString(
+        json,
+        'lastRunAt',
+        'schedule.lastRunAt',
+      ),
+      pausedAt: _requiredNullableString(json, 'pausedAt', 'schedule.pausedAt'),
+      expiresAt: _requiredNullableString(
+        json,
+        'expiresAt',
+        'schedule.expiresAt',
+      ),
+      maxRuns: _requiredNullablePositiveInt(
+        json,
+        'maxRuns',
+        'schedule.maxRuns',
+      ),
     );
   }
 
@@ -482,12 +524,12 @@ final class ScheduleCreateRequest {
     return ScheduleCreateRequest(
       requestId: _string(json['requestId'], 'requestId'),
       prompt: _minLengthOne(json['prompt'], 'prompt'),
-      name: _optionalString(json['name'], 'name'),
+      name: _optionalStringField(json, 'name', 'name'),
       cadence: ScheduleCadence.fromJson(json['cadence']),
       target: ScheduleTarget.fromJson(json['target'], allowSelf: true),
-      maxRuns: _optionalPositiveInt(json['maxRuns'], 'maxRuns'),
-      expiresAt: _optionalString(json['expiresAt'], 'expiresAt'),
-      runOnCreate: _optionalBool(json['runOnCreate'], 'runOnCreate'),
+      maxRuns: _optionalPositiveIntField(json, 'maxRuns', 'maxRuns'),
+      expiresAt: _optionalStringField(json, 'expiresAt', 'expiresAt'),
+      runOnCreate: _optionalBoolField(json, 'runOnCreate', 'runOnCreate'),
     );
   }
 
@@ -595,11 +637,13 @@ final class ScheduleUpdateRequest {
     if (changes['name'] case final value?) {
       _string(value, 'name');
     }
-    if (changes['prompt'] case final value?) {
-      _minLengthOne(value, 'prompt');
+    if (changes.containsKey('prompt')) {
+      _minLengthOne(changes['prompt'], 'prompt');
     }
-    if (changes['cadence'] case final value?) {
-      changes['cadence'] = ScheduleCadence.fromJson(value).toJson();
+    if (changes.containsKey('cadence')) {
+      changes['cadence'] = ScheduleCadence.fromJson(
+        changes['cadence'],
+      ).toJson();
     }
     if (changes['maxRuns'] case final value?) {
       _positiveInt(value, 'maxRuns');
@@ -607,8 +651,8 @@ final class ScheduleUpdateRequest {
     if (changes['expiresAt'] case final value?) {
       _string(value, 'expiresAt');
     }
-    if (changes['newAgentConfig'] case final value?) {
-      final config = _map(value, 'newAgentConfig');
+    if (changes.containsKey('newAgentConfig')) {
+      final config = _map(changes['newAgentConfig'], 'newAgentConfig');
       const nullableStrings = {'model', 'modeId', 'thinkingOptionId'};
       const strings = {'provider', 'cwd'};
       final normalized = <String, Object?>{};
@@ -626,7 +670,7 @@ final class ScheduleUpdateRequest {
         } else if (nullableStrings.contains(entry.key)) {
           normalized[entry.key] = null;
         } else if (entry.key == 'archiveOnFinish') {
-          normalized[entry.key] = _optionalBool(
+          normalized[entry.key] = _bool(
             entry.value,
             'newAgentConfig.archiveOnFinish',
           );
@@ -655,6 +699,337 @@ final class ScheduleUpdateRequest {
   };
 }
 
+sealed class ScheduleRpcResponse {
+  const ScheduleRpcResponse();
+
+  String get type;
+  String get requestId;
+  String? get error;
+  Map<String, Object?> toJson();
+
+  static ScheduleRpcResponse fromJson(
+    Map<String, Object?> json,
+  ) => switch (json['type']) {
+    ScheduleCreateResponse.wireType => ScheduleCreateResponse.fromJson(json),
+    ScheduleListResponse.wireType => ScheduleListResponse.fromJson(json),
+    ScheduleInspectResponse.wireType => ScheduleInspectResponse.fromJson(json),
+    ScheduleLogsResponse.wireType => ScheduleLogsResponse.fromJson(json),
+    SchedulePauseResponse.wireType => SchedulePauseResponse.fromJson(json),
+    ScheduleResumeResponse.wireType => ScheduleResumeResponse.fromJson(json),
+    ScheduleDeleteResponse.wireType => ScheduleDeleteResponse.fromJson(json),
+    ScheduleRunOnceResponse.wireType => ScheduleRunOnceResponse.fromJson(json),
+    ScheduleUpdateResponse.wireType => ScheduleUpdateResponse.fromJson(json),
+    final type => throw FormatException(
+      'Unknown schedule response type: $type',
+    ),
+  };
+}
+
+abstract base class _ScheduleSummaryResponse extends ScheduleRpcResponse {
+  const _ScheduleSummaryResponse({
+    required this.requestId,
+    required this.schedule,
+    required this.error,
+  });
+
+  @override
+  final String requestId;
+  final ScheduleSummary? schedule;
+  @override
+  final String? error;
+
+  @override
+  Map<String, Object?> toJson() => {
+    'type': type,
+    'payload': {
+      'requestId': requestId,
+      'schedule': schedule?.toJson(),
+      'error': error,
+    },
+  };
+}
+
+final class ScheduleCreateResponse extends _ScheduleSummaryResponse {
+  const ScheduleCreateResponse({
+    required super.requestId,
+    required super.schedule,
+    required super.error,
+  });
+
+  static const wireType = 'schedule/create/response';
+
+  factory ScheduleCreateResponse.fromJson(Map<String, Object?> json) {
+    final payload = _responsePayload(json, wireType);
+    final fields = _summaryResponseFields(payload);
+    return ScheduleCreateResponse(
+      requestId: fields.requestId,
+      schedule: fields.schedule,
+      error: fields.error,
+    );
+  }
+
+  @override
+  String get type => wireType;
+}
+
+final class SchedulePauseResponse extends _ScheduleSummaryResponse {
+  const SchedulePauseResponse({
+    required super.requestId,
+    required super.schedule,
+    required super.error,
+  });
+
+  static const wireType = 'schedule/pause/response';
+
+  factory SchedulePauseResponse.fromJson(Map<String, Object?> json) {
+    final payload = _responsePayload(json, wireType);
+    final fields = _summaryResponseFields(payload);
+    return SchedulePauseResponse(
+      requestId: fields.requestId,
+      schedule: fields.schedule,
+      error: fields.error,
+    );
+  }
+
+  @override
+  String get type => wireType;
+}
+
+final class ScheduleResumeResponse extends _ScheduleSummaryResponse {
+  const ScheduleResumeResponse({
+    required super.requestId,
+    required super.schedule,
+    required super.error,
+  });
+
+  static const wireType = 'schedule/resume/response';
+
+  factory ScheduleResumeResponse.fromJson(Map<String, Object?> json) {
+    final payload = _responsePayload(json, wireType);
+    final fields = _summaryResponseFields(payload);
+    return ScheduleResumeResponse(
+      requestId: fields.requestId,
+      schedule: fields.schedule,
+      error: fields.error,
+    );
+  }
+
+  @override
+  String get type => wireType;
+}
+
+abstract base class _StoredScheduleResponse extends ScheduleRpcResponse {
+  const _StoredScheduleResponse({
+    required this.requestId,
+    required this.schedule,
+    required this.error,
+  });
+
+  @override
+  final String requestId;
+  final StoredSchedule? schedule;
+  @override
+  final String? error;
+
+  @override
+  Map<String, Object?> toJson() => {
+    'type': type,
+    'payload': {
+      'requestId': requestId,
+      'schedule': schedule?.toJson(),
+      'error': error,
+    },
+  };
+}
+
+final class ScheduleInspectResponse extends _StoredScheduleResponse {
+  const ScheduleInspectResponse({
+    required super.requestId,
+    required super.schedule,
+    required super.error,
+  });
+
+  static const wireType = 'schedule/inspect/response';
+
+  factory ScheduleInspectResponse.fromJson(Map<String, Object?> json) {
+    final payload = _responsePayload(json, wireType);
+    final fields = _storedResponseFields(payload);
+    return ScheduleInspectResponse(
+      requestId: fields.requestId,
+      schedule: fields.schedule,
+      error: fields.error,
+    );
+  }
+
+  @override
+  String get type => wireType;
+}
+
+final class ScheduleRunOnceResponse extends _StoredScheduleResponse {
+  const ScheduleRunOnceResponse({
+    required super.requestId,
+    required super.schedule,
+    required super.error,
+  });
+
+  static const wireType = 'schedule/run-once/response';
+
+  factory ScheduleRunOnceResponse.fromJson(Map<String, Object?> json) {
+    final payload = _responsePayload(json, wireType);
+    final fields = _storedResponseFields(payload);
+    return ScheduleRunOnceResponse(
+      requestId: fields.requestId,
+      schedule: fields.schedule,
+      error: fields.error,
+    );
+  }
+
+  @override
+  String get type => wireType;
+}
+
+final class ScheduleUpdateResponse extends _StoredScheduleResponse {
+  const ScheduleUpdateResponse({
+    required super.requestId,
+    required super.schedule,
+    required super.error,
+  });
+
+  static const wireType = 'schedule/update/response';
+
+  factory ScheduleUpdateResponse.fromJson(Map<String, Object?> json) {
+    final payload = _responsePayload(json, wireType);
+    final fields = _storedResponseFields(payload);
+    return ScheduleUpdateResponse(
+      requestId: fields.requestId,
+      schedule: fields.schedule,
+      error: fields.error,
+    );
+  }
+
+  @override
+  String get type => wireType;
+}
+
+final class ScheduleListResponse extends ScheduleRpcResponse {
+  const ScheduleListResponse({
+    required this.requestId,
+    required this.schedules,
+    required this.error,
+  });
+
+  static const wireType = 'schedule/list/response';
+  @override
+  final String requestId;
+  final List<ScheduleSummary> schedules;
+  @override
+  final String? error;
+
+  factory ScheduleListResponse.fromJson(Map<String, Object?> json) {
+    final payload = _responsePayload(json, wireType);
+    return ScheduleListResponse(
+      requestId: _string(payload['requestId'], 'payload.requestId'),
+      schedules: _list(
+        payload['schedules'],
+        'payload.schedules',
+      ).map(ScheduleSummary.fromJson).toList(growable: false),
+      error: _requiredNullableString(payload, 'error', 'payload.error'),
+    );
+  }
+
+  @override
+  String get type => wireType;
+
+  @override
+  Map<String, Object?> toJson() => {
+    'type': type,
+    'payload': {
+      'requestId': requestId,
+      'schedules': schedules
+          .map((schedule) => schedule.toJson())
+          .toList(growable: false),
+      'error': error,
+    },
+  };
+}
+
+final class ScheduleLogsResponse extends ScheduleRpcResponse {
+  const ScheduleLogsResponse({
+    required this.requestId,
+    required this.runs,
+    required this.error,
+  });
+
+  static const wireType = 'schedule/logs/response';
+  @override
+  final String requestId;
+  final List<ScheduleRun> runs;
+  @override
+  final String? error;
+
+  factory ScheduleLogsResponse.fromJson(Map<String, Object?> json) {
+    final payload = _responsePayload(json, wireType);
+    return ScheduleLogsResponse(
+      requestId: _string(payload['requestId'], 'payload.requestId'),
+      runs: _list(
+        payload['runs'],
+        'payload.runs',
+      ).map(ScheduleRun.fromJson).toList(growable: false),
+      error: _requiredNullableString(payload, 'error', 'payload.error'),
+    );
+  }
+
+  @override
+  String get type => wireType;
+
+  @override
+  Map<String, Object?> toJson() => {
+    'type': type,
+    'payload': {
+      'requestId': requestId,
+      'runs': runs.map((run) => run.toJson()).toList(growable: false),
+      'error': error,
+    },
+  };
+}
+
+final class ScheduleDeleteResponse extends ScheduleRpcResponse {
+  const ScheduleDeleteResponse({
+    required this.requestId,
+    required this.scheduleId,
+    required this.error,
+  });
+
+  static const wireType = 'schedule/delete/response';
+  @override
+  final String requestId;
+  final String scheduleId;
+  @override
+  final String? error;
+
+  factory ScheduleDeleteResponse.fromJson(Map<String, Object?> json) {
+    final payload = _responsePayload(json, wireType);
+    return ScheduleDeleteResponse(
+      requestId: _string(payload['requestId'], 'payload.requestId'),
+      scheduleId: _string(payload['scheduleId'], 'payload.scheduleId'),
+      error: _requiredNullableString(payload, 'error', 'payload.error'),
+    );
+  }
+
+  @override
+  String get type => wireType;
+
+  @override
+  Map<String, Object?> toJson() => {
+    'type': type,
+    'payload': {
+      'requestId': requestId,
+      'scheduleId': scheduleId,
+      'error': error,
+    },
+  };
+}
+
 Map<String, Object?> scheduleResponse({
   required String requestType,
   required String requestId,
@@ -664,13 +1039,60 @@ Map<String, Object?> scheduleResponse({
   'payload': {'requestId': requestId, ...payload},
 };
 
+Map<String, Object?> _responsePayload(Map<String, Object?> json, String type) {
+  _expectType(json, type);
+  return _map(json['payload'], 'payload');
+}
+
+({String requestId, ScheduleSummary? schedule, String? error})
+_summaryResponseFields(Map<String, Object?> payload) => (
+  requestId: _string(payload['requestId'], 'payload.requestId'),
+  schedule: _requiredNullableValue(
+    payload,
+    'schedule',
+    'payload.schedule',
+    ScheduleSummary.fromJson,
+  ),
+  error: _requiredNullableString(payload, 'error', 'payload.error'),
+);
+
+({String requestId, StoredSchedule? schedule, String? error})
+_storedResponseFields(Map<String, Object?> payload) => (
+  requestId: _string(payload['requestId'], 'payload.requestId'),
+  schedule: _requiredNullableValue(
+    payload,
+    'schedule',
+    'payload.schedule',
+    StoredSchedule.fromJson,
+  ),
+  error: _requiredNullableString(payload, 'error', 'payload.error'),
+);
+
 Map<String, Object?> _map(Object? value, String field) {
   if (value is Map) return Map<String, Object?>.from(value);
   throw FormatException('$field must be an object');
 }
 
-Map<String, Object?>? _optionalMap(Object? value, String field) =>
-    value == null ? null : _map(value, field);
+Map<String, Object?>? _optionalMapField(
+  Map<String, Object?> json,
+  String key,
+  String field,
+) {
+  if (!json.containsKey(key)) return null;
+  return _map(json[key], field);
+}
+
+Map<String, Object?>? _scheduleExtra(Map<String, Object?> json) {
+  if (!json.containsKey('extra')) return null;
+  final extra = _map(json['extra'], 'config.extra');
+  final normalized = <String, Object?>{};
+  for (final key in const ['codex', 'claude']) {
+    if (extra.containsKey(key)) {
+      normalized[key] = _map(extra[key], 'config.extra.$key');
+    }
+  }
+  return normalized;
+}
 
 List<Object?> _list(Object? value, String field) {
   if (value is List) return value;
@@ -697,8 +1119,23 @@ String _minLengthOne(Object? value, String field) {
 String? _optionalString(Object? value, String field) =>
     value == null ? null : _string(value, field);
 
-String? _optionalNonEmpty(Object? value, String field) =>
-    value == null ? null : _nonEmpty(value, field);
+String? _optionalStringField(
+  Map<String, Object?> json,
+  String key,
+  String field,
+) {
+  if (!json.containsKey(key)) return null;
+  return _string(json[key], field);
+}
+
+String? _optionalNonEmptyField(
+  Map<String, Object?> json,
+  String key,
+  String field,
+) {
+  if (!json.containsKey(key)) return null;
+  return _nonEmpty(json[key], field);
+}
 
 String? _optionalNullableNonEmpty(
   Map<String, Object?> json,
@@ -709,10 +1146,14 @@ String? _optionalNullableNonEmpty(
   return _nonEmpty(json[key], field);
 }
 
-bool? _optionalBool(Object? value, String field) {
-  if (value == null) return null;
+bool _bool(Object? value, String field) {
   if (value is bool) return value;
   throw FormatException('$field must be a boolean');
+}
+
+bool? _optionalBoolField(Map<String, Object?> json, String key, String field) {
+  if (!json.containsKey(key)) return null;
+  return _bool(json[key], field);
 }
 
 int _positiveInt(Object? value, String field) {
@@ -720,8 +1161,48 @@ int _positiveInt(Object? value, String field) {
   throw FormatException('$field must be a positive integer');
 }
 
-int? _optionalPositiveInt(Object? value, String field) =>
-    value == null ? null : _positiveInt(value, field);
+int? _optionalPositiveIntField(
+  Map<String, Object?> json,
+  String key,
+  String field,
+) {
+  if (!json.containsKey(key)) return null;
+  return _positiveInt(json[key], field);
+}
+
+String? _requiredNullableString(
+  Map<String, Object?> json,
+  String key,
+  String field,
+) {
+  if (!json.containsKey(key)) {
+    throw FormatException('$field is required');
+  }
+  return json[key] == null ? null : _string(json[key], field);
+}
+
+int? _requiredNullablePositiveInt(
+  Map<String, Object?> json,
+  String key,
+  String field,
+) {
+  if (!json.containsKey(key)) {
+    throw FormatException('$field is required');
+  }
+  return json[key] == null ? null : _positiveInt(json[key], field);
+}
+
+T? _requiredNullableValue<T>(
+  Map<String, Object?> json,
+  String key,
+  String field,
+  T Function(Object? value) decode,
+) {
+  if (!json.containsKey(key)) {
+    throw FormatException('$field is required');
+  }
+  return json[key] == null ? null : decode(json[key]);
+}
 
 String _guid(Object? value, String field) {
   final result = _string(value, field);

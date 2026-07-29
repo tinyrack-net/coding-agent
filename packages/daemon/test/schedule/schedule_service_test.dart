@@ -346,7 +346,9 @@ void main() {
               networkAccess: true,
               webSearch: false,
               featureValues: const {'feature': true},
-              extra: const {'extra': true},
+              extra: const {
+                'codex': {'extra': true},
+              },
               systemPrompt: 'system',
               mcpServers: const {'server': <String, Object?>{}},
             ),
@@ -388,7 +390,9 @@ void main() {
       expect(config.networkAccess, isTrue);
       expect(config.webSearch, isFalse);
       expect(config.featureValues, {'feature': true});
-      expect(config.extra, {'extra': true});
+      expect(config.extra, {
+        'codex': {'extra': true},
+      });
       expect(config.systemPrompt, 'system');
       expect(config.mcpServers, {'server': <String, Object?>{}});
 

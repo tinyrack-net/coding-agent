@@ -85,53 +85,55 @@ void main() {
     });
   });
 
-  test('wire parsing preserves untrimmed prompts and explicit nullable title', () {
-    final request = ScheduleCreateRequest.fromJson({
-      'type': 'schedule/create',
-      'requestId': 'request-2',
-      'prompt': '  preserve this prompt  ',
-      'cadence': {'type': 'every', 'everyMs': 60000},
-      'target': {
-        'type': 'new-agent',
-        'config': {
-          'provider': ' codex ',
-          'cwd': ' C:/repo ',
-          'title': null,
+  test(
+    'wire parsing preserves untrimmed prompts and explicit nullable title',
+    () {
+      final request = ScheduleCreateRequest.fromJson({
+        'type': 'schedule/create',
+        'requestId': 'request-2',
+        'prompt': '  preserve this prompt  ',
+        'cadence': {'type': 'every', 'everyMs': 60000},
+        'target': {
+          'type': 'new-agent',
+          'config': {'provider': ' codex ', 'cwd': ' C:/repo ', 'title': null},
         },
-      },
-    });
+      });
 
-    expect(request.prompt, '  preserve this prompt  ');
-    expect(request.toJson()['prompt'], '  preserve this prompt  ');
-    final target = request.toJson()['target']! as Map<String, Object?>;
-    final config = target['config']! as Map<String, Object?>;
-    expect(config, containsPair('provider', 'codex'));
-    expect(config, containsPair('cwd', 'C:/repo'));
-    expect(config, containsPair('title', null));
-  });
+      expect(request.prompt, '  preserve this prompt  ');
+      expect(request.toJson()['prompt'], '  preserve this prompt  ');
+      final target = request.toJson()['target']! as Map<String, Object?>;
+      final config = target['config']! as Map<String, Object?>;
+      expect(config, containsPair('provider', ' codex '));
+      expect(config, containsPair('cwd', 'C:/repo'));
+      expect(config, containsPair('title', null));
+    },
+  );
 
-  test('stored schedule accepts opaque date strings like the frozen schema', () {
-    final schedule = StoredSchedule.fromJson({
-      'id': 'opaque',
-      'name': null,
-      'prompt': ' ',
-      'cadence': {'type': 'every', 'everyMs': 1},
-      'target': {'type': 'agent', 'agentId': _agentId},
-      'status': 'active',
-      'createdAt': 'not-an-iso-date',
-      'updatedAt': '',
-      'nextRunAt': null,
-      'lastRunAt': null,
-      'pausedAt': null,
-      'expiresAt': 'opaque-expiry',
-      'maxRuns': null,
-      'runs': const [],
-    });
+  test(
+    'stored schedule accepts opaque date strings like the frozen schema',
+    () {
+      final schedule = StoredSchedule.fromJson({
+        'id': 'opaque',
+        'name': null,
+        'prompt': ' ',
+        'cadence': {'type': 'every', 'everyMs': 1},
+        'target': {'type': 'agent', 'agentId': _agentId},
+        'status': 'active',
+        'createdAt': 'not-an-iso-date',
+        'updatedAt': '',
+        'nextRunAt': null,
+        'lastRunAt': null,
+        'pausedAt': null,
+        'expiresAt': 'opaque-expiry',
+        'maxRuns': null,
+        'runs': const [],
+      });
 
-    expect(schedule.summary.prompt, ' ');
-    expect(schedule.summary.createdAt, 'not-an-iso-date');
-    expect(schedule.summary.expiresAt, 'opaque-expiry');
-  });
+      expect(schedule.summary.prompt, ' ');
+      expect(schedule.summary.createdAt, 'not-an-iso-date');
+      expect(schedule.summary.expiresAt, 'opaque-expiry');
+    },
+  );
 
   test('stored schedule and run preserve the frozen wire shape', () {
     final schedule = StoredSchedule.fromJson({
@@ -203,14 +205,8 @@ void main() {
       ['running', 'succeeded', 'failed'].map(ScheduleRunStatus.fromWire),
       ScheduleRunStatus.values,
     );
-    expect(
-      () => ScheduleStatus.fromWire('future'),
-      throwsFormatException,
-    );
-    expect(
-      () => ScheduleRunStatus.fromWire('future'),
-      throwsFormatException,
-    );
+    expect(() => ScheduleStatus.fromWire('future'), throwsFormatException);
+    expect(() => ScheduleRunStatus.fromWire('future'), throwsFormatException);
     expect(
       ScheduleCadence.fromJson({'type': 'every', 'everyMs': 10}).toJson(),
       {'type': 'every', 'everyMs': 10},
@@ -221,11 +217,7 @@ void main() {
         'expression': ' 0 9 * * * ',
         'timezone': ' Asia/Seoul ',
       }).toJson(),
-      {
-        'type': 'cron',
-        'expression': '0 9 * * *',
-        'timezone': 'Asia/Seoul',
-      },
+      {'type': 'cron', 'expression': '0 9 * * *', 'timezone': 'Asia/Seoul'},
     );
     expect(
       () => ScheduleCadence.fromJson({'type': 'future'}),
@@ -255,7 +247,7 @@ void main() {
       },
     });
     expect(config.toJson(), {
-      'provider': 'codex',
+      'provider': ' codex ',
       'cwd': 'C:/repo',
       'modeId': 'auto',
       'model': 'gpt-5.4',
@@ -291,17 +283,11 @@ void main() {
     }, allowSelf: true);
     expect(self.toJson(), {'type': 'self', 'agentId': _agentId});
     expect(
-      ScheduleTarget.fromJson({
-        'type': 'agent',
-        'agentId': _agentId,
-      }).toJson(),
+      ScheduleTarget.fromJson({'type': 'agent', 'agentId': _agentId}).toJson(),
       {'type': 'agent', 'agentId': _agentId},
     );
     expect(
-      () => ScheduleTarget.fromJson({
-        'type': 'self',
-        'agentId': _agentId,
-      }),
+      () => ScheduleTarget.fromJson({'type': 'self', 'agentId': _agentId}),
       throwsFormatException,
     );
 
@@ -336,13 +322,15 @@ void main() {
       'error': 'none',
     });
     expect(
-      completedRun.copyWith(
-        endedAt: null,
-        agentId: null,
-        workspaceId: null,
-        output: null,
-        error: null,
-      ).toJson(),
+      completedRun
+          .copyWith(
+            endedAt: null,
+            agentId: null,
+            workspaceId: null,
+            output: null,
+            error: null,
+          )
+          .toJson(),
       isNot(contains('workspaceId')),
     );
 
@@ -378,9 +366,10 @@ void main() {
     expect(copied.status, ScheduleStatus.paused);
     expect(copied.nextRunAt, isNull);
     expect(
-      StoredSchedule(summary: summary, runs: const [run])
-          .copyWith(summary: copied, runs: const [])
-          .runs,
+      StoredSchedule(
+        summary: summary,
+        runs: const [run],
+      ).copyWith(summary: copied, runs: const []).runs,
       isEmpty,
     );
 
@@ -443,4 +432,243 @@ void main() {
       },
     );
   });
+
+  test('schedule schemas enforce frozen optional and nullable boundaries', () {
+    expect(
+      () => ScheduleCadence.fromJson({
+        'type': 'cron',
+        'expression': '* * * * *',
+        'timezone': null,
+      }),
+      throwsFormatException,
+    );
+
+    const optionalConfigFields = [
+      'modeId',
+      'model',
+      'thinkingOptionId',
+      'archiveOnFinish',
+      'isolation',
+      'approvalPolicy',
+      'sandboxMode',
+      'networkAccess',
+      'webSearch',
+      'featureValues',
+      'extra',
+      'systemPrompt',
+      'mcpServers',
+    ];
+    for (final field in optionalConfigFields) {
+      expect(
+        () => ScheduleNewAgentConfig.fromJson({
+          'provider': 'codex',
+          'cwd': 'C:/repo',
+          field: null,
+        }),
+        throwsFormatException,
+        reason: '$field is optional but not nullable',
+      );
+    }
+    expect(
+      ScheduleNewAgentConfig.fromJson({
+        'provider': '',
+        'cwd': 'C:/repo',
+        'extra': {
+          'codex': {'reasoning': 'high'},
+          'unknown': {'removed': true},
+        },
+      }).toJson(),
+      {
+        'provider': '',
+        'cwd': 'C:/repo',
+        'extra': {
+          'codex': {'reasoning': 'high'},
+        },
+      },
+    );
+
+    for (final field in ['name', 'maxRuns', 'expiresAt', 'runOnCreate']) {
+      expect(
+        () => ScheduleCreateRequest.fromJson({
+          'type': 'schedule/create',
+          'requestId': 'request',
+          'prompt': 'prompt',
+          'cadence': {'type': 'every', 'everyMs': 1},
+          'target': {'type': 'agent', 'agentId': _agentId},
+          field: null,
+        }),
+        throwsFormatException,
+        reason: '$field is optional but not nullable',
+      );
+    }
+    expect(
+      () => ScheduleUpdateRequest.fromJson({
+        'type': 'schedule/update',
+        'requestId': 'request',
+        'scheduleId': 'schedule',
+        'newAgentConfig': {'archiveOnFinish': null},
+      }),
+      throwsFormatException,
+    );
+    for (final field in ['prompt', 'cadence', 'newAgentConfig']) {
+      expect(
+        () => ScheduleUpdateRequest.fromJson({
+          'type': 'schedule/update',
+          'requestId': 'request',
+          'scheduleId': 'schedule',
+          field: null,
+        }),
+        throwsFormatException,
+        reason: '$field is optional but not nullable',
+      );
+    }
+
+    final summary = _summaryJson();
+    for (final field in [
+      'name',
+      'nextRunAt',
+      'lastRunAt',
+      'pausedAt',
+      'expiresAt',
+      'maxRuns',
+    ]) {
+      expect(
+        () => ScheduleSummary.fromJson({...summary}..remove(field)),
+        throwsFormatException,
+        reason: '$field is required and nullable',
+      );
+    }
+    final run = _runJson();
+    for (final field in ['endedAt', 'agentId', 'output', 'error']) {
+      expect(
+        () => ScheduleRun.fromJson({...run}..remove(field)),
+        throwsFormatException,
+        reason: '$field is required and nullable',
+      );
+    }
+    expect(
+      ScheduleRun.fromJson(run).toJson(),
+      containsPair('workspaceId', null),
+    );
+    expect(
+      ScheduleRun.fromJson({...run}..remove('workspaceId')).toJson(),
+      isNot(contains('workspaceId')),
+    );
+  });
+
+  test(
+    'every frozen schedule response has a typed strict payload contract',
+    () {
+      final summary = _summaryJson();
+      final stored = {
+        ...summary,
+        'runs': [_runJson()],
+      };
+      final run = _runJson();
+      final responses = <Map<String, Object?>>[
+        _responseJson('create', schedule: summary),
+        {
+          'type': 'schedule/list/response',
+          'payload': {
+            'requestId': 'list',
+            'schedules': [summary],
+            'error': null,
+          },
+        },
+        _responseJson('inspect', schedule: stored),
+        {
+          'type': 'schedule/logs/response',
+          'payload': {
+            'requestId': 'logs',
+            'runs': [run],
+            'error': null,
+          },
+        },
+        _responseJson('pause', schedule: summary),
+        _responseJson('resume', schedule: null, error: 'not found'),
+        {
+          'type': 'schedule/delete/response',
+          'payload': {
+            'requestId': 'delete',
+            'scheduleId': 'schedule',
+            'error': null,
+          },
+        },
+        _responseJson('run-once', schedule: stored),
+        _responseJson('update', schedule: null, error: 'failed'),
+      ];
+
+      for (final responseJson in responses) {
+        final response = ScheduleRpcResponse.fromJson(responseJson);
+        expect(
+          response.toJson(),
+          responseJson,
+          reason: responseJson['type']! as String,
+        );
+      }
+      expect(
+        ScheduleRpcResponse.fromJson(responses.first),
+        isA<ScheduleCreateResponse>(),
+      );
+      expect(
+        ScheduleRpcResponse.fromJson(responses.last),
+        isA<ScheduleUpdateResponse>(),
+      );
+      for (final responseJson in responses) {
+        final malformed = Map<String, Object?>.from(responseJson);
+        malformed['payload'] = Map<String, Object?>.from(
+          responseJson['payload']! as Map,
+        )..remove('error');
+        expect(
+          () => ScheduleRpcResponse.fromJson(malformed),
+          throwsFormatException,
+          reason: '${responseJson['type']} requires payload.error',
+        );
+      }
+      expect(
+        () => ScheduleRpcResponse.fromJson({
+          'type': 'schedule/future/response',
+          'payload': const {},
+        }),
+        throwsFormatException,
+      );
+    },
+  );
 }
+
+Map<String, Object?> _summaryJson() => {
+  'id': 'schedule',
+  'name': null,
+  'prompt': 'prompt',
+  'cadence': {'type': 'every', 'everyMs': 60000},
+  'target': {'type': 'agent', 'agentId': _agentId},
+  'status': 'active',
+  'createdAt': 'created',
+  'updatedAt': 'updated',
+  'nextRunAt': null,
+  'lastRunAt': null,
+  'pausedAt': null,
+  'expiresAt': null,
+  'maxRuns': null,
+};
+
+Map<String, Object?> _runJson() => {
+  'id': 'run',
+  'scheduledFor': 'scheduled',
+  'startedAt': 'started',
+  'endedAt': null,
+  'status': 'running',
+  'agentId': null,
+  'workspaceId': null,
+  'output': null,
+  'error': null,
+};
+
+Map<String, Object?> _responseJson(
+  String operation, {
+  required Object? schedule,
+  String? error,
+}) => {
+  'type': 'schedule/$operation/response',
+  'payload': {'requestId': operation, 'schedule': schedule, 'error': error},
+};

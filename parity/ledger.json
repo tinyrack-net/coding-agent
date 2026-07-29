@@ -11002,12 +11002,12 @@
     },
     {
       "id": "source-unit:packages/protocol/src/schedule/cadence.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/protocol/lib/src/schedule/cadence.dart",
       "evidence": [
         "packages/protocol/test/schedule_test.dart"
       ],
-      "notes": null
+      "notes": "Ports exact rolling-interval conversion to five-field cron, including positive whole-minute validation, minute and hour divisor boundaries, one-hour and one-day canonical forms, and rejection where calendar boundaries would change the interval."
     },
     {
       "id": "source-unit:packages/protocol/src/schedule/cron-expression.ts",
@@ -11020,21 +11020,21 @@
     },
     {
       "id": "source-unit:packages/protocol/src/schedule/rpc-schemas.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/protocol/lib/src/messages/schedule.dart",
       "evidence": [
         "packages/protocol/test/schedule_test.dart"
       ],
-      "notes": null
+      "notes": "Ports every create, list, inspect, logs, pause, resume, delete, run-once, and update request/response family with typed Dart response dispatch, exact wire type names, strict required payload members, nullable schedule/error fields, self-only create target handling, update patch normalization, and unknown-field stripping."
     },
     {
       "id": "source-unit:packages/protocol/src/schedule/types.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/protocol/lib/src/messages/schedule.dart",
       "evidence": [
         "packages/protocol/test/schedule_test.dart"
       ],
-      "notes": null
+      "notes": "Ports schedule status, cadence, target, new-agent config, run, stored schedule, summary, and update contracts with frozen trim and provider-string semantics, exact optional-versus-nullable validation, required nullable members, GUID checks, constrained extra config projection, explicit-null workspaceId preservation, copy helpers, and full JSON round trips."
     },
     {
       "id": "source-unit:packages/protocol/src/terminal-activity.ts",
