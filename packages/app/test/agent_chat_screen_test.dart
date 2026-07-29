@@ -6,7 +6,9 @@ import 'package:coding_agent_app/screens/agent_chat_screen.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/timeline_provider.dart';
+import 'package:coding_agent_app/state/tool_call_detail_level_provider.dart';
 import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
+import 'package:coding_agent_app/tool_calls/detail_level/tool_call_projection.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -289,6 +291,73 @@ void main() {
     );
     expect(find.text('No messages yet. Say something below.'), findsOneWidget);
   });
+
+  testWidgets(
+    'overview setting groups consecutive tool calls in the timeline',
+    (tester) async {
+      final client = FakeDaemonClient();
+      await pumpChatScreen(
+        tester,
+        client: client,
+        beforePump: (container) {
+          unawaited(
+            container
+                .read(toolCallDetailLevelProvider.notifier)
+                .setLevel(ToolCallDetailLevel.overview),
+          );
+        },
+      );
+
+      client.eventsController
+        ..add(
+          RpcEvent(
+            type: MessageTypes.agentStreamEvent,
+            payload: AgentStreamPayload(
+              agentId: 'a1',
+              epoch: 0,
+              seq: 1,
+              item: const ToolCallItem(
+                id: 'tool-1',
+                toolName: 'Bash',
+                status: ToolCallStatus.success,
+                detail: ShellDetail(command: 'dart test'),
+              ),
+            ).toJson(),
+          ),
+        )
+        ..add(
+          RpcEvent(
+            type: MessageTypes.agentStreamEvent,
+            payload: AgentStreamPayload(
+              agentId: 'a1',
+              epoch: 0,
+              seq: 2,
+              item: const ToolCallItem(
+                id: 'tool-2',
+                toolName: 'Read',
+                status: ToolCallStatus.success,
+                detail: ReadDetail(path: 'lib/main.dart'),
+              ),
+            ).toJson(),
+          ),
+        );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Ran 1 command and read 1 file'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('tool-call-group-tool-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.ancestor(
+          of: find.text('Ran 1 command and read 1 file'),
+          matching: find.byType(Expander),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('created-agent handoff reconciles into the canonical user row', (
     tester,

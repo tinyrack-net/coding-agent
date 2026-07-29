@@ -15,7 +15,11 @@ import '../state/daemon_providers.dart';
 import '../state/provider_subagents_provider.dart';
 import '../state/subagents_provider.dart';
 import '../state/timeline_provider.dart';
+import '../state/tool_call_detail_level_provider.dart';
 import '../state/worktree_tabs_provider.dart';
+import '../tool_calls/detail_level/tool_call_overview.dart';
+import '../tool_calls/detail_level/tool_call_overview_view.dart';
+import '../tool_calls/detail_level/tool_call_projection.dart';
 import '../workspace/workspace_tab_model.dart';
 import '../workspace/workspace_file_open.dart';
 import '../widgets/composer.dart';
@@ -376,6 +380,15 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     _observedClient = ref.watch(daemonClientProvider);
     final agent = ref.watch(agentSummaryProvider(widget.agentId));
     final timeline = ref.watch(timelineProvider(widget.agentId));
+    final toolCallDetailLevel = ref.watch(toolCallDetailLevelProvider);
+    final projectedRows = _projectTimelineRows(
+      timeline,
+      toolCallDetailLevel,
+      isTurnActive:
+          agent?.runState == AgentRunState.initializing ||
+          agent?.runState == AgentRunState.running ||
+          agent?.runState == AgentRunState.awaitingPermission,
+    );
     final subagents = ref.watch(subagentsForParentProvider(widget.agentId));
     _observeAttention(agent);
 
@@ -450,7 +463,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
         const Divider(),
         ..._chatChildren(
           context,
-          timeline.displayItems.length,
+          projectedRows,
           timeline.loading,
           timeline.loadingOlder,
         ),
@@ -460,10 +473,11 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
 
   List<Widget> _chatChildren(
     BuildContext context,
-    int count,
+    List<_ProjectedTimelineRow> rows,
     bool loading,
     bool loadingOlder,
   ) {
+    final count = rows.length;
     return [
       Expanded(
         child: loading && count == 0
@@ -483,7 +497,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
                     itemCount: count,
                     itemBuilder: (context, index) => _TimelineRow(
                       agentId: widget.agentId,
-                      index: index,
+                      row: rows[index],
                       onOpenWorkspaceFile: widget.onOpenWorkspaceFile,
                     ),
                   ),
@@ -538,28 +552,70 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
   }
 }
 
-/// One timeline row: only rebuilds when its own item changes.
+final class _ProjectedTimelineRow {
+  const _ProjectedTimelineRow({
+    required this.display,
+    required this.group,
+    required this.isLastInSequence,
+  });
+
+  final TimelineDisplayItem display;
+  final ToolCallOverviewGroup? group;
+  final bool isLastInSequence;
+}
+
+List<_ProjectedTimelineRow> _projectTimelineRows(
+  TimelineState timeline,
+  ToolCallDetailLevel level, {
+  required bool isTurnActive,
+}) {
+  final tailDisplays = timeline.tailDisplayItems;
+  final headDisplays = timeline.headDisplayItems;
+  final tail = [for (final display in tailDisplays) display.item];
+  final head = [for (final display in headDisplays) display.item];
+  final projection = projectToolCallDetailLevel(
+    level: level,
+    tail: tail,
+    head: head,
+    preparedHistory: prepareToolCallHistory(level, tail),
+    isTurnActive: isTurnActive,
+  );
+  final sourceById = <String, TimelineDisplayItem>{
+    for (final display in [...tailDisplays, ...headDisplays])
+      display.item.id: display,
+  };
+  final items = [...projection.tail, ...projection.head];
+  return [
+    for (var index = 0; index < items.length; index++)
+      _ProjectedTimelineRow(
+        display: TimelineDisplayItem(
+          item: items[index],
+          userMessage: sourceById[items[index].id]?.userMessage,
+        ),
+        group: projection.groupsByHostId[items[index].id],
+        isLastInSequence:
+            projection.groupsByHostId.containsKey(items[index].id) &&
+            (index == items.length - 1 ||
+                !projection.groupsByHostId.containsKey(items[index + 1].id)),
+      ),
+  ];
+}
+
 class _TimelineRow extends ConsumerWidget {
   const _TimelineRow({
     required this.agentId,
-    required this.index,
+    required this.row,
     this.onOpenWorkspaceFile,
   });
 
   final String agentId;
-  final int index;
+  final _ProjectedTimelineRow row;
   final void Function(WorkspaceFileOpenRequest request)? onOpenWorkspaceFile;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final item = ref.watch(
-      timelineProvider(agentId).select(
-        (s) => index < s.displayItems.length ? s.displayItems[index] : null,
-      ),
-    );
-    if (item == null) return const SizedBox.shrink();
     final agent = ref.watch(agentSummaryProvider(agentId));
-    return TimelineItemTile(
+    Widget buildTile(TimelineDisplayItem item) => TimelineItemTile(
       key: ValueKey(item.item.id),
       item: item.item,
       userMessage: item.userMessage,
@@ -588,5 +644,19 @@ class _TimelineRow extends ConsumerWidget {
         }
       },
     );
+
+    final group = row.group;
+    if (group != null) {
+      return ToolCallOverviewGroupView(
+        key: ValueKey('overview-${group.run.id}'),
+        group: group,
+        isLastInSequence: row.isLastInSequence,
+        children: [
+          for (final call in group.run.calls)
+            buildTile(TimelineDisplayItem(item: call)),
+        ],
+      );
+    }
+    return buildTile(row.display);
   }
 }

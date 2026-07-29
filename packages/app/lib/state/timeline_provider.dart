@@ -70,8 +70,16 @@ class TimelineState {
   int get lastSeq => cursor?.endSeq ?? 0;
 
   List<TimelineDisplayItem> get displayItems => [
+    ...tailDisplayItems,
+    ...headDisplayItems,
+  ];
+
+  List<TimelineDisplayItem> get tailDisplayItems => [
     ..._displayCanonical(tailItems, userMessagePresentations),
     ..._displayPending(pendingTailUserMessages),
+  ];
+
+  List<TimelineDisplayItem> get headDisplayItems => [
     ..._displayCanonical(headItems, userMessagePresentations),
     ..._displayPending(pendingHeadUserMessages),
   ];

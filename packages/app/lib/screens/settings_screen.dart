@@ -11,10 +11,13 @@ import '../core/desktop/desktop_shell.dart';
 import '../core/provider_display.dart';
 import '../core/theme.dart';
 import '../state/agents_provider.dart';
+import '../state/appearance_provider.dart';
 import '../state/connection_settings_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/desktop_settings_provider.dart';
 import '../state/host_registry_provider.dart';
+import '../state/tool_call_detail_level_provider.dart';
+import '../tool_calls/detail_level/tool_call_projection.dart';
 import '../widgets/fluent/toast.dart';
 import 'host_settings_sections.dart';
 import 'keyboard_shortcuts_settings_section.dart';
@@ -41,6 +44,9 @@ class SettingsScreen extends ConsumerWidget {
       'keyboard' => const KeyboardShortcutsSettingsSection(
         key: ValueKey('keyboard'),
       ),
+      'appearance' => const _AppearanceSettingsSection(
+        key: ValueKey('appearance'),
+      ),
       'desktop' => _DesktopSettingsSection(key: const ValueKey('desktop')),
       'diagnostics' => const _DiagnosticsSettingsSection(
         key: ValueKey('diagnostics'),
@@ -49,6 +55,109 @@ class SettingsScreen extends ConsumerWidget {
       _ => _ConnectionSettingsSection(key: const ValueKey('general')),
     };
   }
+}
+
+class _AppearanceSettingsSection extends ConsumerWidget {
+  const _AppearanceSettingsSection({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = ref.watch(appearanceProvider);
+    final detailLevel = ref.watch(toolCallDetailLevelProvider);
+    return ScaffoldPage(
+      header: const PageHeader(title: Text('Appearance')),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              _SelectSettingsRow<AppThemeName>(
+                title: 'Theme',
+                subtitle: 'Choose the color theme used throughout the app.',
+                value: theme,
+                items: [
+                  for (final value in AppThemeName.values)
+                    ComboBoxItem(
+                      value: value,
+                      child: Text(
+                        value.name[0].toUpperCase() + value.name.substring(1),
+                      ),
+                    ),
+                ],
+                onChanged: (value) =>
+                    ref.read(appearanceProvider.notifier).setTheme(value),
+              ),
+              const SizedBox(height: 12),
+              _SelectSettingsRow<ToolCallDetailLevel>(
+                title: 'Tool call detail',
+                subtitle:
+                    'Show every tool call or combine consecutive calls into '
+                    'an overview.',
+                value: detailLevel,
+                items: const [
+                  ComboBoxItem(
+                    value: ToolCallDetailLevel.detailed,
+                    child: Text('Detailed'),
+                  ),
+                  ComboBoxItem(
+                    value: ToolCallDetailLevel.overview,
+                    child: Text('Overview'),
+                  ),
+                ],
+                onChanged: (value) => ref
+                    .read(toolCallDetailLevelProvider.notifier)
+                    .setLevel(value),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectSettingsRow<T> extends StatelessWidget {
+  const _SelectSettingsRow({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.items,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final T value;
+  final List<ComboBoxItem<T>> items;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title),
+            Text(subtitle, style: context.textStyles.bodySmall),
+          ],
+        ),
+      ),
+      const SizedBox(width: 16),
+      SizedBox(
+        width: 160,
+        child: ComboBox<T>(
+          value: value,
+          items: items,
+          onChanged: (next) {
+            if (next != null) onChanged(next);
+          },
+        ),
+      ),
+    ],
+  );
 }
 
 class _DiagnosticsSettingsSection extends ConsumerStatefulWidget {

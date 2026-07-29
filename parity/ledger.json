@@ -8074,31 +8074,46 @@
     },
     {
       "id": "source-unit:packages/app/src/tool-calls/detail-level/grouping.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/tool_calls/detail_level/tool_call_grouping.dart",
+      "evidence": [
+        "packages/app/test/tool_call_projection_test.dart"
+      ],
+      "notes": "Ports stable run hosts, plan/speak boundaries, retained-tail preparation, live-head continuation, direct running-state authority, sealed runs, cross-boundary history updates, and identity-preserving no-op paths."
     },
     {
       "id": "source-unit:packages/app/src/tool-calls/detail-level/overview/model.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/tool_calls/detail_level/tool_call_overview.dart",
+      "evidence": [
+        "packages/app/test/tool_call_projection_test.dart",
+        "packages/app/test/tool_call_overview_view_test.dart"
+      ],
+      "notes": "Matches frozen unique edit/read file counts, every command/search/other count, direct search suffixes, active loading aggregation, and Paseo-compatible runtime tool classification. Reader-facing runtime wording uses the required Tinyrack brand."
     },
     {
       "id": "source-unit:packages/app/src/tool-calls/detail-level/overview/view.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/tool_calls/detail_level/tool_call_overview_view.dart; packages/app/lib/screens/agent_chat_screen.dart; packages/app/lib/screens/provider_subagent_screen.dart",
+      "evidence": [
+        "packages/app/test/tool_call_overview_view_test.dart",
+        "packages/app/test/agent_chat_screen_test.dart",
+        "packages/app/test/worktree_tabbed_pane_test.dart"
+      ],
+      "notes": "Provides the aggregate wrench badge, loading indicator, expandable nested tool cards, 400px scroll bound, latest-content tracking, and stable expansion state in both agent and provider-subagent timelines."
     },
     {
       "id": "source-unit:packages/app/src/tool-calls/detail-level/projection.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/tool_calls/detail_level/tool_call_projection.dart; packages/app/lib/state/tool_call_detail_level_provider.dart; packages/app/lib/state/timeline_provider.dart; packages/app/lib/screens/agent_chat_screen.dart; packages/app/lib/screens/provider_subagent_screen.dart; packages/app/lib/screens/settings_screen.dart",
+      "evidence": [
+        "packages/app/test/tool_call_projection_test.dart",
+        "packages/app/test/tool_call_detail_level_provider_test.dart",
+        "packages/app/test/agent_chat_screen_test.dart",
+        "packages/app/test/settings_screen_test.dart",
+        "packages/app/test/worktree_tabbed_pane_test.dart"
+      ],
+      "notes": "Detailed mode is an identity-preserving pass-through; overview mode prepares retained history and projects live calls with frozen boundary semantics. The frozen detailed default, legacy compact migration, persisted Appearance selector, and both timeline consumers are wired end to end."
     },
     {
       "id": "source-unit:packages/app/src/tool-calls/presentation.ts",

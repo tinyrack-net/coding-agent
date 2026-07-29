@@ -6,6 +6,8 @@ import 'package:coding_agent_app/screens/settings_screen.dart';
 import 'package:coding_agent_app/state/connection_settings_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/host_registry_provider.dart';
+import 'package:coding_agent_app/state/tool_call_detail_level_provider.dart';
+import 'package:coding_agent_app/tool_calls/detail_level/tool_call_projection.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -145,6 +147,35 @@ Finder _toggleFor(String title) => find.descendant(
 );
 
 void main() {
+  testWidgets('appearance settings persist the tool-call detail level', (
+    tester,
+  ) async {
+    final container = await pumpSettingsScreen(
+      tester,
+      FakeDaemonClient(),
+      section: 'appearance',
+    );
+
+    expect(find.text('Appearance'), findsOneWidget);
+    expect(find.text('Tool call detail'), findsOneWidget);
+    expect(find.text('Detailed'), findsOneWidget);
+
+    await tester.tap(find.text('Detailed'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Overview').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      container.read(toolCallDetailLevelProvider),
+      ToolCallDetailLevel.overview,
+    );
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.getString(ToolCallDetailLevelNotifier.preferenceKey),
+      'overview',
+    );
+  });
+
   testWidgets('keyboard section exposes shortcut rebinding', (tester) async {
     await pumpSettingsScreen(tester, FakeDaemonClient(), section: 'keyboard');
 
