@@ -130,7 +130,7 @@ void main() {
     final fields = find.byType(TextBox);
     await tester.enterText(fields.at(1), 'Run tests');
     await tester.enterText(fields.at(2), '*/5 * * * *');
-    final projectPicker = find.byType(ComboBox<String>).at(1);
+    final projectPicker = find.byType(ComboBox<String>).first;
     await tester.ensureVisible(projectPicker);
     await tester.tap(projectPicker);
     await tester.pumpAndSettle();
@@ -264,6 +264,66 @@ void main() {
     expect(find.text('Delete schedule'), findsOneWidget);
   });
 
+  testWidgets('agent-target edit exposes only target and cadence', (
+    tester,
+  ) async {
+    final schedule = ScheduleSummary(
+      id: 'heartbeat',
+      name: null,
+      prompt: 'Heartbeat',
+      cadence: const CronScheduleCadence(expression: '0 * * * *'),
+      target: const AgentScheduleTarget(
+        agentId: '11111111-1111-4111-8111-111111111111',
+      ),
+      status: ScheduleStatus.active,
+      createdAt: '2026-07-27T00:00:00.000Z',
+      updatedAt: '2026-07-27T00:00:00.000Z',
+      nextRunAt: null,
+      lastRunAt: null,
+      pausedAt: null,
+      expiresAt: null,
+      maxRuns: 4,
+    );
+    final notifier = _FakeSchedulesNotifier([schedule]);
+    await _pumpWithNotifier(
+      tester,
+      notifier,
+      agentDirectories: const {
+        'server-a': {'11111111-1111-4111-8111-111111111111': _heartbeatAgent},
+      },
+    );
+
+    await tester.tap(find.text('Schedule'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit heartbeat'), findsOneWidget);
+    expect(find.text('Target'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(ContentDialog),
+        matching: find.text('Heartbeat agent'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Name'), findsNothing);
+    expect(find.text('Prompt'), findsNothing);
+    expect(find.text('Max runs'), findsNothing);
+    expect(find.text('Project'), findsNothing);
+    expect(find.text('Model'), findsNothing);
+
+    await tester.enterText(find.byType(TextBox), '30 * * * *');
+    await tester.tap(find.text('Save changes'));
+    await tester.pumpAndSettle();
+
+    expect(notifier.updatedChanges, {
+      'cadence': {
+        'type': 'cron',
+        'expression': '30 * * * *',
+        'timezone': 'UTC',
+      },
+    });
+  });
+
   testWidgets('multi-host rows expose host filter and partial host errors', (
     tester,
   ) async {
@@ -384,7 +444,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Remote').last);
     await tester.pumpAndSettle();
-    final projectPicker = find.byType(ComboBox<String>).at(2);
+    final projectPicker = find.byType(ComboBox<String>).at(1);
     await tester.ensureVisible(projectPicker);
     await tester.tap(projectPicker);
     await tester.pumpAndSettle();
@@ -676,6 +736,17 @@ const _twoHosts = [
     updatedAt: '2026-07-27T00:00:00.000Z',
   ),
 ];
+
+const _heartbeatAgent = AgentSummary(
+  agentId: '11111111-1111-4111-8111-111111111111',
+  title: 'Heartbeat agent',
+  cwd: 'C:/repo',
+  provider: 'codex',
+  model: 'gpt-5.4',
+  mode: AgentMode.fullAccess,
+  runState: AgentRunState.idle,
+  createdAtMs: 0,
+);
 
 ScheduleSummary _schedule({
   required String id,

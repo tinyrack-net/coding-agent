@@ -612,8 +612,10 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
   @override
   Widget build(BuildContext context) {
     final editing = widget.schedule != null;
-    final newAgent = widget.schedule?.target is! AgentScheduleTarget;
+    final agentTarget = widget.schedule?.target is AgentScheduleTarget;
+    final newAgent = !agentTarget;
     final hosts = ref.watch(hostRegistryProvider).hosts;
+    final agentDirectories = ref.watch(agentDirectoryReplicaStoreProvider);
     final projectTargets =
         ref.watch(scheduleProjectTargetsProvider).value?.targets ??
         const <ScheduleProjectTarget>[];
@@ -650,37 +652,50 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     }
     return ContentDialog(
       constraints: const BoxConstraints(maxWidth: 560),
-      title: Text(editing ? 'Edit schedule' : 'New schedule'),
+      title: Text(
+        agentTarget
+            ? 'Edit heartbeat'
+            : editing
+            ? 'Edit schedule'
+            : 'New schedule',
+      ),
       content: SizedBox(
         width: 520,
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (!editing && hosts.length > 1) ...[
-                const Text('Host'),
-                const SizedBox(height: 6),
-                ComboBox<String>(
-                  value: _serverId,
-                  items: [
-                    for (final host in hosts)
-                      ComboBoxItem(
-                        value: host.serverId,
-                        child: Text(host.label),
-                      ),
-                  ],
-                  onChanged: (value) => setState(() {
-                    _serverId = value;
-                    _cwd.clear();
-                    _clearProviderSelection();
-                  }),
+              if (agentTarget) ...[
+                _agentTargetField(agentDirectories),
+                _cadenceEditor(),
+              ] else ...[
+                if (!editing && hosts.length > 1) ...[
+                  const Text('Host'),
+                  const SizedBox(height: 6),
+                  ComboBox<String>(
+                    value: _serverId,
+                    items: [
+                      for (final host in hosts)
+                        ComboBoxItem(
+                          value: host.serverId,
+                          child: Text(host.label),
+                        ),
+                    ],
+                    onChanged: (value) => setState(() {
+                      _serverId = value;
+                      _cwd.clear();
+                      _clearProviderSelection();
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                _field('Name', _name, placeholder: 'Optional'),
+                _field(
+                  'Prompt',
+                  _prompt,
+                  placeholder: 'What should the agent do each run?',
+                  maxLines: 4,
                 ),
-                const SizedBox(height: 12),
-              ],
-              _field('Name', _name, placeholder: 'Optional'),
-              _field('Prompt', _prompt, maxLines: 4),
-              _cadenceEditor(),
-              if (newAgent) ...[
                 _projectSelector(projectTargets),
                 _providerEditor(
                   snapshot: snapshot,
@@ -688,6 +703,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                   selection: providerSelection,
                   hasClient: client != null,
                 ),
+                _cadenceEditor(),
                 const SizedBox(height: 12),
                 const Text('Isolation'),
                 const SizedBox(height: 6),
@@ -712,8 +728,8 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                     ),
                   ],
                 ),
+                _field('Max runs', _maxRuns, placeholder: 'Unlimited'),
               ],
-              _field('Max runs', _maxRuns, placeholder: 'Unlimited'),
               if (_error != null) ...[
                 const SizedBox(height: 12),
                 Text(
@@ -735,6 +751,39 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
           child: Text(editing ? 'Save changes' : 'Create schedule'),
         ),
       ],
+    );
+  }
+
+  Widget _agentTargetField(
+    Map<String, Map<String, AgentSummary>> agentDirectories,
+  ) {
+    final target = widget.schedule?.target;
+    final agentId = target is AgentScheduleTarget ? target.agentId : null;
+    final agent = agentId == null
+        ? null
+        : agentDirectories[_serverId]?[agentId];
+    final label = agent == null
+        ? 'Agent unavailable'
+        : agent.title.trim().isEmpty
+        ? 'Untitled agent'
+        : agent.title;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Target'),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              border: Border.all(color: context.tokens.outlineVariant),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1052,7 +1101,8 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
         ? null
         : int.tryParse(_maxRuns.text.trim());
     final cronError = validateScheduleCron(cron);
-    if (prompt.isEmpty) {
+    final agentTarget = widget.schedule?.target is AgentScheduleTarget;
+    if (!agentTarget && prompt.isEmpty) {
       setState(() => _error = 'Prompt is required.');
       return;
     }
@@ -1060,12 +1110,13 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
       setState(() => _error = cronError);
       return;
     }
-    if (widget.schedule?.target is! AgentScheduleTarget &&
-        (provider.isEmpty || cwd.isEmpty)) {
+    if (!agentTarget && (provider.isEmpty || cwd.isEmpty)) {
       setState(() => _error = 'Provider and project are required.');
       return;
     }
-    if (_maxRuns.text.trim().isNotEmpty && (maxRuns == null || maxRuns <= 0)) {
+    if (!agentTarget &&
+        _maxRuns.text.trim().isNotEmpty &&
+        (maxRuns == null || maxRuns <= 0)) {
       setState(() => _error = 'Max runs must be a positive integer.');
       return;
     }
@@ -1101,13 +1152,13 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
           maxRuns: maxRuns,
         );
       } else {
-        final changes = <String, Object?>{
-          'name': _name.text.trim().isEmpty ? null : _name.text.trim(),
-          'prompt': prompt,
-          'cadence': cadence.toJson(),
-          'maxRuns': maxRuns,
-        };
+        final changes = <String, Object?>{'cadence': cadence.toJson()};
         if (widget.schedule!.target is NewAgentScheduleTarget) {
+          changes.addAll({
+            'name': _name.text.trim().isEmpty ? null : _name.text.trim(),
+            'prompt': prompt,
+            'maxRuns': maxRuns,
+          });
           changes['newAgentConfig'] = {
             'provider': provider,
             'cwd': cwd,
