@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -21,9 +22,14 @@ import 'pull_request_pane_states.dart';
 import 'pull_request_section_kit.dart';
 
 class PullRequestPane extends ConsumerStatefulWidget {
-  const PullRequestPane({super.key, required this.cwd});
+  const PullRequestPane({
+    super.key,
+    required this.cwd,
+    @visibleForTesting this.webOverride,
+  });
 
   final String cwd;
+  final bool? webOverride;
 
   @override
   ConsumerState<PullRequestPane> createState() => _PullRequestPaneState();
@@ -109,12 +115,15 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
                       summary: _ActivitySummary(items: data.timeline),
                       onToggle: () =>
                           setState(() => _activityOpen = !_activityOpen),
-                      child: _ActivitySection(
-                        cwd: widget.cwd,
-                        status: status,
-                        items: data.timeline,
-                        error: data.timelineError,
-                        truncated: data.timelineTruncated,
+                      child: _PrActionsPlatformScope(
+                        isWeb: widget.webOverride ?? kIsWeb,
+                        child: _ActivitySection(
+                          cwd: widget.cwd,
+                          status: status,
+                          items: data.timeline,
+                          error: data.timelineError,
+                          truncated: data.timelineTruncated,
+                        ),
                       ),
                     ),
                   ],
@@ -126,6 +135,22 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
       ),
     );
   }
+}
+
+class _PrActionsPlatformScope extends InheritedWidget {
+  const _PrActionsPlatformScope({required this.isWeb, required super.child});
+
+  final bool isWeb;
+
+  static bool isWebOf(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<_PrActionsPlatformScope>()
+          ?.isWeb ??
+      kIsWeb;
+
+  @override
+  bool updateShouldNotify(_PrActionsPlatformScope oldWidget) =>
+      isWeb != oldWidget.isWeb;
 }
 
 class _Toolbar extends StatelessWidget {
@@ -1125,6 +1150,52 @@ class _ActivityAvatar extends StatelessWidget {
   }
 }
 
+typedef _PrActionsRevealBuilder =
+    Widget Function(
+      BuildContext context,
+      bool actionsVisible,
+      ValueChanged<bool> onMenuOpenChanged,
+    );
+
+class _PrActionsRevealRegion extends StatefulWidget {
+  const _PrActionsRevealRegion({super.key, required this.builder});
+
+  final _PrActionsRevealBuilder builder;
+
+  @override
+  State<_PrActionsRevealRegion> createState() => _PrActionsRevealRegionState();
+}
+
+class _PrActionsRevealRegionState extends State<_PrActionsRevealRegion> {
+  bool _hovered = false;
+  bool _menuOpen = false;
+
+  void _setHovered(bool value) {
+    if (_hovered == value) return;
+    setState(() => _hovered = value);
+  }
+
+  void _setMenuOpen(bool value) {
+    if (_menuOpen == value) return;
+    setState(() => _menuOpen = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 720;
+    final actionsVisible =
+        !_PrActionsPlatformScope.isWebOf(context) ||
+        compact ||
+        _hovered ||
+        _menuOpen;
+    return MouseRegion(
+      onEnter: (_) => _setHovered(true),
+      onExit: (_) => _setHovered(false),
+      child: widget.builder(context, actionsVisible, _setMenuOpen),
+    );
+  }
+}
+
 class _ActivityCard extends StatelessWidget {
   const _ActivityCard({
     required this.item,
@@ -1136,6 +1207,8 @@ class _ActivityCard extends StatelessWidget {
     required this.brandLabel,
     this.embedded = false,
     this.collapsedThreadCount,
+    this.actionsVisible,
+    this.onMenuOpenChanged,
   });
 
   final PullRequestTimelineItem item;
@@ -1147,9 +1220,25 @@ class _ActivityCard extends StatelessWidget {
   final String brandLabel;
   final bool embedded;
   final int? collapsedThreadCount;
+  final bool? actionsVisible;
+  final ValueChanged<bool>? onMenuOpenChanged;
 
   @override
   Widget build(BuildContext context) {
+    if (actionsVisible case final visible?) {
+      return _buildCard(context, visible, onMenuOpenChanged!);
+    }
+    return _PrActionsRevealRegion(
+      key: ValueKey('activity-reveal-${item.id}'),
+      builder: _buildCard,
+    );
+  }
+
+  Widget _buildCard(
+    BuildContext context,
+    bool actionsVisible,
+    ValueChanged<bool> onMenuOpenChanged,
+  ) {
     final eventRow = !embedded && item.body.trim().isEmpty;
     return Container(
       key: eventRow ? ValueKey('activity-event-row-${item.id}') : null,
@@ -1240,6 +1329,8 @@ class _ActivityCard extends StatelessWidget {
                     brandLabel: brandLabel,
                     onAddToChat: onAddToChat,
                     onOpen: onOpen,
+                    visible: actionsVisible,
+                    onOpenChanged: onMenuOpenChanged,
                   ),
                 ],
               ),
@@ -1353,6 +1444,17 @@ class _ReviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _PrActionsRevealRegion(
+      key: ValueKey('activity-reveal-${review.id}'),
+      builder: _buildCard,
+    );
+  }
+
+  Widget _buildCard(
+    BuildContext context,
+    bool actionsVisible,
+    ValueChanged<bool> onMenuOpenChanged,
+  ) {
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       decoration: BoxDecoration(
@@ -1374,6 +1476,8 @@ class _ReviewCard extends StatelessWidget {
             brandLabel: brandLabel,
             embedded: true,
             collapsedThreadCount: threads.length,
+            actionsVisible: actionsVisible,
+            onMenuOpenChanged: onMenuOpenChanged,
           ),
           if (!collapsed)
             for (final thread in threads)
@@ -1419,6 +1523,17 @@ class _ThreadCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _PrActionsRevealRegion(
+      key: ValueKey('thread-reveal-${thread.id}'),
+      builder: _buildCard,
+    );
+  }
+
+  Widget _buildCard(
+    BuildContext context,
+    bool actionsVisible,
+    ValueChanged<bool> onMenuOpenChanged,
+  ) {
     final root = thread.comments.first;
     final replies = thread.comments.skip(1);
     return Container(
@@ -1478,6 +1593,8 @@ class _ThreadCard extends StatelessWidget {
                     threadId: thread.id,
                     brandLabel: brandLabel,
                     onOpen: () => onOpen(root.url),
+                    visible: actionsVisible,
+                    onOpenChanged: onMenuOpenChanged,
                   ),
                 ],
               ),
@@ -1560,6 +1677,17 @@ class _ThreadComment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _PrActionsRevealRegion(
+      key: ValueKey('thread-comment-reveal-${comment.id}'),
+      builder: _buildComment,
+    );
+  }
+
+  Widget _buildComment(
+    BuildContext context,
+    bool actionsVisible,
+    ValueChanged<bool> onMenuOpenChanged,
+  ) {
     return Container(
       key: ValueKey('thread-comment-${comment.id}'),
       decoration: BoxDecoration(
@@ -1608,6 +1736,8 @@ class _ThreadComment extends StatelessWidget {
                   brandLabel: brandLabel,
                   onAddToChat: onAddToChat,
                   onOpen: onOpen,
+                  visible: actionsVisible,
+                  onOpenChanged: onMenuOpenChanged,
                 ),
               ],
             ),
@@ -1639,18 +1769,25 @@ class _ActivityActionsMenu extends StatelessWidget {
     required this.brandLabel,
     required this.onAddToChat,
     required this.onOpen,
+    required this.visible,
+    required this.onOpenChanged,
   });
 
   final PullRequestTimelineItem item;
   final String brandLabel;
   final VoidCallback? onAddToChat;
   final VoidCallback onOpen;
+  final bool visible;
+  final ValueChanged<bool> onOpenChanged;
 
   @override
   Widget build(BuildContext context) {
     return _PrActionsMenuButton(
       triggerKey: ValueKey('activity-actions-${item.id}'),
+      visibilityKey: ValueKey('activity-actions-visibility-${item.id}'),
       semanticLabel: 'Comment actions',
+      visible: visible,
+      onOpenChanged: onOpenChanged,
       items: [
         if (onAddToChat != null)
           MenuFlyoutItem(
@@ -1684,17 +1821,24 @@ class _ThreadActionsMenu extends StatelessWidget {
     required this.threadId,
     required this.brandLabel,
     required this.onOpen,
+    required this.visible,
+    required this.onOpenChanged,
   });
 
   final String threadId;
   final String brandLabel;
   final VoidCallback onOpen;
+  final bool visible;
+  final ValueChanged<bool> onOpenChanged;
 
   @override
   Widget build(BuildContext context) {
     return _PrActionsMenuButton(
       triggerKey: ValueKey('thread-actions-$threadId'),
+      visibilityKey: ValueKey('thread-actions-visibility-$threadId'),
       semanticLabel: 'Thread actions',
+      visible: visible,
+      onOpenChanged: onOpenChanged,
       items: [
         MenuFlyoutItem(
           key: ValueKey('thread-action-open-$threadId'),
@@ -1710,12 +1854,18 @@ class _ThreadActionsMenu extends StatelessWidget {
 class _PrActionsMenuButton extends StatefulWidget {
   const _PrActionsMenuButton({
     required this.triggerKey,
+    required this.visibilityKey,
     required this.semanticLabel,
+    required this.visible,
+    required this.onOpenChanged,
     required this.items,
   });
 
   final Key triggerKey;
+  final Key visibilityKey;
   final String semanticLabel;
+  final bool visible;
+  final ValueChanged<bool> onOpenChanged;
   final List<MenuFlyoutItemBase> items;
 
   @override
@@ -1731,41 +1881,55 @@ class _PrActionsMenuButtonState extends State<_PrActionsMenuButton> {
     super.dispose();
   }
 
-  void _openMenu() {
-    unawaited(
-      _controller.showFlyout<void>(
+  Future<void> _showMenu() async {
+    widget.onOpenChanged(true);
+    try {
+      await _controller.showFlyout<void>(
         placementMode: FlyoutPlacementMode.bottomRight,
         additionalOffset: 2,
         builder: (context) => MenuFlyout(
           constraints: const BoxConstraints.tightFor(width: 200),
           items: widget.items,
         ),
-      ),
-    );
+      );
+    } finally {
+      if (mounted) widget.onOpenChanged(false);
+    }
+  }
+
+  void _openMenu() {
+    unawaited(_showMenu());
   }
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      container: true,
-      button: true,
-      label: widget.semanticLabel,
-      child: FlyoutTarget(
-        controller: _controller,
-        child: HoverButton(
-          key: widget.triggerKey,
-          onPressed: _openMenu,
-          builder: (context, states) => Container(
-            width: 22,
-            height: 22,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: states.contains(WidgetState.hovered)
-                  ? context.tokens.surfaceContainerHighest
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(4),
+    return Visibility(
+      key: widget.visibilityKey,
+      visible: widget.visible,
+      maintainState: true,
+      maintainAnimation: true,
+      maintainSize: true,
+      child: Semantics(
+        container: true,
+        button: true,
+        label: widget.semanticLabel,
+        child: FlyoutTarget(
+          controller: _controller,
+          child: HoverButton(
+            key: widget.triggerKey,
+            onPressed: _openMenu,
+            builder: (context, states) => Container(
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: states.contains(WidgetState.hovered)
+                    ? context.tokens.surfaceContainerHighest
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Icon(FluentIcons.more_vertical, size: 12),
             ),
-            child: const Icon(FluentIcons.more_vertical, size: 12),
           ),
         ),
       ),

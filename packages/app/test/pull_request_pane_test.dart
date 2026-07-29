@@ -12,6 +12,7 @@ import 'package:coding_agent_app/widgets/pull_request_section_kit.dart';
 import 'package:coding_agent_app/widgets/pull_request_tab.dart';
 import 'package:coding_agent_app/widgets/workspace_explorer.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -665,22 +666,26 @@ Future<ProviderContainer> _pumpExplorer(
   return container;
 }
 
-Future<void> _pumpPane(WidgetTester tester, _FakeDaemonClient client) =>
-    tester.pumpWidget(
-      ProviderScope(
-        overrides: [daemonClientProvider.overrideWithValue(client)],
-        child: FluentApp(
-          theme: buildAppTheme(),
-          darkTheme: buildAppTheme(),
-          themeMode: ThemeMode.dark,
-          home: const SizedBox(
-            width: 380,
-            height: 700,
-            child: PullRequestPane(cwd: _cwd),
-          ),
-        ),
+Future<void> _pumpPane(
+  WidgetTester tester,
+  _FakeDaemonClient client, {
+  bool? webOverride,
+  double width = 380,
+}) => tester.pumpWidget(
+  ProviderScope(
+    overrides: [daemonClientProvider.overrideWithValue(client)],
+    child: FluentApp(
+      theme: buildAppTheme(),
+      darkTheme: buildAppTheme(),
+      themeMode: ThemeMode.dark,
+      home: SizedBox(
+        width: width,
+        height: 700,
+        child: PullRequestPane(cwd: _cwd, webOverride: webOverride),
       ),
-    );
+    ),
+  ),
+);
 
 void _noop() {}
 
@@ -1412,6 +1417,102 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(launcher.opened, ['https://example.test/comment/2']);
+  });
+
+  testWidgets(
+    'wide Web reveals nested PR actions on hover and keeps them while open',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 700);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await _pumpPane(
+        tester,
+        _FakeDaemonClient(timelineMode: 'collapsed-review'),
+        webOverride: true,
+        width: 900,
+      );
+      await tester.pumpAndSettle();
+
+      const reviewVisibilityKey = ValueKey(
+        'activity-actions-visibility-review-2',
+      );
+      const threadVisibilityKey = ValueKey(
+        'thread-actions-visibility-thread:PRRT_1',
+      );
+      const commentVisibilityKey = ValueKey(
+        'activity-actions-visibility-comment-2',
+      );
+      bool isVisible(Key key) =>
+          tester.widget<Visibility>(find.byKey(key)).visible;
+
+      expect(isVisible(reviewVisibilityKey), isFalse);
+      expect(isVisible(threadVisibilityKey), isFalse);
+      expect(isVisible(commentVisibilityKey), isFalse);
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(
+        location: tester.getCenter(
+          find.byKey(const ValueKey('thread-comment-reveal-comment-2')),
+        ),
+      );
+      await tester.pump();
+
+      expect(isVisible(reviewVisibilityKey), isTrue);
+      expect(isVisible(threadVisibilityKey), isTrue);
+      expect(isVisible(commentVisibilityKey), isTrue);
+
+      await tester.tap(
+        find.byKey(const ValueKey('activity-actions-comment-2')),
+      );
+      await tester.pumpAndSettle();
+      await mouse.moveTo(const Offset(1, 1));
+      await tester.pump();
+
+      expect(isVisible(commentVisibilityKey), isTrue);
+      expect(find.byType(MenuFlyout), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey('activity-action-open-comment-2')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(isVisible(reviewVisibilityKey), isFalse);
+      expect(isVisible(threadVisibilityKey), isFalse);
+      expect(isVisible(commentVisibilityKey), isFalse);
+      await mouse.removePointer();
+    },
+  );
+
+  testWidgets('compact Web and native wide layouts keep PR actions visible', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(380, 700);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    const visibilityKey = ValueKey('activity-actions-visibility-review-1');
+
+    await _pumpPane(tester, _FakeDaemonClient(), webOverride: true);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Visibility>(find.byKey(visibilityKey)).visible,
+      isTrue,
+    );
+
+    tester.view.physicalSize = const Size(900, 700);
+    await _pumpPane(
+      tester,
+      _FakeDaemonClient(),
+      webOverride: false,
+      width: 900,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Visibility>(find.byKey(visibilityKey)).visible,
+      isTrue,
+    );
   });
 
   testWidgets('thread replies render in the frozen inset card rail', (
