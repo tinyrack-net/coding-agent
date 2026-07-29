@@ -61,10 +61,13 @@ class _FakeDaemonClient extends DaemonClient {
   final String fileMode;
   final String pipelineMode;
   final String pipelineStatus;
+  int changeRequestNumber = 42;
+  int pipelineId = 306;
   final bool forgeProvidersEnabled;
   final bool forgeCheckDetailsEnabled;
   final bool checkDetailsSuccess;
   final Completer<void>? checkDetailsGate;
+  Completer<void>? pipelineDetailsGate;
   final nativeRequests = <Map<String, Object?>>[];
 
   @override
@@ -92,9 +95,13 @@ class _FakeDaemonClient extends DaemonClient {
   }) async {
     nativeRequests.add(message);
     if (message['type'] == CheckoutForgeGetCheckDetailsRequest.modernType) {
-      await checkDetailsGate?.future;
-      final isGitlabPipeline =
-          forge == 'gitlab' && message['checkRunId'] == 306;
+      final isGitlabPipeline = forge == 'gitlab';
+      if (isGitlabPipeline) {
+        await pipelineDetailsGate?.future;
+      } else {
+        await checkDetailsGate?.future;
+      }
+      final requestedPipelineId = message['checkRunId'] as int?;
       return CheckoutForgeGetCheckDetailsResponse(
         type: CheckoutForgeGetCheckDetailsResponse.modernType,
         cwd: _cwd,
@@ -102,16 +109,17 @@ class _FakeDaemonClient extends DaemonClient {
         details: checkDetailsSuccess
             ? isGitlabPipeline
                   ? CheckoutCheckDetails(
-                      checkRunId: 306,
-                      name: 'Pipeline #306',
+                      checkRunId: requestedPipelineId!,
+                      name: 'Pipeline #$requestedPipelineId',
                       annotations: const [],
                       failedJobs: const [],
                       truncated: false,
                       pipeline: CheckoutPipeline(
-                        id: 306,
+                        id: requestedPipelineId,
                         status: 'running',
                         rawStatus: 'running',
-                        url: 'https://gitlab.example/pipelines/306',
+                        url:
+                            'https://gitlab.example/pipelines/$requestedPipelineId',
                         ref: 'pr-pane',
                         sha: 'abc123',
                         stages: pipelineMode == 'empty'
@@ -215,8 +223,8 @@ class _FakeDaemonClient extends DaemonClient {
             ? CheckoutPrStatus(
                 forge: forge,
                 projectPath: 'tinyrack/coding-agent',
-                number: 42,
-                url: 'https://example.test/pr/42',
+                number: changeRequestNumber,
+                url: 'https://example.test/pr/$changeRequestNumber',
                 title: 'Port the pull request panel',
                 state: statusState,
                 baseRefName: 'main',
@@ -267,8 +275,9 @@ class _FakeDaemonClient extends DaemonClient {
                     'approvalsRequired': 2,
                     'approvalsGiven': 1,
                     'pipelineStatus': pipelineStatus,
-                    'pipelineId': 306,
-                    'pipelineUrl': 'https://gitlab.example/pipelines/306',
+                    'pipelineId': pipelineId,
+                    'pipelineUrl':
+                        'https://gitlab.example/pipelines/$pipelineId',
                     'mergeWhenPipelineSucceeds': false,
                   },
                   _ => null,
@@ -645,6 +654,120 @@ void main() {
     await tester.pump(const Duration(seconds: 15));
     await tester.pump();
     expect(pipelineRequests(), 1);
+
+    await tester.tap(find.text('Pipeline'));
+    await tester.pump();
+    await tester.tap(find.text('Pipeline'));
+    await tester.pumpAndSettle();
+    expect(pipelineRequests(), 1);
+  });
+
+  testWidgets('manual refresh invalidates a finished pipeline cache', (
+    tester,
+  ) async {
+    final client = _FakeDaemonClient(
+      forge: 'gitlab',
+      pipelineStatus: 'success',
+    );
+    await _pumpExplorer(tester, client);
+    await tester.tap(find.text('#42'));
+    await tester.pumpAndSettle();
+
+    int pipelineRequests() => client.nativeRequests
+        .where(
+          (request) =>
+              request['type'] ==
+                  CheckoutForgeGetCheckDetailsRequest.modernType &&
+              request['checkRunId'] == 306,
+        )
+        .length;
+
+    expect(pipelineRequests(), 1);
+    await tester.tap(find.byIcon(FluentIcons.refresh).last);
+    await tester.pumpAndSettle();
+    expect(pipelineRequests(), 2);
+  });
+
+  testWidgets('remounts with cached data while refetching the pipeline', (
+    tester,
+  ) async {
+    final client = _FakeDaemonClient(
+      forge: 'gitlab',
+      pipelineStatus: 'success',
+    );
+    await _pumpExplorer(tester, client);
+    await tester.tap(find.text('#42'));
+    await tester.pumpAndSettle();
+    expect(find.text('analyze'), findsOneWidget);
+
+    await tester.tap(find.text('Files'));
+    await tester.pumpAndSettle();
+    final gate = Completer<void>();
+    client.pipelineDetailsGate = gate;
+    await tester.tap(find.text('#42'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('analyze'), findsOneWidget);
+    expect(find.text('Loading pipeline…'), findsNothing);
+    expect(
+      client.nativeRequests
+          .where(
+            (request) =>
+                request['type'] ==
+                    CheckoutForgeGetCheckDetailsRequest.modernType &&
+                request['checkRunId'] == 306,
+          )
+          .length,
+      2,
+    );
+
+    gate.complete();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('keeps previous pipeline data while a new identity loads', (
+    tester,
+  ) async {
+    final client = _FakeDaemonClient(forge: 'gitlab');
+    await _pumpExplorer(tester, client);
+    await tester.tap(find.text('#42'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pipeline #306'), findsOneWidget);
+    expect(find.text('analyze'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('pr-pane-pipeline-passed')),
+      findsOneWidget,
+    );
+
+    final gate = Completer<void>();
+    client
+      ..changeRequestNumber = 43
+      ..pipelineId = 307
+      ..pipelineDetailsGate = gate;
+    await tester.tap(find.byIcon(FluentIcons.refresh).last);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Pipeline #307'), findsOneWidget);
+    expect(find.text('analyze'), findsOneWidget);
+    expect(find.text('Loading pipeline…'), findsNothing);
+    expect(find.byKey(const ValueKey('pr-pane-pipeline-passed')), findsNothing);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Pipeline #307'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('pr-pane-pipeline-passed')),
+      findsOneWidget,
+    );
+    final request = client.nativeRequests.lastWhere(
+      (request) =>
+          request['type'] == CheckoutForgeGetCheckDetailsRequest.modernType &&
+          request['checkRunId'] == 307,
+    );
+    expect(request['changeRequestNumber'], 43);
   });
 
   testWidgets('honors GitLab forge feature capability gates', (tester) async {

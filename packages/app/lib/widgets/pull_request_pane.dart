@@ -11,6 +11,7 @@ import '../core/forge_logic.dart';
 import '../core/pull_request_context.dart';
 import '../core/theme.dart';
 import '../state/daemon_providers.dart';
+import '../state/gitlab_pipeline_query.dart';
 import '../state/pull_request_provider.dart';
 import '../state/workspace_attachments_provider.dart';
 import 'fluent/toast.dart';
@@ -74,12 +75,11 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
                     _PullRequestHeader(status: status),
                     if (gitlabPipeline != null && forgeProvidersEnabled)
                       _GitLabPipelineSection(
-                        key: ValueKey(
-                          'gitlab-pipeline-${status.number}-${gitlabPipeline.id}',
-                        ),
+                        key: const ValueKey('gitlab-pipeline'),
                         cwd: widget.cwd,
                         status: status,
                         summary: gitlabPipeline,
+                        cacheRevision: data.pipelineCacheRevision,
                         canFetchCheckDetails: canFetchForgeCheckDetails,
                         open: _checksOpen,
                         onToggle: () =>
@@ -401,6 +401,7 @@ class _GitLabPipelineSection extends ConsumerStatefulWidget {
     required this.cwd,
     required this.status,
     required this.summary,
+    required this.cacheRevision,
     required this.canFetchCheckDetails,
     required this.open,
     required this.onToggle,
@@ -409,6 +410,7 @@ class _GitLabPipelineSection extends ConsumerStatefulWidget {
   final String cwd;
   final CheckoutPrStatus status;
   final GitlabPipelineSummary summary;
+  final int cacheRevision;
   final bool canFetchCheckDetails;
   final bool open;
   final VoidCallback onToggle;
@@ -420,17 +422,21 @@ class _GitLabPipelineSection extends ConsumerStatefulWidget {
 
 class _GitLabPipelineSectionState
     extends ConsumerState<_GitLabPipelineSection> {
-  static const _liveRefetchInterval = Duration(seconds: 15);
-
   CheckoutPipeline? _pipeline;
   Object? _error;
   var _loading = false;
+  var _hasResolvedData = false;
+  var _isPlaceholderData = false;
+  var _generation = 0;
   Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
-    if (widget.open && widget.canFetchCheckDetails) unawaited(_fetch());
+    _seedFromCache(preservePrevious: false);
+    if (_canFetch) {
+      unawaited(_fetch(force: true));
+    }
   }
 
   @override
@@ -442,19 +448,29 @@ class _GitLabPipelineSectionState
         oldWidget.summary.id != widget.summary.id;
     if (identityChanged) {
       _pollTimer?.cancel();
-      _pipeline = null;
+      _generation += 1;
+      _seedFromCache(preservePrevious: true);
       _error = null;
       _loading = false;
-      if (widget.open && widget.canFetchCheckDetails) unawaited(_fetch());
+      if (_canFetch) {
+        unawaited(_fetch(force: true));
+      }
+      return;
+    }
+    if (oldWidget.cacheRevision != widget.cacheRevision) {
+      _generation += 1;
+      _error = null;
+      _loading = false;
+      if (_canFetch) unawaited(_fetch());
       return;
     }
     if (!oldWidget.canFetchCheckDetails && widget.canFetchCheckDetails) {
-      if (widget.open) unawaited(_fetch());
+      if (_canFetch) unawaited(_fetch());
     } else if (oldWidget.canFetchCheckDetails && !widget.canFetchCheckDetails) {
       _pollTimer?.cancel();
     }
     if (oldWidget.open != widget.open) {
-      if (widget.open && widget.canFetchCheckDetails) {
+      if (_canFetch) {
         unawaited(_fetch());
       } else {
         _pollTimer?.cancel();
@@ -471,22 +487,33 @@ class _GitLabPipelineSectionState
     super.dispose();
   }
 
-  Future<void> _fetch() async {
-    if (_loading || !widget.open || !widget.canFetchCheckDetails) return;
-    setState(() => _loading = true);
+  Future<void> _fetch({bool force = false}) async {
+    if (_loading || !_canFetch) return;
+    final generation = _generation;
+    final status = widget.status;
+    final summary = widget.summary;
+    final live = isGitlabPipelineActiveStatus(summary.rawStatus);
+    setState(() => _loading = !_hasResolvedData);
     try {
       final pipeline = await ref
           .read(pullRequestPaneProvider(widget.cwd).notifier)
-          .loadGitlabPipeline(widget.status, widget.summary.id);
-      if (!mounted) return;
+          .loadGitlabPipeline(status, summary.id, live: live, force: force);
+      if (!mounted || generation != _generation) return;
       setState(() {
         _pipeline = pipeline;
+        _hasResolvedData = true;
+        _isPlaceholderData = false;
         _error = null;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
+        if (_isPlaceholderData) {
+          _pipeline = null;
+          _hasResolvedData = false;
+          _isPlaceholderData = false;
+        }
         _error = error;
         _loading = false;
       });
@@ -497,13 +524,36 @@ class _GitLabPipelineSectionState
 
   void _schedulePoll() {
     _pollTimer?.cancel();
-    if (!widget.open ||
-        !widget.canFetchCheckDetails ||
-        !isGitlabPipelineActiveStatus(widget.summary.rawStatus)) {
+    if (!_canFetch || !isGitlabPipelineActiveStatus(widget.summary.rawStatus)) {
       return;
     }
-    _pollTimer = Timer(_liveRefetchInterval, () => unawaited(_fetch()));
+    _pollTimer = Timer(
+      gitlabLivePipelineRefetchInterval,
+      () => unawaited(_fetch()),
+    );
   }
+
+  void _seedFromCache({required bool preservePrevious}) {
+    final snapshot = ref
+        .read(pullRequestPaneProvider(widget.cwd).notifier)
+        .gitlabPipelineSnapshot(widget.status, widget.summary.id);
+    if (snapshot != null) {
+      _pipeline = snapshot.pipeline;
+      _hasResolvedData = true;
+      _isPlaceholderData = false;
+      return;
+    }
+    if (preservePrevious && _hasResolvedData) {
+      _isPlaceholderData = true;
+      return;
+    }
+    _pipeline = null;
+    _hasResolvedData = false;
+    _isPlaceholderData = false;
+  }
+
+  bool get _canFetch =>
+      widget.open && widget.canFetchCheckDetails && widget.cwd.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -511,7 +561,8 @@ class _GitLabPipelineSectionState
     final counts = countGitlabPipelineJobs(
       pipeline?.stages ?? const <CheckoutPipelineStage>[],
     );
-    final showBreakdown = pipeline != null && counts.total > 0;
+    final showBreakdown =
+        !_isPlaceholderData && pipeline != null && counts.total > 0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -555,7 +606,7 @@ class _GitLabPipelineSectionState
                 ? null
                 : () => _openExternalUrl(context, ref, widget.summary.url!),
           ),
-          if (_loading && pipeline == null)
+          if (_loading && !_hasResolvedData)
             const _PipelineMessage('Loading pipeline…')
           else if (pipeline != null && pipeline.stages.isEmpty)
             const _PipelineMessage('No jobs')

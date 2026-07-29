@@ -5255,12 +5255,12 @@
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/query-keys.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/state/pull_request_provider.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/state/gitlab_pipeline_query.dart",
       "evidence": [
-        "packages/app/test/pull_request_pane_test.dart"
+        "packages/app/test/gitlab_pipeline_query_test.dart"
       ],
-      "notes": "Core Windows explorer and PR checks/activity flow implemented; advanced attachment, entry grouping, and forge-specific polish remain."
+      "notes": "Ports the frozen timeline and pipeline query-key identities, including server, cwd, nullable PR number, pipeline id, and change-request number."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/section-kit.tsx",
@@ -5310,13 +5310,14 @@
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/use-pipeline.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/state/pull_request_provider.dart; packages/app/lib/widgets/pull_request_pane.dart; packages/daemon/lib/src/server/ws_server.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/state/gitlab_pipeline_query.dart; packages/app/lib/state/pull_request_provider.dart; packages/app/lib/widgets/pull_request_pane.dart; packages/daemon/lib/src/server/ws_server.dart",
       "evidence": [
+        "packages/app/test/gitlab_pipeline_query_test.dart",
         "packages/app/test/pull_request_pane_test.dart",
         "packages/daemon/test/ws_server_test.dart"
       ],
-      "notes": "Capability-gated neutral RPC fetch, request identity, first-load/error state, 15-second active polling, open/closed lifecycle, and no finished-pipeline polling are implemented. TanStack-equivalent 24-hour finished cache and keep-previous-data behavior across pipeline identity changes remain."
+      "notes": "Ports the frozen pipeline query lifecycle: server/cwd/pipeline/MR keying, capability and connection-derived enablement, neutral check-details fetch with visible errors, successful-null caching, active stale semantics and 15-second polling, 24-hour finished freshness, always-refetch-on-mount with cached presentation, manual invalidation, and keep-previous-data with hidden stale summary counts across identity changes."
     },
     {
       "id": "source-unit:packages/app/src/git/query-keys.ts",
