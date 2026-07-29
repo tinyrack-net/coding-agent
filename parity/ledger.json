@@ -6068,10 +6068,14 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-projects.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/state/project_summaries_provider.dart; packages/app/lib/projects/projects.dart; packages/app/lib/state/workspace_catalog_provider.dart",
+      "evidence": [
+        "packages/app/test/project_summaries_provider_test.dart",
+        "packages/app/test/projects_test.dart",
+        "packages/app/test/workspace_catalog_provider_test.dart"
+      ],
+      "notes": "Ports the frozen all-host replica/runtime derivation and reactive lifecycle: cached online/offline host replicas, workspace plus empty-project snapshots, exact loading/fetching/error aggregation, atomic hydration buffering, directory delta reconciliation, retained data on reconnect/fetch error, event-driven updates, and explicit refetch."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-providers-snapshot.ts",
