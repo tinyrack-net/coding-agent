@@ -10432,10 +10432,11 @@
     },
     {
       "id": "source-unit:packages/cli/src/utils/client.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/cli/cli_daemon_client.dart; packages/daemon/lib/src/cli/terminal_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/agent_command.dart; packages/protocol/lib/src/connection/daemon_endpoints.dart; packages/protocol/lib/src/connection/connection_offer.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_daemon_client_test.dart",
+        "packages/daemon/test/cli/cli_daemon_ipc_e2e_test.dart",
         "packages/daemon/test/cli/cli_daemon_relay_e2ee_test.dart",
         "packages/daemon/test/daemon_agent_cli_e2e_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
@@ -10443,7 +10444,7 @@
         "packages/protocol/test/daemon_endpoints_test.dart",
         "packages/protocol/test/connection_offer_test.dart"
       ],
-      "notes": "Frozen host normalization, default candidate ordering, sequential direct connection failover, nullable try-connect, TCP/IPC target derivation, URI/environment password precedence, connection error shape, agent ID resolution precedence, pairing-offer parsing, relay URL derivation, and relay E2EE CLI hello/RPC transport are ported. IPC socket transport remains."
+      "notes": "Frozen persistent CLI identity, host normalization and candidate ordering, sequential direct failover and nullable try-connect, TCP/Unix-socket/Windows-named-pipe WebSocket transports, URI/environment password precedence, connection error shape, agent ID precedence, pairing-offer parsing, relay URL derivation, and relay E2EE CLI hello/RPC transport are ported."
     },
     {
       "id": "source-unit:packages/cli/src/utils/command-options.ts",

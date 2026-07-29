@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_protocol/agent_protocol.dart';
+import 'package:dart_ipc/dart_ipc.dart' as ipc;
 import 'package:tinyrack_relay/tinyrack_relay.dart';
 
 import '../server/daemon_config.dart';
@@ -563,9 +564,11 @@ final class DaemonCliSocketClient {
     RelayE2eeClientChannel? relay,
     StreamSubscription<dynamic>? relaySocketFrames,
     StreamController<dynamic>? relayFramesController,
+    HttpClient? transportHttpClient,
   }) : _relay = relay,
        _relaySocketFrames = relaySocketFrames,
-       _relayFramesController = relayFramesController;
+       _relayFramesController = relayFramesController,
+       _transportHttpClient = transportHttpClient;
 
   final WebSocket _socket;
   final StreamIterator<dynamic> _frames;
@@ -573,6 +576,7 @@ final class DaemonCliSocketClient {
   final RelayE2eeClientChannel? _relay;
   final StreamSubscription<dynamic>? _relaySocketFrames;
   final StreamController<dynamic>? _relayFramesController;
+  final HttpClient? _transportHttpClient;
   final Map<Object?, Completer<Map<String, Object?>>> _responses = {};
   final Queue<Map<String, Object?>> _events = Queue();
   final Queue<Completer<Map<String, Object?>>> _eventWaiters = Queue();
@@ -625,11 +629,6 @@ final class DaemonCliSocketClient {
             required password,
             required timeout,
           }) async {
-            if (target is! CliTcpDaemonTarget) {
-              throw UnsupportedError(
-                'IPC daemon transport is not available for $host',
-              );
-            }
             final deadline = DateTime.now().add(timeout);
             Duration remaining() {
               final value = deadline.difference(DateTime.now());
@@ -640,13 +639,28 @@ final class DaemonCliSocketClient {
 
             WebSocket? socket;
             StreamIterator<dynamic>? frames;
+            HttpClient? transportHttpClient;
             try {
+              final webSocketUrl = switch (target) {
+                CliTcpDaemonTarget(:final url) => url,
+                CliIpcDaemonTarget() => 'ws://localhost/ws',
+              };
+              if (target is CliIpcDaemonTarget) {
+                final socketPath = target.socketPath;
+                transportHttpClient = HttpClient()
+                  ..connectionFactory = (uri, proxyHost, proxyPort) async =>
+                      ConnectionTask.fromSocket(
+                        ipc.connect(socketPath).timeout(remaining()),
+                        () {},
+                      );
+              }
               final connectedSocket = await WebSocket.connect(
-                target.url,
+                webSocketUrl,
                 protocols: password == null || password.isEmpty
                     ? null
                     : ['tinyrack.bearer.$password'],
                 compression: CompressionOptions.compressionOff,
+                customClient: transportHttpClient,
               ).timeout(remaining());
               socket = connectedSocket;
               final connectedFrames = StreamIterator<dynamic>(connectedSocket);
@@ -673,12 +687,14 @@ final class DaemonCliSocketClient {
                 connectedSocket,
                 connectedFrames,
                 serverInfo,
+                transportHttpClient: transportHttpClient,
               );
               client._pump = client._pumpFrames();
               return client;
             } on Object {
               await frames?.cancel();
               await socket?.close();
+              transportHttpClient?.close(force: true);
               rethrow;
             }
           },
@@ -853,6 +869,7 @@ final class DaemonCliSocketClient {
       await relayFramesController.close();
     }
     await _socket.close();
+    _transportHttpClient?.close(force: true);
     await _pump;
   }
 
