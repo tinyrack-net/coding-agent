@@ -24,6 +24,7 @@ class MockAgentSession
   final _controller = StreamController<ProviderEvent>.broadcast();
   final List<String> prompts = [];
   bool interrupted = false;
+  Object? interruptError;
   bool disposed = false;
   String? configuredMode;
   String? configuredModel;
@@ -52,7 +53,10 @@ class MockAgentSession
   }
 
   @override
-  Future<void> interrupt() async => interrupted = true;
+  Future<void> interrupt() async {
+    if (interruptError case final error?) throw error;
+    interrupted = true;
+  }
 
   @override
   Future<AgentProviderNotice?> setMode(String modeId) async {
@@ -1413,6 +1417,73 @@ void main() {
     expect(states.last.agent.lastError, isNull);
     final turn = streamed.map((s) => s.item).whereType<TurnItem>().last;
     expect(turn.phase, TurnPhase.canceled);
+  });
+
+  test(
+    'cancel run is an idle no-op and waits for running settlement',
+    () async {
+      final idleAgent = await createAgent();
+      final idleSession = client.sessions.single;
+      idleSession.emit(const SessionStarted(sessionId: 'idle-session'));
+      await pumpEventQueue();
+      final idle = await manager.cancelAgentRun(idleAgent.agentId);
+      expect(idle.cancelled, isFalse);
+      expect(idle.agent.runState, AgentRunState.idle);
+      expect(idleSession.interrupted, isFalse);
+
+      await manager.prompt(idleAgent.agentId, 'long task');
+      final cancellation = manager.cancelAgentRun(idleAgent.agentId);
+      await pumpEventQueue();
+      expect(idleSession.interrupted, isTrue);
+      idleSession.emit(const TurnFailed(error: 'interrupted'));
+      final settled = await cancellation;
+      expect(settled.cancelled, isTrue);
+      expect(settled.agent.runState, AgentRunState.idle);
+      expect(
+        streamed.map((stream) => stream.item).whereType<TurnItem>().last.phase,
+        TurnPhase.canceled,
+      );
+    },
+  );
+
+  test('cancel run force-settles an acknowledged provider timeout', () async {
+    final agent = await createAgent();
+    final session = client.sessions.single;
+    await manager.prompt(agent.agentId, 'long task');
+
+    final result = await manager.cancelAgentRun(
+      agent.agentId,
+      settlementTimeout: Duration.zero,
+    );
+
+    expect(session.interrupted, isTrue);
+    expect(result.cancelled, isTrue);
+    expect(result.agent.runState, AgentRunState.idle);
+    expect(manager.hasActiveAgentRun(agent.agentId), isFalse);
+    expect(
+      streamed.map((stream) => stream.item).whereType<TurnItem>().last.phase,
+      TurnPhase.canceled,
+    );
+  });
+
+  test('cancel run refuses an unacknowledged active provider', () async {
+    final agent = await createAgent();
+    final session = client.sessions.single;
+    await manager.prompt(agent.agentId, 'long task');
+    session.interruptError = StateError('provider refused');
+
+    await expectLater(
+      manager.cancelAgentRun(agent.agentId, settlementTimeout: Duration.zero),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('active run cancellation was not acknowledged'),
+        ),
+      ),
+    );
+
+    expect(manager.hasActiveAgentRun(agent.agentId), isTrue);
   });
 
   test('prompt after session death recreates session with --resume', () async {

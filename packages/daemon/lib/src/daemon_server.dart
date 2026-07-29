@@ -1040,6 +1040,14 @@ Future<DaemonServerHandle> startDaemonServer({
         },
       };
     }
+    if (message['type'] == CancelAgentRequest.type) {
+      return await _handlePaseoCancelAgent(
+            manager,
+            paseoProviderCatalog,
+            message,
+          ) ??
+          v2HandledNoResponse;
+    }
     final agentTimelineResponse = _handlePaseoTimelineFetch(
       manager,
       paseoProviderCatalog,
@@ -1701,6 +1709,82 @@ Future<Map<String, Object?>?> _handlePaseoFetchAgent(
     ).toJson();
   }
 }
+
+Future<Map<String, Object?>?> _handlePaseoCancelAgent(
+  AgentManager manager,
+  PaseoProviderCatalogRegistry providerCatalog,
+  Map<String, Object?> message,
+) async {
+  final request = CancelAgentRequest.fromJson(message);
+  try {
+    await manager.cancelAgentRun(request.agentId);
+    if (request.requestId == null) return null;
+    return CancelAgentResponse(
+      requestId: request.requestId!,
+      agentId: request.agentId,
+      agent: _cancelAgentSnapshot(manager, providerCatalog, request.agentId),
+      error: null,
+    ).toJson();
+  } on Object catch (error) {
+    if (request.requestId == null) return null;
+    return CancelAgentResponse(
+      requestId: request.requestId!,
+      agentId: request.agentId,
+      agent: _cancelAgentSnapshotOrNull(
+        manager,
+        providerCatalog,
+        request.agentId,
+      ),
+      error: _cancelAgentError(error),
+    ).toJson();
+  }
+}
+
+Map<String, Object?> _cancelAgentSnapshot(
+  AgentManager manager,
+  PaseoProviderCatalogRegistry providerCatalog,
+  String agentId,
+) {
+  final timeline = manager.fetchCanonicalTimeline(agentId);
+  final agent = timeline.agent.copyWith(
+    providerUnavailable: !manager.isProviderAvailable(timeline.agent.provider),
+  );
+  final providerDefinition = providerCatalog.definition(agent.provider);
+  return PaseoAgentSnapshotCodec.encode(
+    agent,
+    pendingPermissions: timeline.rows
+        .map((row) => row.item)
+        .whereType<PermissionItem>(),
+    capabilities: providerDefinition?.capabilities,
+    features: paseoProviderFeaturesFor(agent),
+    availableModes: providerDefinition == null
+        ? null
+        : [for (final mode in providerDefinition.modes) mode.mode.toJson()],
+    currentModeId: providerDefinition == null
+        ? agent.currentModeId
+        : _snapshotCurrentModeId(agent, providerDefinition),
+    providerUnavailable: providerDefinition == null,
+  );
+}
+
+Map<String, Object?>? _cancelAgentSnapshotOrNull(
+  AgentManager manager,
+  PaseoProviderCatalogRegistry providerCatalog,
+  String agentId,
+) {
+  try {
+    return _cancelAgentSnapshot(manager, providerCatalog, agentId);
+  } on Object {
+    return null;
+  }
+}
+
+String _cancelAgentError(Object error) => switch (error) {
+  RpcException(:final error) => error.message,
+  ArgumentError(message: final message) => '$message',
+  UnsupportedError(message: final message) => message ?? '',
+  _ => '$error'.replaceFirst(RegExp(r'^[^:]+Exception: '), ''),
+};
 
 Future<Object?> _handlePaseoFetchAgents(
   AgentManager manager,

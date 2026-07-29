@@ -305,6 +305,23 @@ void main() {
     await stop.close();
     expect(await follow, 0);
     expect(followErrors.toString(), isEmpty);
+
+    await handle.manager.prompt(active.agentId, 'keep working');
+    final stopped = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: ['stop', 'agent-cli-act', '--host', host, '--json'],
+        environment: const {},
+        writeOutput: stopped.write,
+      ),
+      0,
+    );
+    expect(jsonDecode(stopped.toString()), {
+      'stoppedCount': 1,
+      'agentIds': [active.agentId],
+    });
+    expect(modeClient.session.interrupted, isTrue);
+    expect(handle.manager.hasActiveAgentRun(active.agentId), isFalse);
   });
 }
 
@@ -328,6 +345,7 @@ final class _ModeClient implements AgentClient {
 final class _ModeSession implements ConfigurableAgentSession {
   final _events = StreamController<ProviderEvent>.broadcast();
   String? modeId;
+  bool interrupted = false;
 
   @override
   Stream<ProviderEvent> get events => _events.stream;
@@ -336,7 +354,12 @@ final class _ModeSession implements ConfigurableAgentSession {
   Future<void> prompt(String text) async {}
 
   @override
-  Future<void> interrupt() async {}
+  Future<void> interrupt() async {
+    interrupted = true;
+    scheduleMicrotask(
+      () => _events.add(const TurnFailed(error: 'interrupted')),
+    );
+  }
 
   @override
   Future<void> dispose() => _events.close();

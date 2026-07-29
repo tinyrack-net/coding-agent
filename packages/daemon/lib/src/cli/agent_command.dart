@@ -37,6 +37,16 @@ Future<int> runAgentCommand({
             'coding-agent agent mode --list <id>',
       );
     }
+    if (invocation.action == 'stop' &&
+        invocation.agentId == null &&
+        !invocation.stopAll &&
+        invocation.cwd == null) {
+      throw const AgentCommandException(
+        'MISSING_ARGUMENT',
+        'Agent ID required unless --all or --cwd is specified',
+        details: 'Usage: coding-agent agent stop <id> | --all | --cwd <path>',
+      );
+    }
     final env = environment ?? Platform.environment;
     var send = request;
     if (send == null) {
@@ -66,6 +76,7 @@ Future<int> runAgentCommand({
       send,
       env,
       (now ?? DateTime.now)().toUtc(),
+      errorOutput,
     );
     output(_render(result, invocation));
     return 0;
@@ -93,6 +104,8 @@ final class AgentCliInvocation {
     required this.agentId,
     required this.modeId,
     required this.listModes,
+    required this.stopAll,
+    required this.cwd,
     required this.includeArchived,
     required this.global,
     required this.labels,
@@ -107,6 +120,8 @@ final class AgentCliInvocation {
   final String? agentId;
   final String? modeId;
   final bool listModes;
+  final bool stopAll;
+  final String? cwd;
   final bool includeArchived;
   final bool global;
   final List<String> labels;
@@ -121,7 +136,7 @@ final class AgentCliInvocation {
       throw const FormatException('Missing agent action');
     }
     final action = arguments.first;
-    if (!const {'ls', 'inspect', 'mode'}.contains(action)) {
+    if (!const {'ls', 'inspect', 'mode', 'stop'}.contains(action)) {
       throw FormatException('Unknown agent action: $action');
     }
     final positionals = <String>[];
@@ -129,6 +144,8 @@ final class AgentCliInvocation {
     var includeArchived = false;
     var global = false;
     var listModes = false;
+    var stopAll = false;
+    String? cwd;
     String? thinking;
     String? host;
     var format = 'table';
@@ -138,9 +155,17 @@ final class AgentCliInvocation {
     for (var index = 1; index < arguments.length; index++) {
       final argument = arguments[index];
       switch (argument) {
-        case '-a' || '--all':
+        case '-a':
           _onlyList(action, argument);
           includeArchived = true;
+        case '--all':
+          if (action == 'ls') {
+            includeArchived = true;
+          } else if (action == 'stop') {
+            stopAll = true;
+          } else {
+            throw FormatException('$argument is only valid for agent ls/stop');
+          }
         case '-g' || '--global':
           _onlyList(action, argument);
           global = true;
@@ -153,6 +178,11 @@ final class AgentCliInvocation {
             throw FormatException('$argument is only valid for agent mode');
           }
           listModes = true;
+        case '--cwd':
+          if (action != 'stop') {
+            throw FormatException('$argument is only valid for agent stop');
+          }
+          cwd = _requiredValue(arguments, ++index, argument);
         case '--label':
           _onlyList(action, argument);
           labels.add(_requiredValue(arguments, ++index, argument));
@@ -199,6 +229,9 @@ final class AgentCliInvocation {
             positionals.first.trim().isEmpty)) {
       throw const FormatException('Agent ID is required');
     }
+    if (action == 'stop' && positionals.length > 1) {
+      throw const FormatException('agent stop accepts at most one Agent ID');
+    }
     final normalizedThinking = thinking?.trim();
     return AgentCliInvocation(
       action: action,
@@ -207,6 +240,8 @@ final class AgentCliInvocation {
           ? positionals[1].trim()
           : null,
       listModes: listModes,
+      stopAll: stopAll,
+      cwd: cwd == null || cwd.isEmpty ? null : cwd,
       includeArchived: includeArchived,
       global: global,
       labels: List.unmodifiable(labels),
@@ -224,11 +259,13 @@ Future<_AgentCommandResult> _execute(
   AgentRpcRequester request,
   Map<String, String> environment,
   DateTime now,
+  void Function(String value) writeWarning,
 ) async {
   return switch (invocation.action) {
     'ls' => _listAgents(invocation, request, environment, now),
     'inspect' => _inspectAgent(invocation, request, environment),
     'mode' => _modeAgent(invocation, request),
+    'stop' => _stopAgents(invocation, request, writeWarning),
     _ => throw StateError('Unhandled agent action'),
   };
 }
@@ -467,6 +504,153 @@ Future<_AgentCommandResult> _modeAgent(
   });
 }
 
+Future<_AgentCommandResult> _stopAgents(
+  AgentCliInvocation invocation,
+  AgentRpcRequester request,
+  void Function(String value) writeWarning,
+) async {
+  try {
+    final directoryPayload = await request(
+      FetchAgentsRequest(
+        requestId: _requestId('agent_stop_list'),
+        filter: const AgentDirectoryFilter(includeArchived: true),
+      ).toJson(),
+    );
+    var agents = _stopDirectoryAgents(directoryPayload);
+    if (invocation.stopAll) {
+      agents = agents
+          .where((agent) => agent['archivedAt'] == null)
+          .toList(growable: false);
+    } else if (invocation.cwd != null) {
+      agents = agents
+          .where(
+            (agent) =>
+                agent['archivedAt'] == null &&
+                _isSameOrDescendantPath(invocation.cwd!, _string(agent, 'cwd')),
+          )
+          .toList(growable: false);
+    } else {
+      final payload = await request(
+        FetchAgentRequest(
+          requestId: _requestId('agent_stop_resolve'),
+          agentId: invocation.agentId!,
+        ).toJson(),
+      );
+      final responseError = payload['error'];
+      if (responseError is String && responseError.isNotEmpty) {
+        throw StateError(responseError);
+      }
+      final rawAgent = payload['agent'];
+      if (rawAgent == null) {
+        throw AgentCommandException(
+          'AGENT_NOT_FOUND',
+          'No agent found matching: ${invocation.agentId}',
+          details: 'Use `coding-agent ls` to list available agents',
+        );
+      }
+      if (rawAgent is! Map) {
+        throw const FormatException(
+          'fetch_agent_response contains an invalid agent',
+        );
+      }
+      final agent = Map<String, Object?>.from(rawAgent);
+      PaseoAgentSnapshotCodec.decode(agent);
+      agents = [agent];
+    }
+
+    final results = await Future.wait([
+      for (final agent in agents) _stopOneAgent(agent, request),
+    ]);
+    final stoppedIds = <String>[];
+    for (final result in results) {
+      if (result.error != null) {
+        writeWarning(
+          'Warning: Failed to stop agent '
+          '${_shortAgentId(result.id)}: ${result.error}\n',
+        );
+      } else if (result.stopped) {
+        stoppedIds.add(result.id);
+      }
+    }
+    return _AgentCommandResult.stop({
+      'stoppedCount': stoppedIds.length,
+      'agentIds': stoppedIds,
+    });
+  } on AgentCommandException {
+    rethrow;
+  } on Object catch (error) {
+    throw AgentCommandException(
+      'STOP_AGENT_FAILED',
+      'Failed to stop agent(s): ${_errorText(error)}',
+    );
+  }
+}
+
+List<Map<String, Object?>> _stopDirectoryAgents(Map<String, Object?> payload) {
+  final entries = payload['entries'];
+  if (entries is! List) {
+    throw const FormatException('fetch_agents_response is missing entries');
+  }
+  final agents = <Map<String, Object?>>[];
+  for (final rawEntry in entries) {
+    if (rawEntry is! Map || rawEntry['agent'] is! Map) {
+      throw const FormatException(
+        'fetch_agents_response contains an invalid entry',
+      );
+    }
+    final agent = Map<String, Object?>.from(rawEntry['agent'] as Map);
+    PaseoAgentSnapshotCodec.decode(agent);
+    agents.add(agent);
+  }
+  return agents;
+}
+
+Future<({String id, bool stopped, String? error})> _stopOneAgent(
+  Map<String, Object?> agent,
+  AgentRpcRequester request,
+) async {
+  final id = _string(agent, 'id');
+  if (_string(agent, 'status') != 'running') {
+    return (id: id, stopped: false, error: null);
+  }
+  try {
+    final payload = await request(
+      CancelAgentRequest(
+        agentId: id,
+        requestId: _requestId('agent_stop_cancel'),
+      ).toJson(),
+    );
+    final response = CancelAgentResponse.fromJson({
+      'type': CancelAgentResponse.type,
+      'payload': payload,
+    });
+    if (response.error case final error?) throw StateError(error);
+    if (response.agent case final agent?) {
+      PaseoAgentSnapshotCodec.decode(agent);
+    }
+    return (id: id, stopped: true, error: null);
+  } on Object catch (error) {
+    return (id: id, stopped: false, error: _errorText(error));
+  }
+}
+
+bool _isSameOrDescendantPath(String basePath, String candidatePath) {
+  var base = basePath.replaceAll(r'\', '/').replaceFirst(RegExp(r'/$'), '');
+  var candidate = candidatePath
+      .replaceAll(r'\', '/')
+      .replaceFirst(RegExp(r'/$'), '');
+  final windowsPath =
+      RegExp(r'^[a-zA-Z]:/').hasMatch(base) ||
+      RegExp(r'^[a-zA-Z]:/').hasMatch(candidate);
+  if (windowsPath) {
+    base = base.toLowerCase();
+    candidate = candidate.toLowerCase();
+  }
+  return candidate == base || candidate.startsWith('$base/');
+}
+
+String _shortAgentId(String id) => id.substring(0, id.length.clamp(0, 7));
+
 Map<String, Object?> _agentListRow(
   Map<String, Object?> snapshot,
   Map<String, String> environment,
@@ -675,12 +859,19 @@ final class _AgentCommandResult {
         structured: Map.unmodifiable(data),
       );
 
+  factory _AgentCommandResult.stop(Map<String, Object?> data) =>
+      _AgentCommandResult._(
+        rows: [Map.unmodifiable(data)],
+        kind: _AgentResultKind.stop,
+        structured: Map.unmodifiable(data),
+      );
+
   final List<Map<String, Object?>> rows;
   final _AgentResultKind kind;
   final Object? structured;
 }
 
-enum _AgentResultKind { agents, inspect, modes, modeSet }
+enum _AgentResultKind { agents, inspect, modes, modeSet, stop }
 
 String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
   if (invocation.quiet) {
@@ -689,7 +880,13 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       _AgentResultKind.inspect => 'key',
       _AgentResultKind.modes => 'id',
       _AgentResultKind.modeSet => 'agentId',
+      _AgentResultKind.stop => 'agentIds',
     };
+    if (result.kind == _AgentResultKind.stop) {
+      final ids = result.rows.single['agentIds'];
+      if (ids is! List || ids.isEmpty) return '';
+      return '${ids.join('\n')}\n';
+    }
     return result.rows.map((row) => row[field]).join('\n') +
         (result.rows.isEmpty ? '' : '\n');
   }
@@ -717,6 +914,7 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       ('AGENT ID', 'agentId', 12),
       ('MODE', 'mode', 20),
     ],
+    _AgentResultKind.stop => const [('INTERRUPTED', 'stoppedCount', 0)],
     _AgentResultKind.agents => const [
       ('AGENT ID', 'shortId', 12),
       ('NAME', 'name', 20),
@@ -947,6 +1145,7 @@ const agentUsage =
     '       coding-agent agent inspect <id> [options]\n'
     '       coding-agent agent mode <id> <mode> [options]\n'
     '       coding-agent agent mode --list <id> [options]\n'
+    '       coding-agent agent stop [<id>|--all|--cwd <path>] [options]\n'
     '       coding-agent ls [options]\n'
     '       coding-agent inspect <id> [options]';
 
@@ -960,6 +1159,9 @@ String _agentHelp(String? action) => switch (action) {
   'mode' =>
     'Usage: coding-agent agent mode [options] <id> [mode]\n'
         "Change an agent's operational mode\n",
+  'stop' =>
+    'Usage: coding-agent agent stop [options] [id]\n'
+        'Interrupt an agent if it is running (no-op for idle agents)\n',
   _ =>
     'Usage: coding-agent agent [command]\n'
         'Manage agents (advanced operations)\n\n'
@@ -967,5 +1169,6 @@ String _agentHelp(String? action) => switch (action) {
         '  ls       List agents\n'
         '  inspect  Show detailed information about an agent\n'
         '  logs     View agent activity/timeline\n'
-        '  mode     Change an agent\'s operational mode\n',
+        '  mode     Change an agent\'s operational mode\n'
+        '  stop     Interrupt a running agent\n',
 };

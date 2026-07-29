@@ -1090,6 +1090,64 @@ class AgentManager {
     await runtime.session?.interrupt();
   }
 
+  /// Cancels an active provider run and waits for its terminal event.
+  ///
+  /// Paseo acknowledges `cancel_agent_request` only after the run settles.
+  /// Providers that acknowledge interruption but never emit a terminal event
+  /// are force-settled after the same two-second rescue window.
+  Future<({AgentSummary agent, bool cancelled})> cancelAgentRun(
+    String agentId, {
+    Duration settlementTimeout = const Duration(seconds: 2),
+  }) async {
+    var runtime = _runtime(agentId);
+    if (!hasActiveAgentRun(agentId)) {
+      return (agent: runtime.summary, cancelled: false);
+    }
+
+    var interruptAcknowledged = true;
+    try {
+      await interrupt(agentId);
+    } on Object {
+      interruptAcknowledged = false;
+    }
+    await broker.autoDenyForAgent(agentId);
+    final deadline = DateTime.now().add(settlementTimeout);
+    while (hasActiveAgentRun(agentId)) {
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) break;
+      final waiter = Completer<void>();
+      _stateWaiters.putIfAbsent(agentId, () => []).add(waiter);
+      try {
+        if (hasActiveAgentRun(agentId)) {
+          await waiter.future.timeout(remaining);
+        }
+      } on TimeoutException {
+        break;
+      } finally {
+        _stateWaiters[agentId]?.remove(waiter);
+        if (_stateWaiters[agentId]?.isEmpty ?? false) {
+          _stateWaiters.remove(agentId);
+        }
+      }
+    }
+
+    runtime = _runtime(agentId);
+    if (hasActiveAgentRun(agentId)) {
+      if (!interruptAcknowledged) {
+        throw StateError(
+          'Cannot stop agent $agentId because its active run cancellation '
+          'was not acknowledged',
+        );
+      }
+      if (runtime.currentTurnId != null) {
+        _closeTurn(runtime, TurnPhase.canceled);
+      }
+      _setRunState(runtime, AgentRunState.idle);
+    }
+    await _store.flush();
+    return (agent: runtime.summary, cancelled: true);
+  }
+
   Future<void> close(String agentId) async {
     final runtime = _runtime(agentId);
     runtime.interruptRequested = true;

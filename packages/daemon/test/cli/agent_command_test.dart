@@ -12,6 +12,7 @@ void main() {
       ['ls', '--help'],
       ['inspect', '--help'],
       ['mode', '--help'],
+      ['stop', '--help'],
     ]) {
       final output = StringBuffer();
       expect(
@@ -29,6 +30,7 @@ void main() {
       ['agent', 'ls', '--help'],
       ['agent', 'inspect', '--help'],
       ['agent', 'mode', '--help'],
+      ['agent', 'stop', '--help'],
       ['ls', '--help'],
       ['inspect', '--help'],
     ]) {
@@ -655,6 +657,253 @@ void main() {
     expect(rejectedError['message'], contains('Unknown mode: unknown'));
   });
 
+  test('stop --all interrupts only running non-archived agents', () async {
+    final sent = <Map<String, Object?>>[];
+    final warnings = StringBuffer();
+    final output = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: const ['stop', '--all', '--json'],
+        request: (message) async {
+          sent.add(message);
+          if (message['type'] == 'fetch_agents_request') {
+            return _listPayload([
+              _entry(_snapshot(id: 'running-success', status: 'running')),
+              _entry(_snapshot(id: 'running-failure', status: 'running')),
+              _entry(_snapshot(id: 'idle-agent', status: 'idle')),
+              _entry(
+                _snapshot(
+                  id: 'archived-agent',
+                  status: 'closed',
+                  archivedAt: '2026-07-29T00:00:00Z',
+                ),
+              ),
+            ]);
+          }
+          final id = message['agentId'] as String;
+          return {
+            'requestId': message['requestId'],
+            'agentId': id,
+            'agent': _snapshot(id: id, status: 'idle'),
+            'error': id == 'running-failure' ? 'provider refused' : null,
+          };
+        },
+        writeOutput: output.write,
+        writeError: warnings.write,
+      ),
+      0,
+    );
+    expect(sent.first, {
+      'type': 'fetch_agents_request',
+      'requestId': isA<String>(),
+      'filter': {'includeArchived': true},
+    });
+    expect(
+      sent.where((message) => message['type'] == 'cancel_agent_request'),
+      hasLength(2),
+    );
+    expect(jsonDecode(output.toString()), {
+      'stoppedCount': 1,
+      'agentIds': ['running-success'],
+    });
+    expect(
+      warnings.toString(),
+      'Warning: Failed to stop agent running: provider refused\n',
+    );
+  });
+
+  test(
+    'stop resolves a specific agent and supports quiet/table output',
+    () async {
+      final sent = <Map<String, Object?>>[];
+      Future<Map<String, Object?>> request(Map<String, Object?> message) async {
+        sent.add(message);
+        return switch (message['type']) {
+          'fetch_agents_request' => _listPayload([]),
+          'fetch_agent_request' => {
+            'requestId': message['requestId'],
+            'agent': _snapshot(id: 'agent-precise', status: 'running'),
+            'project': null,
+            'error': null,
+          },
+          'cancel_agent_request' => {
+            'requestId': message['requestId'],
+            'agentId': message['agentId'],
+            'agent': _snapshot(id: 'agent-precise', status: 'idle'),
+            'error': null,
+          },
+          _ => throw StateError('unexpected request'),
+        };
+      }
+
+      final quiet = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: const ['stop', 'agent-pre', '--quiet'],
+          request: request,
+          writeOutput: quiet.write,
+        ),
+        0,
+      );
+      expect(sent.map((message) => message['type']), [
+        'fetch_agents_request',
+        'fetch_agent_request',
+        'cancel_agent_request',
+      ]);
+      expect(sent[1]['agentId'], 'agent-pre');
+      expect(sent[2]['agentId'], 'agent-precise');
+      expect(quiet.toString(), 'agent-precise\n');
+
+      final table = StringBuffer();
+      await runAgentCommand(
+        arguments: const ['stop', 'agent-pre'],
+        request: request,
+        writeOutput: table.write,
+      );
+      expect(table.toString(), startsWith('INTERRUPTED'));
+      expect(table.toString(), contains('1'));
+    },
+  );
+
+  test('stop --cwd uses frozen mixed-separator descendant matching', () async {
+    final cancelled = <String>[];
+    final output = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: const ['stop', '--cwd', r'C:\Repo', '--format', 'yaml'],
+        request: (message) async {
+          if (message['type'] == 'fetch_agents_request') {
+            return _listPayload([
+              _entry(
+                _snapshot(id: 'same', status: 'running', cwd: r'c:\repo\\'),
+              ),
+              _entry(
+                _snapshot(
+                  id: 'child',
+                  status: 'running',
+                  cwd: 'C:/REPO/packages/app',
+                ),
+              ),
+              _entry(
+                _snapshot(
+                  id: 'sibling-prefix',
+                  status: 'running',
+                  cwd: r'C:\repository',
+                ),
+              ),
+              _entry(
+                _snapshot(
+                  id: 'archived-child',
+                  status: 'closed',
+                  cwd: r'C:\repo\old',
+                  archivedAt: '2026-07-29T00:00:00Z',
+                ),
+              ),
+            ]);
+          }
+          final id = message['agentId'] as String;
+          cancelled.add(id);
+          return {
+            'requestId': message['requestId'],
+            'agentId': id,
+            'agent': _snapshot(id: id, status: 'idle'),
+            'error': null,
+          };
+        },
+        writeOutput: output.write,
+      ),
+      0,
+    );
+    expect(cancelled, ['same', 'child']);
+    expect(output.toString(), contains('stoppedCount: 2'));
+    expect(output.toString(), contains('- same'));
+    expect(output.toString(), contains('- child'));
+  });
+
+  test(
+    'stop idle, missing, and operation failures preserve contracts',
+    () async {
+      var requested = false;
+      final missing = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: const ['stop', '--json'],
+          request: (_) async {
+            requested = true;
+            return const {};
+          },
+          writeError: missing.write,
+        ),
+        1,
+      );
+      expect(requested, isFalse);
+      expect(
+        (jsonDecode(missing.toString())
+            as Map<String, dynamic>)['error']['code'],
+        'MISSING_ARGUMENT',
+      );
+
+      final notFound = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: const ['stop', 'missing', '--json'],
+          request: (message) async => message['type'] == 'fetch_agents_request'
+              ? _listPayload([])
+              : {
+                  'requestId': message['requestId'],
+                  'agent': null,
+                  'project': null,
+                  'error': null,
+                },
+          writeError: notFound.write,
+        ),
+        1,
+      );
+      expect(notFound.toString(), contains('AGENT_NOT_FOUND'));
+
+      var cancelCalled = false;
+      final idle = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: const ['stop', 'idle'],
+          request: (message) async {
+            if (message['type'] == 'fetch_agents_request') {
+              return _listPayload([]);
+            }
+            if (message['type'] == 'fetch_agent_request') {
+              return {
+                'requestId': message['requestId'],
+                'agent': _snapshot(id: 'idle', status: 'idle'),
+                'project': null,
+                'error': null,
+              };
+            }
+            cancelCalled = true;
+            return const {};
+          },
+          writeOutput: idle.write,
+        ),
+        0,
+      );
+      expect(cancelCalled, isFalse);
+      expect(idle.toString(), contains('0'));
+
+      final failed = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: const ['stop', '--all', '--json'],
+          request: (_) async => throw StateError('socket closed'),
+          writeError: failed.write,
+        ),
+        1,
+      );
+      final error =
+          (jsonDecode(failed.toString()) as Map<String, dynamic>)['error'];
+      expect(error['code'], 'STOP_AGENT_FAILED');
+      expect(error['message'], contains('socket closed'));
+    },
+  );
+
   test('parser and invalid thinking errors are deterministic', () async {
     for (final arguments in const [
       <String>[],
@@ -666,6 +915,9 @@ void main() {
       ['mode'],
       ['mode', 'one', 'two', 'three'],
       ['mode', 'one', 'plan', '--list', 'extra'],
+      ['stop', 'one', 'two'],
+      ['stop', '--cwd'],
+      ['stop', '--all', '-a'],
       ['ls', '--list'],
       ['ls', '--format', 'xml'],
     ]) {

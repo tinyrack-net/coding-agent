@@ -114,7 +114,7 @@ Future<void> main(List<String> arguments) async {
     'Usage: coding-agent daemon pair [--home <path>] [--json]\n'
     '       coding-agent import --provider <provider> <id> [options]\n'
     '       coding-agent agent import --provider <provider> <id> [options]\n'
-    '       coding-agent agent <ls|inspect|mode> ...\n'
+    '       coding-agent agent <ls|inspect|mode|stop> ...\n'
     '       coding-agent agent logs <id> [options]\n'
     '       coding-agent <ls|inspect|logs> ...\n'
     '       coding-agent hub connect --url <url> --token <token> '
