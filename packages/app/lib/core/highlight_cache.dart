@@ -73,6 +73,25 @@ String? extensionFromPath(String? filePath) {
 bool isHighlightLanguageSupported(String? extension) =>
     extension != null && _languageByExtension.containsKey(extension);
 
+List<List<ToolDiffToken>> tokenizeHighlightDocument(
+  String code,
+  String extension,
+) {
+  final language = _languageByExtension[extension];
+  if (language == null) {
+    throw UnsupportedError('Unsupported highlight extension: $extension');
+  }
+  final result = highlight.parse(code, languageId: language);
+  final lines = <List<ToolDiffToken>>[<ToolDiffToken>[]];
+  _flattenNode(result.rootNode, null, lines);
+  for (var index = 0; index < lines.length; index++) {
+    if (lines[index].isEmpty) {
+      lines[index] = const [ToolDiffToken(text: '')];
+    }
+  }
+  return lines;
+}
+
 List<List<ToolDiffToken>>? tokenizeToLines(String code, String? extension) {
   if (!isHighlightLanguageSupported(extension) ||
       code.length > maxHighlightChars) {
@@ -86,17 +105,7 @@ List<List<ToolDiffToken>>? tokenizeToLines(String code, String? extension) {
   }
 
   try {
-    final result = highlight.parse(
-      code,
-      languageId: _languageByExtension[extension]!,
-    );
-    final lines = <List<ToolDiffToken>>[<ToolDiffToken>[]];
-    _flattenNode(result.rootNode, null, lines);
-    for (var index = 0; index < lines.length; index++) {
-      if (lines[index].isEmpty) {
-        lines[index] = const [ToolDiffToken(text: '')];
-      }
-    }
+    final lines = tokenizeHighlightDocument(code, extension!);
     if (_tokenizationCache.length >= _maxCachedHighlights) {
       _tokenizationCache.remove(_tokenizationCache.keys.first);
     }

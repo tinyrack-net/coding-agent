@@ -8197,10 +8197,13 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/diff-highlighter.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/diff_highlighter.dart; packages/app/lib/core/highlight_cache.dart",
+      "evidence": [
+        "packages/app/test/diff_highlighter_test.dart",
+        "packages/app/test/highlight_cache_test.dart"
+      ],
+      "notes": "Ports the complete frozen utility contract: multi-file unified-diff sectioning, paired and no-prefix path extraction including spaces, metadata fallback, new/deleted detection, exact hunk range defaults and header trimming, additions/deletions, old/new line-map reconstruction, gap-preserving whole-file highlighting, line-number token remapping, unsupported-language identity fallback, and combined parse-and-highlight."
     },
     {
       "id": "source-unit:packages/app/src/utils/diff-layout.ts",
