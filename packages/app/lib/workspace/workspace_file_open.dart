@@ -1,3 +1,4 @@
+import '../core/path.dart';
 import 'workspace_pane_layout.dart';
 
 enum OpenFileDisposition { main, side }
@@ -117,7 +118,7 @@ ResolvedWorkspaceFilePaths? resolveWorkspaceFilePaths({
   );
   if (filePath.isEmpty || root == null) return null;
 
-  if (_isAbsolutePath(filePath)) {
+  if (isAbsolutePath(filePath)) {
     final normalizedFile = _normalizeAbsolutePath(filePath);
     if (normalizedFile == null || _pathsEqual(normalizedFile, root)) {
       return null;
@@ -154,11 +155,6 @@ final class ResolvedWorkspaceFilePaths {
 int? _normalizeLineNumber(int? value) =>
     value != null && value > 0 ? value : null;
 
-bool _isAbsolutePath(String value) =>
-    value.startsWith('/') ||
-    value.startsWith('//') ||
-    RegExp(r'^[A-Za-z]:/').hasMatch(value);
-
 String _trimTrailingSlashes(String value) {
   if (RegExp(r'^/+$').hasMatch(value)) return '/';
   if (RegExp(r'^[A-Za-z]:/+$').hasMatch(value)) {
@@ -169,7 +165,7 @@ String _trimTrailingSlashes(String value) {
 
 String? _normalizeAbsolutePath(String value) {
   final input = _trimTrailingSlashes(value);
-  if (!_isAbsolutePath(input)) return null;
+  if (!isAbsolutePath(input)) return null;
   final drive = RegExp(r'^([A-Za-z]:)/(.*)$').firstMatch(input);
   if (drive != null) {
     final body = _normalizePathSegments(drive.group(2)!, rejectEscape: false);

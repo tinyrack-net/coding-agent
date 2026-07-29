@@ -8375,10 +8375,13 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/path.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/path.dart; packages/app/lib/workspace/workspace_file_open.dart",
+      "evidence": [
+        "packages/app/test/path_test.dart",
+        "packages/app/test/workspace_file_open_test.dart"
+      ],
+      "notes": "Matches Paseo's absolute-path predicate for Unix roots, Windows drive paths with either separator, UNC paths, mixed separators, relative paths, and incomplete drive prefixes. Workspace file resolution consumes the shared predicate."
     },
     {
       "id": "source-unit:packages/app/src/utils/pcm16-wav.ts",
@@ -8913,8 +8916,9 @@
     {
       "id": "source-unit:packages/app/src/workspace/file-open/index.ts",
       "status": "verified",
-      "implementation": "packages/app/lib/workspace/workspace_file_open.dart; packages/app/lib/state/worktree_tabs_provider.dart",
+      "implementation": "packages/app/lib/core/path.dart; packages/app/lib/workspace/workspace_file_open.dart; packages/app/lib/state/worktree_tabs_provider.dart",
       "evidence": [
+        "packages/app/test/path_test.dart",
         "packages/app/test/workspace_file_open_test.dart",
         "packages/app/test/worktree_tabs_provider_test.dart"
       ],
