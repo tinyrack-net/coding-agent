@@ -160,7 +160,9 @@ Never hand-edit `upstream_inventory.json`. `ledger.json` is merge-preserved by
 - Schedule creation and editing now use the shared responsive modal sheet with
   frozen desktop/compact geometry, sticky actions, field spacing, and gesture
   dismissal. Host and Project use the reusable adaptive SelectField, including
-  host status, project search, loading preservation, and compact presentation.
+  host status, project search, loading preservation, custom option rendering,
+  value-key matching, trigger-width flyouts, 60/90 compact snap points, and
+  desktop keyboard selection/dismissal.
 - Ledger status: 427 verified, 242 partial, and 1251 not-started out of 1920.
 - Validation: protocol 332 tests, daemon 898 tests, Flutter 802 tests, root
   analysis, frozen

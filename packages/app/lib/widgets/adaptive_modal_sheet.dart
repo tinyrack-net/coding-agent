@@ -66,13 +66,19 @@ class AdaptiveModalSheet extends StatelessWidget {
     required this.onClose,
     this.actions = const [],
     this.desktopMaxWidth = adaptiveModalDesktopMaxWidth,
-  });
+    this.compactInitialHeightFactor = adaptiveModalCompactInitialHeightFactor,
+    this.compactMaxHeightFactor = adaptiveModalCompactMaxHeightFactor,
+  }) : assert(compactInitialHeightFactor >= .2),
+       assert(compactInitialHeightFactor <= compactMaxHeightFactor),
+       assert(compactMaxHeightFactor <= 1);
 
   final String title;
   final Widget content;
   final VoidCallback onClose;
   final List<Widget> actions;
   final double desktopMaxWidth;
+  final double compactInitialHeightFactor;
+  final double compactMaxHeightFactor;
 
   @override
   Widget build(BuildContext context) {
@@ -94,6 +100,8 @@ class AdaptiveModalSheet extends StatelessWidget {
               onClose: onClose,
               actions: actions,
               safeArea: safeArea,
+              initialHeightFactor: compactInitialHeightFactor,
+              maxHeightFactor: compactMaxHeightFactor,
             )
           : _DesktopAdaptiveModalSheet(
               title: title,
@@ -151,6 +159,8 @@ class _CompactAdaptiveModalSheet extends StatefulWidget {
     required this.onClose,
     required this.actions,
     required this.safeArea,
+    required this.initialHeightFactor,
+    required this.maxHeightFactor,
   });
 
   final String title;
@@ -158,6 +168,8 @@ class _CompactAdaptiveModalSheet extends StatefulWidget {
   final VoidCallback onClose;
   final List<Widget> actions;
   final CompactSheetSafeAreaPadding safeArea;
+  final double initialHeightFactor;
+  final double maxHeightFactor;
 
   @override
   State<_CompactAdaptiveModalSheet> createState() =>
@@ -186,14 +198,11 @@ class _CompactAdaptiveModalSheetState
           alignment: Alignment.bottomCenter,
           child: DraggableScrollableSheet(
             expand: false,
-            initialChildSize: adaptiveModalCompactInitialHeightFactor,
+            initialChildSize: widget.initialHeightFactor,
             minChildSize: .2,
-            maxChildSize: adaptiveModalCompactMaxHeightFactor,
+            maxChildSize: widget.maxHeightFactor,
             snap: true,
-            snapSizes: const [
-              adaptiveModalCompactInitialHeightFactor,
-              adaptiveModalCompactMaxHeightFactor,
-            ],
+            snapSizes: [widget.initialHeightFactor, widget.maxHeightFactor],
             builder: (context, scrollController) => _AdaptiveModalCard(
               title: widget.title,
               content: widget.content,

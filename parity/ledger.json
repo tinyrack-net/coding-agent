@@ -3797,7 +3797,7 @@
         "packages/app/test/select_field_test.dart",
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "Implements the adaptive 32px desktop and 44px compact trigger, loading-option preservation, anchored desktop flyout, compact modal sheet, label and description search, empty state, disabled state, selection indicator, and leading status or folder glyphs. Remaining parity includes getValueKey and custom render contracts, keyboard active-option and focus-loop behavior, exact anchor-width sizing, compact inline search-header placement, and pixel-golden hover and focus proof."
+      "notes": "Implements the exported trigger, explicit sm/md geometry, Object.is-style scalar/reference matching plus getValueKey, loading-option preservation, trigger-width desktop flyout, frozen 60/90 compact snap points, label and description search, empty and disabled states, option kind/test keys, custom renderOption state, selection and active indicators, and Enter/Space/Arrow/Escape keyboard behavior. Remaining parity is the compact Combobox header/scroll padding composition and pixel-golden hover/focus proof; the broader fuzzy-ranking and floating-collision behavior remains tracked under the separate Combobox source units."
     },
     {
       "id": "source-unit:packages/app/src/components/ui/shortcut.tsx",

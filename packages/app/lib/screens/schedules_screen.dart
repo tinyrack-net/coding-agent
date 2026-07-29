@@ -660,6 +660,10 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     final projectTargets =
         ref.watch(scheduleProjectTargetsProvider).value?.targets ??
         const <ScheduleProjectTarget>[];
+    final controlSize =
+        MediaQuery.sizeOf(context).width < adaptiveModalCompactBreakpoint
+        ? PaseoFieldControlSize.md
+        : PaseoFieldControlSize.sm;
     final hostClients = ref.watch(hostRuntimeClientsProvider);
     final client = _serverId == null ? null : hostClients[_serverId];
     ScheduleProjectTarget? selectedProject;
@@ -789,6 +793,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                   placeholder: 'Select host',
                   emptyText: 'No hosts found',
                   title: 'Host',
+                  size: controlSize,
                   disabled: editing,
                 ),
               ),
@@ -1056,6 +1061,9 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
         searchable: true,
         searchPlaceholder: 'Search projects...',
         title: 'Select project',
+        size: MediaQuery.sizeOf(context).width < adaptiveModalCompactBreakpoint
+            ? PaseoFieldControlSize.md
+            : PaseoFieldControlSize.sm,
       ),
     );
   }
