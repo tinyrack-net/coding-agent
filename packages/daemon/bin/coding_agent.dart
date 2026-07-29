@@ -28,7 +28,7 @@ import 'package:agent_daemon/src/cli/worktree_command.dart';
 Future<void> main(List<String> arguments) async {
   final invocation = classifyCliInvocation(
     arguments: arguments,
-    knownCommands: _knownCommands,
+    knownCommands: codingAgentKnownCommands,
     currentDirectory: Directory.current.path,
   );
   if (invocation case OpenProjectCliInvocation(:final resolvedPath)) {
@@ -271,38 +271,3 @@ const _rootHelp =
     '  speech              Speech commands\n'
     '  workspace\n'
     '  help [command]      display help for command\n';
-
-const _knownCommands = {
-  'run',
-  'import',
-  'agent',
-  'ls',
-  'attach',
-  'inspect',
-  'logs',
-  'stop',
-  'send',
-  'wait',
-  'archive',
-  'delete',
-  'daemon',
-  'start',
-  'status',
-  'restart',
-  'onboard',
-  'chat',
-  'clone',
-  'hub',
-  'schedule',
-  'heartbeat',
-  'loop',
-  'permit',
-  'script',
-  'provider',
-  'speech',
-  'terminal',
-  'workspace',
-  'worktree',
-  'hooks',
-  'help',
-};

@@ -6,6 +6,45 @@ sealed class CliInvocation {
   const CliInvocation();
 }
 
+/// Frozen Paseo 0.2.0 root command catalog used before path classification.
+///
+/// `worktree` remains recognized as the hidden compatibility command and
+/// `help` is Commander's built-in command.
+const codingAgentKnownCommands = {
+  'run',
+  'import',
+  'agent',
+  'ls',
+  'attach',
+  'inspect',
+  'logs',
+  'stop',
+  'send',
+  'wait',
+  'archive',
+  'delete',
+  'daemon',
+  'start',
+  'status',
+  'restart',
+  'onboard',
+  'chat',
+  'clone',
+  'hub',
+  'schedule',
+  'heartbeat',
+  'loop',
+  'permit',
+  'script',
+  'provider',
+  'speech',
+  'terminal',
+  'workspace',
+  'worktree',
+  'hooks',
+  'help',
+};
+
 List<String> defaultEmptyCliArguments(List<String> arguments) =>
     arguments.isEmpty ? const ['onboard'] : arguments;
 

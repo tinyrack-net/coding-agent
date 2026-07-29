@@ -7,6 +7,43 @@ import 'package:test/test.dart';
 void main() {
   const knownCommands = {'ls', 'run', 'status', 'hooks', 'help'};
 
+  test('root command catalog matches frozen registration exactly', () {
+    expect(codingAgentKnownCommands, {
+      'run',
+      'import',
+      'agent',
+      'ls',
+      'attach',
+      'inspect',
+      'logs',
+      'stop',
+      'send',
+      'wait',
+      'archive',
+      'delete',
+      'daemon',
+      'start',
+      'status',
+      'restart',
+      'onboard',
+      'chat',
+      'clone',
+      'hub',
+      'schedule',
+      'heartbeat',
+      'loop',
+      'permit',
+      'script',
+      'provider',
+      'speech',
+      'terminal',
+      'workspace',
+      'worktree',
+      'hooks',
+      'help',
+    });
+  });
+
   test('keeps empty, flag, known, and missing invocations in CLI mode', () {
     for (final arguments in <List<String>>[
       [],
