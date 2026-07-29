@@ -5153,13 +5153,14 @@
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/activity-location.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/core/pull_request_context.dart",
       "evidence": [
+        "packages/app/test/pull_request_timeline_test.dart",
         "packages/app/test/pull_request_context_test.dart",
         "packages/app/test/pull_request_pane_test.dart"
       ],
-      "notes": "Path ranges, thread ids, resolved and outdated state, and relative ages are implemented; final cross-forge visual conformance remains."
+      "notes": "Ports the frozen path-only, single-line, and range labels; resolved or unresolved and current or outdated state ordering; concise thread-ID suffix; and suppression of opaque thread IDs longer than 24 characters. The formatter is exercised through both direct oracle fixtures and rendered activity/thread flows."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/activity-skeleton.tsx",
@@ -5311,13 +5312,14 @@
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/timeline.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/core/pull_request_context.dart",
       "evidence": [
+        "packages/app/test/pull_request_timeline_test.dart",
         "packages/app/test/pull_request_context_test.dart",
         "packages/app/test/pull_request_pane_test.dart"
       ],
-      "notes": "Reply grouping, review nesting, thread collapse, external links, and Add to chat are implemented; check-log actions and final visual conformance remain."
+      "notes": "Ports the frozen stable timeline builder: standalone ordering, first-position reply grouping, top-level general discussions, location-thread fallback, general resolution, located singles without thread IDs, distinct thread separation, root-review nesting, reply review-ID neutrality, unrelated-thread preservation, and reviews without threads."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/use-data.ts",
