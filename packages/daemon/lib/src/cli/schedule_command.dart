@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_duration.dart';
 import 'cli_output.dart';
 import 'provider_model.dart';
 
@@ -622,27 +623,11 @@ ScheduleCadence? _cadence(
 }
 
 int _parseDuration(String input) {
-  final value = input.trim();
-  if (RegExp(r'^\d+$').hasMatch(value)) return int.parse(value) * 1000;
-  if (!RegExp(r'^(?:\d+[smhd])+$').hasMatch(value)) {
-    throw ScheduleCommandException(
-      'UNKNOWN_ERROR',
-      'Invalid duration format: $input. Use formats like: 5m, 30s, 1h, 2h30m, 1d',
-    );
+  try {
+    return parseCliDurationMilliseconds(input);
+  } on FormatException catch (error) {
+    throw ScheduleCommandException('UNKNOWN_ERROR', error.message);
   }
-  var total = 0;
-  for (final match in RegExp(r'(\d+)([smhd])').allMatches(value)) {
-    final amount = int.parse(match.group(1)!);
-    total +=
-        amount *
-        switch (match.group(2)) {
-          's' => 1000,
-          'm' => 60 * 1000,
-          'h' => 60 * 60 * 1000,
-          _ => 24 * 60 * 60 * 1000,
-        };
-  }
-  return total;
 }
 
 int? _positiveIntOption(String? value, String flag) {

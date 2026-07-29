@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_duration.dart';
 import 'cli_output.dart';
 import 'provider_model.dart';
 import 'schedule_command.dart';
@@ -424,27 +425,11 @@ Map<String, Object?> _runRequest(
 }
 
 int parseLoopDuration(String input) {
-  final value = input.trim();
-  if (RegExp(r'^\d+$').hasMatch(value)) return int.parse(value) * 1000;
-  if (!RegExp(r'^(?:\d+[smhd])+$').hasMatch(value)) {
-    throw LoopCommandException(
-      'INVALID_DURATION',
-      'Invalid duration format: $input. '
-          'Use formats like: 5m, 30s, 1h, 2h30m, 1d',
-    );
+  try {
+    return parseCliDurationMilliseconds(input);
+  } on FormatException catch (error) {
+    throw LoopCommandException('INVALID_DURATION', error.message);
   }
-  var total = 0;
-  for (final match in RegExp(r'(\d+)([smhd])').allMatches(value)) {
-    final amount = int.parse(match.group(1)!);
-    total += switch (match.group(2)) {
-      's' => amount * 1000,
-      'm' => amount * 60 * 1000,
-      'h' => amount * 60 * 60 * 1000,
-      'd' => amount * 24 * 60 * 60 * 1000,
-      _ => 0,
-    };
-  }
-  return total;
 }
 
 int _positiveInt(String value, String option, {required String code}) {

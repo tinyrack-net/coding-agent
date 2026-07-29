@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import '../agent/structured_generation.dart';
 import '../server/daemon_config.dart';
 import 'agent_output_schemas.dart';
+import 'cli_duration.dart';
 import 'cli_output.dart';
 import 'provider_model.dart';
 import 'terminal_command.dart';
@@ -879,29 +880,7 @@ Map<String, String> _parseKeyValueFlags(
 int _parseWaitTimeout(String? raw) {
   if (raw == null || raw.isEmpty) return 0;
   try {
-    final input = raw.trim();
-    if (RegExp(r'^\d+$').hasMatch(input)) {
-      final result = int.parse(input) * 1000;
-      if (result <= 0) throw StateError('Timeout must be positive');
-      return result;
-    }
-    if (!RegExp(r'^(?:\d+[smhd])+$').hasMatch(input)) {
-      throw FormatException(
-        'Invalid duration format: $raw. '
-        'Use formats like: 5m, 30s, 1h, 2h30m, 1d',
-      );
-    }
-    var milliseconds = 0;
-    for (final match in RegExp(r'(\d+)([smhd])').allMatches(input)) {
-      final value = int.parse(match.group(1)!);
-      milliseconds += switch (match.group(2)) {
-        's' => value * 1000,
-        'm' => value * 60000,
-        'h' => value * 3600000,
-        'd' => value * 86400000,
-        _ => 0,
-      };
-    }
+    final milliseconds = parseCliDurationMilliseconds(raw);
     if (milliseconds <= 0) throw StateError('Timeout must be positive');
     return milliseconds;
   } on Object catch (error) {

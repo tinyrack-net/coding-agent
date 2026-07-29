@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_duration.dart';
 import 'cli_output.dart';
 import 'schedule_command.dart';
 
@@ -208,7 +209,7 @@ Future<CliOutputResult> _executeHeartbeat(
           if (expiresIn != null && expiresIn.isNotEmpty)
             'expiresAt': _isoMilliseconds(
               now().toUtc().add(
-                Duration(milliseconds: _parseDuration(expiresIn)),
+                Duration(milliseconds: parseCliDurationMilliseconds(expiresIn)),
               ),
             ),
         };
@@ -340,30 +341,6 @@ int? _parseMaxRuns(String? value) {
   return parsed;
 }
 
-int _parseDuration(String input) {
-  final value = input.trim();
-  if (RegExp(r'^\d+$').hasMatch(value)) return int.parse(value) * 1000;
-  if (!RegExp(r'^(?:\d+[smhd])+$').hasMatch(value)) {
-    throw StateError(
-      'Invalid duration format: $input. '
-      'Use formats like: 5m, 30s, 1h, 2h30m, 1d',
-    );
-  }
-  var total = 0;
-  for (final match in RegExp(r'(\d+)([smhd])').allMatches(value)) {
-    final amount = int.parse(match.group(1)!);
-    total +=
-        amount *
-        switch (match.group(2)) {
-          's' => 1000,
-          'm' => 60 * 1000,
-          'h' => 60 * 60 * 1000,
-          _ => 24 * 60 * 60 * 1000,
-        };
-  }
-  return total;
-}
-
 String _isoMilliseconds(DateTime value) => DateTime.fromMillisecondsSinceEpoch(
   value.millisecondsSinceEpoch,
   isUtc: true,
@@ -398,6 +375,7 @@ final _heartbeatDeleteSchema = CliOutputSchema(
 );
 
 String _errorText(Object error) => switch (error) {
+  FormatException(message: final message) => message,
   StateError(message: final message) => message,
   ArgumentError(message: final message) => '$message',
   _ => '$error',

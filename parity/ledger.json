@@ -10441,10 +10441,17 @@
     },
     {
       "id": "source-unit:packages/cli/src/utils/duration.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/cli_duration.dart; packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/lib/src/cli/agent_run_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/schedule_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/cli_duration_test.dart",
+        "packages/daemon/test/cli/agent_command_test.dart",
+        "packages/daemon/test/cli/agent_run_command_test.dart",
+        "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/cli/schedule_command_test.dart"
+      ],
+      "notes": "Frozen unitless seconds and compound s/m/h/d grammar, whitespace handling, exact invalid-format text, and command-specific error wrapping are ported through one shared parser."
     },
     {
       "id": "source-unit:packages/cli/src/utils/errors.ts",

@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../server/daemon_config.dart';
 import 'agent_logs_command.dart';
+import 'cli_duration.dart';
 import 'cli_output.dart';
 import 'desktop_launch.dart';
 import 'terminal_command.dart';
@@ -995,7 +996,7 @@ Future<AgentPromptImage> _readPromptImage(String path) async {
     return (timeoutMs: 0, timeoutLabel: null);
   }
   try {
-    final timeoutMs = _parsePaseoDuration(raw);
+    final timeoutMs = parseCliDurationMilliseconds(raw);
     if (timeoutMs <= 0) throw StateError('Timeout must be positive');
     final seconds = timeoutMs ~/ 1000;
     return (
@@ -1009,31 +1010,6 @@ Future<AgentPromptImage> _readPromptImage(String path) async {
       details: _errorText(error),
     );
   }
-}
-
-int _parsePaseoDuration(String input) {
-  final trimmed = input.trim();
-  if (RegExp(r'^\d+$').hasMatch(trimmed)) {
-    return int.parse(trimmed) * 1000;
-  }
-  if (!RegExp(r'^(?:\d+[smhd])+$').hasMatch(trimmed)) {
-    throw FormatException(
-      'Invalid duration format: $input. '
-      'Use formats like: 5m, 30s, 1h, 2h30m, 1d',
-    );
-  }
-  var totalMs = 0;
-  for (final match in RegExp(r'(\d+)([smhd])').allMatches(trimmed)) {
-    final value = int.parse(match.group(1)!);
-    totalMs += switch (match.group(2)) {
-      's' => value * 1000,
-      'm' => value * 60 * 1000,
-      'h' => value * 60 * 60 * 1000,
-      'd' => value * 24 * 60 * 60 * 1000,
-      _ => throw StateError('unreachable duration unit'),
-    };
-  }
-  return totalMs;
 }
 
 Future<_AgentCommandResult> _waitAgent(
