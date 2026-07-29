@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:agent_daemon/src/cli/pair_command.dart';
+import 'package:agent_daemon/src/cli/daemon_command.dart';
 import 'package:agent_daemon/src/cli/agent_attach_command.dart';
 import 'package:agent_daemon/src/cli/agent_import_command.dart';
 import 'package:agent_daemon/src/cli/agent_command.dart';
@@ -77,21 +77,8 @@ Future<void> main(List<String> arguments) async {
     exitCode = await runAgentCommand(arguments: arguments);
     return;
   }
-  if (arguments.length >= 2 &&
-      arguments[0] == 'daemon' &&
-      arguments[1] == 'pair') {
-    final options = _parsePairOptions(arguments.sublist(2));
-    if (options == null) {
-      stderr.writeln(
-        'Usage: coding-agent daemon pair [--home <path>] [--json]',
-      );
-      exitCode = 64;
-      return;
-    }
-    exitCode = await runPairCommand(
-      options: options,
-      terminalColumns: stdout.hasTerminal ? stdout.terminalColumns : null,
-    );
+  if (arguments.isNotEmpty && arguments[0] == 'daemon') {
+    exitCode = await runDaemonCommand(arguments: arguments.sublist(1));
     return;
   }
   if (arguments.isNotEmpty && arguments[0] == 'hub') {
@@ -143,7 +130,8 @@ Future<void> main(List<String> arguments) async {
   }
 
   stderr.writeln(
-    'Usage: coding-agent daemon pair [--home <path>] [--json]\n'
+    'Usage: coding-agent daemon '
+    '<start|status|stop|restart|set-password|pair> ...\n'
     '       coding-agent run [options] <prompt>\n'
     '       coding-agent agent run [options] <prompt>\n'
     '       coding-agent import --provider <provider> <id> [options]\n'
@@ -171,23 +159,6 @@ Future<void> main(List<String> arguments) async {
     '       coding-agent hooks <agent> <event>',
   );
   exitCode = 64;
-}
-
-PairCommandOptions? _parsePairOptions(List<String> arguments) {
-  String? home;
-  var json = false;
-  for (var index = 0; index < arguments.length; index++) {
-    switch (arguments[index]) {
-      case '--json':
-        json = true;
-      case '--home':
-        if (index + 1 >= arguments.length) return null;
-        home = arguments[++index];
-      default:
-        return null;
-    }
-  }
-  return PairCommandOptions(home: home, json: json);
 }
 
 Future<String?> _readHookInput() async {

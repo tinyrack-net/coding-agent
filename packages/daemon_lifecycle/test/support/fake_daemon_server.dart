@@ -18,6 +18,7 @@ class FakeDaemonServer {
     this.pid,
     this.desktopManaged = false,
     this.respondToHello = true,
+    this.requiredToken,
   });
 
   final String daemonVersion;
@@ -28,6 +29,7 @@ class FakeDaemonServer {
   /// When false, connections are accepted but hello is never answered
   /// (simulates a daemon that hangs / never responds), so probes time out.
   final bool respondToHello;
+  final String? requiredToken;
 
   HttpServer? _server;
   final _sockets = <WebSocket>[];
@@ -51,26 +53,57 @@ class FakeDaemonServer {
       _sockets.add(socket);
       socket.listen((raw) {
         if (raw is! String) return;
-        final decoded =
-            RpcFrame.fromJson(jsonDecode(raw) as Map<String, Object?>);
+        final decoded = RpcFrame.fromJson(
+          jsonDecode(raw) as Map<String, Object?>,
+        );
         if (decoded is! RpcRequest) return;
         if (decoded.type == MessageTypes.clientHelloRequest) {
           if (!respondToHello) return;
-          socket.add(jsonEncode(decoded
-              .respond(ServerHello(
-                daemonVersion: daemonVersion,
-                protocolVersion: protocolVersion,
-                pid: pid,
-                desktopManaged: desktopManaged,
-              ).toJson())
-              .toJson()));
+          final hello = ClientHello.fromJson(decoded.payload);
+          if (requiredToken != null && hello.token != requiredToken) {
+            socket.add(
+              jsonEncode(
+                decoded
+                    .fail(
+                      const RpcError(
+                        code: RpcErrorCodes.unauthorized,
+                        message: 'unauthorized',
+                      ),
+                    )
+                    .toJson(),
+              ),
+            );
+            return;
+          }
+          socket.add(
+            jsonEncode(
+              decoded
+                  .respond(
+                    ServerHello(
+                      daemonVersion: daemonVersion,
+                      protocolVersion: protocolVersion,
+                      pid: pid,
+                      desktopManaged: desktopManaged,
+                    ).toJson(),
+                  )
+                  .toJson(),
+            ),
+          );
         } else if (decoded.type == MessageTypes.daemonShutdownRequest) {
           socket.add(jsonEncode(decoded.respond(const {}).toJson()));
         } else {
-          socket.add(jsonEncode(decoded
-              .fail(const RpcError(
-                  code: RpcErrorCodes.unknownType, message: 'unhandled'))
-              .toJson()));
+          socket.add(
+            jsonEncode(
+              decoded
+                  .fail(
+                    const RpcError(
+                      code: RpcErrorCodes.unknownType,
+                      message: 'unhandled',
+                    ),
+                  )
+                  .toJson(),
+            ),
+          );
         }
       });
     }

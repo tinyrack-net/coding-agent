@@ -18,6 +18,9 @@ Future<void> main(List<String> args) async {
   final config = loadDaemonRuntimeConfig(
     home: dataDir,
     cliListen: cliListen,
+    cliRelayEnabled: _boolArg(args, '--relay', '--no-relay'),
+    cliRelayUseTls: _boolArg(args, '--relay-use-tls', '--no-relay-use-tls'),
+    cliWebUiEnabled: _boolArg(args, '--web-ui', '--no-web-ui'),
     cliHostnames: cliHostnames,
     cliWebUiDistDir: _argValue(args, '--web-ui-dist-dir'),
   );
@@ -104,6 +107,8 @@ Future<void> _run(
       relayConfig: config.relay,
       appBaseUrl: config.appBaseUrl,
       speechService: speechService,
+      agentMcpEnabled: !args.contains('--no-mcp'),
+      injectMcpIntoAgents: args.contains('--no-inject-mcp') ? false : null,
       log: log,
       onShutdownRequested: () async {
         await flushLog();
@@ -137,4 +142,10 @@ String? _argValue(List<String> args, String name) {
   final index = args.indexOf(name);
   if (index == -1 || index + 1 >= args.length) return null;
   return args[index + 1];
+}
+
+bool? _boolArg(List<String> args, String enabled, String disabled) {
+  if (args.contains(enabled)) return true;
+  if (args.contains(disabled)) return false;
+  return null;
 }

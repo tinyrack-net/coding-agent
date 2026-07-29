@@ -23,13 +23,27 @@ Future<ServerHello> spawnDaemonDetached({
   required DaemonPaths paths,
   String host = '127.0.0.1',
   int port = 6868,
+  List<String> additionalArguments = const [],
+  Map<String, String> additionalEnvironment = const {},
   Duration timeout = const Duration(seconds: 30),
 }) async {
   final process = await Process.start(
     exePath,
-    ['--host', host, '--port', '$port', '--data-dir', paths.dataDir],
+    [
+      '--host',
+      host,
+      '--port',
+      '$port',
+      '--data-dir',
+      paths.dataDir,
+      ...additionalArguments,
+    ],
     mode: ProcessStartMode.detached,
-    environment: {...Platform.environment, desktopManagedEnvVar: '1'},
+    environment: {
+      ...Platform.environment,
+      desktopManagedEnvVar: '1',
+      ...additionalEnvironment,
+    },
   );
 
   final deadline = DateTime.now().add(timeout);

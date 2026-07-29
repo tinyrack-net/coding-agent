@@ -165,6 +165,8 @@ Future<DaemonServerHandle> startDaemonServer({
   SpeechLogger? speechLogger,
   String sttLanguage = 'en',
   String dictationLanguage = 'en',
+  bool agentMcpEnabled = true,
+  bool? injectMcpIntoAgents,
   Duration agentMcpWaitTimeout = const Duration(seconds: 30),
   void Function(String)? log,
   void Function()? onShutdownRequested,
@@ -292,7 +294,8 @@ Future<DaemonServerHandle> startDaemonServer({
               .map((definition) => definition.id)
         : null,
     mcpAuthToken: agentMcpAuthToken,
-    injectMcpIntoAgents: configStore.config.injectMcpIntoAgents,
+    injectMcpIntoAgents:
+        injectMcpIntoAgents ?? configStore.config.injectMcpIntoAgents,
     appendSystemPrompt: configStore.config.appendSystemPrompt,
     store: AgentStore(dataDir: dataDir),
     onStream: (payload) => server.broadcast(
@@ -876,18 +879,20 @@ Future<DaemonServerHandle> startDaemonServer({
     publicStaticHandler: PublicStaticHandler(staticDir).call,
     fileDownloadHandler: FileDownloadHandler(downloadTokens).call,
     serviceProxyHandler: serviceProxyHttp.call,
-    agentMcpHandler: AgentMcpHttpHandler(
-      manager: manager,
-      providerCatalog: paseoProviderCatalog,
-      workspaceService: () => workspaceV2,
-      workspaceScripts: () => workspaceScripts,
-      schedules: () => schedules,
-      terminals: terminals,
-      voiceBridge: voiceBridge,
-      capabilityToken: agentMcpAuthToken,
-      passwordHash: passwordHash,
-      agentWaitTimeout: agentMcpWaitTimeout,
-    ).call,
+    agentMcpHandler: agentMcpEnabled
+        ? AgentMcpHttpHandler(
+            manager: manager,
+            providerCatalog: paseoProviderCatalog,
+            workspaceService: () => workspaceV2,
+            workspaceScripts: () => workspaceScripts,
+            schedules: () => schedules,
+            terminals: terminals,
+            voiceBridge: voiceBridge,
+            capabilityToken: agentMcpAuthToken,
+            passwordHash: passwordHash,
+            agentWaitTimeout: agentMcpWaitTimeout,
+          ).call
+        : null,
     webUiHandler: DaemonWebUi(
       enabled: webUiEnabled,
       distDir: webUiDistDir,
@@ -1086,7 +1091,7 @@ Future<DaemonServerHandle> startDaemonServer({
   final stopConfigBroadcast = configStore.onChange((config) {
     manager.configureRuntimeMcp(
       baseUrl: agentMcpBaseUrl,
-      injectIntoAgents: config.injectMcpIntoAgents,
+      injectIntoAgents: injectMcpIntoAgents ?? config.injectMcpIntoAgents,
     );
     manager.setAppendSystemPrompt(config.appendSystemPrompt);
     server.broadcastV2({
@@ -1680,15 +1685,18 @@ Future<DaemonServerHandle> startDaemonServer({
       '0.0.0.0' || '::' => '127.0.0.1',
       _ => host,
     };
-    agentMcpBaseUrl = Uri(
-      scheme: 'http',
-      host: mcpHost,
-      port: server.port,
-      path: agentMcpPath,
-    ).toString();
+    agentMcpBaseUrl = agentMcpEnabled
+        ? Uri(
+            scheme: 'http',
+            host: mcpHost,
+            port: server.port,
+            path: agentMcpPath,
+          ).toString()
+        : null;
     manager.configureRuntimeMcp(
       baseUrl: agentMcpBaseUrl,
-      injectIntoAgents: configStore.config.injectMcpIntoAgents,
+      injectIntoAgents:
+          injectMcpIntoAgents ?? configStore.config.injectMcpIntoAgents,
     );
     if (serviceProxyStandalone != null) {
       await serviceProxyStandalone.start(

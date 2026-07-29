@@ -25,22 +25,29 @@ Future<void> stopDaemon({
   required DaemonPaths paths,
   String host = '127.0.0.1',
   int port = 6868,
+  String? token,
   bool force = false,
   Duration exitWait = const Duration(seconds: 5),
 }) async {
   final lock = PidLock(paths.lockFile);
   final lockData = await lock.read();
 
-  final hello = await probeDaemon(host, port);
+  final hello = await probeDaemon(host, port, token: token);
   final desktopManaged =
       (hello?.desktopManaged ?? false) || (lockData?.desktopManaged ?? false);
   if (!desktopManaged && !force) {
     throw StopRefusedException(
-        'daemon is not desktop-managed; refusing to stop without force');
+      'daemon is not desktop-managed; refusing to stop without force',
+    );
   }
 
   if (hello != null) {
-    await sendLifecycleRequest(host, port, MessageTypes.daemonShutdownRequest);
+    await sendLifecycleRequest(
+      host,
+      port,
+      MessageTypes.daemonShutdownRequest,
+      token: token,
+    );
     final pid = hello.pid ?? lockData?.pid;
     if (pid != null) {
       final deadline = DateTime.now().add(exitWait);

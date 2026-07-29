@@ -395,53 +395,74 @@
     },
     {
       "id": "cli-command:daemon-pair",
-      "status": "partial",
-      "implementation": "packages/daemon/bin/coding_agent.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon/lib/src/cli/pair_command.dart;packages/daemon/bin/coding_agent.dart",
       "evidence": [
-        "packages/daemon/test/pair_command_test.dart"
+        "packages/daemon/test/pair_command_test.dart",
+        "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon/test/daemon_pairing_rpc_e2e_test.dart"
       ],
-      "notes": "coding-agent daemon pair command is available with home and JSON options. Full shared CLI command infrastructure remains pending."
+      "notes": null
     },
     {
       "id": "cli-command:daemon-restart",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon_lifecycle/lib/src/daemon_spawner.dart;packages/daemon_lifecycle/lib/src/daemon_stopper.dart",
+      "evidence": [
+        "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon_lifecycle/test/daemon_spawner_test.dart",
+        "packages/daemon_lifecycle/test/daemon_stopper_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "cli-command:daemon-runtime-toolchain",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/daemon_command_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "cli-command:daemon-set-password",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon/lib/src/server/daemon_auth.dart",
+      "evidence": [
+        "packages/daemon/test/cli/daemon_command_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "cli-command:daemon-start",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon_lifecycle/lib/src/daemon_spawner.dart;packages/daemon/bin/daemon.dart",
+      "evidence": [
+        "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon_lifecycle/test/daemon_spawner_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "cli-command:daemon-status",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon_lifecycle/lib/src/hello_probe.dart;packages/daemon_lifecycle/lib/src/pid_lock.dart",
+      "evidence": [
+        "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon/test/daemon_lock_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "cli-command:daemon-stop",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon_lifecycle/lib/src/daemon_stopper.dart",
+      "evidence": [
+        "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon_lifecycle/test/daemon_stopper_test.dart",
+        "packages/daemon/test/daemon_lock_test.dart"
+      ],
       "notes": null
     },
     {
@@ -9411,68 +9432,91 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/daemon_command_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/local-daemon.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon_lifecycle/lib/src/daemon_spawner.dart;packages/daemon_lifecycle/lib/src/daemon_stopper.dart;packages/daemon_lifecycle/lib/src/pid_lock.dart",
+      "evidence": [
+        "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon_lifecycle/test/daemon_spawner_test.dart",
+        "packages/daemon_lifecycle/test/daemon_stopper_test.dart",
+        "packages/daemon/test/daemon_lock_test.dart"
+      ],
+      "notes": "Dart lifecycle uses the native daemon executable and shared PID-lock ownership instead of the Node supervisor entrypoint while preserving detached startup, actual listen endpoint discovery, graceful RPC shutdown, force fallback, stale lock recovery, and isolated home semantics."
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/pair.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/pair_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon/lib/src/cli/pair_command.dart",
       "evidence": [
         "packages/daemon/test/pair_command_test.dart",
+        "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/daemon_pairing_rpc_e2e_test.dart"
       ],
-      "notes": "Daemon first RPC local fallback JSON human output home option and disabled exit code are ported. Shared global CLI option framework remains pending."
+      "notes": null
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/restart.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/daemon_command_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/runtime-toolchain.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/daemon_command_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/set-password.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon/lib/src/server/daemon_auth.dart",
+      "evidence": [
+        "packages/daemon/test/cli/daemon_command_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/start.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon/bin/daemon.dart",
+      "evidence": [
+        "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/status.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon/test/daemon_lock_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/stop.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon_lifecycle/lib/src/daemon_stopper.dart",
+      "evidence": [
+        "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon_lifecycle/test/daemon_stopper_test.dart"
+      ],
       "notes": null
     },
     {

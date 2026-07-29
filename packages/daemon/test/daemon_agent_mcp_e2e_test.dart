@@ -104,6 +104,35 @@ final class _McpClient implements AgentClient, McpAgentClient {
 }
 
 void main() {
+  test('can disable the daemon MCP endpoint and runtime injection', () async {
+    final home = Directory.systemTemp.createTempSync('daemon-agent-no-mcp-');
+    addTearDown(() {
+      if (home.existsSync()) home.deleteSync(recursive: true);
+    });
+    DaemonConfigStore(
+      home: home.path,
+    ).patch(const MutableDaemonConfigPatch(injectMcpIntoAgents: true));
+    final client = _McpClient();
+    final handle = await startDaemonServer(
+      paths: DaemonPaths(dataDir: home.path),
+      dataDir: home.path,
+      host: '127.0.0.1',
+      port: 0,
+      agentClients: {'fixture': client},
+      agentMcpEnabled: false,
+      injectMcpIntoAgents: false,
+    );
+    addTearDown(handle.stop);
+
+    final response = await http.post(
+      Uri.parse('http://127.0.0.1:${handle.server.port}/mcp/agents'),
+      headers: {'content-type': 'application/json'},
+      body: jsonEncode({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}),
+    );
+
+    expect(response.statusCode, 404);
+  });
+
   test(
     'injects the runtime MCP server and serves an authenticated stateless endpoint',
     () async {
