@@ -10304,7 +10304,7 @@
     },
     {
       "id": "source-unit:packages/cli/src/output/render.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
@@ -10319,7 +10319,7 @@
         "packages/daemon/test/cli/workspace_command_test.dart",
         "packages/daemon/test/cli/worktree_command_test.dart"
       ],
-      "notes": "Quiet precedence, JSON/YAML/table dispatch, schema serialization, custom human rendering, and structured errors are ported; ANSI color behavior and remaining consumers are pending."
+      "notes": "Default options, quiet precedence, JSON/YAML/table dispatch, schema serialization, custom human rendering, structured errors, and chalk-compatible red human-error prefixes with no-color handling are ported. Remaining command-consumer migration is tracked by cli.ts and with-output.ts."
     },
     {
       "id": "source-unit:packages/cli/src/output/table.ts",

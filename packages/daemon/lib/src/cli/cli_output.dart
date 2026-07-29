@@ -140,7 +140,10 @@ String renderCliError({
   if (options.format == 'yaml') {
     return encodeCliYaml({'error': error});
   }
-  return details == null ? 'Error: $message' : 'Error: $message\n$details';
+  final prefix = _cliOutputUsesColor(options)
+      ? _applyCliAnsiColor('Error: ', 'red')
+      : 'Error: ';
+  return details == null ? '$prefix$message' : '$prefix$message\n$details';
 }
 
 /// Renders one compact JSON value for NDJSON streaming.

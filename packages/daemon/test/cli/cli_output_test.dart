@@ -263,5 +263,23 @@ void main() {
       ),
       'Error: Failed\nTry again',
     );
+
+    expect(
+      renderCliError(
+        code: 'BROKEN',
+        message: 'Failed',
+        details: 'Try again',
+        options: const CliOutputOptions(colorEnabled: true),
+      ),
+      '\x1b[31mError: \x1b[39mFailed\nTry again',
+    );
+    expect(
+      renderCliError(
+        code: 'BROKEN',
+        message: 'Failed',
+        options: const CliOutputOptions(colorEnabled: true, noColor: true),
+      ),
+      'Error: Failed',
+    );
   });
 }
