@@ -39,6 +39,7 @@ typedef AgentStreamSubscriber = void Function(AgentStreamPayload payload);
 typedef AgentClientResolver = AgentClient? Function(String provider);
 typedef AgentProviderIdsResolver = Iterable<String> Function();
 typedef AgentArchivedCallback = Future<void> Function(String agentId);
+typedef AgentDeletedCallback = Future<void> Function(AgentSummary agent);
 
 final class _AgentStreamSubscription {
   const _AgentStreamSubscription({required this.subscriber, this.agentId});
@@ -132,6 +133,7 @@ class AgentManager {
     this.onPermissionResolved,
     this.onAttention,
     this.onArchived,
+    this.onDeleted,
     String? mcpBaseUrl,
     String? mcpAuthToken,
     bool injectMcpIntoAgents = false,
@@ -164,6 +166,7 @@ class AgentManager {
   PermissionResolvedBroadcast? onPermissionResolved;
   AgentAttentionBroadcast? onAttention;
   AgentArchivedCallback? onArchived;
+  AgentDeletedCallback? onDeleted;
 
   final Map<String, AgentRuntime> _runtimes = {};
   final Set<_AgentStreamSubscription> _streamSubscribers = {};
@@ -1329,6 +1332,68 @@ class AgentManager {
     await _archiveTree(runtime);
     await _store.flush();
     return runtime.summary;
+  }
+
+  Future<AgentSummary?> delete(String agentId) async {
+    final runtime = _runtimes[agentId];
+    AgentSummary? summary = runtime?.summary;
+    if (runtime != null) {
+      // A coalesced timeline item may still be waiting on its timer. Detach
+      // persistence before closing so neither close() nor dispose() can
+      // schedule a new durable snapshot after the hard-delete fence.
+      runtime.timeline.onItem = null;
+      try {
+        await close(agentId);
+      } on Object {
+        // Paseo hard-delete continues after a best-effort live close.
+      }
+      summary = runtime.summary;
+      try {
+        await runtime.sessionSub?.cancel();
+      } on Object {
+        // A failed close may leave the subscription attached; hard-delete
+        // must still advance to the durable removal fence.
+      }
+      runtime.sessionSub = null;
+      try {
+        await runtime.session?.dispose();
+      } on Object {
+        // Durable deletion still proceeds after provider disposal failure.
+      }
+      runtime.session = null;
+      try {
+        await broker.autoDenyForAgent(agentId);
+      } on Object {
+        // Pending permissions cannot retain a hard-deleted agent.
+      }
+      runtime.timeline.dispose();
+    } else {
+      summary = (await _store.loadAll())
+          .where((record) => record.summary.agentId == agentId)
+          .firstOrNull
+          ?.summary;
+    }
+
+    // Drain every save queued before the fence, then make removal the final
+    // durable operation. No runtime callback can schedule a later write.
+    await _store.flush();
+    if (summary != null) await _store.remove(summary);
+    if (runtime != null) {
+      providerSubagents.clear(agentId);
+      _runtimes.remove(agentId);
+      final waiters = _stateWaiters.remove(agentId);
+      for (final waiter in waiters ?? const <Completer<void>>[]) {
+        if (!waiter.isCompleted) waiter.complete();
+      }
+    }
+    if (summary != null) {
+      try {
+        await onDeleted?.call(summary);
+      } on Object {
+        // Paseo treats deletion side effects as best-effort.
+      }
+    }
+    return summary;
   }
 
   Future<AgentSummary> unarchive(String agentId) async {

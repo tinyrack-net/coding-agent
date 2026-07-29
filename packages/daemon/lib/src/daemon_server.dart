@@ -358,6 +358,18 @@ Future<DaemonServerHandle> startDaemonServer({
       );
     },
     onArchived: (agentId) => schedules.completeForAgent(agentId),
+    onDeleted: (agent) async {
+      await schedules.completeForAgent(agent.agentId);
+      for (final subscription in agentDirectorySubscriptions.entries) {
+        subscription.value.add(
+          AgentDirectoryRemove(agent.agentId),
+          providerVisible: true,
+          emit: (update) =>
+              _emitAgentDirectoryUpdate(server, subscription.key, update),
+        );
+      }
+      await workspaceV2.onAgentStateChanged(agent.workspaceId);
+    },
     onProviderSubagentUpdate: (update) => server.broadcast(
       RpcEvent(
         type: MessageTypes.providerSubagentUpdateEvent,
@@ -1055,6 +1067,14 @@ Future<DaemonServerHandle> startDaemonServer({
         requestId: request.requestId,
         agentId: request.agentId,
         archivedAt: agent.archivedAt!,
+      ).toJson();
+    }
+    if (message['type'] == DeleteAgentRequest.type) {
+      final request = DeleteAgentRequest.fromJson(message);
+      await manager.delete(request.agentId);
+      return AgentDeletedResponse(
+        requestId: request.requestId,
+        agentId: request.agentId,
       ).toJson();
     }
     if (message['type'] == SendAgentMessageRequest.type) {

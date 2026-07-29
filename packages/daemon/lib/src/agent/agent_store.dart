@@ -94,11 +94,13 @@ class AgentStore {
     return p.join(home, '.tinyrack-agent');
   }
 
-  String _fileFor(PersistedAgent record) => p.join(
+  String _fileFor(PersistedAgent record) => _fileForSummary(record.summary);
+
+  String _fileForSummary(AgentSummary summary) => p.join(
     dataDir,
     'agents',
-    sanitizeCwd(record.summary.cwd),
-    '${record.summary.agentId}.json',
+    sanitizeCwd(summary.cwd),
+    '${summary.agentId}.json',
   );
 
   /// Filesystem-safe directory name for a cwd, unique per distinct cwd.
@@ -193,5 +195,24 @@ class AgentStore {
     if (writes.isNotEmpty) {
       await Future.wait(writes);
     }
+  }
+
+  /// Permanently remove one durable agent after draining its queued writes.
+  Future<void> remove(AgentSummary summary) async {
+    final id = summary.agentId;
+    _timers.remove(id)?.cancel();
+    _dirty.remove(id);
+    final path = _fileForSummary(summary);
+    final write = _writes[path];
+    if (write != null) {
+      try {
+        await write;
+      } on Object {
+        // Deletion is the final operation; a failed predecessor must not
+        // retain a stale durable snapshot.
+      }
+    }
+    final file = File(path);
+    if (await file.exists()) await file.delete();
   }
 }

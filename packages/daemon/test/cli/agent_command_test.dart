@@ -19,6 +19,7 @@ void main() {
         ['send', '--help'],
         ['wait', '--help'],
         ['archive', '--help'],
+        ['delete', '--help'],
       ]) {
         final output = StringBuffer();
         expect(
@@ -43,12 +44,14 @@ void main() {
         ['agent', 'send', '--help'],
         ['agent', 'wait', '--help'],
         ['agent', 'archive', '--help'],
+        ['agent', 'delete', '--help'],
         ['ls', '--help'],
         ['inspect', '--help'],
         ['stop', '--help'],
         ['send', '--help'],
         ['wait', '--help'],
         ['archive', '--help'],
+        ['delete', '--help'],
       ];
       final results = await Future.wait([
         for (final arguments in binaryArguments)
@@ -1570,6 +1573,199 @@ void main() {
     expect(archiveFailure['message'], contains('archive refused'));
   });
 
+  test(
+    'delete --all skips archived agents, isolates failures, and keeps going',
+    () async {
+      final sent = <Map<String, Object?>>[];
+      final output = StringBuffer();
+      final warnings = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: const ['delete', '--all', '--json'],
+          request: (message) async {
+            sent.add(message);
+            if (message['type'] == 'fetch_agents_request') {
+              return _listPayload([
+                _entry(_snapshot(id: 'running-agent', status: 'running')),
+                _entry(_snapshot(id: 'idle-failure')),
+                _entry(
+                  _snapshot(
+                    id: 'archived-agent',
+                    status: 'closed',
+                    archivedAt: '2026-07-29T00:00:00Z',
+                  ),
+                ),
+              ]);
+            }
+            if (message['type'] == 'cancel_agent_request') {
+              throw StateError('cancel transport failed');
+            }
+            if (message['agentId'] == 'idle-failure') {
+              throw StateError('delete refused');
+            }
+            return {
+              'requestId': message['requestId'],
+              'agentId': message['agentId'],
+            };
+          },
+          writeOutput: output.write,
+          writeError: warnings.write,
+        ),
+        0,
+      );
+      expect(
+        sent.where((message) => message['type'] == 'delete_agent_request'),
+        hasLength(2),
+      );
+      expect(
+        sent
+            .where((message) => message['type'] == 'delete_agent_request')
+            .map((message) => message['agentId']),
+        unorderedEquals(['running-agent', 'idle-failure']),
+      );
+      expect(jsonDecode(output.toString()), {
+        'deletedCount': 1,
+        'agentIds': ['running-agent'],
+      });
+      expect(
+        warnings.toString(),
+        'Warning: Failed to delete agent idle-fa: delete refused\n',
+      );
+    },
+  );
+
+  test(
+    'delete exact id permits archived agent and supports quiet output',
+    () async {
+      final sent = <Map<String, Object?>>[];
+      final output = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: const ['delete', 'arch', '--quiet'],
+          request: (message) async {
+            sent.add(message);
+            return switch (message['type']) {
+              'fetch_agents_request' => _listPayload([]),
+              'fetch_agent_request' => {
+                'requestId': message['requestId'],
+                'agent': _snapshot(
+                  id: 'archived-agent',
+                  status: 'closed',
+                  archivedAt: '2026-07-29T00:00:00Z',
+                ),
+                'project': null,
+                'error': null,
+              },
+              'delete_agent_request' => {
+                'requestId': message['requestId'],
+                'agentId': message['agentId'],
+              },
+              _ => throw StateError('unexpected request'),
+            };
+          },
+          writeOutput: output.write,
+        ),
+        0,
+      );
+      expect(sent.map((message) => message['type']), [
+        'fetch_agents_request',
+        'fetch_agent_request',
+        'delete_agent_request',
+      ]);
+      expect(sent.last['agentId'], 'archived-agent');
+      expect(output.toString(), 'archived-agent\n');
+    },
+  );
+
+  test(
+    'delete missing target and outer failures preserve structured codes',
+    () async {
+      final missing = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: const ['delete', '--json'],
+          request: (_) async => throw StateError('must not connect'),
+          writeError: missing.write,
+        ),
+        1,
+      );
+      expect(
+        (jsonDecode(missing.toString())
+            as Map<String, dynamic>)['error']['code'],
+        'MISSING_ARGUMENT',
+      );
+
+      final failed = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: const ['delete', '--all', '--json'],
+          request: (_) async => throw StateError('socket closed'),
+          writeError: failed.write,
+        ),
+        1,
+      );
+      expect(
+        (jsonDecode(failed.toString())
+            as Map<String, dynamic>)['error']['code'],
+        'DELETE_AGENT_FAILED',
+      );
+    },
+  );
+
+  test(
+    'delete --cwd matches descendants and supports yaml/table output',
+    () async {
+      final deleted = <String>[];
+      Future<Map<String, Object?>> request(Map<String, Object?> message) async {
+        if (message['type'] == 'fetch_agents_request') {
+          return _listPayload([
+            _entry(_snapshot(id: 'same', cwd: r'C:\Repo')),
+            _entry(_snapshot(id: 'child', cwd: 'c:/repo/packages/app')),
+            _entry(_snapshot(id: 'sibling', cwd: r'C:\Repository')),
+            _entry(
+              _snapshot(
+                id: 'archived',
+                status: 'closed',
+                cwd: r'C:\Repo\old',
+                archivedAt: '2026-07-29T00:00:00Z',
+              ),
+            ),
+          ]);
+        }
+        deleted.add(message['agentId']! as String);
+        return {
+          'requestId': message['requestId'],
+          'agentId': message['agentId'],
+        };
+      }
+
+      final yaml = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: const ['delete', '--cwd', r'C:\Repo', '--format', 'yaml'],
+          request: request,
+          writeOutput: yaml.write,
+        ),
+        0,
+      );
+      expect(deleted, unorderedEquals(['same', 'child']));
+      expect(yaml.toString(), contains('deletedCount: 2'));
+      expect(yaml.toString(), contains('- same'));
+      expect(yaml.toString(), contains('- child'));
+
+      deleted.clear();
+      final table = StringBuffer();
+      await runAgentCommand(
+        arguments: const ['delete', '--cwd', r'C:\Repo'],
+        request: request,
+        writeOutput: table.write,
+      );
+      expect(deleted, unorderedEquals(['same', 'child']));
+      expect(table.toString(), startsWith('DELETED'));
+      expect(table.toString(), contains('2'));
+    },
+  );
+
   test('parser and invalid thinking errors are deterministic', () async {
     for (final arguments in const [
       <String>[],
@@ -1592,6 +1788,8 @@ void main() {
       ['send', 'one', 'prompt', '--timeout', '1s'],
       ['archive', 'one', 'two'],
       ['archive', 'one', '--force=false'],
+      ['delete', 'one', 'two'],
+      ['delete', '--cwd'],
       ['wait', 'one', '--force'],
       ['ls', '--list'],
       ['ls', '--format', 'xml'],

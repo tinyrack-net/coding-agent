@@ -22,6 +22,7 @@ export 'src/messages/agent_attachment.dart';
 export 'src/messages/agent_archive.dart';
 export 'src/messages/agent_config.dart';
 export 'src/messages/agent_cancel.dart';
+export 'src/messages/agent_delete.dart';
 export 'src/messages/agent_interaction.dart';
 export 'src/messages/agent_commands.dart';
 export 'src/messages/create_agent.dart';

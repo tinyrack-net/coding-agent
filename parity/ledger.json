@@ -168,10 +168,15 @@
     },
     {
       "id": "cli-command:agent-delete",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/agent_delete.dart; packages/daemon/lib/src/daemon_server.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/agent/agent_store.dart",
+      "evidence": [
+        "packages/daemon/test/cli/agent_command_test.dart",
+        "packages/daemon/test/daemon_agent_delete_e2e_test.dart",
+        "packages/daemon/test/agent_manager_test.dart",
+        "packages/protocol/test/agent_delete_test.dart"
+      ],
+      "notes": "Frozen single, --all, and --cwd selection, archived exact deletion, best-effort running cancellation, concurrent per-agent failure isolation, output modes, hard-delete persistence fence, non-cascading child retention, directory removal, and real WebSocket flow verified in three concurrent smoke lanes."
     },
     {
       "id": "cli-command:agent-detach",
@@ -8789,9 +8794,10 @@
       "implementation": "packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/cli/agent_command.dart",
       "evidence": [
         "packages/daemon/test/cli/agent_command_test.dart",
-        "packages/daemon/test/daemon_agent_cli_e2e_test.dart"
+        "packages/daemon/test/daemon_agent_cli_e2e_test.dart",
+        "packages/daemon/test/daemon_agent_delete_e2e_test.dart"
       ],
-      "notes": "Top-level and nested agent ls/inspect aliases now match the frozen CLI; the remaining top-level surface is tracked separately."
+      "notes": "Top-level and nested agent ls, inspect, stop, send, wait, archive, and delete aliases now match the frozen CLI; the remaining top-level surface is tracked separately."
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/archive.ts",
@@ -8812,10 +8818,13 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/delete.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/agent_command_test.dart",
+        "packages/daemon/test/daemon_agent_delete_e2e_test.dart"
+      ],
+      "notes": "Frozen validation, active-scope selection, exact daemon resolution, best-effort cancellation, concurrent deletion, warning isolation, structured errors, and output formats are ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/detach.ts",
@@ -8842,9 +8851,10 @@
         "packages/daemon/test/cli/agent_logs_command_test.dart",
         "packages/daemon/test/daemon_agent_cli_e2e_test.dart",
         "packages/daemon/test/daemon_agent_send_e2e_test.dart",
-        "packages/daemon/test/daemon_agent_archive_e2e_test.dart"
+        "packages/daemon/test/daemon_agent_archive_e2e_test.dart",
+        "packages/daemon/test/daemon_agent_delete_e2e_test.dart"
       ],
-      "notes": "Agent ls, inspect, logs, mode, stop, send, wait, and archive dispatch are ported; remaining run, attach, open, delete, reload, detach, and update commands remain."
+      "notes": "Agent ls, inspect, logs, mode, stop, send, wait, archive, and delete dispatch are ported; remaining run, attach, open, reload, detach, and update commands remain."
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/inspect.ts",
@@ -14475,10 +14485,14 @@
     },
     {
       "id": "wire-message:delete_agent_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/agent_delete.dart; packages/daemon/lib/src/daemon_server.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/agent/agent_store.dart",
+      "evidence": [
+        "packages/protocol/test/agent_delete_test.dart",
+        "packages/daemon/test/agent_manager_test.dart",
+        "packages/daemon/test/daemon_agent_delete_e2e_test.dart"
+      ],
+      "notes": "Frozen root request shape and agent_deleted acknowledgement cross the real WebSocket boundary; durable removal drains queued writes and cannot be resurrected by coalesced timeline callbacks."
     },
     {
       "id": "wire-message:directory_suggestions_request",

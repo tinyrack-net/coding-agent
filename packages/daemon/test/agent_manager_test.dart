@@ -1580,6 +1580,32 @@ void main() {
   });
 
   test(
+    'delete fences pending timeline writes and removes runtime state',
+    () async {
+      final agent = await createAgent();
+      final session = client.sessions.single;
+      await manager.prompt(agent.agentId, 'stream forever');
+      session
+        ..emit(const AssistantTextDelta(itemId: 'answer', text: 'first'))
+        ..emit(const AssistantTextDelta(itemId: 'answer', text: ' second'));
+      await pumpEventQueue();
+
+      final deleted = await manager.delete(agent.agentId);
+
+      expect(deleted?.agentId, agent.agentId);
+      expect(session.disposed, isTrue);
+      expect(manager.get(agent.agentId), isNull);
+      expect(manager.list(includeArchived: true), isEmpty);
+      expect(await AgentStore(dataDir: tempDir.path).loadAll(), isEmpty);
+
+      // Exceed both the timeline coalescing window and store debounce. A stale
+      // callback must not resurrect the durable record after hard deletion.
+      await Future<void>.delayed(const Duration(milliseconds: 650));
+      expect(await AgentStore(dataDir: tempDir.path).loadAll(), isEmpty);
+    },
+  );
+
+  test(
     'close disposes the live session and retains a closed snapshot',
     () async {
       final agent = await createAgent();

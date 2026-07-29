@@ -41,14 +41,16 @@ Future<int> runAgentCommand({
             'coding-agent agent mode --list <id>',
       );
     }
-    if (invocation.action == 'stop' &&
+    if ((invocation.action == 'stop' || invocation.action == 'delete') &&
         invocation.agentId == null &&
         !invocation.stopAll &&
         invocation.cwd == null) {
-      throw const AgentCommandException(
+      throw AgentCommandException(
         'MISSING_ARGUMENT',
         'Agent ID required unless --all or --cwd is specified',
-        details: 'Usage: coding-agent agent stop <id> | --all | --cwd <path>',
+        details: invocation.action == 'delete'
+            ? 'Usage: coding-agent agent delete [id] [--all] [--cwd <path>]'
+            : 'Usage: coding-agent agent stop <id> | --all | --cwd <path>',
       );
     }
     if (invocation.action == 'send') {
@@ -203,6 +205,7 @@ final class AgentCliInvocation {
       'send',
       'wait',
       'archive',
+      'delete',
     }.contains(action)) {
       throw FormatException('Unknown agent action: $action');
     }
@@ -234,10 +237,12 @@ final class AgentCliInvocation {
         case '--all':
           if (action == 'ls') {
             includeArchived = true;
-          } else if (action == 'stop') {
+          } else if (action == 'stop' || action == 'delete') {
             stopAll = true;
           } else {
-            throw FormatException('$argument is only valid for agent ls/stop');
+            throw FormatException(
+              '$argument is only valid for agent ls/stop/delete',
+            );
           }
         case '-g' || '--global':
           _onlyList(action, argument);
@@ -252,8 +257,10 @@ final class AgentCliInvocation {
           }
           listModes = true;
         case '--cwd':
-          if (action != 'stop') {
-            throw FormatException('$argument is only valid for agent stop');
+          if (action != 'stop' && action != 'delete') {
+            throw FormatException(
+              '$argument is only valid for agent stop/delete',
+            );
           }
           cwd = _requiredValue(arguments, ++index, argument);
         case '--prompt':
@@ -334,10 +341,17 @@ final class AgentCliInvocation {
     if (action == 'archive' && positionals.length > 1) {
       throw const FormatException('agent archive accepts exactly one Agent ID');
     }
+    if (action == 'delete' && positionals.length > 1) {
+      throw const FormatException('agent delete accepts at most one Agent ID');
+    }
     final normalizedThinking = thinking?.trim();
     return AgentCliInvocation(
       action: action,
-      agentId: action == 'send' || action == 'wait' || action == 'archive'
+      agentId:
+          action == 'send' ||
+              action == 'wait' ||
+              action == 'archive' ||
+              action == 'delete'
           ? positionals.firstOrNull
           : positionals.firstOrNull?.trim(),
       modeId: action == 'mode' && positionals.length == 2
@@ -384,6 +398,7 @@ Future<_AgentCommandResult> _execute(
     'send' => _sendAgent(invocation, resolvedSendPrompt!, request),
     'wait' => _waitAgent(invocation, resolvedWaitTimeout!, request),
     'archive' => _archiveAgent(invocation, request),
+    'delete' => _deleteAgents(invocation, request, writeWarning),
     _ => throw StateError('Unhandled agent action'),
   };
 }
@@ -1087,6 +1102,128 @@ Future<_AgentCommandResult> _stopAgents(
   }
 }
 
+Future<_AgentCommandResult> _deleteAgents(
+  AgentCliInvocation invocation,
+  AgentRpcRequester request,
+  void Function(String value) writeWarning,
+) async {
+  try {
+    final directoryPayload = await request(
+      FetchAgentsRequest(
+        requestId: _requestId('agent_delete_list'),
+        filter: const AgentDirectoryFilter(includeArchived: true),
+      ).toJson(),
+    );
+    var agents = _stopDirectoryAgents(directoryPayload);
+    if (invocation.stopAll) {
+      agents = agents
+          .where((agent) => agent['archivedAt'] == null)
+          .toList(growable: false);
+    } else if (invocation.cwd != null) {
+      agents = agents
+          .where(
+            (agent) =>
+                agent['archivedAt'] == null &&
+                _isSameOrDescendantPath(invocation.cwd!, _string(agent, 'cwd')),
+          )
+          .toList(growable: false);
+    } else {
+      final payload = await request(
+        FetchAgentRequest(
+          requestId: _requestId('agent_delete_resolve'),
+          agentId: invocation.agentId!,
+        ).toJson(),
+      );
+      final responseError = payload['error'];
+      if (responseError is String && responseError.isNotEmpty) {
+        throw StateError(responseError);
+      }
+      final rawAgent = payload['agent'];
+      if (rawAgent == null) {
+        throw AgentCommandException(
+          'AGENT_NOT_FOUND',
+          'No agent found matching: ${invocation.agentId}',
+          details: 'Use `coding-agent ls --all` to list available agents',
+        );
+      }
+      if (rawAgent is! Map) {
+        throw const FormatException(
+          'fetch_agent_response contains an invalid agent',
+        );
+      }
+      final agent = Map<String, Object?>.from(rawAgent);
+      PaseoAgentSnapshotCodec.decode(agent);
+      agents = [agent];
+    }
+
+    final results = await Future.wait([
+      for (final agent in agents) _deleteOneAgent(agent, request),
+    ]);
+    final deletedIds = <String>[];
+    for (final result in results) {
+      if (result.error != null) {
+        writeWarning(
+          'Warning: Failed to delete agent '
+          '${_shortAgentId(result.id)}: ${result.error}\n',
+        );
+      } else {
+        deletedIds.add(result.id);
+      }
+    }
+    return _AgentCommandResult.delete({
+      'deletedCount': deletedIds.length,
+      'agentIds': deletedIds,
+    });
+  } on AgentCommandException {
+    rethrow;
+  } on Object catch (error) {
+    throw AgentCommandException(
+      'DELETE_AGENT_FAILED',
+      'Failed to delete agent(s): ${_errorText(error)}',
+    );
+  }
+}
+
+Future<({String id, String? error})> _deleteOneAgent(
+  Map<String, Object?> agent,
+  AgentRpcRequester request,
+) async {
+  final id = _string(agent, 'id');
+  if (_string(agent, 'status') == 'running') {
+    try {
+      await request(
+        CancelAgentRequest(
+          agentId: id,
+          requestId: _requestId('agent_delete_cancel'),
+        ).toJson(),
+      );
+    } on Object {
+      // Frozen Paseo delete treats cancellation as best-effort and always
+      // advances to the hard-delete request.
+    }
+  }
+  try {
+    final payload = await request(
+      DeleteAgentRequest(
+        requestId: _requestId('agent_delete'),
+        agentId: id,
+      ).toJson(),
+    );
+    final response = AgentDeletedResponse.fromJson({
+      'type': AgentDeletedResponse.type,
+      'payload': payload,
+    });
+    if (response.agentId != id) {
+      throw FormatException(
+        'agent_deleted returned ${response.agentId} for $id',
+      );
+    }
+    return (id: id, error: null);
+  } on Object catch (error) {
+    return (id: id, error: _errorText(error));
+  }
+}
+
 List<Map<String, Object?>> _stopDirectoryAgents(Map<String, Object?> payload) {
   final entries = payload['entries'];
   if (entries is! List) {
@@ -1388,6 +1525,13 @@ final class _AgentCommandResult {
         structured: Map.unmodifiable(data),
       );
 
+  factory _AgentCommandResult.delete(Map<String, Object?> data) =>
+      _AgentCommandResult._(
+        rows: [Map.unmodifiable(data)],
+        kind: _AgentResultKind.delete,
+        structured: Map.unmodifiable(data),
+      );
+
   final List<Map<String, Object?>> rows;
   final _AgentResultKind kind;
   final Object? structured;
@@ -1402,6 +1546,7 @@ enum _AgentResultKind {
   send,
   wait,
   archive,
+  delete,
 }
 
 String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
@@ -1415,8 +1560,10 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       _AgentResultKind.send => 'agentId',
       _AgentResultKind.wait => 'agentId',
       _AgentResultKind.archive => 'agentId',
+      _AgentResultKind.delete => 'agentIds',
     };
-    if (result.kind == _AgentResultKind.stop) {
+    if (result.kind == _AgentResultKind.stop ||
+        result.kind == _AgentResultKind.delete) {
       final ids = result.rows.single['agentIds'];
       if (ids is! List || ids.isEmpty) return '';
       return '${ids.join('\n')}\n';
@@ -1459,6 +1606,7 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       ('STATUS', 'status', 12),
       ('ARCHIVED AT', 'archivedAt', 24),
     ],
+    _AgentResultKind.delete => const [('DELETED', 'deletedCount', 0)],
     _AgentResultKind.agents => const [
       ('AGENT ID', 'shortId', 12),
       ('NAME', 'name', 20),
@@ -1711,6 +1859,7 @@ const agentUsage =
     '       coding-agent agent send <id> [prompt] [options]\n'
     '       coding-agent agent wait <id> [options]\n'
     '       coding-agent agent archive <id-or-name> [options]\n'
+    '       coding-agent agent delete [<id>|--all|--cwd <path>] [options]\n'
     '       coding-agent ls [options]\n'
     '       coding-agent inspect <id> [options]';
 
@@ -1739,6 +1888,11 @@ String _agentHelp(String? action) => switch (action) {
         'Archive an agent (soft-delete)\n\n'
         '  --force  Force archive running agent '
         '(interrupts active run first)\n',
+  'delete' =>
+    'Usage: coding-agent agent delete [options] [id]\n'
+        'Permanently delete one or more agents\n\n'
+        '  --all         Delete all non-archived agents\n'
+        '  --cwd <path>  Delete non-archived agents under a path\n',
   _ =>
     'Usage: coding-agent agent [command]\n'
         'Manage agents (advanced operations)\n\n'
@@ -1750,5 +1904,6 @@ String _agentHelp(String? action) => switch (action) {
         '  stop     Interrupt a running agent\n'
         '  send     Send a message/task to an existing agent\n'
         '  wait     Wait for an agent to become idle\n'
-        '  archive  Archive an agent (soft-delete)\n',
+        '  archive  Archive an agent (soft-delete)\n'
+        '  delete   Permanently delete one or more agents\n',
 };
