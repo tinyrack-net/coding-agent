@@ -62,6 +62,7 @@ Future<int> runAgentLogsCommand({
   try {
     final snapshot = await _fetchAgent(send, invocation.agentId);
     final resolvedId = _requiredString(snapshot, 'id');
+    final cwd = snapshot['cwd'] as String?;
     final tail = _parseTailCount(invocation.tail);
     if (invocation.tail != null && tail == null) {
       throw _AgentLogsDirectException(
@@ -78,6 +79,7 @@ Future<int> runAgentLogsCommand({
         receiveMessage: receive,
         stopSignals: stopSignals ?? _processStopSignals(),
         agentId: resolvedId,
+        cwd: cwd,
         tailCount: tail ?? 10,
         filter: invocation.filter,
         writeOutput: output,
@@ -93,7 +95,7 @@ Future<int> runAgentLogsCommand({
           .toList(growable: false);
     }
     if (tail == 0) return 0;
-    output('${formatAgentActivityTranscript(items, tail)}\n');
+    output('${formatAgentActivityTranscript(items, tail, cwd: cwd)}\n');
     return 0;
   } on _AgentLogsDirectException catch (error) {
     errorOutput(
@@ -198,9 +200,13 @@ Future<List<TimelineItem>> fetchAgentTimelineItems(
   int? timeoutMs,
 }) => fetchProjectedTimelineItems(request, agentId, timeoutMs: timeoutMs);
 
-String formatAgentActivityTranscript(List<TimelineItem> items, int? tailCount) {
+String formatAgentActivityTranscript(
+  List<TimelineItem> items,
+  int? tailCount, {
+  String? cwd,
+}) {
   if (tailCount == 0) return '';
-  return curateAgentActivity(items, maxItems: tailCount);
+  return curateAgentActivity(items, maxItems: tailCount, cwd: cwd);
 }
 
 bool matchesAgentLogsFilter(TimelineItem item, String? filter) {
@@ -224,6 +230,7 @@ Future<void> _runFollowMode({
   required AgentLogsMessageReceiver receiveMessage,
   required Stream<void> stopSignals,
   required String agentId,
+  required String? cwd,
   required int tailCount,
   required String? filter,
   required void Function(String value) writeOutput,
@@ -247,7 +254,11 @@ Future<void> _runFollowMode({
         .toList(growable: false);
   }
   if (tailCount > 0) {
-    final transcript = formatAgentActivityTranscript(existing, tailCount);
+    final transcript = formatAgentActivityTranscript(
+      existing,
+      tailCount,
+      cwd: cwd,
+    );
     if (transcript != 'No activity to display.') {
       writeOutput('$transcript\n');
     }
@@ -279,7 +290,7 @@ Future<void> _runFollowMode({
       fallbackId: 'stream:${payload['epoch']}:${payload['seq']}',
     );
     if (!matchesAgentLogsFilter(item, filter)) continue;
-    final transcript = formatAgentActivityTranscript([item], null);
+    final transcript = formatAgentActivityTranscript([item], null, cwd: cwd);
     if (transcript != 'No activity to display.') {
       writeOutput('$transcript\n');
     }

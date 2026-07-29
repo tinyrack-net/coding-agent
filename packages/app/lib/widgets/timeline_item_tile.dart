@@ -22,6 +22,7 @@ class TimelineItemTile extends StatelessWidget {
     this.providerLabel,
     this.userMessage,
     this.imageAttachmentService,
+    this.cwd,
   });
 
   final TimelineItem item;
@@ -33,6 +34,7 @@ class TimelineItemTile extends StatelessWidget {
   final String? providerLabel;
   final OptimisticUserMessage? userMessage;
   final ComposerImageAttachmentService? imageAttachmentService;
+  final String? cwd;
 
   @override
   Widget build(BuildContext context) {
@@ -49,11 +51,12 @@ class TimelineItemTile extends StatelessWidget {
         complete: complete,
       ),
       ReasoningItem(:final text) => _ReasoningTile(text: text),
-      final ToolCallItem tool => _ToolCallCard(item: tool),
+      final ToolCallItem tool => _ToolCallCard(item: tool, cwd: cwd),
       final PermissionItem permission => _PermissionCard(
         item: permission,
         onDecision: onPermissionDecision,
         providerLabel: providerLabel,
+        cwd: cwd,
       ),
       final TodoItem todo => _TodoTile(item: todo),
       TurnItem(:final phase, :final errorMessage) => _TurnDivider(
@@ -384,50 +387,40 @@ class _ReasoningTile extends StatelessWidget {
   }
 }
 
-(IconData, String) _toolIconAndSummary(String toolName, ToolCallDetail detail) {
+IconData _toolIcon(ToolCallDetail detail) {
   return switch (detail) {
-    ShellDetail(:final command) => (FluentIcons.command_prompt, command),
-    ReadDetail(:final path) => (FluentIcons.open_file, path),
-    EditDetail(:final path) => (FluentIcons.edit, path),
-    WriteDetail(:final path) => (FluentIcons.save, path),
-    SearchDetail(:final query, :final path) => (
-      FluentIcons.search,
-      path == null ? query : '$query in $path',
-    ),
-    FetchDetail(:final url) => (FluentIcons.link, url),
-    SubAgentDetail(:final subAgentType, :final description) => (
-      FluentIcons.branch_fork,
-      description ?? subAgentType ?? 'Sub-agent',
-    ),
-    WorktreeSetupToolDetail(:final branchName) => (
-      FluentIcons.branch_fork2,
-      branchName,
-    ),
-    PlainTextDetail(:final label, :final text) => (
-      FluentIcons.info,
-      label ?? text ?? toolName,
-    ),
-    PlanDetail() => (FluentIcons.processing, 'Plan'),
-    GenericDetail() => (FluentIcons.build, toolName),
+    ShellDetail() => FluentIcons.command_prompt,
+    ReadDetail() => FluentIcons.open_file,
+    EditDetail() => FluentIcons.edit,
+    WriteDetail() => FluentIcons.save,
+    SearchDetail() => FluentIcons.search,
+    FetchDetail() => FluentIcons.link,
+    SubAgentDetail() => FluentIcons.branch_fork,
+    WorktreeSetupToolDetail() => FluentIcons.branch_fork2,
+    PlainTextDetail() => FluentIcons.info,
+    PlanDetail() => FluentIcons.processing,
+    GenericDetail() => FluentIcons.build,
   };
 }
 
 class _ToolCallCard extends StatelessWidget {
-  const _ToolCallCard({required this.item});
+  const _ToolCallCard({required this.item, this.cwd});
 
   final ToolCallItem item;
+  final String? cwd;
 
   @override
   Widget build(BuildContext context) {
-    final (icon, summary) = _toolIconAndSummary(item.toolName, item.detail);
-    final displayName = switch (item.detail) {
-      WorktreeSetupToolDetail() => 'Worktree Setup',
-      _ when item.toolName == 'paseo_worktree_terminals' =>
-        'Worktree Terminals',
-      _ => item.toolName,
-    };
+    final icon = _toolIcon(item.detail);
+    final display = buildToolCallDisplayModel(
+      ToolCallDisplayInput.fromItem(item, cwd: cwd),
+    );
+    final displayName = tinyrackToolCallDisplayName(
+      item.toolName,
+      display.displayName,
+    );
     final detailBody = _toolBody(context, item.detail);
-    final error = item.errorMessage;
+    final error = display.errorText;
     final Widget? body = switch ((detailBody, error)) {
       (null, final String message) when message.isNotEmpty => _ToolErrorBlock(
         message,
@@ -451,7 +444,7 @@ class _ToolCallCard extends StatelessWidget {
               leading: Icon(icon, size: 20),
               title: _ToolTitle(
                 toolName: displayName,
-                summary: summary,
+                summary: display.summary,
                 statusChip: _ToolStatusChip(status: item.status),
               ),
             )
@@ -461,7 +454,7 @@ class _ToolCallCard extends StatelessWidget {
               leading: Icon(icon, size: 20),
               header: _ToolTitle(
                 toolName: displayName,
-                summary: summary,
+                summary: display.summary,
                 statusChip: _ToolStatusChip(status: item.status),
               ),
               content: body,
@@ -531,7 +524,7 @@ class _ToolTitle extends StatelessWidget {
   });
 
   final String toolName;
-  final String summary;
+  final String? summary;
   final Widget statusChip;
 
   @override
@@ -541,18 +534,21 @@ class _ToolTitle extends StatelessWidget {
     return Row(
       children: [
         Text(toolName, style: textStyles.labelLarge),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            summary,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: textStyles.bodySmall?.copyWith(
-              fontFamily: 'monospace',
-              color: tokens.onSurfaceVariant,
+        if (summary != null) ...[
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              summary!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: textStyles.bodySmall?.copyWith(
+                fontFamily: 'monospace',
+                color: tokens.onSurfaceVariant,
+              ),
             ),
           ),
-        ),
+        ] else
+          const Spacer(),
         const SizedBox(width: 8),
         statusChip,
       ],
@@ -614,18 +610,31 @@ class _PermissionCard extends StatelessWidget {
     required this.item,
     this.onDecision,
     this.providerLabel,
+    this.cwd,
   });
 
   final PermissionItem item;
   final void Function(String permissionId, String decision)? onDecision;
   final String? providerLabel;
+  final String? cwd;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final textStyles = context.textStyles;
     final pending = item.status == PermissionStatus.pending;
-    final (_, summary) = _toolIconAndSummary(item.toolName, item.detail);
+    final display = buildToolCallDisplayModel(
+      ToolCallDisplayInput(
+        name: item.toolName,
+        status: ToolCallStatus.pending,
+        detail: item.detail,
+        cwd: cwd,
+      ),
+    );
+    final displayName = tinyrackToolCallDisplayName(
+      item.toolName,
+      display.displayName,
+    );
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
       backgroundColor: tokens.tertiaryContainer.withValues(alpha: 0.5),
@@ -642,17 +651,17 @@ class _PermissionCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '${providerLabel ?? 'The agent'} wants to use ${item.toolName}',
+                    '${providerLabel ?? 'The agent'} wants to use $displayName',
                     style: textStyles.titleSmall,
                   ),
                 ),
               ],
             ),
-            if (summary.isNotEmpty)
+            if (display.summary != null)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  summary,
+                  display.summary!,
                   style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
                 ),
               ),

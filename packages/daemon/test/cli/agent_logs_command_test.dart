@@ -54,7 +54,7 @@ void main() {
                 id: 't',
                 toolName: 'read',
                 status: ToolCallStatus.success,
-                detail: ReadDetail(path: 'lib/main.dart'),
+                detail: ReadDetail(path: '/repo/lib/main.dart'),
               ),
               const AssistantMessageItem(id: 'a', text: 'Done', complete: true),
               const ErrorItem(id: 'e', message: 'boom'),

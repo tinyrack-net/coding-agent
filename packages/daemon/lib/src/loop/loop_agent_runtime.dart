@@ -64,6 +64,7 @@ final class LoopAgentRuntime {
     return _ManagerLoopAgentSession(
       manager: manager,
       agentId: agent.agentId,
+      cwd: spec.cwd,
       onLog: spec.onLog,
     );
   }
@@ -88,6 +89,7 @@ final class _ManagerLoopAgentSession implements LoopAgentSession {
   _ManagerLoopAgentSession({
     required this.manager,
     required this.agentId,
+    required this.cwd,
     required this.onLog,
   }) {
     _unsubscribe = manager.subscribeStream(_handleStream, agentId: agentId);
@@ -96,6 +98,7 @@ final class _ManagerLoopAgentSession implements LoopAgentSession {
   final AgentManager manager;
   @override
   final String agentId;
+  final String cwd;
   final void Function(String text, {bool error}) onLog;
   late final void Function() _unsubscribe;
   bool _disposed = false;
@@ -126,18 +129,18 @@ final class _ManagerLoopAgentSession implements LoopAgentSession {
 
   void _handleStream(AgentStreamPayload payload) {
     final item = payload.item;
-    final rendered = renderLoopTimelineActivity(item);
+    final rendered = renderLoopTimelineActivity(item, cwd: cwd);
     if (rendered == null) return;
     onLog(rendered, error: item is ErrorItem);
   }
 }
 
-String? renderLoopTimelineActivity(TimelineItem item) {
+String? renderLoopTimelineActivity(TimelineItem item, {String? cwd}) {
   final rendered = switch (item) {
     UserMessageItem(:final text) => '[User] ${text.trim()}',
     AssistantMessageItem(:final text) => text.trim(),
     ReasoningItem(:final text) => '[Thought] ${text.trim()}',
-    ToolCallItem() => _renderToolCall(item),
+    ToolCallItem() => _renderToolCall(item, cwd: cwd),
     TodoItem(:final items) => [
       '[Tasks]',
       for (final entry in items)
@@ -150,13 +153,19 @@ String? renderLoopTimelineActivity(TimelineItem item) {
   return rendered?.trim().isEmpty == true ? null : rendered;
 }
 
-String _renderToolCall(ToolCallItem item) {
-  final (displayName, rawSummary) = _toolDisplay(item);
+String _renderToolCall(ToolCallItem item, {String? cwd}) {
+  final display = buildToolCallDisplayModel(
+    ToolCallDisplayInput.fromItem(item, cwd: cwd),
+  );
+  final displayName = tinyrackToolCallDisplayName(
+    item.toolName,
+    display.displayName,
+  );
   final input = item.detail is GenericDetail
       ? (item.detail as GenericDetail).input
       : null;
   final inputJson = input != null ? _truncate(jsonEncode(input), 400) : null;
-  final summary = _nonEmpty(rawSummary);
+  final summary = _nonEmpty(display.summary);
   final main = isLikelyExternalToolName(item.toolName) && inputJson != null
       ? '[$displayName] $inputJson'
       : summary == null
@@ -166,67 +175,6 @@ String _renderToolCall(ToolCallItem item) {
     return '$main\n${log.trim()}';
   }
   return main;
-}
-
-(String, String?) _toolDisplay(ToolCallItem item) {
-  final canonical = switch (item.detail) {
-    ShellDetail(:final command) => ('Shell', command),
-    ReadDetail(:final path) => ('Read', path),
-    EditDetail(:final path) => ('Edit', path),
-    WriteDetail(:final path) => ('Write', path),
-    SearchDetail(:final query) => ('Search', query),
-    FetchDetail(:final url) => ('Fetch', url),
-    WorktreeSetupToolDetail(:final branchName) => (
-      'Worktree Setup',
-      branchName,
-    ),
-    SubAgentDetail(:final subAgentType, :final description) => (
-      _readString(subAgentType) ?? 'Task',
-      _readString(description),
-    ),
-    PlainTextDetail(:final label) => (_humanizeToolName(item.toolName), label),
-    PlanDetail() => ('Plan', null),
-    GenericDetail() => (_humanizeToolName(item.toolName), null),
-  };
-  final lowerName = item.toolName.trim().toLowerCase();
-  if (item.detail is GenericDetail && lowerName == 'task') {
-    return (
-      'Task',
-      item.metadata['subAgentActivity'] is String
-          ? _readString(item.metadata['subAgentActivity']! as String)
-          : null,
-    );
-  }
-  if (item.detail is GenericDetail && lowerName == 'thinking') {
-    return ('Thinking', null);
-  }
-  if (lowerName == 'terminal') {
-    return (
-      'Terminal',
-      item.detail is PlainTextDetail
-          ? _readString((item.detail as PlainTextDetail).label)
-          : null,
-    );
-  }
-  return canonical;
-}
-
-String _humanizeToolName(String name) {
-  final trimmed = name.trim();
-  if (trimmed.isEmpty) return name;
-  if (isPaseoToolName(trimmed)) {
-    final leaf = getPaseoToolLeafName(trimmed);
-    if (leaf != null) return _humanizeToolName(leaf);
-  }
-  if (RegExp(r'[:./]').hasMatch(trimmed) || trimmed.contains('__')) {
-    return trimmed;
-  }
-  return trimmed
-      .replaceAll(RegExp(r'[._-]+'), ' ')
-      .split(' ')
-      .where((part) => part.isNotEmpty)
-      .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
-      .join(' ');
 }
 
 String _summary(String value) {
@@ -244,6 +192,3 @@ String? _nonEmpty(String? value) {
   final trimmed = value?.trim();
   return trimmed == null || trimmed.isEmpty ? null : trimmed;
 }
-
-String? _readString(String? value) =>
-    value == null || value.isEmpty ? null : value;

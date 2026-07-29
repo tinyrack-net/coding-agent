@@ -133,4 +133,19 @@ void main() {
     expect(rendered, endsWith('...'));
     expect(rendered, isNot(contains('\n')));
   });
+
+  test('strips the loop workspace from canonical file summaries', () {
+    expect(
+      renderLoopTimelineActivity(
+        const ToolCallItem(
+          id: 'read',
+          toolName: 'read_file',
+          status: ToolCallStatus.running,
+          detail: ReadDetail(path: r'C:\repo\lib\main.dart'),
+        ),
+        cwd: r'C:\repo',
+      ),
+      '[Read] lib/main.dart',
+    );
+  });
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_protocol/agent_protocol.dart';
@@ -1259,7 +1260,8 @@ final class AgentMcpTools {
             'This does not mean the agent failed - it is still running. '
             'Call get_agent_status to check on it, or continue with other '
             'work if you will receive a finish notification.\n\n'
-            'Recent activity:\n${curateAgentActivity(recent.items)}',
+            'Recent activity:\n'
+            '${curateAgentActivity(recent.items, cwd: canonical.agent.cwd)}',
         'permission': null,
       };
     }
@@ -1402,7 +1404,9 @@ final class AgentMcpTools {
       'agentId': agentId,
       'updateCount': rawItems.length,
       'currentModeId': canonical.agent.currentModeId,
-      'content': '$header\n\n${curateAgentActivity(selection.items)}',
+      'content':
+          '$header\n\n'
+          '${curateAgentActivity(selection.items, cwd: canonical.agent.cwd)}',
     };
   }
 
@@ -1851,7 +1855,11 @@ String _resolveTerminalKeyToken(String key, bool literal) {
   };
 }
 
-String curateAgentActivity(List<TimelineItem> items, {int? maxItems}) {
+String curateAgentActivity(
+  List<TimelineItem> items, {
+  int? maxItems,
+  String? cwd,
+}) {
   final projected = projectTimelineRows([
     for (var index = 0; index < items.length; index++)
       TimelineRow(seq: index + 1, timestamp: '', item: items[index]),
@@ -1895,9 +1903,9 @@ String curateAgentActivity(List<TimelineItem> items, {int? maxItems}) {
         appendText(text, thought: false);
       case ReasoningItem(:final text):
         appendText(text, thought: true);
-      case ToolCallItem(:final toolName, :final detail):
+      case ToolCallItem():
         flushBuffers();
-        lines.add(_toolSummary(toolName, detail));
+        lines.add(_curatedToolSummary(item, cwd: cwd));
       case TodoItem(:final items):
         flushBuffers();
         lines.add('[Tasks]');
@@ -1918,40 +1926,37 @@ String curateAgentActivity(List<TimelineItem> items, {int? maxItems}) {
   return lines.isEmpty ? 'No activity to display.' : lines.join('\n');
 }
 
-String _toolSummary(String toolName, ToolCallDetail detail) {
-  switch (detail) {
-    case ShellDetail(:final command):
-      return '[Shell] $command';
-    case ReadDetail(:final path):
-      return '[Read] $path';
-    case EditDetail(:final path):
-      return '[Edit] $path';
-    case WriteDetail(:final path):
-      return '[Write] $path';
-    case SearchDetail(:final query, :final path):
-      return '[Search] $query${path == null ? '' : ' in $path'}';
-    case FetchDetail(:final url):
-      return '[Fetch] $url';
-    case PlainTextDetail(:final label, :final text):
-      return '[${label?.trim().isNotEmpty == true ? label : toolName}] ${text ?? ''}'
-          .trimRight();
-    case SubAgentDetail(:final subAgentType, :final description, :final log):
-      final summary =
-          '[${subAgentType?.trim().isNotEmpty == true ? subAgentType : toolName}] '
-                  '${description ?? ''}'
-              .trimRight();
-      return log.trim().isEmpty ? summary : '$summary\n${log.trim()}';
-    default:
-      return '[${_displayToolName(toolName)}]';
+String _curatedToolSummary(ToolCallItem item, {String? cwd}) {
+  final display = buildToolCallDisplayModel(
+    ToolCallDisplayInput.fromItem(item, cwd: cwd),
+  );
+  final displayName = tinyrackToolCallDisplayName(
+    item.toolName,
+    display.displayName,
+  );
+  if (isLikelyExternalToolName(item.toolName) && item.detail is GenericDetail) {
+    final input = (item.detail as GenericDetail).input;
+    try {
+      final encoded = jsonEncode(input);
+      final shown = encoded.length <= 400
+          ? encoded
+          : '${encoded.substring(0, 400)}...';
+      return '[$displayName] $shown';
+    } on Object {
+      // Fall through to the canonical summary.
+    }
   }
+  final summary = display.summary?.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (summary == null || summary.isEmpty) return '[$displayName]';
+  final shown = summary.length <= 200
+      ? summary
+      : '${summary.substring(0, 197)}...';
+  final main = '[$displayName] $shown';
+  if (item.detail case SubAgentDetail(:final log) when log.trim().isNotEmpty) {
+    return '$main\n${log.trim()}';
+  }
+  return main;
 }
-
-String _displayToolName(String value) => value
-    .replaceAll(RegExp(r'[_-]+'), ' ')
-    .split(' ')
-    .where((part) => part.isNotEmpty)
-    .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
-    .join(' ');
 
 String _requiredString(Map<String, Object?> values, String key) {
   final value = values[key];

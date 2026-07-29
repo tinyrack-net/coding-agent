@@ -69,5 +69,26 @@ void main() {
         '[Error] boom',
       );
     });
+
+    test('uses the shared display model for paths and external tools', () {
+      expect(
+        curateAgentActivity(const [
+          ToolCallItem(
+            id: 'read',
+            toolName: 'read_file',
+            status: ToolCallStatus.success,
+            detail: ReadDetail(path: '/repo/lib/main.dart'),
+          ),
+          ToolCallItem(
+            id: 'external',
+            toolName: 'mcp__github__search',
+            status: ToolCallStatus.running,
+            detail: GenericDetail(input: {'query': 'paseo'}),
+          ),
+        ], cwd: '/repo'),
+        '[Read] lib/main.dart\n'
+        '[mcp__github__search] {"query":"paseo"}',
+      );
+    });
   });
 }

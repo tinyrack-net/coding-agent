@@ -65,6 +65,7 @@ export 'src/messages/project_config.dart';
 export 'src/messages/project_clone.dart';
 export 'src/messages/pull_request_timeline.dart';
 export 'src/provider_icon_names.dart';
+export 'src/path_utils.dart';
 export 'src/rpc_envelope.dart';
 export 'src/timeline/timeline_item.dart';
 export 'src/timeline/tool_call_detail.dart';
@@ -77,6 +78,7 @@ export 'src/terminal/terminal_key_input.dart';
 export 'src/terminal/terminal_snapshot.dart';
 export 'src/terminal/terminal_profiles.dart';
 export 'src/tool_name_normalization.dart';
+export 'src/tool_call_display.dart';
 export 'src/schedule/cadence.dart';
 export 'src/schedule/cron_expression.dart';
 

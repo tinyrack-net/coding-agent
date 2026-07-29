@@ -236,7 +236,18 @@ void _printTimelineItem(
     case ReasoningItem():
       writeOutput('\n[Reasoning] ${item.text}\n');
     case ToolCallItem():
-      writeOutput('\n[Tool: ${item.toolName}] ${_toolStatus(item.status)}\n');
+      final display = buildToolCallDisplayModel(
+        ToolCallDisplayInput.fromItem(item),
+      );
+      final displayName = tinyrackToolCallDisplayName(
+        item.toolName,
+        display.displayName,
+      );
+      final summary = display.summary == null ? '' : ' — ${display.summary}';
+      writeOutput(
+        '\n[Tool: $displayName] '
+        '${_toolStatus(item.status)}$summary\n',
+      );
     case TodoItem():
       final completed = item.items.where((entry) => entry.completed).length;
       writeOutput('\n[Todo] $completed/${item.items.length} completed\n');

@@ -69,6 +69,41 @@ void main() {
     expect(find.text('dependencies installed'), findsOneWidget);
   });
 
+  testWidgets('tool and permission cards share canonical display mapping', (
+    tester,
+  ) async {
+    const tool = ToolCallItem(
+      id: 'read',
+      toolName: 'read_file',
+      status: ToolCallStatus.running,
+      detail: ReadDetail(path: r'C:\repo\lib\main.dart'),
+    );
+    const permission = PermissionItem(
+      id: 'permission',
+      permissionId: 'permission-1',
+      toolName: 'mcp__paseo__create_agent',
+      status: PermissionStatus.pending,
+      detail: GenericDetail(input: {}),
+    );
+    await tester.pumpWidget(
+      const FluentApp(
+        home: ScaffoldPage(
+          content: Column(
+            children: [
+              TimelineItemTile(item: tool, cwd: r'C:\repo'),
+              TimelineItemTile(item: permission),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Read'), findsOneWidget);
+    expect(find.text('lib/main.dart'), findsOneWidget);
+    expect(find.text(r'C:\repo\lib\main.dart'), findsNothing);
+    expect(find.text('The agent wants to use Create Agent'), findsOneWidget);
+  });
+
   testWidgets('edit tool renders old/new text through the diff viewer', (
     tester,
   ) async {
@@ -180,7 +215,7 @@ void main() {
     // covered below.)
     expect(find.text('Thinking…'), findsOneWidget);
     // Tool call card: name, summary, status chip.
-    expect(find.text('Bash'), findsOneWidget);
+    expect(find.text('Shell'), findsOneWidget);
     expect(find.text('flutter test'), findsOneWidget);
     expect(find.text('success'), findsOneWidget);
     // Assistant markdown rendered (bold stripped of asterisks).
@@ -197,7 +232,7 @@ void main() {
     expect(find.text('provider crashed'), findsOneWidget);
 
     // Expanding the tool card reveals output.
-    await tester.tap(find.text('Bash'));
+    await tester.tap(find.text('Shell'));
     await tester.pumpAndSettle(const Duration(milliseconds: 100));
     expect(find.text('All tests passed!'), findsOneWidget);
 
@@ -370,22 +405,20 @@ void main() {
     await tester.pumpAndSettle(const Duration(milliseconds: 100));
     expect(find.text('void main() {}'), findsOneWidget);
 
-    // Search with a path: summary combines query + path.
-    expect(find.text('TODO in lib'), findsOneWidget);
-    // Search without a path: summary is just the query.
-    expect(find.text('TODO'), findsOneWidget);
+    // Canonical Paseo search summaries show the query, independently of the
+    // provider-specific search path metadata.
+    expect(find.text('TODO'), findsNWidgets(2));
     expect(find.byIcon(FluentIcons.search), findsNWidgets(2));
 
-    // Generic: summary falls back to the tool name (rendered twice: once as
-    // the tool name label, once as the summary); error status chip shown.
-    expect(find.text('Custom'), findsNWidgets(2));
+    // Unknown details do not infer summaries from raw provider input.
+    expect(find.text('Custom'), findsOneWidget);
     expect(find.byIcon(FluentIcons.build), findsOneWidget);
     expect(find.text('error'), findsOneWidget);
     expect(find.text('running'), findsOneWidget);
     expect(find.text('pending'), findsOneWidget);
 
     // Generic body (non-empty input) renders once expanded.
-    await tester.tap(find.text('Custom').first);
+    await tester.tap(find.text('Custom'));
     await tester.pumpAndSettle(const Duration(milliseconds: 100));
     expect(find.textContaining('key'), findsOneWidget);
   });
@@ -446,7 +479,7 @@ void main() {
     expect(find.byIcon(FluentIcons.branch_fork), findsOneWidget);
     expect(find.text('Inspect routing'), findsOneWidget);
     expect(find.text('canceled'), findsOneWidget);
-    await tester.tap(find.text('Sub-agent'));
+    await tester.tap(find.text('Research'));
     await tester.pumpAndSettle(const Duration(milliseconds: 100));
     expect(find.text('Read lib/main.dart'), findsOneWidget);
   });
@@ -489,6 +522,7 @@ void main() {
     );
 
     expect(find.text('Worktree Terminals'), findsOneWidget);
+    expect(find.textContaining('Paseo'), findsNothing);
     await tester.tap(find.text('Worktree Terminals'));
     await tester.tap(find.text('Worktree Setup'));
     await tester.pumpAndSettle();
@@ -549,9 +583,9 @@ void main() {
     expect(find.text('Notice'), findsOneWidget);
     expect(find.text('Plan'), findsOneWidget);
 
-    await tester.tap(find.text('fetch'));
-    await tester.tap(find.text('note'));
-    await tester.tap(find.text('plan'));
+    await tester.tap(find.text('Fetch'));
+    await tester.tap(find.text('Note'));
+    await tester.tap(find.text('Plan'));
     await tester.pumpAndSettle();
     expect(find.text('Fetched content'), findsOneWidget);
     expect(find.text('Plain content'), findsOneWidget);

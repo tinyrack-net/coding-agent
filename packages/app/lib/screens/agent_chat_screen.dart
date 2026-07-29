@@ -553,6 +553,7 @@ class _TimelineRow extends ConsumerWidget {
       item: item.item,
       userMessage: item.userMessage,
       providerLabel: providerDisplayName(agent?.provider),
+      cwd: agent?.cwd,
       onPermissionDecision: (permissionId, decision) async {
         try {
           await ref

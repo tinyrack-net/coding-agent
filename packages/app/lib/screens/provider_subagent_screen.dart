@@ -96,6 +96,7 @@ class _ProviderSubagentScreenState
                       key: ValueKey('${row.seq}:${row.item.id}'),
                       item: row.item,
                       providerLabel: providerDisplayName(descriptor?.provider),
+                      cwd: descriptor?.cwd,
                     );
                   },
                 ),

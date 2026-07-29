@@ -8922,10 +8922,13 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/tool-call-display.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/tool_call_display.dart; packages/app/lib/widgets/timeline_item_tile.dart",
+      "evidence": [
+        "packages/protocol/test/tool_call_display_test.dart",
+        "packages/app/test/timeline_item_tile_test.dart"
+      ],
+      "notes": "The Flutter app consumes the shared agent_protocol display model directly, which is the Dart equivalent of Paseo's app-level protocol re-export. A presentation-only brand overlay removes legacy Paseo prefixes in accordance with the Tinyrack identity exception."
     },
     {
       "id": "source-unit:packages/app/src/utils/tool-call-icon-name.ts",
@@ -11408,10 +11411,12 @@
     },
     {
       "id": "source-unit:packages/protocol/src/path-utils.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/path_utils.dart",
+      "evidence": [
+        "packages/protocol/test/path_utils_test.dart"
+      ],
+      "notes": "Exact string-based cwd prefix stripping, slash normalization, root display, non-descendant preservation, and empty-input behavior match Paseo 0.2.0."
     },
     {
       "id": "source-unit:packages/protocol/src/provider-config.ts",
@@ -11542,12 +11547,17 @@
     },
     {
       "id": "source-unit:packages/protocol/src/tool-call-display.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/loop/loop_agent_runtime.dart",
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/tool_call_display.dart; packages/daemon/lib/src/loop/loop_agent_runtime.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/cli/agent_attach_command.dart; packages/daemon/lib/src/cli/agent_logs_command.dart; packages/app/lib/widgets/timeline_item_tile.dart",
       "evidence": [
-        "packages/daemon/test/loop/loop_agent_runtime_test.dart"
+        "packages/protocol/test/tool_call_display_test.dart",
+        "packages/daemon/test/loop/loop_agent_runtime_test.dart",
+        "packages/daemon/test/agent_mcp_tools_test.dart",
+        "packages/daemon/test/cli/agent_attach_command_test.dart",
+        "packages/daemon/test/cli/agent_logs_command_test.dart",
+        "packages/app/test/timeline_item_tile_test.dart"
       ],
-      "notes": "Canonical detail names, summaries, Paseo tool humanization, external input rendering, overrides, whitespace normalization, and truncation are ported for loop logs; reusable protocol API and all product consumers remain pending."
+      "notes": "The reusable protocol display model now matches every canonical detail, cwd-relative file summary, unknown-detail fallback, task/thinking/terminal override, Paseo MCP humanization, external-name preservation, and failed-error formatting rule. Loop logs, MCP and CLI activity, attach output, Flutter tool cards, and permission cards consume the shared model; a narrow legacy-wire adapter removes Paseo branding from Tinyrack-owned presentation."
     },
     {
       "id": "source-unit:packages/protocol/src/tool-name-normalization.ts",
