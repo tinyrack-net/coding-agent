@@ -2669,11 +2669,14 @@
     {
       "id": "source-unit:packages/app/src/components/explorer-sidebar.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/widgets/workspace_explorer.dart",
+      "implementation": "packages/app/lib/widgets/workspace_explorer.dart; packages/app/lib/widgets/pull_request_tab.dart",
       "evidence": [
-        "packages/app/test/pull_request_pane_test.dart"
+        "packages/app/test/pull_request_pane_test.dart",
+        "packages/app/test/pull_request_tab_test.dart",
+        "packages/app/test/goldens/workspace_pr_explorer.png",
+        "packages/app/test/goldens/workspace_gitlab_pipeline_explorer.png"
       ],
-      "notes": "Core Windows explorer and PR checks/activity flow implemented; advanced attachment, entry grouping, and forge-specific polish remain."
+      "notes": "Core Windows explorer and PR checks/activity flow plus the exact forge-aware PR tab icon, number-only or em-dash label, 13px geometry, active or muted foreground, and golden-covered GitHub/GitLab presentation are implemented. Compact/mobile retained-panel behavior, attachment drag/drop, and remaining explorer interactions keep the aggregate source unit partial."
     },
     {
       "id": "source-unit:packages/app/src/components/file-actions-menu.tsx",
@@ -5283,21 +5286,27 @@
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/tab-icon.tsx",
-      "status": "partial",
-      "implementation": "packages/app/lib/widgets/workspace_explorer.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/pull_request_tab.dart; packages/app/lib/widgets/workspace_explorer.dart",
       "evidence": [
-        "packages/app/test/pull_request_pane_test.dart"
+        "packages/app/test/pull_request_tab_test.dart",
+        "packages/app/test/pull_request_pane_test.dart",
+        "packages/app/test/goldens/workspace_pr_explorer.png",
+        "packages/app/test/goldens/workspace_gitlab_pipeline_explorer.png"
       ],
-      "notes": "Core Windows explorer and PR checks/activity flow implemented; advanced attachment, entry grouping, and forge-specific polish remain."
+      "notes": "Ports the frozen forge-presentation icon resolver and renders the registered GitHub, GitLab, Gitea, Forgejo, and Codeberg glyphs plus the neutral fallback at the requested 13px size using the tab active or muted foreground instead of brand color."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/tab-label.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/widgets/workspace_explorer.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/pull_request_tab.dart; packages/app/lib/widgets/workspace_explorer.dart",
       "evidence": [
-        "packages/app/test/pull_request_pane_test.dart"
+        "packages/app/test/pull_request_tab_test.dart",
+        "packages/app/test/pull_request_pane_test.dart",
+        "packages/app/test/goldens/workspace_pr_explorer.png",
+        "packages/app/test/goldens/workspace_gitlab_pipeline_explorer.png"
       ],
-      "notes": "Core Windows explorer and PR checks/activity flow implemented; advanced attachment, entry grouping, and forge-specific polish remain."
+      "notes": "Ports the frozen number-only tab label and em-dash fallback exactly; the prior hash-prefixed MVP label is removed and stable tab keys decouple interaction tests from visible copy."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/timeline.ts",

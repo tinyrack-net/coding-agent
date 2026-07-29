@@ -8,6 +8,7 @@ import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/workspace_attachments_provider.dart';
 import 'package:coding_agent_app/widgets/pull_request_pane.dart';
 import 'package:coding_agent_app/widgets/pull_request_section_kit.dart';
+import 'package:coding_agent_app/widgets/pull_request_tab.dart';
 import 'package:coding_agent_app/widgets/workspace_explorer.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -537,6 +538,9 @@ Future<void> _pumpPane(WidgetTester tester, _FakeDaemonClient client) =>
 
 void _noop() {}
 
+Future<void> _tapPullRequestTab(WidgetTester tester) =>
+    tester.tap(find.byKey(const ValueKey('explorer-tab-pr')));
+
 void main() {
   testWidgets('shows the PR explorer tab and renders checks and activity', (
     tester,
@@ -546,11 +550,29 @@ void main() {
 
     expect(find.text('Changes'), findsOneWidget);
     expect(find.text('Files'), findsOneWidget);
-    expect(find.text('#42'), findsOneWidget);
+    expect(find.text('42'), findsOneWidget);
+    expect(find.text('#42'), findsNothing);
+    expect(find.byKey(const ValueKey('explorer-tab-pr-icon')), findsOneWidget);
+    expect(
+      tester
+          .widget<PullRequestTabIcon>(
+            find.byKey(const ValueKey('explorer-tab-pr-icon')),
+          )
+          .color,
+      const Color(0xffa1a5a4),
+    );
 
-    await tester.tap(find.text('#42'));
+    await tester.tap(find.text('42'));
     await tester.pump(const Duration(milliseconds: 150));
 
+    expect(
+      tester
+          .widget<PullRequestTabIcon>(
+            find.byKey(const ValueKey('explorer-tab-pr-icon')),
+          )
+          .color,
+      const Color(0xfffafafa),
+    );
     expect(find.textContaining('Port the pull request panel'), findsOneWidget);
     expect(find.text('Open'), findsOneWidget);
     expect(find.text('Checks'), findsOneWidget);
@@ -566,7 +588,7 @@ void main() {
     (tester) async {
       await _pumpExplorer(tester, _FakeDaemonClient(forge: 'gitea'));
 
-      await tester.tap(find.text('#42'));
+      await _tapPullRequestTab(tester);
       await tester.pumpAndSettle();
 
       expect(find.text('CI'), findsOneWidget);
@@ -584,7 +606,7 @@ void main() {
 
   testWidgets('does not count skipped checks as pending', (tester) async {
     await _pumpExplorer(tester, _FakeDaemonClient(includeSkippedCheck: true));
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pumpAndSettle();
 
     final pending = find.byKey(const ValueKey('pr-pane-check-pending'));
@@ -611,7 +633,7 @@ void main() {
   ) async {
     await _pumpExplorer(tester, _FakeDaemonClient(forge: 'gitlab'));
 
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('pr-pane-approvals')), findsOneWidget);
@@ -629,7 +651,7 @@ void main() {
     final launcher = _FakeExternalUrlLauncher();
     await _pumpExplorer(tester, client, launcher: launcher);
 
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pumpAndSettle();
 
     expect(find.text('Pipeline'), findsOneWidget);
@@ -678,7 +700,7 @@ void main() {
   testWidgets('polls only an open live GitLab pipeline', (tester) async {
     final client = _FakeDaemonClient(forge: 'gitlab');
     await _pumpExplorer(tester, client);
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pumpAndSettle();
 
     int pipelineRequests() => client.nativeRequests
@@ -708,7 +730,7 @@ void main() {
       pipelineStatus: 'success',
     );
     await _pumpExplorer(tester, client);
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pumpAndSettle();
 
     int pipelineRequests() => client.nativeRequests
@@ -740,7 +762,7 @@ void main() {
       pipelineStatus: 'success',
     );
     await _pumpExplorer(tester, client);
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pumpAndSettle();
 
     int pipelineRequests() => client.nativeRequests
@@ -766,7 +788,7 @@ void main() {
       pipelineStatus: 'success',
     );
     await _pumpExplorer(tester, client);
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pumpAndSettle();
     expect(find.text('analyze'), findsOneWidget);
 
@@ -774,7 +796,7 @@ void main() {
     await tester.pumpAndSettle();
     final gate = Completer<void>();
     client.pipelineDetailsGate = gate;
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pump();
     await tester.pump();
 
@@ -801,7 +823,7 @@ void main() {
   ) async {
     final client = _FakeDaemonClient(forge: 'gitlab');
     await _pumpExplorer(tester, client);
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pumpAndSettle();
 
     expect(find.text('Pipeline #306'), findsOneWidget);
@@ -846,7 +868,7 @@ void main() {
       forgeProvidersEnabled: false,
     );
     await _pumpExplorer(tester, providersDisabled);
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pumpAndSettle();
     expect(find.text('Checks'), findsOneWidget);
     expect(find.text('Pipeline'), findsNothing);
@@ -856,7 +878,7 @@ void main() {
       forgeCheckDetailsEnabled: false,
     );
     await _pumpExplorer(tester, detailsDisabled);
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pumpAndSettle();
     expect(find.text('Pipeline'), findsOneWidget);
     expect(find.text('Pipeline #306'), findsOneWidget);
@@ -876,7 +898,7 @@ void main() {
     final gate = Completer<void>();
     final client = _FakeDaemonClient(forge: 'gitlab', checkDetailsGate: gate);
     await _pumpExplorer(tester, client);
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pump();
 
     expect(find.text('Loading pipeline…'), findsOneWidget);
@@ -893,7 +915,7 @@ void main() {
       tester,
       _FakeDaemonClient(forge: 'gitlab', pipelineMode: 'empty'),
     );
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pumpAndSettle();
     expect(find.text('No jobs'), findsOneWidget);
 
@@ -901,7 +923,7 @@ void main() {
       tester,
       _FakeDaemonClient(forge: 'gitlab', checkDetailsSuccess: false),
     );
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pumpAndSettle();
     expect(find.text('Could not load pipeline jobs'), findsOneWidget);
   });
@@ -911,7 +933,7 @@ void main() {
   ) async {
     final client = _FakeDaemonClient();
     await _pumpExplorer(tester, client);
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pump(const Duration(milliseconds: 150));
 
     await tester.tap(find.text('Checks'));
@@ -936,7 +958,7 @@ void main() {
     final client = _FakeDaemonClient();
     final launcher = _FakeExternalUrlLauncher();
     await _pumpExplorer(tester, client, launcher: launcher);
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pump(const Duration(milliseconds: 150));
 
     await tester.tap(find.text('View'));
@@ -956,7 +978,7 @@ void main() {
   ) async {
     final client = _FakeDaemonClient();
     final container = await _pumpExplorer(tester, client);
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pump(const Duration(milliseconds: 150));
 
     await tester.tap(find.text('Add to chat').first);
@@ -982,7 +1004,7 @@ void main() {
       checkDetailsGate: gate,
     );
     final container = await _pumpExplorer(tester, client);
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pump(const Duration(milliseconds: 150));
 
     expect(find.text('Add to chat'), findsWidgets);
@@ -1028,7 +1050,7 @@ void main() {
       checkDetailsSuccess: false,
     );
     final container = await _pumpExplorer(tester, client);
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pump(const Duration(milliseconds: 150));
 
     await tester.tap(find.byKey(const ValueKey('add-check-99')));
@@ -1049,7 +1071,7 @@ void main() {
       tester,
       _FakeDaemonClient(timelineMode: 'edge'),
     );
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pump(const Duration(milliseconds: 150));
 
     await tester.tap(find.text('Add all to chat'));
@@ -1153,7 +1175,7 @@ void main() {
         tester,
         _FakeDaemonClient(timelineMode: 'edge'),
       );
-      await tester.tap(find.text('#42'));
+      await _tapPullRequestTab(tester);
       await tester.pump(const Duration(milliseconds: 150));
 
       expect(find.text('Lint'), findsOneWidget);
@@ -1194,12 +1216,12 @@ void main() {
 
   testWidgets('renders empty and failed activity states', (tester) async {
     await _pumpExplorer(tester, _FakeDaemonClient(timelineMode: 'empty'));
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pump(const Duration(milliseconds: 150));
     expect(find.text('No activity yet'), findsOneWidget);
 
     await _pumpExplorer(tester, _FakeDaemonClient(timelineMode: 'error'));
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pump(const Duration(milliseconds: 150));
     expect(find.text('Timeline is unavailable'), findsOneWidget);
   });
@@ -1220,7 +1242,7 @@ void main() {
           isDraft: variant.draft,
         ),
       );
-      await tester.tap(find.text('#42'));
+      await _tapPullRequestTab(tester);
       await tester.pump(const Duration(milliseconds: 150));
       expect(find.text(variant.label), findsOneWidget);
     });
@@ -1272,7 +1294,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
 
     await _pumpExplorer(tester, _FakeDaemonClient());
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pump(const Duration(milliseconds: 150));
 
     await expectLater(
@@ -1290,7 +1312,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
 
     await _pumpExplorer(tester, _FakeDaemonClient(forge: 'gitlab'));
-    await tester.tap(find.text('#42'));
+    await _tapPullRequestTab(tester);
     await tester.pumpAndSettle();
 
     await expectLater(

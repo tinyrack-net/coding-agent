@@ -9,6 +9,7 @@ import '../state/pull_request_provider.dart';
 import '../workspace/workspace_file_open.dart';
 import 'diff/diff_pane.dart';
 import 'pull_request_pane.dart';
+import 'pull_request_tab.dart';
 
 enum WorkspaceExplorerTab { changes, files, pullRequest }
 
@@ -82,8 +83,14 @@ class _WorkspaceExplorerState extends ConsumerState<WorkspaceExplorer> {
               ),
               if (status != null)
                 _ExplorerTabButton(
-                  label: '#${status.number?.toInt() ?? ''}',
-                  tooltip: 'Pull request #${status.number?.toInt() ?? ''}',
+                  key: const ValueKey('explorer-tab-pr'),
+                  label: formatPullRequestTabLabel(status.number),
+                  leading: (color) => PullRequestTabIcon(
+                    key: const ValueKey('explorer-tab-pr-icon'),
+                    forge: status.forge,
+                    size: 13,
+                    color: color,
+                  ),
                   selected: _tab == WorkspaceExplorerTab.pullRequest,
                   onPressed: () =>
                       setState(() => _tab = WorkspaceExplorerTab.pullRequest),
@@ -121,14 +128,15 @@ class _WorkspaceExplorerState extends ConsumerState<WorkspaceExplorer> {
 
 class _ExplorerTabButton extends StatelessWidget {
   const _ExplorerTabButton({
+    super.key,
     required this.label,
     required this.selected,
     required this.onPressed,
-    this.tooltip,
+    this.leading,
   });
 
   final String label;
-  final String? tooltip;
+  final Widget Function(Color color)? leading;
   final bool selected;
   final VoidCallback onPressed;
 
@@ -136,38 +144,33 @@ class _ExplorerTabButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final button = HoverButton(
       onPressed: onPressed,
-      builder: (context, states) => Container(
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected || states.contains(WidgetState.hovered)
-              ? context.tokens.surfaceContainerHighest
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (label.startsWith('#')) ...[
-              Icon(
-                FluentIcons.branch_fork2,
-                size: 13,
-                color: selected ? null : context.tokens.onSurfaceVariant,
-              ),
-              const SizedBox(width: 8),
+      builder: (context, states) {
+        final foreground = selected
+            ? context.paseoPalette.foreground
+            : context.paseoPalette.foregroundMuted;
+        return Container(
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected || states.contains(WidgetState.hovered)
+                ? context.tokens.surfaceContainerHighest
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (leading != null) ...[
+                leading!(foreground),
+                const SizedBox(width: 8),
+              ],
+              Text(label, style: TextStyle(fontSize: 12, color: foreground)),
             ],
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: selected ? null : context.tokens.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
-    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
+    return button;
   }
 }
 
