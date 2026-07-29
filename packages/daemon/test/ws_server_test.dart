@@ -153,6 +153,7 @@ void main() {
       expect(serverInfo['features'], containsPair('forgeProviders', true));
       expect(serverInfo['features'], containsPair('forgeCheckDetails', true));
       expect(serverInfo['features'], containsPair('checkoutRefresh', true));
+      expect(serverInfo['features'], containsPair('projectGithubClone', true));
 
       final eventFuture = frames.firstWhere(
         (frame) =>

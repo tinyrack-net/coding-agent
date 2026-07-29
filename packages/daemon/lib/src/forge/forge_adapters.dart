@@ -4,7 +4,6 @@ import 'package:agent_protocol/agent_protocol.dart';
 
 import 'forge_cli.dart';
 import 'forge_models.dart';
-import 'git_remote.dart';
 
 const _githubPullRequestStatusFactsQuery = r'''
 query PullRequestStatusFacts($owner: String!, $name: String!, $number: Int!) {

@@ -487,6 +487,7 @@ class WsServer {
       'forgeProviders': true,
       'forgeCheckDetails': true,
       'checkoutRefresh': true,
+      'projectGithubClone': true,
     },
   ).toJson();
 

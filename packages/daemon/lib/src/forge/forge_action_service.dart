@@ -3,7 +3,6 @@ import 'package:agent_protocol/agent_protocol.dart';
 import '../git/git_runner.dart';
 import 'forge_cli.dart';
 import 'forge_resolver.dart';
-import 'git_remote.dart';
 import 'workspace_forge_status_service.dart';
 
 typedef ForgeActionGitRunner =

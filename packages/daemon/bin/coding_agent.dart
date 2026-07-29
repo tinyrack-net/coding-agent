@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:agent_daemon/src/cli/daemon_command.dart';
 import 'package:agent_daemon/src/cli/chat_command.dart';
+import 'package:agent_daemon/src/cli/clone_command.dart';
 import 'package:agent_daemon/src/cli/agent_attach_command.dart';
 import 'package:agent_daemon/src/cli/agent_import_command.dart';
 import 'package:agent_daemon/src/cli/agent_command.dart';
@@ -87,6 +88,10 @@ Future<void> main(List<String> arguments) async {
     exitCode = await runChatCommand(arguments: arguments.sublist(1));
     return;
   }
+  if (arguments.isNotEmpty && arguments[0] == 'clone') {
+    exitCode = await runCloneCommand(arguments: arguments.sublist(1));
+    return;
+  }
   if (arguments.isNotEmpty && arguments[0] == 'hub') {
     exitCode = await runHubCliCommand(arguments: arguments.sublist(1));
     return;
@@ -144,6 +149,8 @@ Future<void> main(List<String> arguments) async {
     '<start|status|stop|restart|set-password|pair> ...\n'
     '       coding-agent chat '
     '<create|ls|inspect|delete|post|read|wait> ...\n'
+    '       coding-agent clone <repo> --dir <path> '
+    '[--protocol <https|ssh>] ...\n'
     '       coding-agent run [options] <prompt>\n'
     '       coding-agent agent run [options] <prompt>\n'
     '       coding-agent import --provider <provider> <id> [options]\n'

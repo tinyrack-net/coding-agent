@@ -85,6 +85,7 @@ import 'workspace/service_proxy_route_registry.dart';
 import 'workspace/service_proxy_standalone.dart';
 import 'workspace/script_health_monitor.dart';
 import 'workspace/polling_workspace_git_backend.dart';
+import 'workspace/project_github_clone_service.dart';
 import 'workspace/workspace_script_runtime_store.dart';
 import 'workspace/workspace_scripts_service.dart';
 import 'workspace/workspace_setup_service.dart';
@@ -157,6 +158,7 @@ Future<DaemonServerHandle> startDaemonServer({
   String appBaseUrl = defaultTinyrackAppBaseUrl,
   AgentHookInstallOptions hookInstallOptions = const AgentHookInstallOptions(),
   Map<String, AgentClient>? agentClients,
+  ProjectGithubCloneRunner? projectGithubCloneRunner,
   TextToSpeechResolver? resolveVoiceTts,
   SpeechToTextResolver? resolveVoiceStt,
   SpeechToTextResolver? resolveDictationStt,
@@ -801,6 +803,10 @@ Future<DaemonServerHandle> startDaemonServer({
   registerWorkspaceHandlers(router, projects: projectStore, git: gitService);
   workspaceRegistries = WorkspaceRegistries(dataDir: rootDataDir);
   await workspaceRegistries.initialize();
+  final projectGithubClone = ProjectGithubCloneService(
+    registries: workspaceRegistries,
+    runClone: projectGithubCloneRunner,
+  );
   final projectConfig = ProjectConfigService(
     projects: workspaceRegistries.projects,
   );
@@ -1546,6 +1552,8 @@ Future<DaemonServerHandle> startDaemonServer({
       );
       return v2HandledNoResponse;
     }
+    final projectGithubCloneResponse = await projectGithubClone.handle(message);
+    if (projectGithubCloneResponse != null) return projectGithubCloneResponse;
     final agentDirectoryResponse = await _handlePaseoFetchAgents(
       manager,
       workspaceRegistries,

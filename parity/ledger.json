@@ -402,10 +402,13 @@
     },
     {
       "id": "cli-command:clone",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/clone_command.dart;packages/daemon/bin/coding_agent.dart;packages/daemon/lib/src/workspace/project_github_clone_service.dart",
+      "evidence": [
+        "packages/daemon/test/cli/clone_command_test.dart",
+        "packages/daemon/test/daemon_clone_cli_e2e_test.dart"
+      ],
+      "notes": "Paseo clone validation, protocol selection, daemon capability gating, output modes, safe staging, project registration, and failure behavior ported."
     },
     {
       "id": "cli-command:daemon-local-daemon",
@@ -9481,10 +9484,14 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/clone.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/clone_command.dart;packages/daemon/bin/coding_agent.dart;packages/daemon/lib/src/workspace/project_github_clone_service.dart",
+      "evidence": [
+        "packages/daemon/test/cli/clone_command_test.dart",
+        "packages/daemon/test/daemon_clone_cli_e2e_test.dart",
+        "packages/daemon/test/workspace/project_github_clone_service_test.dart"
+      ],
+      "notes": "Frozen clone command and server-side clone lifecycle ported through the real WebSocket boundary."
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/index.ts",
@@ -11058,10 +11065,13 @@
     },
     {
       "id": "source-unit:packages/protocol/src/git-remote.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/git_remote.dart;packages/daemon/lib/src/forge/git_remote.dart",
+      "evidence": [
+        "packages/protocol/test/git_remote_test.dart",
+        "packages/daemon/test/forge/forge_adapters_test.dart"
+      ],
+      "notes": "Supported URL and SCP transports, host/path normalization, GitHub identity parsing, and malformed escape rejection match the frozen implementation."
     },
     {
       "id": "source-unit:packages/protocol/src/host-connection-schema.ts",
