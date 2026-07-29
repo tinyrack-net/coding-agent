@@ -40,6 +40,27 @@ void main() {
     expect(single, contains('\n  "id": "a"'));
   });
 
+  test('renders one serializer-aware compact JSON line for streaming', () {
+    expect(
+      renderCliJsonLine({
+        'id': 'agent-1',
+        'status': 'running',
+        'message': 'line one\nline two',
+      }),
+      '{"id":"agent-1","status":"running","message":"line one\\nline two"}',
+    );
+    expect(
+      renderCliJsonLine<Map<String, Object?>>(
+        {'id': 'agent-2', 'status': 'idle'},
+        serialize: (item) => {
+          'agent': item['id'],
+          'ready': item['status'] == 'idle',
+        },
+      ),
+      '{"agent":"agent-2","ready":true}',
+    );
+  });
+
   test('renders recursive YAML with stable scalar rules', () {
     final yaml = renderCliOutput(
       CliOutputResult.list(rows: rows, schema: schema),

@@ -10256,7 +10256,7 @@
     },
     {
       "id": "source-unit:packages/cli/src/output/json.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
@@ -10272,7 +10272,7 @@
         "packages/daemon/test/cli/worktree_command_test.dart",
         "packages/daemon/test/daemon_chat_e2e_test.dart"
       ],
-      "notes": "Pretty two-space single-object/list JSON, schema custom serializers with identical-list collapse, and structured errors are ported; remaining CLI consumers still need migration."
+      "notes": "Pretty two-space single-object/list JSON, schema custom serializers with identical-list collapse, structured errors, and serializer-aware compact NDJSON line rendering are ported. Remaining command-consumer migration is tracked by cli.ts and with-output.ts."
     },
     {
       "id": "source-unit:packages/cli/src/output/pairing.ts",

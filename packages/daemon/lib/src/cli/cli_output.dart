@@ -143,6 +143,12 @@ String renderCliError({
   return details == null ? 'Error: $message' : 'Error: $message\n$details';
 }
 
+/// Renders one compact JSON value for NDJSON streaming.
+///
+/// The caller owns the line terminator, matching Paseo's `renderJsonLine`.
+String renderCliJsonLine<T>(T item, {Object? Function(T item)? serialize}) =>
+    jsonEncode(serialize == null ? item : serialize(item));
+
 String _renderCliTable(CliOutputResult result, CliOutputOptions options) {
   final rows = result.allRows;
   if (rows.isEmpty) return '';
