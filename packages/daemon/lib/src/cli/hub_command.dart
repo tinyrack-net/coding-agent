@@ -5,8 +5,10 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'hub_device_authorization.dart';
+import 'schedule_command.dart';
 
-const hubDaemonRpcTimeout = Duration(seconds: 5);
+const hubDaemonRpcTimeout = Duration(seconds: 15);
 
 enum HubCommandAction { connect, status, disconnect }
 
@@ -16,6 +18,7 @@ final class HubCommandOptions {
     this.home,
     this.hubUrl,
     this.token,
+    this.host,
     this.force = false,
     this.json = false,
   });
@@ -24,6 +27,7 @@ final class HubCommandOptions {
   final String? home;
   final String? hubUrl;
   final String? token;
+  final String? host;
   final bool force;
   final bool json;
 }
@@ -43,19 +47,22 @@ typedef HubManagementRequester =
 Future<int> runHubCommand({
   required HubCommandOptions options,
   Map<String, String>? environment,
-  HubManagementRequester request = requestRunningDaemonHubManagement,
+  HubManagementRequester? request,
   void Function(String value)? writeOutput,
   void Function(String value)? writeError,
 }) async {
-  final config = loadDaemonRuntimeConfig(
-    home: options.home,
-    environment: environment ?? Platform.environment,
-  );
+  final env = environment ?? Platform.environment;
+  final config = loadDaemonRuntimeConfig(home: options.home, environment: env);
   try {
-    final result = await request(config, options);
-    final output = options.json
-        ? '${const JsonEncoder.withIndent('  ').convert({'status': result.status.toJson(), if (result.warning != null) 'warning': result.warning})}\n'
-        : _formatHuman(result);
+    final requester =
+        request ??
+        (config, options) => requestRunningDaemonHubManagement(
+          config,
+          options,
+          environment: env,
+        );
+    final result = await requester(config, options);
+    final output = _formatHubResult(result, json: options.json);
     (writeOutput ?? stdout.write)(output);
     return 0;
   } catch (error) {
@@ -64,20 +71,218 @@ Future<int> runHubCommand({
   }
 }
 
+typedef HubDeviceAuthorizer =
+    Future<String> Function(String hubUrl, String displayName);
+
+Future<int> runHubCliCommand({
+  required List<String> arguments,
+  Map<String, String>? environment,
+  HubManagementRequester? request,
+  HubDeviceAuthorizer? authorize,
+  String Function()? displayName,
+  void Function(String value)? writeOutput,
+  void Function(String value)? writeError,
+}) async {
+  final output = writeOutput ?? stdout.write;
+  final errorOutput = writeError ?? stderr.write;
+  if (_hasOptionBeforeTerminator(arguments, const {'--help', '-h'})) {
+    output(hubHelp(arguments.isEmpty ? null : arguments.first));
+    return 0;
+  }
+  final jsonOutput = _hasOptionBeforeTerminator(arguments, const {'--json'});
+  try {
+    final invocation = HubCliInvocation.parse(arguments);
+    final env = environment ?? Platform.environment;
+    final config = loadDaemonRuntimeConfig(environment: env);
+    final requester =
+        request ??
+        (config, options) => requestRunningDaemonHubManagement(
+          config,
+          options,
+          environment: env,
+        );
+    final result = await _executeHubCli(
+      invocation,
+      config,
+      requester,
+      authorize: authorize ?? (url, name) => authorizeHubDevice(url, name),
+      displayName: displayName ?? () => Platform.localHostname,
+    );
+    output(_formatHubResult(result, json: invocation.json));
+    return 0;
+  } on FormatException catch (error) {
+    errorOutput('${error.message}\n$_hubUsage\n');
+    return 64;
+  } on Object catch (error, stackTrace) {
+    final message = _errorText(error);
+    if (jsonOutput) {
+      errorOutput(
+        '${const JsonEncoder.withIndent('  ').convert({
+          'error': {'code': 'UNKNOWN_ERROR', 'message': message, 'details': stackTrace.toString()},
+        })}\n',
+      );
+    } else {
+      errorOutput('Error: $message\n$stackTrace');
+    }
+    return 1;
+  }
+}
+
+final class HubCliInvocation {
+  const HubCliInvocation({
+    required this.action,
+    required this.positionals,
+    required this.values,
+    required this.flags,
+    required this.json,
+    required this.host,
+  });
+
+  final HubCommandAction action;
+  final List<String> positionals;
+  final Map<String, String> values;
+  final Set<String> flags;
+  final bool json;
+  final String? host;
+
+  static HubCliInvocation parse(List<String> arguments) {
+    if (arguments.isEmpty) throw const FormatException('Missing hub action');
+    final action = switch (arguments.first) {
+      'connect' => HubCommandAction.connect,
+      'status' => HubCommandAction.status,
+      'disconnect' => HubCommandAction.disconnect,
+      final value => throw FormatException('Unknown hub action: $value'),
+    };
+    final valueOptions = {
+      '--host',
+      if (action == HubCommandAction.connect) '--token',
+    };
+    final booleanOptions = {
+      '--json',
+      if (action == HubCommandAction.disconnect) '--force',
+    };
+    final positionals = <String>[];
+    final values = <String, String>{};
+    final flags = <String>{};
+    var positionalOnly = false;
+    for (var index = 1; index < arguments.length; index++) {
+      final argument = arguments[index];
+      if (!positionalOnly && argument == '--') {
+        positionalOnly = true;
+      } else if (positionalOnly) {
+        positionals.add(argument);
+      } else if (booleanOptions.contains(argument)) {
+        flags.add(argument);
+      } else if (valueOptions.contains(argument)) {
+        if (index + 1 >= arguments.length) {
+          throw FormatException('$argument requires a value');
+        }
+        values[argument] = arguments[++index];
+      } else if (_splitLongOption(argument) case (
+        final option,
+        final value,
+      ) when valueOptions.contains(option)) {
+        values[option] = value;
+      } else if (argument.startsWith('-')) {
+        throw FormatException('Unknown option: $argument');
+      } else {
+        positionals.add(argument);
+      }
+    }
+    final expected = action == HubCommandAction.connect ? 1 : 0;
+    if (positionals.length != expected) {
+      throw FormatException(
+        action == HubCommandAction.connect
+            ? 'hub connect requires one Hub URL'
+            : 'hub ${action.name} does not accept an argument',
+      );
+    }
+    return HubCliInvocation(
+      action: action,
+      positionals: List.unmodifiable(positionals),
+      values: Map.unmodifiable(values),
+      flags: Set.unmodifiable(flags),
+      json: flags.contains('--json'),
+      host: values['--host'],
+    );
+  }
+}
+
+Future<HubCommandResult> _executeHubCli(
+  HubCliInvocation invocation,
+  DaemonRuntimeConfig config,
+  HubManagementRequester request, {
+  required HubDeviceAuthorizer authorize,
+  required String Function() displayName,
+}) async {
+  switch (invocation.action) {
+    case HubCommandAction.connect:
+      final url = invocation.positionals.single;
+      var token = invocation.values['--token'];
+      if (token == null) {
+        final existing = await request(
+          config,
+          HubCommandOptions(
+            action: HubCommandAction.status,
+            host: invocation.host,
+          ),
+        );
+        if (existing.status.state != HubConnectionState.notConnected &&
+            existing.status.state != HubConnectionState.revoked) {
+          throw StateError('This daemon already has a Hub relationship');
+        }
+        token = await authorize(url, suggestedHubDisplayName(displayName()));
+      }
+      return request(
+        config,
+        HubCommandOptions(
+          action: HubCommandAction.connect,
+          hubUrl: url,
+          token: token,
+          host: invocation.host,
+        ),
+      );
+    case HubCommandAction.status:
+      return request(
+        config,
+        HubCommandOptions(
+          action: HubCommandAction.status,
+          host: invocation.host,
+        ),
+      );
+    case HubCommandAction.disconnect:
+      return request(
+        config,
+        HubCommandOptions(
+          action: HubCommandAction.disconnect,
+          host: invocation.host,
+          force: invocation.flags.contains('--force'),
+        ),
+      );
+  }
+}
+
+String suggestedHubDisplayName(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return 'Tinyrack daemon';
+  return trimmed.substring(0, trimmed.length.clamp(0, 100));
+}
+
 Future<HubCommandResult> requestRunningDaemonHubManagement(
   DaemonRuntimeConfig config,
-  HubCommandOptions options,
-) async {
-  final host = switch (config.host) {
-    '0.0.0.0' || '::' => '127.0.0.1',
-    final value => value,
-  };
-  final password = Platform.environment['TINYRACK_PASSWORD']?.trim();
+  HubCommandOptions options, {
+  Map<String, String>? environment,
+}) async {
+  final endpoint = resolveScheduleDaemonEndpoint(
+    config,
+    hostOverride: options.host,
+    environment: environment ?? Platform.environment,
+  );
   final socket = await WebSocket.connect(
-    Uri(scheme: 'ws', host: host, port: config.port, path: '/ws').toString(),
-    protocols: password == null || password.isEmpty
+    endpoint.webSocketUri.toString(),
+    protocols: endpoint.password == null
         ? null
-        : ['tinyrack.bearer.$password'],
+        : ['tinyrack.bearer.${endpoint.password}'],
     compression: CompressionOptions.compressionOff,
   ).timeout(hubDaemonRpcTimeout);
   final frames = StreamIterator<dynamic>(socket);
@@ -169,16 +374,98 @@ Future<Map<String, Object?>> _nextSessionMessage(
   throw TimeoutException('Daemon Hub request timed out');
 }
 
-String _formatHuman(HubCommandResult result) {
+String _formatHubResult(HubCommandResult result, {required bool json}) {
   final status = result.status;
-  final lines = <String>[
-    'State: ${status.state.wireValue}',
-    'Daemon: ${status.daemonId ?? '-'}',
-    'Hub: ${status.hubOrigin ?? '-'}',
-    'Scopes: ${status.scopes.isEmpty ? '-' : status.scopes.join(', ')}',
-    'Connected at: ${status.connectedAt ?? '-'}',
-    'Last error: ${status.lastError ?? '-'}',
-    if (result.warning != null) 'Warning: ${result.warning}',
-  ];
-  return '${lines.join('\n')}\n';
+  final row = <String, Object?>{
+    'state': status.state.wireValue,
+    'daemonId': status.daemonId,
+    'hub': status.hubOrigin,
+    'scopes': status.scopes.join(', '),
+    'connectedAt': status.connectedAt,
+    'error': status.lastError,
+    if (result.warning != null) 'warning': result.warning,
+  };
+  if (json) {
+    return '${const JsonEncoder.withIndent('  ').convert([row])}\n';
+  }
+  return _table(
+    const ['STATE', 'HUB', 'DAEMON', 'SCOPES', 'CONNECTED', 'ERROR', 'WARNING'],
+    [
+      [
+        '${row['state'] ?? ''}',
+        '${row['hub'] ?? ''}',
+        '${row['daemonId'] ?? ''}',
+        '${row['scopes'] ?? ''}',
+        '${row['connectedAt'] ?? ''}',
+        '${row['error'] ?? ''}',
+        '${row['warning'] ?? ''}',
+      ],
+    ],
+  );
 }
+
+String _table(List<String> headers, List<List<String>> rows) {
+  final widths = [
+    for (var column = 0; column < headers.length; column++)
+      [
+        headers[column].length,
+        for (final row in rows) row[column].length,
+      ].reduce((left, right) => left > right ? left : right),
+  ];
+  String line(List<String> cells) => [
+    for (var index = 0; index < cells.length; index++)
+      cells[index].padRight(widths[index]),
+  ].join('  ');
+  return '${[line(headers), for (final row in rows) line(row)].join('\n')}\n';
+}
+
+String _errorText(Object error) => switch (error) {
+  StateError(message: final message) => message,
+  ArgumentError(message: final message) => '$message',
+  _ => '$error',
+};
+
+String hubHelp(String? action) => switch (action) {
+  'connect' =>
+    'Usage: coding-agent hub connect <url> [options]\n'
+        "Connect this daemon to Tinyrack Hub\n\n"
+        'Options:\n'
+        '  --token <token>  Enrollment token '
+        '(opens browser authorization when omitted)\n'
+        '  --host <host>    Daemon host target\n'
+        '  --json           Output in JSON format\n',
+  'status' =>
+    'Usage: coding-agent hub status [options]\n'
+        'Show this daemon Hub relationship\n\n'
+        'Options:\n'
+        '  --host <host>    Daemon host target\n'
+        '  --json           Output in JSON format\n',
+  'disconnect' =>
+    'Usage: coding-agent hub disconnect [options]\n'
+        'Disconnect this daemon from Tinyrack Hub\n\n'
+        'Options:\n'
+        '  --force          Remove local authority even if the Hub is offline\n'
+        '  --host <host>    Daemon host target\n'
+        '  --json           Output in JSON format\n',
+  _ =>
+    'Usage: coding-agent hub <command> [options]\n'
+        "Manage this daemon's Tinyrack Hub relationship\n\n"
+        'Commands: connect, status, disconnect\n',
+};
+
+bool _hasOptionBeforeTerminator(List<String> arguments, Set<String> options) {
+  for (final argument in arguments) {
+    if (argument == '--') return false;
+    if (options.contains(argument)) return true;
+  }
+  return false;
+}
+
+(String, String)? _splitLongOption(String argument) {
+  if (!argument.startsWith('--')) return null;
+  final separator = argument.indexOf('=');
+  if (separator < 3) return null;
+  return (argument.substring(0, separator), argument.substring(separator + 1));
+}
+
+const _hubUsage = 'Usage: coding-agent hub <connect|status|disconnect> ...';

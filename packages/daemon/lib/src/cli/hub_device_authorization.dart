@@ -144,6 +144,22 @@ HubDeviceAuthorizationWorkflow createHubDeviceAuthorizationWorkflow({
   openBrowser: openBrowser ?? stderr.hasTerminal,
 );
 
+Future<String> authorizeHubDevice(
+  String hubUrl,
+  String displayName, {
+  bool? openBrowser,
+}) async {
+  final cloud = HubCloudDeviceAuthorizationClient();
+  try {
+    return await createHubDeviceAuthorizationWorkflow(
+      cloud: cloud,
+      openBrowser: openBrowser,
+    ).authorize(hubUrl, displayName);
+  } finally {
+    await cloud.close();
+  }
+}
+
 final class _SystemAuthorizationWaiter implements HubAuthorizationWaiter {
   const _SystemAuthorizationWaiter();
 

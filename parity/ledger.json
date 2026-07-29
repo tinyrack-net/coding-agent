@@ -9494,10 +9494,14 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/hub/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/hub_command.dart; packages/daemon/lib/src/cli/hub_device_authorization.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/hub_command_test.dart",
+        "packages/daemon/test/cli/hub_device_authorization_test.dart",
+        "packages/daemon/test/daemon_hub_management_e2e_test.dart"
+      ],
+      "notes": "Ports the frozen Hub CLI end to end with Tinyrack identity: positional connect URL, optional enrollment token, browser authorization after an explicit not-connected/revoked status guard, bounded host display name, status and force-disconnect flows, --host including tcp TLS and password semantics, exact seven-column row projection and single-row JSON list, structured errors and action help, binary dispatch, and real daemon connect/status/disconnect coverage."
     },
     {
       "id": "source-unit:packages/cli/src/commands/loop/index.ts",

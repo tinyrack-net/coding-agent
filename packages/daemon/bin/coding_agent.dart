@@ -93,14 +93,8 @@ Future<void> main(List<String> arguments) async {
     );
     return;
   }
-  if (arguments.length >= 2 && arguments[0] == 'hub') {
-    final options = _parseHubOptions(arguments.sublist(1));
-    if (options == null) {
-      stderr.writeln(_hubUsage);
-      exitCode = 64;
-      return;
-    }
-    exitCode = await runHubCommand(options: options);
+  if (arguments.isNotEmpty && arguments[0] == 'hub') {
+    exitCode = await runHubCliCommand(arguments: arguments.sublist(1));
     return;
   }
   if (arguments.isNotEmpty && arguments[0] == 'schedule') {
@@ -156,10 +150,10 @@ Future<void> main(List<String> arguments) async {
     '       coding-agent agent logs <id> [options]\n'
     '       coding-agent <ls|inspect|logs|attach|stop|send|wait|archive|delete> '
     '...\n'
-    '       coding-agent hub connect --url <url> --token <token> '
-    '[--home <path>] [--json]\n'
-    '       coding-agent hub status [--home <path>] [--json]\n'
-    '       coding-agent hub disconnect [--force] [--home <path>] [--json]\n'
+    '       coding-agent hub connect <url> [--token <token>] '
+    '[--host <host>] [--json]\n'
+    '       coding-agent hub status [--host <host>] [--json]\n'
+    '       coding-agent hub disconnect [--force] [--host <host>] [--json]\n'
     '       coding-agent schedule <create|ls|inspect|logs|pause|resume|'
     'delete|run-once|update> ...\n'
     '       coding-agent heartbeat <create|update|delete> ...\n'
@@ -171,59 +165,6 @@ Future<void> main(List<String> arguments) async {
     '       coding-agent hooks <agent> <event>',
   );
   exitCode = 64;
-}
-
-const _hubUsage =
-    'Usage: coding-agent hub connect --url <url> --token <token> '
-    '[--home <path>] [--json]\n'
-    '       coding-agent hub status [--home <path>] [--json]\n'
-    '       coding-agent hub disconnect [--force] [--home <path>] [--json]';
-
-HubCommandOptions? _parseHubOptions(List<String> arguments) {
-  if (arguments.isEmpty) return null;
-  final action = switch (arguments.first) {
-    'connect' => HubCommandAction.connect,
-    'status' => HubCommandAction.status,
-    'disconnect' => HubCommandAction.disconnect,
-    _ => null,
-  };
-  if (action == null) return null;
-  String? home;
-  String? hubUrl;
-  String? token;
-  var force = false;
-  var json = false;
-  for (var index = 1; index < arguments.length; index++) {
-    switch (arguments[index]) {
-      case '--json':
-        json = true;
-      case '--force' when action == HubCommandAction.disconnect:
-        force = true;
-      case '--home':
-        if (index + 1 >= arguments.length) return null;
-        home = arguments[++index];
-      case '--url' when action == HubCommandAction.connect:
-        if (index + 1 >= arguments.length) return null;
-        hubUrl = arguments[++index];
-      case '--token' when action == HubCommandAction.connect:
-        if (index + 1 >= arguments.length) return null;
-        token = arguments[++index];
-      default:
-        return null;
-    }
-  }
-  if (action == HubCommandAction.connect &&
-      ((hubUrl?.isEmpty ?? true) || (token?.isEmpty ?? true))) {
-    return null;
-  }
-  return HubCommandOptions(
-    action: action,
-    home: home,
-    hubUrl: hubUrl,
-    token: token,
-    force: force,
-    json: json,
-  );
 }
 
 PairCommandOptions? _parsePairOptions(List<String> arguments) {

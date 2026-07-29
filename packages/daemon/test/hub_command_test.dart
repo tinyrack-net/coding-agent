@@ -4,6 +4,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:agent_daemon/src/cli/hub_command.dart';
 import 'package:agent_daemon/src/daemon_server.dart';
@@ -12,6 +13,15 @@ import 'package:agent_daemon/src/server/daemon_config.dart';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 import 'package:test/test.dart';
+
+const _connectedStatus = HubRelationshipStatus(
+  state: HubConnectionState.connected,
+  daemonId: 'daemon-1',
+  hubOrigin: 'https://hub.example.test',
+  scopes: ['hub.execution.*'],
+  connectedAt: null,
+  lastError: null,
+);
 
 void main() {
   test('prints stable JSON and human status output', () async {
@@ -36,8 +46,15 @@ void main() {
     );
 
     expect(code, 0);
-    final decoded = jsonDecode(output.toString()) as Map<String, dynamic>;
-    expect(decoded['status'], containsPair('state', 'connected'));
+    final decoded = jsonDecode(output.toString()) as List;
+    expect(decoded.single, {
+      'state': 'connected',
+      'daemonId': 'daemon-1',
+      'hub': 'https://hub.example.test',
+      'scopes': 'hub.execution.*',
+      'connectedAt': '2026-07-27T00:00:00.000Z',
+      'error': null,
+    });
 
     output.clear();
     await runHubCommand(
@@ -49,8 +66,9 @@ void main() {
       ),
       writeOutput: output.write,
     );
-    expect(output.toString(), contains('State: not_connected'));
-    expect(output.toString(), contains('Warning: forced warning'));
+    expect(output.toString(), startsWith('STATE'));
+    expect(output.toString(), contains('not_connected'));
+    expect(output.toString(), contains('forced warning'));
   });
 
   test('reports daemon request failures with exit code one', () async {
@@ -63,6 +81,204 @@ void main() {
     );
     expect(code, 1);
     expect(errors.toString(), contains('offline'));
+  });
+
+  test('binary exposes the frozen Hub command help surface', () async {
+    final library = await Isolate.resolvePackageUri(
+      Uri.parse('package:agent_daemon/agent_daemon.dart'),
+    );
+    final packageRoot = File.fromUri(library!).parent.parent.path;
+    final results = await Future.wait([
+      for (final arguments in const [
+        ['hub', '--help'],
+        ['hub', 'connect', '--help'],
+        ['hub', 'status', '--help'],
+        ['hub', 'disconnect', '--help'],
+      ])
+        Process.run(Platform.resolvedExecutable, [
+          'run',
+          'agent_daemon:coding_agent',
+          ...arguments,
+        ], workingDirectory: packageRoot),
+    ]);
+    for (final result in results) {
+      expect(result.exitCode, 0);
+      expect(result.stdout, contains('Usage: coding-agent hub'));
+      expect(result.stderr, isEmpty);
+    }
+  });
+
+  test('direct-token connect uses positional URL and forwards host', () async {
+    final home = Directory.systemTemp.createTempSync('hub-cli-direct-');
+    addTearDown(() => home.deleteSync(recursive: true));
+    final calls = <HubCommandOptions>[];
+    var output = '';
+    final code = await runHubCliCommand(
+      arguments: [
+        'connect',
+        'https://hub.example.test',
+        '--token=enrollment-token',
+        '--host=tcp://daemon.example:7443?ssl=true&password=secret',
+        '--json',
+      ],
+      environment: {'TINYRACK_HOME': home.path},
+      request: (_, options) async {
+        calls.add(options);
+        return const HubCommandResult(status: _connectedStatus);
+      },
+      authorize: (_, __) async => fail('explicit token must skip browser auth'),
+      writeOutput: (value) => output += value,
+    );
+
+    expect(code, 0);
+    expect(calls, hasLength(1));
+    expect(calls.single.action, HubCommandAction.connect);
+    expect(calls.single.hubUrl, 'https://hub.example.test');
+    expect(calls.single.token, 'enrollment-token');
+    expect(
+      calls.single.host,
+      'tcp://daemon.example:7443?ssl=true&password=secret',
+    );
+    expect(jsonDecode(output), [
+      {
+        'state': 'connected',
+        'daemonId': 'daemon-1',
+        'hub': 'https://hub.example.test',
+        'scopes': 'hub.execution.*',
+        'connectedAt': null,
+        'error': null,
+      },
+    ]);
+  });
+
+  test('tokenless connect authorizes only an unconnected daemon', () async {
+    final home = Directory.systemTemp.createTempSync('hub-cli-browser-');
+    addTearDown(() => home.deleteSync(recursive: true));
+    final calls = <HubCommandOptions>[];
+    final authorizations = <(String, String)>[];
+    final repeatedName = List.filled(10, 'very-long-hostname').join();
+    final longName = '  $repeatedName  ';
+    final code = await runHubCliCommand(
+      arguments: ['connect', 'https://hub.example.test'],
+      environment: {'TINYRACK_HOME': home.path},
+      request: (_, options) async {
+        calls.add(options);
+        return options.action == HubCommandAction.status
+            ? const HubCommandResult(
+                status: HubRelationshipStatus.notConnected(),
+              )
+            : const HubCommandResult(status: _connectedStatus);
+      },
+      authorize: (url, name) async {
+        authorizations.add((url, name));
+        return 'approved-enrollment-token';
+      },
+      displayName: () => longName,
+      writeOutput: (_) {},
+    );
+
+    expect(code, 0);
+    expect(calls.map((call) => call.action), [
+      HubCommandAction.status,
+      HubCommandAction.connect,
+    ]);
+    expect(calls.last.token, 'approved-enrollment-token');
+    expect(authorizations.single.$1, 'https://hub.example.test');
+    expect(authorizations.single.$2, repeatedName.substring(0, 100));
+
+    calls.clear();
+    var error = '';
+    expect(
+      await runHubCliCommand(
+        arguments: ['connect', 'https://hub.example.test', '--json'],
+        environment: {'TINYRACK_HOME': home.path},
+        request: (_, options) async {
+          calls.add(options);
+          return const HubCommandResult(status: _connectedStatus);
+        },
+        authorize: (_, __) async => fail('connected daemon must reject auth'),
+        writeError: (value) => error += value,
+      ),
+      1,
+    );
+    expect(calls, hasLength(1));
+    expect(
+      (jsonDecode(error) as Map)['error'],
+      containsPair('message', 'This daemon already has a Hub relationship'),
+    );
+  });
+
+  test('status and force disconnect preserve row schema and flags', () async {
+    final home = Directory.systemTemp.createTempSync('hub-cli-actions-');
+    addTearDown(() => home.deleteSync(recursive: true));
+    final calls = <HubCommandOptions>[];
+    var output = '';
+    expect(
+      await runHubCliCommand(
+        arguments: ['status', '--host=remote:6868'],
+        environment: {'TINYRACK_HOME': home.path},
+        request: (_, options) async {
+          calls.add(options);
+          return const HubCommandResult(status: _connectedStatus);
+        },
+        writeOutput: (value) => output += value,
+      ),
+      0,
+    );
+    expect(output, startsWith('STATE'));
+    expect(output, contains('https://hub.example.test'));
+    expect(calls.single.host, 'remote:6868');
+
+    calls.clear();
+    output = '';
+    expect(
+      await runHubCliCommand(
+        arguments: ['disconnect', '--force', '--json'],
+        environment: {'TINYRACK_HOME': home.path},
+        request: (_, options) async {
+          calls.add(options);
+          return const HubCommandResult(
+            status: HubRelationshipStatus.notConnected(),
+            warning: 'remote revocation pending',
+          );
+        },
+        writeOutput: (value) => output += value,
+      ),
+      0,
+    );
+    expect(calls.single.force, isTrue);
+    expect(
+      (jsonDecode(output) as List).single,
+      containsPair('warning', 'remote revocation pending'),
+    );
+  });
+
+  test('Hub parser enforces frozen action-specific boundaries', () async {
+    final home = Directory.systemTemp.createTempSync('hub-cli-syntax-');
+    addTearDown(() => home.deleteSync(recursive: true));
+    for (final arguments in const [
+      <String>[],
+      ['future'],
+      ['connect'],
+      ['connect', 'one', 'two'],
+      ['status', 'unexpected'],
+      ['status', '--force'],
+      ['disconnect', '--token', 'invalid'],
+      ['disconnect', '--host'],
+    ]) {
+      var error = '';
+      expect(
+        await runHubCliCommand(
+          arguments: arguments,
+          environment: {'TINYRACK_HOME': home.path},
+          request: (_, __) async => fail('syntax must not reach daemon'),
+          writeError: (value) => error += value,
+        ),
+        64,
+        reason: '$arguments',
+      );
+      expect(error, contains('Usage: coding-agent hub'));
+    }
   });
 
   test('connect, status, and force disconnect cross the live daemon', () async {
@@ -85,55 +301,41 @@ void main() {
       log: (_) {},
     );
     addTearDown(handle.stop);
-    final config = _runtimeConfig(home.path, handle.server.port);
+    final host = '127.0.0.1:${handle.server.port}';
 
-    final connected = await requestRunningDaemonHubManagement(
-      config,
-      const HubCommandOptions(
-        action: HubCommandAction.connect,
-        hubUrl: 'https://hub.example.test',
-        token: 'token',
-      ),
-    );
-    expect(connected.status.state, HubConnectionState.connected);
+    Future<Map<String, Object?>> command(List<String> arguments) async {
+      var output = '';
+      var error = '';
+      final code = await runHubCliCommand(
+        arguments: [...arguments, '--host', host, '--json'],
+        environment: {'TINYRACK_HOME': home.path},
+        writeOutput: (value) => output += value,
+        writeError: (value) => error += value,
+      );
+      expect(code, 0, reason: error);
+      return ((jsonDecode(output) as List).single as Map)
+          .cast<String, Object?>();
+    }
 
-    final status = await requestRunningDaemonHubManagement(
-      config,
-      const HubCommandOptions(action: HubCommandAction.status),
-    );
-    expect(status.status.daemonId, connected.status.daemonId);
+    final connected = await command([
+      'connect',
+      'https://hub.example.test',
+      '--token',
+      'token',
+    ]);
+    expect(connected['state'], 'connected');
 
-    final disconnected = await requestRunningDaemonHubManagement(
-      config,
-      const HubCommandOptions(action: HubCommandAction.disconnect, force: true),
-    );
-    expect(disconnected.status.state, HubConnectionState.notConnected);
+    final status = await command(['status']);
+    expect(status['daemonId'], connected['daemonId']);
+
+    final disconnected = await command(['disconnect', '--force']);
+    expect(disconnected['state'], 'not_connected');
     expect(
-      disconnected.warning,
+      disconnected['warning'],
       'Local Hub credential removed; remote revocation may remain pending.',
     );
   });
 }
-
-DaemonRuntimeConfig _runtimeConfig(String home, int port) =>
-    DaemonRuntimeConfig(
-      home: home,
-      listen: '127.0.0.1:$port',
-      corsAllowedOrigins: const [],
-      trustedProxies: const ['loopback'],
-      relay: const DaemonRelayConfig(
-        enabled: false,
-        endpoint: '127.0.0.1:1',
-        publicEndpoint: '127.0.0.1:1',
-        useTls: false,
-        publicUseTls: false,
-      ),
-      appBaseUrl: 'https://app.example.test',
-      webUiEnabled: false,
-      logLevel: 'info',
-      logFormat: 'pretty',
-      enableTerminalAgentHooks: false,
-    );
 
 final class _HubCommandRemote implements HubRelationshipRemote {
   _HubCommandSocketConnection? connection;
