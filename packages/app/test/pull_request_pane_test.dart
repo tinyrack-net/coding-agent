@@ -726,7 +726,7 @@ void main() {
     expect(find.text('Package'), findsNothing);
     expect(find.text('Activity'), findsOneWidget);
     expect(find.text('Looks good to me.'), findsOneWidget);
-    expect(find.text('lib/pane.dart:18'), findsOneWidget);
+    expect(find.text('lib/pane.dart:18'), findsNothing);
   });
 
   testWidgets(
@@ -1400,6 +1400,7 @@ void main() {
     expect(find.text('Root comment.'), findsOneWidget);
     expect(find.text('First reply.'), findsOneWidget);
     expect(find.text('Second reply.'), findsOneWidget);
+    expect(find.text('lib/replies.dart:8'), findsOneWidget);
     expect(find.text('commented'), findsNWidgets(3));
 
     final rail = find.byKey(

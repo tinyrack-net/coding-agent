@@ -1151,9 +1151,6 @@ class _ActivityCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final eventRow = !embedded && item.body.trim().isEmpty;
-    final location = item is PullRequestTimelineComment
-        ? (item as PullRequestTimelineComment).location
-        : null;
     return Container(
       key: eventRow ? ValueKey('activity-event-row-${item.id}') : null,
       margin: embedded
@@ -1247,18 +1244,6 @@ class _ActivityCard extends StatelessWidget {
               ),
             ),
           ),
-          if (!collapsed && location != null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              color: context.tokens.surfaceContainerHighest,
-              child: Text(
-                formatPullRequestActivityLocation(location),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 10),
-              ),
-            ),
           if (!collapsed && item.body.trim().isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
