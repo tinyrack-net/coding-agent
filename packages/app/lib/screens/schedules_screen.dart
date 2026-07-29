@@ -15,6 +15,7 @@ import '../state/providers_snapshot_provider.dart';
 import '../state/schedule_form_model.dart';
 import '../state/schedule_project_targets_provider.dart';
 import '../state/schedules_provider.dart';
+import '../widgets/adaptive_modal_sheet.dart';
 import '../widgets/combined_model_selector.dart';
 import '../widgets/fluent/toast.dart';
 
@@ -201,7 +202,7 @@ class _SchedulesScreenState extends ConsumerState<SchedulesScreen> {
   }
 
   Future<void> _showForm([AggregatedSchedule? entry]) async {
-    await showDialog<void>(
+    await showAdaptiveModalSheet<void>(
       context: context,
       builder: (context) => _ScheduleFormDialog(
         schedule: entry?.schedule,
@@ -729,105 +730,92 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
       providerSelectionValid: providerSelection.isAvailable,
       cronExpression: _cron.text,
     );
-    return ContentDialog(
-      constraints: const BoxConstraints(maxWidth: 560),
-      title: Text(
-        agentTarget
-            ? 'Edit heartbeat'
-            : editing
-            ? 'Edit schedule'
-            : 'New schedule',
-      ),
-      content: SizedBox(
-        width: 520,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (agentTarget) ...[
-                _agentTargetField(agentDirectories),
-                _cadenceEditor(),
-              ] else ...[
-                if (!editing && hosts.length > 1) ...[
-                  const Text('Host'),
-                  const SizedBox(height: 6),
-                  ComboBox<String>(
-                    value: _serverId,
-                    items: [
-                      for (final host in hosts)
-                        ComboBoxItem(
-                          value: host.serverId,
-                          child: Text(host.label),
-                        ),
-                    ],
-                    onChanged: (value) => setState(() {
-                      _serverId = value;
-                      _cwd.clear();
-                      _clearProviderSelection();
-                    }),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                _field('Name', _name, placeholder: 'Optional'),
-                _field(
-                  'Prompt',
-                  _prompt,
-                  placeholder: 'What should the agent do each run?',
-                  maxLines: 4,
-                  onChanged: (_) => setState(() {}),
-                ),
-                if (readiness.showProject) _projectSelector(projectTargets),
-                if (readiness.showModel)
-                  _providerEditor(
-                    snapshot: snapshot,
-                    scope: snapshotScope,
-                    selection: providerSelection,
-                    hasClient: client != null,
-                  ),
-                if (workspaceLifecycle.showIsolation) ...[
-                  const SizedBox(height: 12),
-                  const Text('Isolation'),
-                  const SizedBox(height: 6),
-                  ComboBox<String>(
-                    key: const ValueKey('schedule-isolation-selector'),
-                    value: workspaceLifecycle.effectiveIsolation,
-                    items: const [
-                      ComboBoxItem(value: 'local', child: Text('Local')),
-                      ComboBoxItem(value: 'worktree', child: Text('Worktree')),
-                    ],
-                    onChanged: (value) => setState(() {
-                      _isolationTouched = true;
-                      _isolation = value ?? 'local';
-                    }),
-                  ),
-                ],
-                if (workspaceLifecycle.showArchiveOnFinish) ...[
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Archive on finish'),
-                      ToggleSwitch(
-                        checked: _archiveOnFinish,
-                        onChanged: (value) =>
-                            setState(() => _archiveOnFinish = value),
+    return AdaptiveModalSheet(
+      key: const ValueKey('schedule-form-sheet'),
+      title: agentTarget
+          ? 'Edit heartbeat'
+          : editing
+          ? 'Edit schedule'
+          : 'New schedule',
+      onClose: () => Navigator.pop(context),
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: _withFieldSpacing([
+          if (agentTarget) ...[
+            _agentTargetField(agentDirectories),
+            _cadenceEditor(),
+          ] else ...[
+            if (editing || hosts.length > 1)
+              _labeledControl(
+                'Host',
+                ComboBox<String>(
+                  value: _serverId,
+                  items: [
+                    for (final host in hosts)
+                      ComboBoxItem(
+                        value: host.serverId,
+                        child: Text(host.label),
                       ),
-                    ],
-                  ),
-                ],
-                _cadenceEditor(),
-                _field('Max runs', _maxRuns, placeholder: 'Unlimited'),
-              ],
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  style: TextStyle(color: context.statusColors.danger),
+                  ],
+                  onChanged: editing
+                      ? null
+                      : (value) => setState(() {
+                          _serverId = value;
+                          _cwd.clear();
+                          _clearProviderSelection();
+                        }),
                 ),
-              ],
-            ],
-          ),
-        ),
+              ),
+            _field('Name', _name, placeholder: 'Optional'),
+            _field(
+              'Prompt',
+              _prompt,
+              placeholder: 'What should the agent do each run?',
+              maxLines: 4,
+              onChanged: (_) => setState(() {}),
+            ),
+            if (readiness.showProject) _projectSelector(projectTargets),
+            if (readiness.showModel)
+              _providerEditor(
+                snapshot: snapshot,
+                scope: snapshotScope,
+                selection: providerSelection,
+                hasClient: client != null,
+              ),
+            if (workspaceLifecycle.showIsolation)
+              _labeledControl(
+                'Isolation',
+                ComboBox<String>(
+                  key: const ValueKey('schedule-isolation-selector'),
+                  value: workspaceLifecycle.effectiveIsolation,
+                  items: const [
+                    ComboBoxItem(value: 'local', child: Text('Local')),
+                    ComboBoxItem(value: 'worktree', child: Text('Worktree')),
+                  ],
+                  onChanged: (value) => setState(() {
+                    _isolationTouched = true;
+                    _isolation = value ?? 'local';
+                  }),
+                ),
+              ),
+            if (workspaceLifecycle.showArchiveOnFinish)
+              _labeledControl(
+                'Archive on finish',
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: ToggleSwitch(
+                    checked: _archiveOnFinish,
+                    onChanged: (value) =>
+                        setState(() => _archiveOnFinish = value),
+                  ),
+                ),
+              ),
+            _cadenceEditor(),
+            _field('Max runs', _maxRuns, placeholder: 'Unlimited'),
+          ],
+          if (_error != null)
+            Text(_error!, style: TextStyle(color: context.statusColors.danger)),
+        ]),
       ),
       actions: [
         Button(
@@ -856,25 +844,55 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
         : agent.title.trim().isEmpty
         ? 'Untitled agent'
         : agent.title;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text('Target'),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              border: Border.all(color: context.tokens.outlineVariant),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-          ),
-        ],
+    return _labeledControl(
+      'Target',
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          border: Border.all(color: context.tokens.outlineVariant),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
     );
   }
+
+  List<Widget> _withFieldSpacing(List<Widget> fields) => [
+    for (var index = 0; index < fields.length; index++) ...[
+      if (index > 0) const SizedBox(height: 16),
+      fields[index],
+    ],
+  ];
+
+  Widget _labeledControl(
+    String label,
+    Widget control, {
+    String? helper,
+    bool error = false,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(
+        label,
+        style: TextStyle(color: context.tokens.onSurfaceVariant, fontSize: 14),
+      ),
+      const SizedBox(height: 8),
+      control,
+      if (helper != null) ...[
+        const SizedBox(height: 4),
+        Text(
+          helper,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: context.textStyles.bodySmall?.copyWith(
+            color: error
+                ? context.statusColors.danger
+                : context.tokens.onSurfaceVariant,
+          ),
+        ),
+      ],
+    ],
+  );
 
   Widget _field(
     String label,
@@ -883,25 +901,18 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     String? helper,
     int maxLines = 1,
     ValueChanged<String>? onChanged,
-  }) => Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(label),
-        const SizedBox(height: 6),
-        TextBox(
-          controller: controller,
-          placeholder: placeholder,
-          maxLines: maxLines,
-          onChanged: onChanged,
-        ),
-        if (helper != null) ...[
-          const SizedBox(height: 4),
-          Text(helper, style: context.textStyles.bodySmall),
-        ],
-      ],
+  }) => _labeledControl(
+    label,
+    ConstrainedBox(
+      constraints: BoxConstraints(minHeight: maxLines > 1 ? 96 : 0),
+      child: TextBox(
+        controller: controller,
+        placeholder: placeholder,
+        maxLines: maxLines,
+        onChanged: onChanged,
+      ),
     ),
+    helper: helper,
   );
 
   Widget _cadenceEditor() {
@@ -915,13 +926,11 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     final preview = error == null && _cron.text.trim().isNotEmpty
         ? describeScheduleCron(cadence) ?? _cron.text.trim()
         : null;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
+    return _labeledControl(
+      'Cadence',
+      Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('Cadence'),
-          const SizedBox(height: 6),
           ComboBox<String>(
             value: resolveCronPresetId(cadence),
             items: [
@@ -981,47 +990,40 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
             widget.schedule != null
         ? '__stored_project__'
         : null;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text('Project'),
-          const SizedBox(height: 6),
-          ComboBox<String>(
-            value: selected?.optionId ?? storedValue,
-            placeholder: const Text('Select project'),
-            items: [
-              if (storedValue != null)
-                ComboBoxItem(
-                  value: storedValue,
-                  child: Text(
-                    describeScheduleCwd(
-                      serverId: _serverId ?? '',
-                      cwd: _cwd.text,
-                      projectNameByCwd: const {},
-                    ),
-                  ),
+    return _labeledControl(
+      'Project',
+      ComboBox<String>(
+        value: selected?.optionId ?? storedValue,
+        placeholder: const Text('Select project'),
+        items: [
+          if (storedValue != null)
+            ComboBoxItem(
+              value: storedValue,
+              child: Text(
+                describeScheduleCwd(
+                  serverId: _serverId ?? '',
+                  cwd: _cwd.text,
+                  projectNameByCwd: const {},
                 ),
-              for (final target in options)
-                ComboBoxItem(
-                  value: target.optionId,
-                  child: Text(target.projectName),
-                ),
-            ],
-            onChanged: (value) {
-              if (value == null || value == storedValue) return;
-              final target = options.firstWhere(
-                (target) => target.optionId == value,
-              );
-              setState(() {
-                _serverId = target.serverId;
-                _cwd.text = target.cwd;
-                _clearProviderSelection();
-              });
-            },
-          ),
+              ),
+            ),
+          for (final target in options)
+            ComboBoxItem(
+              value: target.optionId,
+              child: Text(target.projectName),
+            ),
         ],
+        onChanged: (value) {
+          if (value == null || value == storedValue) return;
+          final target = options.firstWhere(
+            (target) => target.optionId == value,
+          );
+          setState(() {
+            _serverId = target.serverId;
+            _cwd.text = target.cwd;
+            _clearProviderSelection();
+          });
+        },
       ),
     );
   }
@@ -1033,55 +1035,35 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     required bool hasClient,
   }) {
     if (_cwd.text.trim().isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.only(bottom: 12),
-        child: Text('Select a project to choose a model.'),
-      );
+      return const Text('Select a project to choose a model.');
     }
     if (!hasClient) {
-      return const Padding(
-        padding: EdgeInsets.only(bottom: 12),
-        child: Text('Host is not connected.'),
-      );
+      return const Text('Host is not connected.');
     }
     if (snapshot?.supportsSnapshot == false) {
-      return const Padding(
-        padding: EdgeInsets.only(bottom: 12),
-        child: Text('Update the host to use provider discovery.'),
-      );
+      return const Text('Update the host to use provider discovery.');
     }
     if (snapshot == null || (snapshot.isLoading && snapshot.entries == null)) {
-      return const Padding(
-        padding: EdgeInsets.only(bottom: 12),
-        child: Center(child: ProgressRing()),
-      );
+      return const Center(child: ProgressRing());
     }
     if (snapshot.error != null && snapshot.entries == null) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Text('Failed to load providers: ${snapshot.error}'),
-      );
+      return Text('Failed to load providers: ${snapshot.error}');
     }
     if (selection.providers.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.only(bottom: 12),
-        child: Text(
-          'No agent providers are available. '
-          'Install or enable a provider on this host and try again.',
-        ),
+      return const Text(
+        'No agent providers are available. '
+        'Install or enable a provider on this host and try again.',
       );
     }
 
     final selectorProviders = buildSelectableProviderSelectorProviders(
       snapshot.entries,
     );
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text('Model'),
-          const SizedBox(height: 6),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: _withFieldSpacing([
+        _labeledControl(
+          'Model',
           CombinedModelSelector(
             providers: selectorProviders,
             selectedProvider: selection.provider,
@@ -1109,29 +1091,10 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                   ),
             isRetryingProvider: snapshot.isRefreshing,
           ),
-          if (selection.modes.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            const Text('Mode'),
-            const SizedBox(height: 6),
-            ComboBox<String>(
-              key: const ValueKey('schedule-mode-selector'),
-              value: selection.modeId,
-              items: [
-                for (final mode in selection.modes)
-                  ComboBoxItem(value: mode.id, child: Text(mode.label)),
-              ],
-              onChanged: _submitting
-                  ? null
-                  : (value) => setState(() {
-                      _selectionTouched = true;
-                      _modeId = value;
-                    }),
-            ),
-          ],
-          if (selection.thinkingOptions.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            const Text('Thinking'),
-            const SizedBox(height: 6),
+        ),
+        if (selection.thinkingOptions.isNotEmpty)
+          _labeledControl(
+            'Thinking',
             ComboBox<String>(
               key: const ValueKey('schedule-thinking-selector'),
               value: selection.thinkingOptionId,
@@ -1146,9 +1109,26 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                       _thinkingOptionId = value;
                     }),
             ),
-          ],
-        ],
-      ),
+          ),
+        if (selection.modes.isNotEmpty)
+          _labeledControl(
+            'Mode',
+            ComboBox<String>(
+              key: const ValueKey('schedule-mode-selector'),
+              value: selection.modeId,
+              items: [
+                for (final mode in selection.modes)
+                  ComboBoxItem(value: mode.id, child: Text(mode.label)),
+              ],
+              onChanged: _submitting
+                  ? null
+                  : (value) => setState(() {
+                      _selectionTouched = true;
+                      _modeId = value;
+                    }),
+            ),
+          ),
+      ]),
     );
   }
 

@@ -2317,17 +2317,22 @@
     },
     {
       "id": "source-unit:packages/app/src/components/adaptive-modal-sheet-layout.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/adaptive_modal_sheet.dart",
+      "evidence": [
+        "packages/app/test/adaptive_modal_sheet_test.dart"
+      ],
+      "notes": "Compact content and footer safe-area padding follows the frozen contract exactly."
     },
     {
       "id": "source-unit:packages/app/src/components/adaptive-modal-sheet.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/widgets/adaptive_modal_sheet.dart",
+      "evidence": [
+        "packages/app/test/adaptive_modal_sheet_test.dart",
+        "packages/app/test/schedules_screen_test.dart"
+      ],
+      "notes": "Desktop 520px/85% card geometry, 24px header/content/footer insets, sticky equal-width actions, 160ms fade, close and barrier dismissal, compact 65%/90% draggable presentation, pan-down dismissal, keyboard inset, and compact safe-area behavior are implemented. Remaining shared primitive parity includes inline/search headers, nested modal isolation, push/replace presentation, non-scrollable content, web portal stacking, and adaptive native text-input ownership."
     },
     {
       "id": "source-unit:packages/app/src/components/add-host-method-modal.tsx",
@@ -3277,7 +3282,7 @@
       "evidence": [
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, exposes provider and model through the single combined model trigger, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. Remaining sheet parity is adaptive modal geometry and visual fidelity."
+      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, shows the owning Host as read-only while editing a new-agent schedule, exposes provider and model through the single combined model trigger, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. It now runs in the shared adaptive desktop/compact sheet with frozen card and snap geometry, sticky footer, 16px field stack, 8px label gaps, 96px prompt, Thinking-before-Mode order, and a stacked archive switch. Remaining form parity is exact SelectField control geometry, searchable host/project option presentation, provider/host/project glyphs, and screenshot-golden visual proof."
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/schedule-row.tsx",

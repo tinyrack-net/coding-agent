@@ -25,6 +25,42 @@ class PaseoPalette {
   final Color accentBright;
 }
 
+@immutable
+class PaseoThemeTokens extends ThemeExtension<PaseoThemeTokens> {
+  const PaseoThemeTokens(this.palette);
+
+  final PaseoPalette palette;
+
+  @override
+  PaseoThemeTokens copyWith({PaseoPalette? palette}) =>
+      PaseoThemeTokens(palette ?? this.palette);
+
+  @override
+  PaseoThemeTokens lerp(
+    covariant ThemeExtension<PaseoThemeTokens>? other,
+    double t,
+  ) {
+    if (other is! PaseoThemeTokens) return this;
+    Color mix(Color first, Color second) =>
+        Color.lerp(first, second, t) ?? first;
+    return PaseoThemeTokens(
+      PaseoPalette(
+        surface0: mix(palette.surface0, other.palette.surface0),
+        surface1: mix(palette.surface1, other.palette.surface1),
+        surface2: mix(palette.surface2, other.palette.surface2),
+        foreground: mix(palette.foreground, other.palette.foreground),
+        foregroundMuted: mix(
+          palette.foregroundMuted,
+          other.palette.foregroundMuted,
+        ),
+        borderAccent: mix(palette.borderAccent, other.palette.borderAccent),
+        accent: mix(palette.accent, other.palette.accent),
+        accentBright: mix(palette.accentBright, other.palette.accentBright),
+      ),
+    );
+  }
+}
+
 PaseoPalette paseoPaletteFor(
   AppThemeName name, [
   Brightness platformBrightness = Brightness.dark,
@@ -122,6 +158,7 @@ FluentThemeData buildAppTheme([
   });
   final base = FluentThemeData(brightness: brightness, accentColor: accent);
   return base.copyWith(
+    extensions: [...base.extensions.values, PaseoThemeTokens(palette)],
     scaffoldBackgroundColor: palette.surface0,
     menuColor: palette.surface2,
   );
@@ -192,6 +229,13 @@ class AppTextStyles {
 
 extension AppThemeContext on BuildContext {
   FluentThemeData get fluentTheme => FluentTheme.of(this);
+  PaseoPalette get paseoPalette =>
+      FluentTheme.of(this).extension<PaseoThemeTokens>()?.palette ??
+      paseoPaletteFor(
+        FluentTheme.of(this).brightness == Brightness.light
+            ? AppThemeName.light
+            : AppThemeName.dark,
+      );
   AppColors get tokens => AppColors._(FluentTheme.of(this));
   StatusColors get statusColors => StatusColors._(FluentTheme.of(this));
   AppTextStyles get textStyles =>

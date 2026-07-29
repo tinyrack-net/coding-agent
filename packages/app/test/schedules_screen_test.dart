@@ -10,6 +10,7 @@ import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/host_registry_provider.dart';
 import 'package:coding_agent_app/state/schedule_project_targets_provider.dart';
 import 'package:coding_agent_app/state/schedules_provider.dart';
+import 'package:coding_agent_app/widgets/adaptive_modal_sheet.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,6 +28,18 @@ void main() {
 
     await tester.tap(find.text('New schedule'));
     await tester.pumpAndSettle();
+    final card = tester.getRect(
+      find.byKey(const ValueKey('adaptive-modal-sheet-card')),
+    );
+    expect(card.width, adaptiveModalDesktopMaxWidth);
+    expect(
+      card.height,
+      lessThanOrEqualTo(
+        tester.view.physicalSize.height /
+            tester.view.devicePixelRatio *
+            adaptiveModalDesktopMaxHeightFactor,
+      ),
+    );
     expect(find.text('Prompt'), findsOneWidget);
     expect(find.text('Cadence'), findsOneWidget);
     expect(find.text('Project'), findsOneWidget);
@@ -40,6 +53,29 @@ void main() {
           )
           .onPressed,
       isNull,
+    );
+  });
+
+  testWidgets('create form uses the frozen compact bottom-sheet geometry', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(500, 800);
+    addTearDown(tester.view.reset);
+    await _pump(tester, const []);
+
+    await tester.tap(find.text('New schedule'));
+    await tester.pumpAndSettle();
+
+    final card = tester.getRect(
+      find.byKey(const ValueKey('adaptive-modal-sheet-card')),
+    );
+    expect(card.width, 500);
+    expect(card.height, 800 * adaptiveModalCompactInitialHeightFactor);
+    expect(card.bottom, 800);
+    expect(
+      tester.getRect(find.byKey(const ValueKey('schedule-form-submit'))).bottom,
+      lessThanOrEqualTo(card.bottom - adaptiveModalFooterVerticalPadding),
     );
   });
 
@@ -70,6 +106,14 @@ void main() {
 
     expect(find.text('Edit schedule'), findsOneWidget);
     expect(find.text('Save changes'), findsOneWidget);
+    expect(find.text('Host'), findsOneWidget);
+    expect(find.text('Local'), findsOneWidget);
+    expect(
+      tester
+          .widget<ComboBox<String>>(find.byType(ComboBox<String>).first)
+          .onChanged,
+      isNull,
+    );
     expect(find.widgetWithText(TextBox, 'Review the branch'), findsOneWidget);
   });
 
@@ -147,6 +191,7 @@ void main() {
     );
 
     final fields = find.byType(TextBox);
+    expect(tester.getSize(fields.at(1)).height, greaterThanOrEqualTo(96));
     await tester.enterText(fields.at(1), 'Run tests');
     await tester.enterText(fields.at(2), '*/5 * * * *');
     final projectPicker = find.byType(ComboBox<String>).first;
@@ -168,6 +213,14 @@ void main() {
     expect(find.text('GPT 5.4'), findsOneWidget);
     expect(find.text('Mode'), findsOneWidget);
     expect(find.text('Thinking'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Thinking')).dy,
+      lessThan(tester.getTopLeft(find.text('Mode')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.byType(ToggleSwitch)).dy,
+      greaterThan(tester.getTopLeft(find.text('Archive on finish')).dy),
+    );
     final modeSelector = find.byKey(const ValueKey('schedule-mode-selector'));
     await tester.ensureVisible(modeSelector);
     await tester.tap(modeSelector);
@@ -507,7 +560,7 @@ void main() {
     expect(find.text('Target'), findsOneWidget);
     expect(
       find.descendant(
-        of: find.byType(ContentDialog),
+        of: find.byKey(const ValueKey('schedule-form-sheet')),
         matching: find.text('Heartbeat agent'),
       ),
       findsOneWidget,
