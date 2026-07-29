@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../server/daemon_config.dart';
 import 'agent_logs_command.dart';
 import 'cli_command_options.dart';
+import 'cli_daemon_client.dart';
 import 'cli_duration.dart';
 import 'cli_output.dart';
 import 'cli_paths.dart';
@@ -1374,34 +1375,13 @@ Future<_AgentCommandResult> _openAgent(
 String? _resolveArchiveAgentId(
   String identifier,
   List<Map<String, Object?>> agents,
-) {
-  if (identifier.isEmpty || agents.isEmpty) return null;
-  final query = identifier.toLowerCase();
-  final exact = agents.where((agent) => agent['id'] == identifier).firstOrNull;
-  if (exact != null) return _string(exact, 'id');
-  final prefixMatches = agents
-      .where((agent) => _string(agent, 'id').toLowerCase().startsWith(query))
-      .toList(growable: false);
-  if (prefixMatches.length == 1) return _string(prefixMatches.single, 'id');
-  final exactTitleMatches = agents
-      .where((agent) => _nullableString(agent['title'])?.toLowerCase() == query)
-      .toList(growable: false);
-  if (exactTitleMatches.length == 1) {
-    return _string(exactTitleMatches.single, 'id');
-  }
-  final partialTitleMatches = agents
-      .where(
-        (agent) =>
-            _nullableString(agent['title'])?.toLowerCase().contains(query) ==
-            true,
-      )
-      .toList(growable: false);
-  if (partialTitleMatches.length == 1) {
-    return _string(partialTitleMatches.single, 'id');
-  }
-  final firstPrefix = prefixMatches.firstOrNull;
-  return firstPrefix == null ? null : _string(firstPrefix, 'id');
-}
+) => resolveAgentId(identifier, [
+  for (final agent in agents)
+    CliAgentIdentity(
+      id: _string(agent, 'id'),
+      title: _nullableString(agent['title']),
+    ),
+]);
 
 Future<_AgentCommandResult> _stopAgents(
   AgentCliInvocation invocation,

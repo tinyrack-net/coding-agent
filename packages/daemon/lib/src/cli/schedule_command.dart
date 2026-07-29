@@ -6,6 +6,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
 import 'cli_client_id.dart';
+import 'cli_daemon_client.dart';
 import 'cli_duration.dart';
 import 'cli_output.dart';
 import 'cli_version.dart';
@@ -1024,7 +1025,7 @@ ScheduleDaemonEndpoint resolveScheduleDaemonEndpoint(
 }) {
   final explicitHost = hostOverride ?? environment['TINYRACK_HOST'];
   late final Uri webSocketUri;
-  String? uriPassword;
+  late final String passwordHost;
 
   if (explicitHost == null) {
     final host = switch (config.host) {
@@ -1037,36 +1038,26 @@ ScheduleDaemonEndpoint resolveScheduleDaemonEndpoint(
       port: config.port,
       path: '/ws',
     );
+    passwordHost = config.listen;
   } else {
     final trimmed = explicitHost.trim();
-    if (trimmed.startsWith('tcp://')) {
-      final connection = parseConnectionUri(trimmed);
-      final endpoint = connection.isIpv6
-          ? '[${connection.host}]:${connection.port}'
-          : '${connection.host}:${connection.port}';
-      webSocketUri = Uri.parse(
-        buildDaemonWebSocketUrl(endpoint, useTls: connection.useTls),
-      );
-      uriPassword = connection.password;
-    } else {
-      final endpoint = parseHostPort(trimmed);
-      webSocketUri = Uri(
-        scheme: 'ws',
-        host: endpoint.host,
-        port: endpoint.port,
-        path: '/ws',
+    if (trimmed.contains('://') && !trimmed.startsWith('tcp://')) {
+      throw const FormatException('Connection URI protocol must be tcp:');
+    }
+    if (!trimmed.startsWith('tcp://')) parseHostPort(trimmed);
+    final target = resolveDaemonTarget(trimmed);
+    if (target is! CliTcpDaemonTarget) {
+      throw const FormatException(
+        'Schedule CLI transport does not yet support IPC daemon targets',
       );
     }
+    webSocketUri = Uri.parse(target.url);
+    passwordHost = trimmed;
   }
 
-  final environmentPassword = environment['TINYRACK_PASSWORD']?.trim();
   return ScheduleDaemonEndpoint(
     webSocketUri: webSocketUri,
-    password:
-        uriPassword ??
-        (environmentPassword == null || environmentPassword.isEmpty
-            ? null
-            : environmentPassword),
+    password: resolveDaemonPassword(passwordHost, environment: environment),
   );
 }
 

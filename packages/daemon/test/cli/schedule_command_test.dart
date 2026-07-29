@@ -24,7 +24,7 @@ void main() {
       environment: const {'TINYRACK_PASSWORD': ' environment-secret '},
     );
     expect(defaultEndpoint.webSocketUri.toString(), 'ws://127.0.0.1:6868/ws');
-    expect(defaultEndpoint.password, 'environment-secret');
+    expect(defaultEndpoint.password, ' environment-secret ');
 
     final environmentHost = resolveScheduleDaemonEndpoint(
       config,

@@ -10432,10 +10432,16 @@
     },
     {
       "id": "source-unit:packages/cli/src/utils/client.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/cli/cli_daemon_client.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/agent_command.dart; packages/protocol/lib/src/connection/daemon_endpoints.dart; packages/protocol/lib/src/connection/connection_offer.dart",
+      "evidence": [
+        "packages/daemon/test/cli/cli_daemon_client_test.dart",
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/agent_command_test.dart",
+        "packages/protocol/test/daemon_endpoints_test.dart",
+        "packages/protocol/test/connection_offer_test.dart"
+      ],
+      "notes": "Frozen host normalization, default candidate ordering, TCP/IPC target derivation, URI/environment password precedence, connection error shape, and agent ID resolution precedence are ported. Candidate connection failover, IPC socket transport, relay-offer E2EE connection, and nullable try-connect remain."
     },
     {
       "id": "source-unit:packages/cli/src/utils/command-options.ts",
