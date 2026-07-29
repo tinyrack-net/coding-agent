@@ -10486,10 +10486,16 @@
     },
     {
       "id": "source-unit:packages/cli/src/utils/timeline.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/cli_timeline.dart; packages/daemon/lib/src/cli/agent_logs_command.dart; packages/daemon/lib/src/cli/agent_attach_command.dart; packages/daemon/lib/src/cli/agent_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/cli_timeline_test.dart",
+        "packages/daemon/test/cli/agent_logs_command_test.dart",
+        "packages/daemon/test/cli/agent_attach_command_test.dart",
+        "packages/daemon/test/cli/agent_command_test.dart",
+        "packages/daemon/test/daemon_agent_cli_e2e_test.dart"
+      ],
+      "notes": "Frozen projected tail request shape, full item projection, optional timeout, shared 2-second live-history timeout, daemon error propagation, and attach/logs/wait consumers are ported."
     },
     {
       "id": "source-unit:packages/cli/src/version.ts",

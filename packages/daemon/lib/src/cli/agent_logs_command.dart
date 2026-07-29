@@ -5,10 +5,10 @@ import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/agent_mcp_tools.dart' show curateAgentActivity;
 import '../server/daemon_config.dart';
+import 'cli_timeline.dart';
 import 'terminal_command.dart';
 
-typedef AgentLogsRpcRequester =
-    Future<Map<String, Object?>> Function(Map<String, Object?> request);
+typedef AgentLogsRpcRequester = CliTimelineRpcRequester;
 typedef AgentLogsMessageReceiver = Future<Map<String, Object?>> Function();
 
 Future<int> runAgentLogsCommand({
@@ -196,26 +196,7 @@ Future<List<TimelineItem>> fetchAgentTimelineItems(
   AgentLogsRpcRequester request,
   String agentId, {
   int? timeoutMs,
-}) async {
-  final response = request(
-    FetchAgentTimelineRequest(
-      agentId: agentId,
-      requestId: _requestId('agent_logs_timeline'),
-      direction: AgentTimelineDirection.tail,
-      limit: 0,
-      projection: AgentTimelineProjection.projected,
-    ).toJson(),
-  );
-  final payload = timeoutMs == null
-      ? await response
-      : await response.timeout(Duration(milliseconds: timeoutMs));
-  final page = AgentTimelinePage.fromResponseJson({
-    'type': AgentTimelinePage.responseType,
-    'payload': payload,
-  });
-  if (page.error case final error?) throw StateError(error);
-  return page.entries.map((entry) => entry.item).toList(growable: false);
-}
+}) => fetchProjectedTimelineItems(request, agentId, timeoutMs: timeoutMs);
 
 String formatAgentActivityTranscript(List<TimelineItem> items, int? tailCount) {
   if (tailCount == 0) return '';
@@ -250,7 +231,11 @@ Future<void> _runFollowMode({
 }) async {
   var existing = <TimelineItem>[];
   try {
-    existing = await fetchAgentTimelineItems(request, agentId, timeoutMs: 2000);
+    existing = await fetchAgentTimelineItems(
+      request,
+      agentId,
+      timeoutMs: liveHistoryFetchTimeoutMs,
+    );
   } on Object catch (error) {
     writeError(
       'Warning: failed to fetch existing timeline ${_errorText(error)}\n',

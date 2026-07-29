@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
-import 'agent_logs_command.dart' show fetchAgentTimelineItems;
+import 'cli_timeline.dart';
 import 'terminal_command.dart';
 
 typedef AgentAttachRpcRequester =
@@ -73,10 +73,10 @@ Future<int> runAgentAttachCommand({
     );
 
     try {
-      final existing = await fetchAgentTimelineItems(
+      final existing = await fetchProjectedTimelineItems(
         send,
         resolvedId,
-        timeoutMs: 2000,
+        timeoutMs: liveHistoryFetchTimeoutMs,
       );
       for (final item in existing) {
         _printTimelineItem(item, output, errorOutput);
