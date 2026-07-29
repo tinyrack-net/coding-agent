@@ -3,10 +3,16 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme.dart';
+import '../state/agents_provider.dart';
+import '../state/host_registry_provider.dart';
 import '../state/schedules_provider.dart';
 import '../widgets/fluent/toast.dart';
 
 enum _ScheduleFilter { active, ended }
+
+enum _ScheduleDerivedState { active, paused, expired, finished, targetGone }
+
+const _allScheduleHosts = '__all__';
 
 class SchedulesScreen extends ConsumerStatefulWidget {
   const SchedulesScreen({super.key});
@@ -17,103 +23,173 @@ class SchedulesScreen extends ConsumerStatefulWidget {
 
 class _SchedulesScreenState extends ConsumerState<SchedulesScreen> {
   var _filter = _ScheduleFilter.active;
+  var _selectedHost = _allScheduleHosts;
 
   @override
   Widget build(BuildContext context) {
-    final schedules = ref.watch(schedulesProvider);
+    final schedules = ref.watch(aggregatedSchedulesProvider);
+    final hosts = ref.watch(hostRegistryProvider).hosts;
+    final agentDirectories = ref.watch(agentDirectoryReplicaStoreProvider);
+    final selectedHost =
+        _selectedHost == _allScheduleHosts ||
+            hosts.any((host) => host.serverId == _selectedHost)
+        ? _selectedHost
+        : _allScheduleHosts;
     return ScaffoldPage(
-      header: PageHeader(
-        title: const Text('Schedules'),
-        commandBar: FilledButton(
-          onPressed: () => _showForm(),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(FluentIcons.add, size: 14),
-              SizedBox(width: 8),
-              Text('New schedule'),
-            ],
-          ),
+      header: const PageHeader(title: Text('Schedules')),
+      content: schedules.when(
+        loading: () => const Center(child: ProgressRing()),
+        error: (error, _) => _ScheduleLoadError(
+          onRetry: () =>
+              ref.read(aggregatedSchedulesProvider.notifier).reload(),
         ),
-      ),
-      content: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-            child: Row(
+        data: (state) {
+          if (state.connecting && state.schedules.isEmpty) {
+            return const Center(child: ProgressRing());
+          }
+          if (state.schedules.isEmpty) {
+            return Column(
               children: [
-                ToggleButton(
-                  checked: _filter == _ScheduleFilter.active,
-                  onChanged: (_) =>
-                      setState(() => _filter = _ScheduleFilter.active),
-                  child: const Text('Active'),
-                ),
-                const SizedBox(width: 4),
-                ToggleButton(
-                  checked: _filter == _ScheduleFilter.ended,
-                  onChanged: (_) =>
-                      setState(() => _filter = _ScheduleFilter.ended),
-                  child: const Text('Ended'),
+                if (state.hostErrors.isNotEmpty)
+                  _ScheduleHostErrors(errors: state.hostErrors),
+                Expanded(
+                  child: _ScheduleEmptyState(
+                    ended: false,
+                    onCreate: () => _showForm(),
+                  ),
                 ),
               ],
-            ),
-          ),
-          Expanded(
-            child: schedules.when(
-              loading: () => const Center(child: ProgressRing()),
-              error: (error, _) => _ScheduleLoadError(
-                onRetry: () => ref.read(schedulesProvider.notifier).reload(),
+            );
+          }
+          final now = DateTime.now();
+          final rows = [
+            for (final entry in state.schedules)
+              _resolveSchedule(
+                entry,
+                agentDirectories: agentDirectories,
+                now: now,
               ),
-              data: (values) {
-                final visible = values
-                    .where((schedule) {
-                      final ended = schedule.status == ScheduleStatus.completed;
-                      return _filter == _ScheduleFilter.ended ? ended : !ended;
-                    })
-                    .toList(growable: false);
-                if (visible.isEmpty) {
-                  return _ScheduleEmptyState(
-                    ended: _filter == _ScheduleFilter.ended,
-                    onCreate: _showForm,
-                  );
+          ];
+          final visible = rows
+              .where((row) {
+                if (selectedHost != _allScheduleHosts &&
+                    row.entry.serverId != selectedHost) {
+                  return false;
                 }
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                final ended =
+                    row.state != _ScheduleDerivedState.active &&
+                    row.state != _ScheduleDerivedState.paused;
+                return _filter == _ScheduleFilter.ended ? ended : !ended;
+              })
+              .toList(growable: false);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                child: Row(
                   children: [
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: context.tokens.surfaceContainerHighest,
-                        border: Border.all(
-                          color: context.tokens.outlineVariant,
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        children: [
-                          for (var index = 0; index < visible.length; index++)
-                            _ScheduleRow(
-                              schedule: visible[index],
-                              showDivider: index > 0,
-                              onEdit: () => _showForm(visible[index]),
+                    if (hosts.length > 1) ...[
+                      ComboBox<String>(
+                        value: selectedHost,
+                        items: [
+                          const ComboBoxItem(
+                            value: _allScheduleHosts,
+                            child: Text('All hosts'),
+                          ),
+                          for (final host in hosts)
+                            ComboBoxItem(
+                              value: host.serverId,
+                              child: Text(host.label),
                             ),
+                        ],
+                        onChanged: (value) => setState(
+                          () => _selectedHost = value ?? _allScheduleHosts,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
+                    ToggleButton(
+                      checked: _filter == _ScheduleFilter.active,
+                      onChanged: (_) =>
+                          setState(() => _filter = _ScheduleFilter.active),
+                      child: const Text('Active'),
+                    ),
+                    const SizedBox(width: 4),
+                    ToggleButton(
+                      checked: _filter == _ScheduleFilter.ended,
+                      onChanged: (_) =>
+                          setState(() => _filter = _ScheduleFilter.ended),
+                      child: const Text('Ended'),
+                    ),
+                    const Spacer(),
+                    Button(
+                      onPressed: () => _showForm(),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(FluentIcons.add, size: 14),
+                          SizedBox(width: 8),
+                          Text('New schedule'),
                         ],
                       ),
                     ),
                   ],
-                );
-              },
-            ),
-          ),
-        ],
+                ),
+              ),
+              if (state.hostErrors.isNotEmpty)
+                _ScheduleHostErrors(errors: state.hostErrors),
+              Expanded(
+                child: visible.isEmpty
+                    ? _ScheduleEmptyState(
+                        ended: _filter == _ScheduleFilter.ended,
+                        onCreate: () => _showForm(),
+                      )
+                    : ListView(
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                        children: [
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: context.tokens.surfaceContainerHighest,
+                              border: Border.all(
+                                color: context.tokens.outlineVariant,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              children: [
+                                for (
+                                  var index = 0;
+                                  index < visible.length;
+                                  index++
+                                )
+                                  _ScheduleRow(
+                                    row: visible[index],
+                                    singleHost: hosts.length <= 1,
+                                    showDivider: index > 0,
+                                    onEdit: () =>
+                                        _showForm(visible[index].entry),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Future<void> _showForm([ScheduleSummary? schedule]) async {
+  Future<void> _showForm([AggregatedSchedule? entry]) async {
     await showDialog<void>(
       context: context,
-      builder: (context) => _ScheduleFormDialog(schedule: schedule),
+      builder: (context) => _ScheduleFormDialog(
+        schedule: entry?.schedule,
+        serverId: entry?.serverId,
+      ),
     );
   }
 }
@@ -130,6 +206,34 @@ class _ScheduleLoadError extends StatelessWidget {
         const Text('Unable to load schedules'),
         const SizedBox(height: 12),
         Button(onPressed: onRetry, child: const Text('Try again')),
+      ],
+    ),
+  );
+}
+
+class _ScheduleHostErrors extends StatelessWidget {
+  const _ScheduleHostErrors({required this.errors});
+
+  final List<ScheduleHostError> errors;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      border: Border.all(color: context.tokens.outlineVariant),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final error in errors)
+          Text(
+            '${error.serverName}: Could not load schedules',
+            style: context.textStyles.bodySmall?.copyWith(
+              color: context.statusColors.danger,
+            ),
+          ),
       ],
     ),
   );
@@ -184,21 +288,35 @@ class _ScheduleEmptyState extends StatelessWidget {
 
 class _ScheduleRow extends ConsumerWidget {
   const _ScheduleRow({
-    required this.schedule,
+    required this.row,
+    required this.singleHost,
     required this.showDivider,
     required this.onEdit,
   });
 
-  final ScheduleSummary schedule;
+  final _ResolvedScheduleRow row;
+  final bool singleHost;
   final bool showDivider;
   final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final status = switch (schedule.status) {
-      ScheduleStatus.active => ('Active', context.statusColors.success),
-      ScheduleStatus.paused => ('Paused', context.statusColors.neutral),
-      ScheduleStatus.completed => ('Finished', context.statusColors.neutral),
+    final schedule = row.entry.schedule;
+    final status = switch (row.state) {
+      _ScheduleDerivedState.active => ('Active', context.statusColors.success),
+      _ScheduleDerivedState.paused => ('Paused', context.statusColors.neutral),
+      _ScheduleDerivedState.expired => (
+        'Expired',
+        context.statusColors.neutral,
+      ),
+      _ScheduleDerivedState.finished => (
+        'Finished',
+        context.statusColors.neutral,
+      ),
+      _ScheduleDerivedState.targetGone => (
+        'Target gone',
+        context.statusColors.danger,
+      ),
     };
     return Column(
       children: [
@@ -225,7 +343,7 @@ class _ScheduleRow extends ConsumerWidget {
                   SizedBox(
                     width: 18,
                     child: Icon(
-                      _providerIcon(schedule),
+                      _providerIcon(row.provider),
                       size: 16,
                       color: context.tokens.onSurfaceVariant,
                     ),
@@ -243,7 +361,7 @@ class _ScheduleRow extends ConsumerWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          _target(schedule),
+                          row.targetLabel,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -252,7 +370,12 @@ class _ScheduleRow extends ConsumerWidget {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          _meta(schedule),
+                          _meta(
+                            schedule,
+                            state: row.state,
+                            serverName: row.entry.serverName,
+                            singleHost: singleHost,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: context.textStyles.bodySmall?.copyWith(
@@ -280,7 +403,7 @@ class _ScheduleRow extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  _ScheduleMenu(schedule: schedule, onEdit: onEdit),
+                  _ScheduleMenu(row: row, onEdit: onEdit),
                 ],
               ),
             );
@@ -292,8 +415,8 @@ class _ScheduleRow extends ConsumerWidget {
 }
 
 class _ScheduleMenu extends ConsumerStatefulWidget {
-  const _ScheduleMenu({required this.schedule, required this.onEdit});
-  final ScheduleSummary schedule;
+  const _ScheduleMenu({required this.row, required this.onEdit});
+  final _ResolvedScheduleRow row;
   final VoidCallback onEdit;
 
   @override
@@ -319,10 +442,13 @@ class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
     if (_pending) {
       return const SizedBox(width: 28, height: 28, child: ProgressRing());
     }
-    final notifier = ref.read(schedulesProvider.notifier);
+    final notifier = ref.read(aggregatedSchedulesProvider.notifier);
+    final schedule = widget.row.entry.schedule;
+    final serverId = widget.row.entry.serverId;
     final canExecute =
-        widget.schedule.target is NewAgentScheduleTarget &&
-        widget.schedule.status != ScheduleStatus.completed;
+        schedule.target is NewAgentScheduleTarget &&
+        (widget.row.state == _ScheduleDerivedState.active ||
+            widget.row.state == _ScheduleDerivedState.paused);
     return DropDownButton(
       title: const Icon(FluentIcons.more_vertical, size: 14),
       items: [
@@ -331,14 +457,14 @@ class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
           text: const Text('Edit schedule'),
           onPressed: widget.onEdit,
         ),
-        if (widget.schedule.target is NewAgentScheduleTarget) ...[
-          if (widget.schedule.status == ScheduleStatus.paused)
+        if (schedule.target is NewAgentScheduleTarget) ...[
+          if (schedule.status == ScheduleStatus.paused)
             MenuFlyoutItem(
               leading: const Icon(FluentIcons.play, size: 14),
               text: const Text('Resume schedule'),
               onPressed: canExecute
                   ? () => _run(() async {
-                      await notifier.resume(widget.schedule.id);
+                      await notifier.resume(serverId, schedule.id);
                     })
                   : null,
             )
@@ -348,7 +474,7 @@ class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
               text: const Text('Pause schedule'),
               onPressed: canExecute
                   ? () => _run(() async {
-                      await notifier.pause(widget.schedule.id);
+                      await notifier.pause(serverId, schedule.id);
                     })
                   : null,
             ),
@@ -357,7 +483,7 @@ class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
             text: const Text('Run now'),
             onPressed: canExecute
                 ? () => _run(() async {
-                    await notifier.runOnce(widget.schedule.id);
+                    await notifier.runOnce(serverId, schedule.id);
                   })
                 : null,
           ),
@@ -379,13 +505,14 @@ class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
     );
   }
 
-  Future<void> _confirmDelete(SchedulesNotifier notifier) async {
+  Future<void> _confirmDelete(AggregatedSchedulesNotifier notifier) async {
+    final entry = widget.row.entry;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => ContentDialog(
         title: const Text('Delete schedule'),
         content: Text(
-          'Delete "${_title(widget.schedule)}"? This cannot be undone.',
+          'Delete "${_title(entry.schedule)}"? This cannot be undone.',
         ),
         actions: [
           Button(
@@ -400,14 +527,15 @@ class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
       ),
     );
     if (confirmed == true) {
-      await _run(() => notifier.delete(widget.schedule.id));
+      await _run(() => notifier.delete(entry.serverId, entry.schedule.id));
     }
   }
 }
 
 class _ScheduleFormDialog extends ConsumerStatefulWidget {
-  const _ScheduleFormDialog({this.schedule});
+  const _ScheduleFormDialog({this.schedule, this.serverId});
   final ScheduleSummary? schedule;
+  final String? serverId;
 
   @override
   ConsumerState<_ScheduleFormDialog> createState() =>
@@ -423,6 +551,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
   late final TextEditingController _model;
   late final TextEditingController _cwd;
   late final TextEditingController _maxRuns;
+  String? _serverId;
   var _isolation = 'local';
   var _archiveOnFinish = true;
   var _submitting = false;
@@ -447,6 +576,10 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     _model = TextEditingController(text: config?.model ?? '');
     _cwd = TextEditingController(text: config?.cwd ?? '');
     _maxRuns = TextEditingController(text: schedule?.maxRuns?.toString() ?? '');
+    _serverId =
+        widget.serverId ??
+        ref.read(activeHostProvider)?.serverId ??
+        ref.read(hostRegistryProvider).hosts.firstOrNull?.serverId;
     _isolation = config?.isolation ?? 'local';
     _archiveOnFinish = config?.archiveOnFinish ?? true;
   }
@@ -472,6 +605,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
   Widget build(BuildContext context) {
     final editing = widget.schedule != null;
     final newAgent = widget.schedule?.target is! AgentScheduleTarget;
+    final hosts = ref.watch(hostRegistryProvider).hosts;
     return ContentDialog(
       constraints: const BoxConstraints(maxWidth: 560),
       title: Text(editing ? 'Edit schedule' : 'New schedule'),
@@ -481,6 +615,22 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (!editing && hosts.length > 1) ...[
+                const Text('Host'),
+                const SizedBox(height: 6),
+                ComboBox<String>(
+                  value: _serverId,
+                  items: [
+                    for (final host in hosts)
+                      ComboBoxItem(
+                        value: host.serverId,
+                        child: Text(host.label),
+                      ),
+                  ],
+                  onChanged: (value) => setState(() => _serverId = value),
+                ),
+                const SizedBox(height: 12),
+              ],
               _field('Name', _name, placeholder: 'Optional'),
               _field('Prompt', _prompt, maxLines: 4),
               _field(
@@ -596,6 +746,11 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
       setState(() => _error = 'Max runs must be a positive integer.');
       return;
     }
+    final serverId = _serverId;
+    if (serverId == null) {
+      setState(() => _error = 'A connected host is required.');
+      return;
+    }
     setState(() {
       _submitting = true;
       _error = null;
@@ -605,9 +760,10 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
       timezone: _timezone.text.trim().isEmpty ? null : _timezone.text.trim(),
     );
     try {
-      final notifier = ref.read(schedulesProvider.notifier);
+      final notifier = ref.read(aggregatedSchedulesProvider.notifier);
       if (widget.schedule == null) {
         await notifier.create(
+          serverId,
           prompt: prompt,
           name: _name.text.trim().isEmpty ? null : _name.text.trim(),
           cadence: cadence,
@@ -638,7 +794,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
             'archiveOnFinish': _archiveOnFinish,
           };
         }
-        await notifier.updateSchedule(widget.schedule!.id, changes);
+        await notifier.updateSchedule(serverId, widget.schedule!.id, changes);
       }
       if (mounted) Navigator.pop(context);
     } catch (error) {
@@ -655,26 +811,19 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
 String _title(ScheduleSummary schedule) =>
     schedule.name?.trim().isNotEmpty == true ? schedule.name! : 'Schedule';
 
-IconData _providerIcon(ScheduleSummary schedule) => switch (schedule.target) {
-  NewAgentScheduleTarget(config: final config)
-      when config.provider.toLowerCase().contains('codex') =>
-    FluentIcons.code,
-  NewAgentScheduleTarget() => FluentIcons.robot,
-  _ => FluentIcons.contact,
-};
+IconData _providerIcon(String? provider) {
+  final normalized = provider?.toLowerCase();
+  if (normalized?.contains('codex') == true) return FluentIcons.code;
+  if (normalized != null) return FluentIcons.robot;
+  return FluentIcons.contact;
+}
 
-String _target(ScheduleSummary schedule) => switch (schedule.target) {
-  NewAgentScheduleTarget(config: final config) =>
-    config.model == null
-        ? config.cwd
-        : '${config.provider}/${config.model} · ${config.cwd}',
-  AgentScheduleTarget(agentId: final id) =>
-    'Agent ${id.substring(0, id.length.clamp(0, 7))}',
-  SelfScheduleTarget(agentId: final id) =>
-    'Agent ${id.substring(0, id.length.clamp(0, 7))}',
-};
-
-String _meta(ScheduleSummary schedule) {
+String _meta(
+  ScheduleSummary schedule, {
+  required _ScheduleDerivedState state,
+  required String serverName,
+  required bool singleHost,
+}) {
   final parts = <String>[
     _cadenceLabel(schedule.cadence),
     'Created ${_timeAgo(schedule.createdAt)}',
@@ -682,10 +831,71 @@ String _meta(ScheduleSummary schedule) {
         ? 'Never run'
         : 'Last run ${_timeAgo(schedule.lastRunAt!)}',
   ];
-  if (schedule.status == ScheduleStatus.active && schedule.nextRunAt != null) {
+  if (state == _ScheduleDerivedState.active && schedule.nextRunAt != null) {
     parts.add('Next run ${_timeAgo(schedule.nextRunAt!, future: true)}');
   }
+  if (!singleHost) parts.insert(0, serverName);
   return parts.join(' · ');
+}
+
+final class _ResolvedScheduleRow {
+  const _ResolvedScheduleRow({
+    required this.entry,
+    required this.state,
+    required this.targetLabel,
+    required this.provider,
+  });
+
+  final AggregatedSchedule entry;
+  final _ScheduleDerivedState state;
+  final String targetLabel;
+  final String? provider;
+}
+
+_ResolvedScheduleRow _resolveSchedule(
+  AggregatedSchedule entry, {
+  required Map<String, Map<String, AgentSummary>> agentDirectories,
+  required DateTime now,
+}) {
+  final schedule = entry.schedule;
+  final target = schedule.target;
+  String targetLabel;
+  String? provider;
+  var targetGone = false;
+  switch (target) {
+    case NewAgentScheduleTarget(config: final config):
+      targetLabel = config.cwd;
+      provider = config.provider;
+    case AgentScheduleTarget(agentId: final agentId) ||
+        SelfScheduleTarget(agentId: final agentId):
+      final directory = agentDirectories[entry.serverId];
+      final agent = directory?[agentId];
+      targetGone = directory != null && agent == null;
+      targetLabel = agent == null
+          ? 'Agent unavailable'
+          : agent.title.trim().isEmpty
+          ? 'Untitled agent'
+          : agent.title;
+      provider = agent?.provider;
+  }
+  final expiresAt = schedule.expiresAt == null
+      ? null
+      : DateTime.tryParse(schedule.expiresAt!);
+  final state = expiresAt != null && !expiresAt.isAfter(now)
+      ? _ScheduleDerivedState.expired
+      : targetGone
+      ? _ScheduleDerivedState.targetGone
+      : switch (schedule.status) {
+          ScheduleStatus.active => _ScheduleDerivedState.active,
+          ScheduleStatus.paused => _ScheduleDerivedState.paused,
+          ScheduleStatus.completed => _ScheduleDerivedState.finished,
+        };
+  return _ResolvedScheduleRow(
+    entry: entry,
+    state: state,
+    targetLabel: targetLabel,
+    provider: provider,
+  );
 }
 
 String _cadenceLabel(ScheduleCadence cadence) => switch (cadence) {

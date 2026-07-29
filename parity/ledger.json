@@ -6559,9 +6559,11 @@
     },
     {
       "id": "source-unit:packages/app/src/schedules/schedule-derivation.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "partial",
+      "implementation": "packages/app/lib/screens/schedules_screen.dart",
+      "evidence": [
+        "packages/app/test/schedules_screen_test.dart"
+      ],
       "notes": null
     },
     {
@@ -6686,9 +6688,11 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/schedules-screen-state.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/app/lib/screens/schedules_screen.dart",
+      "evidence": [
+        "packages/app/test/schedules_screen_test.dart"
+      ],
       "notes": null
     },
     {
