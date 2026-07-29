@@ -570,7 +570,7 @@ final class DaemonCliSocketClient {
 
   Future<Map<String, Object?>> request(
     Map<String, Object?> request, {
-    Duration timeout = terminalDaemonRpcTimeout,
+    Duration? timeout = terminalDaemonRpcTimeout,
   }) async {
     final requestId = request['requestId'];
     final responseCompleter = Completer<Map<String, Object?>>();
@@ -581,7 +581,9 @@ final class DaemonCliSocketClient {
     late final Map<String, Object?> response;
     try {
       await send(request);
-      response = await responseCompleter.future.timeout(timeout);
+      response = timeout == null
+          ? await responseCompleter.future
+          : await responseCompleter.future.timeout(timeout);
     } finally {
       _responses.remove(requestId);
     }

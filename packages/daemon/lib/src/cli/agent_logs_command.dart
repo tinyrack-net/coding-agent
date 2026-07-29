@@ -86,7 +86,7 @@ Future<int> runAgentLogsCommand({
       return 0;
     }
 
-    var items = await _fetchTimeline(send, resolvedId);
+    var items = await fetchAgentTimelineItems(send, resolvedId);
     if (invocation.filter != null) {
       items = items
           .where((item) => matchesAgentLogsFilter(item, invocation.filter))
@@ -192,11 +192,12 @@ Future<Map<String, Object?>> _fetchAgent(
   return snapshot;
 }
 
-Future<List<TimelineItem>> _fetchTimeline(
+Future<List<TimelineItem>> fetchAgentTimelineItems(
   AgentLogsRpcRequester request,
-  String agentId,
-) async {
-  final payload = await request(
+  String agentId, {
+  int? timeoutMs,
+}) async {
+  final response = request(
     FetchAgentTimelineRequest(
       agentId: agentId,
       requestId: _requestId('agent_logs_timeline'),
@@ -205,6 +206,9 @@ Future<List<TimelineItem>> _fetchTimeline(
       projection: AgentTimelineProjection.projected,
     ).toJson(),
   );
+  final payload = timeoutMs == null
+      ? await response
+      : await response.timeout(Duration(milliseconds: timeoutMs));
   final page = AgentTimelinePage.fromResponseJson({
     'type': AgentTimelinePage.responseType,
     'payload': payload,
@@ -246,10 +250,7 @@ Future<void> _runFollowMode({
 }) async {
   var existing = <TimelineItem>[];
   try {
-    existing = await _fetchTimeline(
-      request,
-      agentId,
-    ).timeout(const Duration(seconds: 2));
+    existing = await fetchAgentTimelineItems(request, agentId, timeoutMs: 2000);
   } on Object catch (error) {
     writeError(
       'Warning: failed to fetch existing timeline ${_errorText(error)}\n',

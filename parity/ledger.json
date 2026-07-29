@@ -275,10 +275,14 @@
     },
     {
       "id": "cli-command:agent-wait",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/cli/agent_logs_command.dart; packages/daemon/lib/src/cli/terminal_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/agent_command_test.dart",
+        "packages/daemon/test/cli/agent_logs_command_test.dart",
+        "packages/daemon/test/daemon_agent_cli_e2e_test.dart"
+      ],
+      "notes": "Frozen top-level and nested aliases, unlimited and finite duration waits, five-item activity preview, idle/timeout/permission/error results, output modes, validation, and real WebSocket behavior verified."
     },
     {
       "id": "cli-command:chat-create",
@@ -8831,7 +8835,7 @@
         "packages/daemon/test/daemon_agent_cli_e2e_test.dart",
         "packages/daemon/test/daemon_agent_send_e2e_test.dart"
       ],
-      "notes": "Agent ls, inspect, logs, mode, stop, and send dispatch are ported; remaining run, attach, open, delete, wait, archive, reload, detach, and update commands remain."
+      "notes": "Agent ls, inspect, logs, mode, stop, send, and wait dispatch are ported; remaining run, attach, open, delete, archive, reload, detach, and update commands remain."
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/inspect.ts",
@@ -8925,10 +8929,13 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/wait.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/lib/src/cli/agent_logs_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/agent_command_test.dart",
+        "packages/daemon/test/daemon_agent_cli_e2e_test.dart"
+      ],
+      "notes": "Paseo duration parsing, timeout labels, recent transcript fallback, command errors, and schema output are ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/chat/create.ts",

@@ -5,6 +5,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:uuid/uuid.dart';
 
 import '../server/daemon_config.dart';
+import 'agent_logs_command.dart';
 import 'terminal_command.dart';
 
 typedef AgentRpcRequester =
@@ -28,6 +29,7 @@ Future<int> runAgentCommand({
   try {
     final invocation = AgentCliInvocation.parse(arguments);
     String? resolvedSendPrompt;
+    ({int timeoutMs, String? timeoutLabel})? resolvedWaitTimeout;
     if (invocation.action == 'mode' &&
         !invocation.listModes &&
         (invocation.modeId == null || invocation.modeId!.isEmpty)) {
@@ -59,6 +61,16 @@ Future<int> runAgentCommand({
       }
       resolvedSendPrompt = await _resolveSendPrompt(invocation);
     }
+    if (invocation.action == 'wait') {
+      if (invocation.agentId == null || invocation.agentId!.trim().isEmpty) {
+        throw const AgentCommandException(
+          'MISSING_AGENT_ID',
+          'Agent ID is required',
+          details: 'Usage: coding-agent agent wait <id>',
+        );
+      }
+      resolvedWaitTimeout = _parseWaitTimeout(invocation.timeout);
+    }
     final env = environment ?? Platform.environment;
     var send = request;
     if (send == null) {
@@ -69,12 +81,18 @@ Future<int> runAgentCommand({
           hostOverride: invocation.host,
           environment: env,
         );
-        send = (message) => client!.request(
-          message,
-          timeout: message['type'] == WaitForFinishRequest.type
-              ? const Duration(seconds: 605)
-              : terminalDaemonRpcTimeout,
-        );
+        send = (message) {
+          if (message['type'] != WaitForFinishRequest.type) {
+            return client!.request(message);
+          }
+          final timeoutMs = message['timeoutMs'];
+          return client!.request(
+            message,
+            timeout: timeoutMs is int
+                ? Duration(milliseconds: timeoutMs + 5000)
+                : null,
+          );
+        };
       } on Object catch (error) {
         final host = invocation.host ?? '${config.host}:${config.port}';
         throw AgentCommandException(
@@ -95,6 +113,7 @@ Future<int> runAgentCommand({
       (now ?? DateTime.now)().toUtc(),
       errorOutput,
       resolvedSendPrompt,
+      resolvedWaitTimeout,
     );
     output(_render(result, invocation));
     return 0;
@@ -129,6 +148,7 @@ final class AgentCliInvocation {
     required this.promptFile,
     required this.images,
     required this.wait,
+    required this.timeout,
     required this.includeArchived,
     required this.global,
     required this.labels,
@@ -150,6 +170,7 @@ final class AgentCliInvocation {
   final String? promptFile;
   final List<String> images;
   final bool wait;
+  final String? timeout;
   final bool includeArchived;
   final bool global;
   final List<String> labels;
@@ -164,7 +185,14 @@ final class AgentCliInvocation {
       throw const FormatException('Missing agent action');
     }
     final action = arguments.first;
-    if (!const {'ls', 'inspect', 'mode', 'stop', 'send'}.contains(action)) {
+    if (!const {
+      'ls',
+      'inspect',
+      'mode',
+      'stop',
+      'send',
+      'wait',
+    }.contains(action)) {
       throw FormatException('Unknown agent action: $action');
     }
     final positionals = <String>[];
@@ -178,6 +206,7 @@ final class AgentCliInvocation {
     String? promptFile;
     final images = <String>[];
     var wait = true;
+    String? timeout;
     String? thinking;
     String? host;
     var format = 'table';
@@ -227,6 +256,9 @@ final class AgentCliInvocation {
         case '--no-wait':
           _onlySend(action, argument);
           wait = false;
+        case '--timeout':
+          _onlyWait(action, argument);
+          timeout = _requiredValue(arguments, ++index, argument);
         case '--label':
           _onlyList(action, argument);
           labels.add(_requiredValue(arguments, ++index, argument));
@@ -281,10 +313,13 @@ final class AgentCliInvocation {
         'agent send accepts an Agent ID and optional prompt',
       );
     }
+    if (action == 'wait' && positionals.length > 1) {
+      throw const FormatException('agent wait accepts exactly one Agent ID');
+    }
     final normalizedThinking = thinking?.trim();
     return AgentCliInvocation(
       action: action,
-      agentId: action == 'send'
+      agentId: action == 'send' || action == 'wait'
           ? positionals.firstOrNull
           : positionals.firstOrNull?.trim(),
       modeId: action == 'mode' && positionals.length == 2
@@ -300,6 +335,7 @@ final class AgentCliInvocation {
       promptFile: promptFile,
       images: List.unmodifiable(images),
       wait: wait,
+      timeout: timeout,
       includeArchived: includeArchived,
       global: global,
       labels: List.unmodifiable(labels),
@@ -319,6 +355,7 @@ Future<_AgentCommandResult> _execute(
   DateTime now,
   void Function(String value) writeWarning,
   String? resolvedSendPrompt,
+  ({int timeoutMs, String? timeoutLabel})? resolvedWaitTimeout,
 ) async {
   return switch (invocation.action) {
     'ls' => _listAgents(invocation, request, environment, now),
@@ -326,6 +363,7 @@ Future<_AgentCommandResult> _execute(
     'mode' => _modeAgent(invocation, request),
     'stop' => _stopAgents(invocation, request, writeWarning),
     'send' => _sendAgent(invocation, resolvedSendPrompt!, request),
+    'wait' => _waitAgent(invocation, resolvedWaitTimeout!, request),
     _ => throw StateError('Unhandled agent action'),
   };
 }
@@ -704,6 +742,147 @@ Future<AgentPromptImage> _readPromptImage(String path) async {
   }
 }
 
+({int timeoutMs, String? timeoutLabel}) _parseWaitTimeout(String? raw) {
+  if (raw == null || raw.isEmpty) {
+    return (timeoutMs: 0, timeoutLabel: null);
+  }
+  try {
+    final timeoutMs = _parsePaseoDuration(raw);
+    if (timeoutMs <= 0) throw StateError('Timeout must be positive');
+    final seconds = timeoutMs ~/ 1000;
+    return (
+      timeoutMs: timeoutMs,
+      timeoutLabel: '$seconds second${seconds == 1 ? '' : 's'}',
+    );
+  } on Object catch (error) {
+    throw AgentCommandException(
+      'INVALID_TIMEOUT',
+      'Invalid timeout value',
+      details: _errorText(error),
+    );
+  }
+}
+
+int _parsePaseoDuration(String input) {
+  final trimmed = input.trim();
+  if (RegExp(r'^\d+$').hasMatch(trimmed)) {
+    return int.parse(trimmed) * 1000;
+  }
+  if (!RegExp(r'^(?:\d+[smhd])+$').hasMatch(trimmed)) {
+    throw FormatException(
+      'Invalid duration format: $input. '
+      'Use formats like: 5m, 30s, 1h, 2h30m, 1d',
+    );
+  }
+  var totalMs = 0;
+  for (final match in RegExp(r'(\d+)([smhd])').allMatches(trimmed)) {
+    final value = int.parse(match.group(1)!);
+    totalMs += switch (match.group(2)) {
+      's' => value * 1000,
+      'm' => value * 60 * 1000,
+      'h' => value * 60 * 60 * 1000,
+      'd' => value * 24 * 60 * 60 * 1000,
+      _ => throw StateError('unreachable duration unit'),
+    };
+  }
+  return totalMs;
+}
+
+Future<_AgentCommandResult> _waitAgent(
+  AgentCliInvocation invocation,
+  ({int timeoutMs, String? timeoutLabel}) timeout,
+  AgentRpcRequester request,
+) async {
+  try {
+    final payload = await request(
+      WaitForFinishRequest(
+        requestId: _requestId('agent_wait'),
+        agentId: invocation.agentId!,
+        timeoutMs: timeout.timeoutMs > 0 ? timeout.timeoutMs : null,
+      ).toJson(),
+    );
+    final response = WaitForFinishResponse.fromJson({
+      'type': WaitForFinishResponse.type,
+      'payload': payload,
+    });
+    final resolvedId = response.finalAgent == null
+        ? invocation.agentId!
+        : _string(response.finalAgent!, 'id');
+    final recentActivity =
+        response.status == WaitForFinishStatus.timeout ||
+            response.status == WaitForFinishStatus.idle
+        ? await _recentAgentActivity(request, resolvedId)
+        : null;
+    final result = switch (response.status) {
+      WaitForFinishStatus.timeout => {
+        'agentId': resolvedId,
+        'status': 'timeout',
+        'message': _appendRecentActivity(
+          timeout.timeoutLabel == null
+              ? 'Agent wait timed out. Run `coding-agent wait $resolvedId` '
+                    'again to keep waiting.'
+              : 'Agent did not finish within ${timeout.timeoutLabel}. '
+                    'Run `coding-agent wait $resolvedId` again to keep waiting.',
+          recentActivity,
+        ),
+      },
+      WaitForFinishStatus.permission => {
+        'agentId': resolvedId,
+        'status': 'permission',
+        'message': _waitPermissionMessage(response.finalAgent),
+      },
+      WaitForFinishStatus.error => {
+        'agentId': resolvedId,
+        'status': 'error',
+        'message': response.error ?? 'Agent finished with error',
+      },
+      WaitForFinishStatus.idle => {
+        'agentId': resolvedId,
+        'status': 'idle',
+        'message': _appendRecentActivity('Agent is idle.', recentActivity),
+      },
+    };
+    return _AgentCommandResult.wait(result);
+  } on AgentCommandException {
+    rethrow;
+  } on Object catch (error) {
+    throw AgentCommandException(
+      'WAIT_FAILED',
+      'Failed to wait for agent: ${_errorText(error)}',
+    );
+  }
+}
+
+Future<String?> _recentAgentActivity(
+  AgentRpcRequester request,
+  String agentId,
+) async {
+  try {
+    final items = await fetchAgentTimelineItems(
+      request,
+      agentId,
+      timeoutMs: 2000,
+    );
+    return formatAgentActivityTranscript(items, 5);
+  } on Object {
+    return null;
+  }
+}
+
+String _appendRecentActivity(String message, String? transcript) {
+  if (transcript == null || transcript.trim().isEmpty) return message;
+  return '$message\nLast 5 activity items:\n$transcript';
+}
+
+String _waitPermissionMessage(Map<String, Object?>? finalAgent) {
+  final pending = finalAgent?['pendingPermissions'];
+  final permission = pending is List ? pending.firstOrNull : null;
+  final kind = permission is Map ? permission['kind'] : null;
+  return kind is String && kind.isNotEmpty
+      ? 'Agent is waiting for permission: $kind'
+      : 'Agent is waiting for permission';
+}
+
 Future<_AgentCommandResult> _stopAgents(
   AgentCliInvocation invocation,
   AgentRpcRequester request,
@@ -1073,12 +1252,19 @@ final class _AgentCommandResult {
         structured: Map.unmodifiable(data),
       );
 
+  factory _AgentCommandResult.wait(Map<String, Object?> data) =>
+      _AgentCommandResult._(
+        rows: [Map.unmodifiable(data)],
+        kind: _AgentResultKind.wait,
+        structured: Map.unmodifiable(data),
+      );
+
   final List<Map<String, Object?>> rows;
   final _AgentResultKind kind;
   final Object? structured;
 }
 
-enum _AgentResultKind { agents, inspect, modes, modeSet, stop, send }
+enum _AgentResultKind { agents, inspect, modes, modeSet, stop, send, wait }
 
 String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
   if (invocation.quiet) {
@@ -1089,6 +1275,7 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       _AgentResultKind.modeSet => 'agentId',
       _AgentResultKind.stop => 'agentIds',
       _AgentResultKind.send => 'agentId',
+      _AgentResultKind.wait => 'agentId',
     };
     if (result.kind == _AgentResultKind.stop) {
       final ids = result.rows.single['agentIds'];
@@ -1123,7 +1310,7 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       ('MODE', 'mode', 20),
     ],
     _AgentResultKind.stop => const [('INTERRUPTED', 'stoppedCount', 0)],
-    _AgentResultKind.send => const [
+    _AgentResultKind.send || _AgentResultKind.wait => const [
       ('AGENT ID', 'agentId', 12),
       ('STATUS', 'status', 12),
       ('MESSAGE', 'message', 40),
@@ -1313,6 +1500,12 @@ void _onlySend(String action, String option) {
   }
 }
 
+void _onlyWait(String action, String option) {
+  if (action != 'wait') {
+    throw FormatException('$option is only valid for agent wait');
+  }
+}
+
 String _requiredValue(List<String> arguments, int index, String option) {
   if (index >= arguments.length) {
     throw FormatException('$option requires a value');
@@ -1366,6 +1559,7 @@ const agentUsage =
     '       coding-agent agent mode --list <id> [options]\n'
     '       coding-agent agent stop [<id>|--all|--cwd <path>] [options]\n'
     '       coding-agent agent send <id> [prompt] [options]\n'
+    '       coding-agent agent wait <id> [options]\n'
     '       coding-agent ls [options]\n'
     '       coding-agent inspect <id> [options]';
 
@@ -1385,6 +1579,10 @@ String _agentHelp(String? action) => switch (action) {
   'send' =>
     'Usage: coding-agent agent send [options] <id> [prompt]\n'
         'Send a message/task to an existing agent\n',
+  'wait' =>
+    'Usage: coding-agent agent wait [options] <id>\n'
+        'Wait for an agent to become idle\n\n'
+        '  --timeout <seconds>  Maximum wait time (default: no limit)\n',
   _ =>
     'Usage: coding-agent agent [command]\n'
         'Manage agents (advanced operations)\n\n'
@@ -1394,5 +1592,6 @@ String _agentHelp(String? action) => switch (action) {
         '  logs     View agent activity/timeline\n'
         '  mode     Change an agent\'s operational mode\n'
         '  stop     Interrupt a running agent\n'
-        '  send     Send a message/task to an existing agent\n',
+        '  send     Send a message/task to an existing agent\n'
+        '  wait     Wait for an agent to become idle\n',
 };

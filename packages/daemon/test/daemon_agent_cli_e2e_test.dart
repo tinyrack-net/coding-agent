@@ -322,6 +322,60 @@ void main() {
     });
     expect(modeClient.session.interrupted, isTrue);
     expect(handle.manager.hasActiveAgentRun(active.agentId), isFalse);
+
+    final waited = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: [
+          'wait',
+          'agent-cli-act',
+          '--timeout',
+          '1s',
+          '--host',
+          host,
+          '--json',
+        ],
+        environment: const {},
+        writeOutput: waited.write,
+      ),
+      0,
+    );
+    final waitResult = jsonDecode(waited.toString()) as Map<String, dynamic>;
+    expect(waitResult['agentId'], active.agentId);
+    expect(waitResult['status'], 'permission');
+    expect(waitResult['message'], 'Agent is waiting for permission: tool');
+
+    await handle.manager.clearConversations(agentId: active.agentId);
+    expect(
+      handle.manager.upsertTimelineItem(
+        active.agentId,
+        const TurnItem(id: 'wait-ready', phase: TurnPhase.completed),
+      ),
+      isTrue,
+    );
+    final idleWait = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: [
+          'wait',
+          'agent-cli-act',
+          '--timeout',
+          '1s',
+          '--host',
+          host,
+          '--json',
+        ],
+        environment: const {},
+        writeOutput: idleWait.write,
+      ),
+      0,
+    );
+    final idleResult = jsonDecode(idleWait.toString()) as Map<String, dynamic>;
+    expect(idleResult['agentId'], active.agentId);
+    expect(idleResult['status'], 'idle');
+    expect(idleResult['message'], contains('Agent is idle.'));
+    expect(idleResult['message'], contains('Last 5 activity items:'));
+    expect(idleResult['message'], contains('No activity to display.'));
   });
 }
 

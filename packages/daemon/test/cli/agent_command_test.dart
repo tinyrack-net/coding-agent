@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:agent_daemon/src/cli/agent_command.dart';
+import 'package:agent_protocol/agent_protocol.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -16,6 +17,7 @@ void main() {
         ['mode', '--help'],
         ['stop', '--help'],
         ['send', '--help'],
+        ['wait', '--help'],
       ]) {
         final output = StringBuffer();
         expect(
@@ -32,22 +34,30 @@ void main() {
         Uri.parse('package:agent_daemon/agent_daemon.dart'),
       );
       final packageRoot = File.fromUri(library!).parent.parent.path;
-      for (final arguments in const [
+      const binaryArguments = [
         ['agent', 'ls', '--help'],
         ['agent', 'inspect', '--help'],
         ['agent', 'mode', '--help'],
         ['agent', 'stop', '--help'],
         ['agent', 'send', '--help'],
+        ['agent', 'wait', '--help'],
         ['ls', '--help'],
         ['inspect', '--help'],
         ['stop', '--help'],
         ['send', '--help'],
-      ]) {
-        final result = await Process.run(Platform.resolvedExecutable, [
-          'run',
-          'agent_daemon:coding_agent',
-          ...arguments,
-        ], workingDirectory: packageRoot);
+        ['wait', '--help'],
+      ];
+      final results = await Future.wait([
+        for (final arguments in binaryArguments)
+          Process.run(Platform.resolvedExecutable, [
+            'run',
+            'agent_daemon:coding_agent',
+            ...arguments,
+          ], workingDirectory: packageRoot),
+      ]);
+      for (var index = 0; index < binaryArguments.length; index++) {
+        final arguments = binaryArguments[index];
+        final result = results[index];
         expect(result.exitCode, 0, reason: '$arguments');
         expect(result.stdout, contains('Usage: coding-agent agent'));
         expect(result.stderr, isEmpty);
@@ -1147,6 +1157,223 @@ void main() {
     },
   );
 
+  test('wait defaults to no limit and appends five recent items', () async {
+    final sent = <Map<String, Object?>>[];
+    final output = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: const ['wait', 'agent-pre', '--json'],
+        request: (message) async {
+          sent.add(message);
+          if (message['type'] == 'wait_for_finish_request') {
+            return {
+              'requestId': message['requestId'],
+              'status': 'idle',
+              'final': _snapshot(id: 'agent-canonical'),
+              'error': null,
+              'lastMessage': 'done',
+            };
+          }
+          return _timelinePayload(message, [
+            for (var index = 0; index < 6; index++)
+              UserMessageItem(id: 'user-$index', text: 'activity $index'),
+          ]);
+        },
+        writeOutput: output.write,
+      ),
+      0,
+    );
+    expect(sent.first, {
+      'type': 'wait_for_finish_request',
+      'requestId': isA<String>(),
+      'agentId': 'agent-pre',
+    });
+    expect(sent.last, {
+      'type': 'fetch_agent_timeline_request',
+      'agentId': 'agent-canonical',
+      'requestId': isA<String>(),
+      'direction': 'tail',
+      'limit': 0,
+      'projection': 'projected',
+    });
+    final result = jsonDecode(output.toString()) as Map<String, dynamic>;
+    expect(result['agentId'], 'agent-canonical');
+    expect(result['status'], 'idle');
+    expect(
+      result['message'],
+      startsWith('Agent is idle.\nLast 5 activity items:'),
+    );
+    expect(result['message'], isNot(contains('activity 0')));
+    for (var index = 1; index < 6; index++) {
+      expect(result['message'], contains('[User] activity $index'));
+    }
+  });
+
+  test('wait parses frozen durations and explains finite timeout', () async {
+    for (final entry in const [
+      (input: '1', milliseconds: 1000, label: '1 second'),
+      (input: '30s', milliseconds: 30000, label: '30 seconds'),
+      (input: '2h30m', milliseconds: 9000000, label: '9000 seconds'),
+      (input: '1d', milliseconds: 86400000, label: '86400 seconds'),
+    ]) {
+      final sent = <Map<String, Object?>>[];
+      final output = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: ['wait', 'agent', '--timeout', entry.input, '--json'],
+          request: (message) async {
+            sent.add(message);
+            if (message['type'] == 'wait_for_finish_request') {
+              return {
+                'requestId': message['requestId'],
+                'status': 'timeout',
+                'final': _snapshot(id: 'agent-full', status: 'running'),
+                'error': null,
+                'lastMessage': null,
+              };
+            }
+            throw StateError('activity unavailable');
+          },
+          writeOutput: output.write,
+        ),
+        0,
+      );
+      expect(sent.first['timeoutMs'], entry.milliseconds);
+      expect(jsonDecode(output.toString()), {
+        'agentId': 'agent-full',
+        'status': 'timeout',
+        'message':
+            'Agent did not finish within ${entry.label}. '
+            'Run `coding-agent wait agent-full` again to keep waiting.',
+      });
+    }
+  });
+
+  test('wait maps permission and error without fetching activity', () async {
+    for (final entry in const [
+      (
+        wire: 'permission',
+        status: 'permission',
+        message: 'Agent is waiting for permission: tool',
+        error: null,
+      ),
+      (
+        wire: 'error',
+        status: 'error',
+        message: 'provider exploded',
+        error: 'provider exploded',
+      ),
+    ]) {
+      var requestCount = 0;
+      final output = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: const ['wait', 'agent', '--quiet'],
+          request: (message) async {
+            requestCount++;
+            return {
+              'requestId': message['requestId'],
+              'status': entry.wire,
+              'final': _snapshot(
+                id: 'agent-full',
+                status: entry.wire == 'permission' ? 'running' : 'error',
+                pendingPermissions: entry.wire == 'permission'
+                    ? const [
+                        {
+                          'id': 'permission',
+                          'provider': 'codex',
+                          'name': 'Bash',
+                          'kind': 'tool',
+                          'detail': {
+                            'type': 'plain_text',
+                            'label': 'Command',
+                            'text': 'git status',
+                          },
+                        },
+                      ]
+                    : null,
+              ),
+              'error': entry.error,
+              'lastMessage': null,
+            };
+          },
+          writeOutput: output.write,
+        ),
+        0,
+      );
+      expect(requestCount, 1);
+      expect(output.toString(), 'agent-full\n');
+
+      final structured = StringBuffer();
+      await runAgentCommand(
+        arguments: const ['wait', 'agent', '--json'],
+        request: (message) async => {
+          'requestId': message['requestId'],
+          'status': entry.wire,
+          'final': _snapshot(
+            id: 'agent-full',
+            status: entry.wire == 'permission' ? 'running' : 'error',
+            pendingPermissions: entry.wire == 'permission'
+                ? const [
+                    {
+                      'id': 'permission',
+                      'provider': 'codex',
+                      'name': 'Bash',
+                      'kind': 'tool',
+                      'detail': {
+                        'type': 'plain_text',
+                        'label': 'Command',
+                        'text': 'git status',
+                      },
+                    },
+                  ]
+                : null,
+          ),
+          'error': entry.error,
+          'lastMessage': null,
+        },
+        writeOutput: structured.write,
+      );
+      expect(jsonDecode(structured.toString()), {
+        'agentId': 'agent-full',
+        'status': entry.status,
+        'message': entry.message,
+      });
+    }
+  });
+
+  test('wait validation and transport failures preserve error codes', () async {
+    Future<Map<String, dynamic>> fail(
+      List<String> arguments, {
+      AgentRpcRequester? request,
+    }) async {
+      final error = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: [...arguments, '--json'],
+          request: request,
+          writeError: error.write,
+        ),
+        1,
+      );
+      return (jsonDecode(error.toString()) as Map<String, dynamic>)['error']
+          as Map<String, dynamic>;
+    }
+
+    expect((await fail(['wait']))['code'], 'MISSING_AGENT_ID');
+    for (final timeout in const ['0', '0s', '-1', '1.5s', '1M']) {
+      final error = await fail(['wait', 'agent', '--timeout', timeout]);
+      expect(error['code'], 'INVALID_TIMEOUT', reason: timeout);
+      expect(error['message'], 'Invalid timeout value');
+    }
+    final failed = await fail([
+      'wait',
+      'agent',
+    ], request: (_) async => throw StateError('socket closed'));
+    expect(failed['code'], 'WAIT_FAILED');
+    expect(failed['message'], contains('socket closed'));
+  });
+
   test('parser and invalid thinking errors are deterministic', () async {
     for (final arguments in const [
       <String>[],
@@ -1164,6 +1391,9 @@ void main() {
       ['send', 'one', 'two', 'three'],
       ['send', 'one', 'prompt', '--no-wait=false'],
       ['send', 'one', 'prompt', '--image'],
+      ['wait', 'one', 'two'],
+      ['wait', 'one', '--timeout'],
+      ['send', 'one', 'prompt', '--timeout', '1s'],
       ['ls', '--list'],
       ['ls', '--format', 'xml'],
     ]) {
@@ -1201,6 +1431,41 @@ Map<String, Object?> _listPayload(List<Map<String, Object?>> entries) => {
 Map<String, Object?> _entry(Map<String, Object?> agent) => {
   'agent': agent,
   'project': const <String, Object?>{},
+};
+
+Map<String, Object?> _timelinePayload(
+  Map<String, Object?> request,
+  List<TimelineItem> items,
+) => {
+  'requestId': request['requestId'],
+  'agentId': request['agentId'],
+  'agent': _snapshot(id: '${request['agentId']}'),
+  'direction': 'tail',
+  'projection': 'projected',
+  'epoch': '1',
+  'reset': false,
+  'staleCursor': false,
+  'gap': false,
+  'window': {'minSeq': 1, 'maxSeq': items.length, 'nextSeq': items.length + 1},
+  'startCursor': items.isEmpty ? null : {'epoch': '1', 'seq': 1},
+  'endCursor': items.isEmpty ? null : {'epoch': '1', 'seq': items.length},
+  'hasOlder': false,
+  'hasNewer': false,
+  'entries': [
+    for (var index = 0; index < items.length; index++)
+      {
+        'provider': 'codex',
+        'item': PaseoTimelineCodec.encode(items[index]),
+        'timestamp': '2026-07-29T00:00:0${index}Z',
+        'seqStart': index + 1,
+        'seqEnd': index + 1,
+        'sourceSeqRanges': [
+          {'startSeq': index + 1, 'endSeq': index + 1},
+        ],
+        'collapsed': <Object?>[],
+      },
+  ],
+  'error': null,
 };
 
 Map<String, Object?> _snapshot({
