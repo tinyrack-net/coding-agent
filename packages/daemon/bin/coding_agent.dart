@@ -42,7 +42,8 @@ Future<void> main(List<String> arguments) async {
           arguments[0] == 'logs' ||
           arguments[0] == 'stop' ||
           arguments[0] == 'send' ||
-          arguments[0] == 'wait')) {
+          arguments[0] == 'wait' ||
+          arguments[0] == 'archive')) {
     if (arguments[0] == 'logs') {
       exitCode = await runAgentLogsCommand(arguments: arguments.sublist(1));
       return;
@@ -117,9 +118,9 @@ Future<void> main(List<String> arguments) async {
     'Usage: coding-agent daemon pair [--home <path>] [--json]\n'
     '       coding-agent import --provider <provider> <id> [options]\n'
     '       coding-agent agent import --provider <provider> <id> [options]\n'
-    '       coding-agent agent <ls|inspect|mode|stop|send|wait> ...\n'
+    '       coding-agent agent <ls|inspect|mode|stop|send|wait|archive> ...\n'
     '       coding-agent agent logs <id> [options]\n'
-    '       coding-agent <ls|inspect|logs|stop|send|wait> ...\n'
+    '       coding-agent <ls|inspect|logs|stop|send|wait|archive> ...\n'
     '       coding-agent hub connect --url <url> --token <token> '
     '[--home <path>] [--json]\n'
     '       coding-agent hub status [--home <path>] [--json]\n'

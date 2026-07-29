@@ -988,6 +988,8 @@ void main() {
   });
 
   test('archiving a parent cascades through managed descendants', () async {
+    final archivedCallbacks = <String>[];
+    manager.onArchived = (agentId) async => archivedCallbacks.add(agentId);
     final parent = await createAgent();
     final child = await manager.createAgent(
       cwd: tempDir.path,
@@ -1031,6 +1033,19 @@ void main() {
     expect(
       states.map((state) => state.agent.agentId),
       containsAll([parent.agentId, child.agentId, grandchild.agentId]),
+    );
+    expect(archivedCallbacks, [
+      grandchild.agentId,
+      child.agentId,
+      parent.agentId,
+    ]);
+    expect(
+      records
+          .where((record) => archivedCallbacks.contains(record.summary.agentId))
+          .every(
+            (record) => record.summary.updatedAt == record.summary.archivedAt,
+          ),
+      isTrue,
     );
   });
 

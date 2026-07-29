@@ -18,6 +18,7 @@ void main() {
         ['stop', '--help'],
         ['send', '--help'],
         ['wait', '--help'],
+        ['archive', '--help'],
       ]) {
         final output = StringBuffer();
         expect(
@@ -41,11 +42,13 @@ void main() {
         ['agent', 'stop', '--help'],
         ['agent', 'send', '--help'],
         ['agent', 'wait', '--help'],
+        ['agent', 'archive', '--help'],
         ['ls', '--help'],
         ['inspect', '--help'],
         ['stop', '--help'],
         ['send', '--help'],
         ['wait', '--help'],
+        ['archive', '--help'],
       ];
       final results = await Future.wait([
         for (final arguments in binaryArguments)
@@ -1374,6 +1377,199 @@ void main() {
     expect(failed['message'], contains('socket closed'));
   });
 
+  test('archive resolves frozen id, prefix, and title precedence', () async {
+    final agents = [
+      _entry(_snapshot(id: 'alpha-first', title: 'Workspace Builder')),
+      _entry(_snapshot(id: 'alpha-second', title: 'Other Agent')),
+      _entry(_snapshot(id: 'beta-agent', title: 'Unique Dashboard')),
+    ];
+    for (final entry in const [
+      (query: 'beta-agent', expected: 'beta-agent'),
+      (query: 'beta', expected: 'beta-agent'),
+      (query: 'workspace builder', expected: 'alpha-first'),
+      (query: 'dashboard', expected: 'beta-agent'),
+      (query: 'alpha', expected: 'alpha-first'),
+    ]) {
+      final sent = <Map<String, Object?>>[];
+      final output = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: ['archive', entry.query, '--json'],
+          request: (message) async {
+            sent.add(message);
+            if (message['type'] == 'fetch_agents_request') {
+              return _listPayload(agents);
+            }
+            return {
+              'requestId': message['requestId'],
+              'agentId': message['agentId'],
+              'archivedAt': '2026-07-29T12:34:56.000Z',
+            };
+          },
+          writeOutput: output.write,
+        ),
+        0,
+      );
+      expect(sent.first, {
+        'type': 'fetch_agents_request',
+        'requestId': isA<String>(),
+        'filter': {'includeArchived': true},
+      });
+      expect(sent.last, {
+        'type': 'archive_agent_request',
+        'requestId': isA<String>(),
+        'agentId': entry.expected,
+      });
+      expect(jsonDecode(output.toString()), {
+        'agentId': entry.expected,
+        'status': 'archived',
+        'archivedAt': '2026-07-29T12:34:56.000Z',
+      });
+    }
+  });
+
+  test('archive supports table, yaml, and quiet output', () async {
+    Future<Map<String, Object?>> request(Map<String, Object?> message) async =>
+        message['type'] == 'fetch_agents_request'
+        ? _listPayload([_entry(_snapshot(id: 'agent-full'))])
+        : {
+            'requestId': message['requestId'],
+            'agentId': message['agentId'],
+            'archivedAt': '2026-07-29T12:34:56.000Z',
+          };
+
+    final table = StringBuffer();
+    await runAgentCommand(
+      arguments: const ['archive', 'agent'],
+      request: request,
+      writeOutput: table.write,
+    );
+    expect(table.toString(), startsWith('AGENT ID'));
+    expect(table.toString(), contains('ARCHIVED AT'));
+    expect(table.toString(), contains('2026-07-29T12:34:56.000Z'));
+
+    final yaml = StringBuffer();
+    await runAgentCommand(
+      arguments: const ['archive', 'agent', '--format', 'yaml'],
+      request: request,
+      writeOutput: yaml.write,
+    );
+    expect(yaml.toString(), contains('status: archived'));
+
+    final quiet = StringBuffer();
+    await runAgentCommand(
+      arguments: const ['archive', 'agent', '--quiet'],
+      request: request,
+      writeOutput: quiet.write,
+    );
+    expect(quiet.toString(), 'agent-full\n');
+  });
+
+  test(
+    'archive enforces archived and running guards before mutation',
+    () async {
+      Future<Map<String, dynamic>> run(
+        Map<String, Object?> agent, {
+        bool force = false,
+      }) async {
+        var archiveCalled = false;
+        final error = StringBuffer();
+        expect(
+          await runAgentCommand(
+            arguments: [
+              'archive',
+              '${agent['id']}',
+              if (force) '--force',
+              '--json',
+            ],
+            request: (message) async {
+              if (message['type'] == 'fetch_agents_request') {
+                return _listPayload([_entry(agent)]);
+              }
+              archiveCalled = true;
+              return {
+                'requestId': message['requestId'],
+                'agentId': message['agentId'],
+                'archivedAt': '2026-07-29T12:34:56.000Z',
+              };
+            },
+            writeOutput: (_) {},
+            writeError: error.write,
+          ),
+          force ? 0 : 1,
+        );
+        expect(archiveCalled, force);
+        return error.isEmpty
+            ? <String, dynamic>{}
+            : (jsonDecode(error.toString()) as Map<String, dynamic>)['error']
+                  as Map<String, dynamic>;
+      }
+
+      final archived = await run(
+        _snapshot(
+          id: 'archived-agent',
+          status: 'closed',
+          archivedAt: '2026-07-28T00:00:00.000Z',
+        ),
+      );
+      expect(archived['code'], 'AGENT_ALREADY_ARCHIVED');
+      expect(archived['details'], contains('2026-07-28'));
+
+      final running = await run(
+        _snapshot(id: 'running-agent', status: 'running'),
+      );
+      expect(running['code'], 'AGENT_RUNNING');
+      expect(running['details'], contains('--force'));
+
+      await run(_snapshot(id: 'forced-agent', status: 'running'), force: true);
+    },
+  );
+
+  test('archive failures preserve frozen structured errors', () async {
+    Future<Map<String, dynamic>> fail(
+      List<String> arguments,
+      AgentRpcRequester request,
+    ) async {
+      final error = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: [...arguments, '--json'],
+          request: request,
+          writeError: error.write,
+        ),
+        1,
+      );
+      return (jsonDecode(error.toString()) as Map<String, dynamic>)['error']
+          as Map<String, dynamic>;
+    }
+
+    final missingId = await fail(['archive'], (_) async => const {});
+    expect(missingId['code'], 'MISSING_AGENT_ID');
+
+    final notFound = await fail([
+      'archive',
+      'missing',
+    ], (_) async => _listPayload([]));
+    expect(notFound['code'], 'AGENT_NOT_FOUND');
+    expect(notFound['details'], contains('coding-agent ls'));
+
+    final listFailure = await fail([
+      'archive',
+      'agent',
+    ], (_) async => throw StateError('socket closed'));
+    expect(listFailure['code'], 'ARCHIVE_FAILED');
+    expect(listFailure['message'], contains('socket closed'));
+
+    final archiveFailure = await fail(
+      ['archive', 'agent'],
+      (message) async => message['type'] == 'fetch_agents_request'
+          ? _listPayload([_entry(_snapshot(id: 'agent'))])
+          : throw StateError('archive refused'),
+    );
+    expect(archiveFailure['code'], 'ARCHIVE_FAILED');
+    expect(archiveFailure['message'], contains('archive refused'));
+  });
+
   test('parser and invalid thinking errors are deterministic', () async {
     for (final arguments in const [
       <String>[],
@@ -1394,6 +1590,9 @@ void main() {
       ['wait', 'one', 'two'],
       ['wait', 'one', '--timeout'],
       ['send', 'one', 'prompt', '--timeout', '1s'],
+      ['archive', 'one', 'two'],
+      ['archive', 'one', '--force=false'],
+      ['wait', 'one', '--force'],
       ['ls', '--list'],
       ['ls', '--format', 'xml'],
     ]) {

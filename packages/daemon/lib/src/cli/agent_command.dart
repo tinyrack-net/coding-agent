@@ -71,6 +71,14 @@ Future<int> runAgentCommand({
       }
       resolvedWaitTimeout = _parseWaitTimeout(invocation.timeout);
     }
+    if (invocation.action == 'archive' &&
+        (invocation.agentId == null || invocation.agentId!.trim().isEmpty)) {
+      throw const AgentCommandException(
+        'MISSING_AGENT_ID',
+        'Agent ID is required',
+        details: 'Usage: coding-agent agent archive <id-or-name>',
+      );
+    }
     final env = environment ?? Platform.environment;
     var send = request;
     if (send == null) {
@@ -149,6 +157,7 @@ final class AgentCliInvocation {
     required this.images,
     required this.wait,
     required this.timeout,
+    required this.force,
     required this.includeArchived,
     required this.global,
     required this.labels,
@@ -171,6 +180,7 @@ final class AgentCliInvocation {
   final List<String> images;
   final bool wait;
   final String? timeout;
+  final bool force;
   final bool includeArchived;
   final bool global;
   final List<String> labels;
@@ -192,6 +202,7 @@ final class AgentCliInvocation {
       'stop',
       'send',
       'wait',
+      'archive',
     }.contains(action)) {
       throw FormatException('Unknown agent action: $action');
     }
@@ -207,6 +218,7 @@ final class AgentCliInvocation {
     final images = <String>[];
     var wait = true;
     String? timeout;
+    var force = false;
     String? thinking;
     String? host;
     var format = 'table';
@@ -259,6 +271,9 @@ final class AgentCliInvocation {
         case '--timeout':
           _onlyWait(action, argument);
           timeout = _requiredValue(arguments, ++index, argument);
+        case '--force':
+          _onlyArchive(action, argument);
+          force = true;
         case '--label':
           _onlyList(action, argument);
           labels.add(_requiredValue(arguments, ++index, argument));
@@ -316,10 +331,13 @@ final class AgentCliInvocation {
     if (action == 'wait' && positionals.length > 1) {
       throw const FormatException('agent wait accepts exactly one Agent ID');
     }
+    if (action == 'archive' && positionals.length > 1) {
+      throw const FormatException('agent archive accepts exactly one Agent ID');
+    }
     final normalizedThinking = thinking?.trim();
     return AgentCliInvocation(
       action: action,
-      agentId: action == 'send' || action == 'wait'
+      agentId: action == 'send' || action == 'wait' || action == 'archive'
           ? positionals.firstOrNull
           : positionals.firstOrNull?.trim(),
       modeId: action == 'mode' && positionals.length == 2
@@ -336,6 +354,7 @@ final class AgentCliInvocation {
       images: List.unmodifiable(images),
       wait: wait,
       timeout: timeout,
+      force: force,
       includeArchived: includeArchived,
       global: global,
       labels: List.unmodifiable(labels),
@@ -364,6 +383,7 @@ Future<_AgentCommandResult> _execute(
     'stop' => _stopAgents(invocation, request, writeWarning),
     'send' => _sendAgent(invocation, resolvedSendPrompt!, request),
     'wait' => _waitAgent(invocation, resolvedWaitTimeout!, request),
+    'archive' => _archiveAgent(invocation, request),
     _ => throw StateError('Unhandled agent action'),
   };
 }
@@ -883,6 +903,108 @@ String _waitPermissionMessage(Map<String, Object?>? finalAgent) {
       : 'Agent is waiting for permission';
 }
 
+Future<_AgentCommandResult> _archiveAgent(
+  AgentCliInvocation invocation,
+  AgentRpcRequester request,
+) async {
+  try {
+    final directoryPayload = await request(
+      FetchAgentsRequest(
+        requestId: _requestId('agent_archive_list'),
+        filter: const AgentDirectoryFilter(includeArchived: true),
+      ).toJson(),
+    );
+    final agents = _stopDirectoryAgents(directoryPayload);
+    final agentId = _resolveArchiveAgentId(invocation.agentId!, agents);
+    if (agentId == null) {
+      throw AgentCommandException(
+        'AGENT_NOT_FOUND',
+        'Agent not found: ${invocation.agentId}',
+        details: 'Use "coding-agent ls" to list available agents',
+      );
+    }
+    final agent = agents.singleWhere(
+      (candidate) => candidate['id'] == agentId,
+      orElse: () => throw StateError(
+        'Resolved agent missing from fetched agents: $agentId',
+      ),
+    );
+    final archivedAt = agent['archivedAt'];
+    if (archivedAt is String && archivedAt.isNotEmpty) {
+      throw AgentCommandException(
+        'AGENT_ALREADY_ARCHIVED',
+        'Agent ${_shortAgentId(agentId)} is already archived',
+        details: 'Archived at: $archivedAt',
+      );
+    }
+    if (_string(agent, 'status') == 'running' && !invocation.force) {
+      throw AgentCommandException(
+        'AGENT_RUNNING',
+        'Agent ${_shortAgentId(agentId)} is currently running',
+        details:
+            'Use --force to archive a running agent (it will interrupt the '
+            'active run), or stop it first with: coding-agent agent stop. '
+            'Use coding-agent agent delete to hard-delete it.',
+      );
+    }
+
+    final payload = await request(
+      ArchiveAgentRequest(
+        requestId: _requestId('agent_archive'),
+        agentId: agentId,
+      ).toJson(),
+    );
+    final response = AgentArchivedResponse.fromJson({
+      'type': AgentArchivedResponse.type,
+      'payload': payload,
+    });
+    return _AgentCommandResult.archive({
+      'agentId': agentId,
+      'status': 'archived',
+      'archivedAt': response.archivedAt,
+    });
+  } on AgentCommandException {
+    rethrow;
+  } on Object catch (error) {
+    throw AgentCommandException(
+      'ARCHIVE_FAILED',
+      'Failed to archive agent: ${_errorText(error)}',
+    );
+  }
+}
+
+String? _resolveArchiveAgentId(
+  String identifier,
+  List<Map<String, Object?>> agents,
+) {
+  if (identifier.isEmpty || agents.isEmpty) return null;
+  final query = identifier.toLowerCase();
+  final exact = agents.where((agent) => agent['id'] == identifier).firstOrNull;
+  if (exact != null) return _string(exact, 'id');
+  final prefixMatches = agents
+      .where((agent) => _string(agent, 'id').toLowerCase().startsWith(query))
+      .toList(growable: false);
+  if (prefixMatches.length == 1) return _string(prefixMatches.single, 'id');
+  final exactTitleMatches = agents
+      .where((agent) => _nullableString(agent['title'])?.toLowerCase() == query)
+      .toList(growable: false);
+  if (exactTitleMatches.length == 1) {
+    return _string(exactTitleMatches.single, 'id');
+  }
+  final partialTitleMatches = agents
+      .where(
+        (agent) =>
+            _nullableString(agent['title'])?.toLowerCase().contains(query) ==
+            true,
+      )
+      .toList(growable: false);
+  if (partialTitleMatches.length == 1) {
+    return _string(partialTitleMatches.single, 'id');
+  }
+  final firstPrefix = prefixMatches.firstOrNull;
+  return firstPrefix == null ? null : _string(firstPrefix, 'id');
+}
+
 Future<_AgentCommandResult> _stopAgents(
   AgentCliInvocation invocation,
   AgentRpcRequester request,
@@ -1259,12 +1381,28 @@ final class _AgentCommandResult {
         structured: Map.unmodifiable(data),
       );
 
+  factory _AgentCommandResult.archive(Map<String, Object?> data) =>
+      _AgentCommandResult._(
+        rows: [Map.unmodifiable(data)],
+        kind: _AgentResultKind.archive,
+        structured: Map.unmodifiable(data),
+      );
+
   final List<Map<String, Object?>> rows;
   final _AgentResultKind kind;
   final Object? structured;
 }
 
-enum _AgentResultKind { agents, inspect, modes, modeSet, stop, send, wait }
+enum _AgentResultKind {
+  agents,
+  inspect,
+  modes,
+  modeSet,
+  stop,
+  send,
+  wait,
+  archive,
+}
 
 String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
   if (invocation.quiet) {
@@ -1276,6 +1414,7 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       _AgentResultKind.stop => 'agentIds',
       _AgentResultKind.send => 'agentId',
       _AgentResultKind.wait => 'agentId',
+      _AgentResultKind.archive => 'agentId',
     };
     if (result.kind == _AgentResultKind.stop) {
       final ids = result.rows.single['agentIds'];
@@ -1314,6 +1453,11 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       ('AGENT ID', 'agentId', 12),
       ('STATUS', 'status', 12),
       ('MESSAGE', 'message', 40),
+    ],
+    _AgentResultKind.archive => const [
+      ('AGENT ID', 'agentId', 12),
+      ('STATUS', 'status', 12),
+      ('ARCHIVED AT', 'archivedAt', 24),
     ],
     _AgentResultKind.agents => const [
       ('AGENT ID', 'shortId', 12),
@@ -1506,6 +1650,12 @@ void _onlyWait(String action, String option) {
   }
 }
 
+void _onlyArchive(String action, String option) {
+  if (action != 'archive') {
+    throw FormatException('$option is only valid for agent archive');
+  }
+}
+
 String _requiredValue(List<String> arguments, int index, String option) {
   if (index >= arguments.length) {
     throw FormatException('$option requires a value');
@@ -1560,6 +1710,7 @@ const agentUsage =
     '       coding-agent agent stop [<id>|--all|--cwd <path>] [options]\n'
     '       coding-agent agent send <id> [prompt] [options]\n'
     '       coding-agent agent wait <id> [options]\n'
+    '       coding-agent agent archive <id-or-name> [options]\n'
     '       coding-agent ls [options]\n'
     '       coding-agent inspect <id> [options]';
 
@@ -1583,6 +1734,11 @@ String _agentHelp(String? action) => switch (action) {
     'Usage: coding-agent agent wait [options] <id>\n'
         'Wait for an agent to become idle\n\n'
         '  --timeout <seconds>  Maximum wait time (default: no limit)\n',
+  'archive' =>
+    'Usage: coding-agent agent archive [options] <id>\n'
+        'Archive an agent (soft-delete)\n\n'
+        '  --force  Force archive running agent '
+        '(interrupts active run first)\n',
   _ =>
     'Usage: coding-agent agent [command]\n'
         'Manage agents (advanced operations)\n\n'
@@ -1593,5 +1749,6 @@ String _agentHelp(String? action) => switch (action) {
         '  mode     Change an agent\'s operational mode\n'
         '  stop     Interrupt a running agent\n'
         '  send     Send a message/task to an existing agent\n'
-        '  wait     Wait for an agent to become idle\n',
+        '  wait     Wait for an agent to become idle\n'
+        '  archive  Archive an agent (soft-delete)\n',
 };

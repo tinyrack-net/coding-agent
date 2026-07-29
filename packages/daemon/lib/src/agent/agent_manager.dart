@@ -38,6 +38,7 @@ typedef AgentAttentionBroadcast =
 typedef AgentStreamSubscriber = void Function(AgentStreamPayload payload);
 typedef AgentClientResolver = AgentClient? Function(String provider);
 typedef AgentProviderIdsResolver = Iterable<String> Function();
+typedef AgentArchivedCallback = Future<void> Function(String agentId);
 
 final class _AgentStreamSubscription {
   const _AgentStreamSubscription({required this.subscriber, this.agentId});
@@ -130,6 +131,7 @@ class AgentManager {
     this.onPermissionRequested,
     this.onPermissionResolved,
     this.onAttention,
+    this.onArchived,
     String? mcpBaseUrl,
     String? mcpAuthToken,
     bool injectMcpIntoAgents = false,
@@ -161,6 +163,7 @@ class AgentManager {
   PermissionRequestedBroadcast? onPermissionRequested;
   PermissionResolvedBroadcast? onPermissionResolved;
   AgentAttentionBroadcast? onAttention;
+  AgentArchivedCallback? onArchived;
 
   final Map<String, AgentRuntime> _runtimes = {};
   final Set<_AgentStreamSubscription> _streamSubscribers = {};
@@ -1321,10 +1324,11 @@ class AgentManager {
     return runtime.summary;
   }
 
-  Future<void> archive(String agentId) async {
+  Future<AgentSummary> archive(String agentId) async {
     final runtime = _runtime(agentId);
     await _archiveTree(runtime);
     await _store.flush();
+    return runtime.summary;
   }
 
   Future<AgentSummary> unarchive(String agentId) async {
@@ -1378,10 +1382,15 @@ class AgentManager {
 
   Future<void> _archiveOne(AgentRuntime runtime) async {
     if (runtime.archived) return;
+    if (hasActiveAgentRun(runtime.summary.agentId)) {
+      await cancelAgentRun(runtime.summary.agentId);
+    }
+    final archivedAt = DateTime.now().toUtc().toIso8601String();
     runtime.archived = true;
     runtime.summary = runtime.summary.copyWith(
       runState: AgentRunState.closed,
-      archivedAt: DateTime.now().toUtc().toIso8601String(),
+      archivedAt: archivedAt,
+      updatedAt: archivedAt,
       requiresAttention: false,
       clearAttention: true,
     );
@@ -1395,6 +1404,11 @@ class AgentManager {
     providerSubagents.clear(runtime.summary.agentId);
     _persist(runtime);
     _broadcastState(runtime);
+    try {
+      await onArchived?.call(runtime.summary.agentId);
+    } on Object {
+      // Paseo treats archive side-effect callbacks as best-effort.
+    }
   }
 
   Future<AgentSummary> detach(String agentId) async {

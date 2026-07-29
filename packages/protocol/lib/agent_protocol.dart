@@ -19,6 +19,7 @@ export 'src/messages/agent.dart';
 export 'src/messages/agent_directory.dart';
 export 'src/messages/agent_timeline.dart';
 export 'src/messages/agent_attachment.dart';
+export 'src/messages/agent_archive.dart';
 export 'src/messages/agent_config.dart';
 export 'src/messages/agent_cancel.dart';
 export 'src/messages/agent_interaction.dart';

@@ -357,6 +357,7 @@ Future<DaemonServerHandle> startDaemonServer({
         timestamp: timestamp,
       );
     },
+    onArchived: (agentId) => schedules.completeForAgent(agentId),
     onProviderSubagentUpdate: (update) => server.broadcast(
       RpcEvent(
         type: MessageTypes.providerSubagentUpdateEvent,
@@ -553,7 +554,6 @@ Future<DaemonServerHandle> startDaemonServer({
     ..on(MessageTypes.agentArchiveRequest, (_, payload) async {
       final agentId = _requireString(payload, 'agentId');
       await manager.archive(agentId);
-      await schedules.completeForAgent(agentId);
       return const <String, Object?>{};
     })
     ..on(MessageTypes.agentDetachRequest, (_, payload) async {
@@ -1047,6 +1047,15 @@ Future<DaemonServerHandle> startDaemonServer({
             message,
           ) ??
           v2HandledNoResponse;
+    }
+    if (message['type'] == ArchiveAgentRequest.type) {
+      final request = ArchiveAgentRequest.fromJson(message);
+      final agent = await manager.archive(request.agentId);
+      return AgentArchivedResponse(
+        requestId: request.requestId,
+        agentId: request.agentId,
+        archivedAt: agent.archivedAt!,
+      ).toJson();
     }
     if (message['type'] == SendAgentMessageRequest.type) {
       return _handlePaseoSendAgentMessage(
