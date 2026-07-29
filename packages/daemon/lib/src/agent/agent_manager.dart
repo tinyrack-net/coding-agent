@@ -138,6 +138,7 @@ class AgentManager {
     String? mcpAuthToken,
     bool injectMcpIntoAgents = false,
     String? appendSystemPrompt,
+    this.reloadSessionCloseTimeout = const Duration(seconds: 3),
     void Function(ProviderSubagentUpdate update)? onProviderSubagentUpdate,
   }) : _clients = clients,
        _clientResolver = clientResolver,
@@ -158,6 +159,7 @@ class AgentManager {
   final AgentStore _store;
   final PermissionBroker broker;
   final ProviderSubagentStore providerSubagents;
+  final Duration reloadSessionCloseTimeout;
   final _uuid = const Uuid();
 
   void Function(AgentStreamPayload payload)? onStream;
@@ -818,8 +820,13 @@ class AgentManager {
   Future<AgentSummary> reloadAgentSession(
     String agentId, {
     required String? systemPrompt,
+    bool rehydrateFromProvider = false,
+    bool unarchive = false,
   }) async {
-    final runtime = _runtime(agentId);
+    final runtime = unarchive
+        ? _runtimes[agentId] ??
+              (throw RpcException(RpcErrorCodes.notFound, 'no agent $agentId'))
+        : _runtime(agentId);
     if (runtime.currentTurnId != null ||
         runtime.summary.runState == AgentRunState.running ||
         runtime.summary.runState == AgentRunState.awaitingPermission) {
@@ -828,6 +835,19 @@ class AgentManager {
         _closeTurn(runtime, TurnPhase.canceled);
       }
       _setRunState(runtime, AgentRunState.idle);
+    }
+    if (unarchive && runtime.archived) {
+      runtime.archived = false;
+      runtime.summary = runtime.summary.copyWith(
+        archivedAt: null,
+        runState: AgentRunState.idle,
+        requiresAttention: false,
+        clearAttention: true,
+        updatedAt: DateTime.now().toUtc().toIso8601String(),
+      );
+      _persist(runtime);
+      await _store.flush();
+      _broadcastState(runtime);
     }
 
     final normalizedSystemPrompt = _normalizeOptionalText(systemPrompt);
@@ -839,16 +859,32 @@ class AgentManager {
     final previousSubscription = runtime.sessionSub;
     runtime.session = null;
     runtime.sessionSub = null;
-    await previousSubscription?.cancel();
     try {
-      await previousSession?.dispose();
-    } catch (_) {
+      await previousSubscription?.cancel();
+    } on Object {
+      // The replacement is already available. A stale subscription must not
+      // roll the agent back to the old provider process.
+    }
+    try {
+      await previousSession?.dispose().timeout(reloadSessionCloseTimeout);
+    } on Object {
       // The replacement is already live. A stale provider process failing to
-      // close must not roll the agent back to a canceled subscription.
+      // close (or hanging past Paseo's rescue timeout) must not block reload.
+    }
+    if (rehydrateFromProvider) {
+      final restoredHistory = replacement is HistoryRestoringAgentSession
+          ? replacement.restoredHistory
+          : null;
+      runtime.timeline.rebuild(restoredHistory ?? const []);
+      runtime.textBuffers.clear();
+      runtime.currentTurnId = null;
+      runtime.interruptRequested = false;
+      providerSubagents.clear(agentId);
     }
     runtime.summary = runtime.summary.copyWith(
       systemPrompt: normalizedSystemPrompt,
       updatedAt: DateTime.now().toUtc().toIso8601String(),
+      runState: AgentRunState.idle,
     );
     _attachSession(runtime, replacement, restoreHistory: false);
     _persist(runtime);

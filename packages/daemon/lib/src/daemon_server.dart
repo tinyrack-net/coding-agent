@@ -1106,6 +1106,36 @@ Future<DaemonServerHandle> startDaemonServer({
         ).toJson();
       }
     }
+    if (message['type'] == RefreshAgentRequest.type) {
+      final request = RefreshAgentRequest.fromJson(message);
+      try {
+        final before = manager.get(request.agentId);
+        if (before == null) {
+          throw StateError('Agent not found: ${request.agentId}');
+        }
+        await manager.reloadAgentSession(
+          request.agentId,
+          systemPrompt: before.systemPrompt,
+          rehydrateFromProvider: true,
+          unarchive: true,
+        );
+        return AgentRefreshedStatus(
+          requestId: request.requestId,
+          agentId: request.agentId,
+          timelineSize: manager.fetchTimeline(request.agentId).items.length,
+        ).toJson();
+      } on Object catch (error) {
+        return {
+          'type': 'rpc_error',
+          'payload': {
+            'requestId': request.requestId,
+            'requestType': RefreshAgentRequest.type,
+            'error': '$error'.replaceFirst(RegExp(r'^[^:]+Exception: '), ''),
+            'code': 'agent_refresh_failed',
+          },
+        };
+      }
+    }
     if (message['type'] == SendAgentMessageRequest.type) {
       return _handlePaseoSendAgentMessage(
         manager,

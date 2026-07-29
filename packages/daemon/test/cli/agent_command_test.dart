@@ -21,6 +21,7 @@ void main() {
         ['archive', '--help'],
         ['delete', '--help'],
         ['detach', '--help'],
+        ['reload', '--help'],
       ]) {
         final output = StringBuffer();
         expect(
@@ -47,6 +48,7 @@ void main() {
         ['agent', 'archive', '--help'],
         ['agent', 'delete', '--help'],
         ['agent', 'detach', '--help'],
+        ['agent', 'reload', '--help'],
         ['ls', '--help'],
         ['inspect', '--help'],
         ['stop', '--help'],
@@ -1899,6 +1901,136 @@ void main() {
     expect(rejected['message'], 'detach refused');
   });
 
+  test(
+    'reload resolves frozen identifiers and projects timeline size',
+    () async {
+      final agents = [
+        _entry(_snapshot(id: 'alpha-first', title: 'Workspace Builder')),
+        _entry(_snapshot(id: 'alpha-second', title: 'Other Agent')),
+        _entry(_snapshot(id: 'beta-agent', title: 'Unique Dashboard')),
+      ];
+      for (final entry in const [
+        (query: 'beta-agent', expected: 'beta-agent'),
+        (query: 'beta', expected: 'beta-agent'),
+        (query: 'workspace builder', expected: 'alpha-first'),
+        (query: 'dashboard', expected: 'beta-agent'),
+        (query: 'alpha', expected: 'alpha-first'),
+      ]) {
+        final sent = <Map<String, Object?>>[];
+        final output = StringBuffer();
+        expect(
+          await runAgentCommand(
+            arguments: ['reload', entry.query, '--json'],
+            request: (message) async {
+              sent.add(message);
+              if (message['type'] == 'fetch_agents_request') {
+                return _listPayload(agents);
+              }
+              return {
+                'status': 'agent_refreshed',
+                'requestId': message['requestId'],
+                'agentId': message['agentId'],
+                'timelineSize': 3,
+              };
+            },
+            writeOutput: output.write,
+          ),
+          0,
+        );
+        expect(sent.last, {
+          'type': 'refresh_agent_request',
+          'requestId': isA<String>(),
+          'agentId': entry.expected,
+        });
+        expect(jsonDecode(output.toString()), {
+          'agentId': entry.expected,
+          'status': 'reloaded',
+          'timelineSize': 3,
+        });
+      }
+    },
+  );
+
+  test(
+    'reload supports table, yaml, quiet, and absent timeline size',
+    () async {
+      Future<Map<String, Object?>> request(
+        Map<String, Object?> message,
+      ) async => message['type'] == 'fetch_agents_request'
+          ? _listPayload([_entry(_snapshot(id: 'agent-full'))])
+          : {
+              'status': 'agent_refreshed',
+              'requestId': message['requestId'],
+              'agentId': message['agentId'],
+            };
+
+      final table = StringBuffer();
+      await runAgentCommand(
+        arguments: const ['reload', 'agent'],
+        request: request,
+        writeOutput: table.write,
+      );
+      expect(table.toString(), startsWith('AGENT ID'));
+      expect(table.toString(), contains('TIMELINE'));
+      expect(table.toString(), contains('reloaded'));
+
+      final yaml = StringBuffer();
+      await runAgentCommand(
+        arguments: const ['reload', 'agent', '--format', 'yaml'],
+        request: request,
+        writeOutput: yaml.write,
+      );
+      expect(yaml.toString(), contains('timelineSize: 0'));
+
+      final quiet = StringBuffer();
+      await runAgentCommand(
+        arguments: const ['reload', 'agent', '--quiet'],
+        request: request,
+        writeOutput: quiet.write,
+      );
+      expect(quiet.toString(), 'agent-full\n');
+    },
+  );
+
+  test('reload preserves frozen structured errors', () async {
+    Future<Map<String, dynamic>> fail(
+      List<String> arguments,
+      AgentRpcRequester request,
+    ) async {
+      final error = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: [...arguments, '--json'],
+          request: request,
+          writeError: error.write,
+        ),
+        1,
+      );
+      return (jsonDecode(error.toString()) as Map<String, dynamic>)['error']
+          as Map<String, dynamic>;
+    }
+
+    expect(
+      (await fail(['reload'], (_) async => const {}))['code'],
+      'MISSING_AGENT_ID',
+    );
+    final notFound = await fail([
+      'reload',
+      'missing',
+    ], (_) async => _listPayload([]));
+    expect(notFound['code'], 'AGENT_NOT_FOUND');
+    expect(notFound['details'], contains('coding-agent ls'));
+
+    final failed = await fail(
+      ['reload', 'agent'],
+      (message) async => message['type'] == 'fetch_agents_request'
+          ? _listPayload([_entry(_snapshot(id: 'agent-full'))])
+          : throw StateError('provider unavailable'),
+    );
+    expect(failed['code'], 'RELOAD_FAILED');
+    expect(failed['message'], contains('provider unavailable'));
+  });
+
   test('parser and invalid thinking errors are deterministic', () async {
     for (final arguments in const [
       <String>[],
@@ -1924,6 +2056,7 @@ void main() {
       ['delete', 'one', 'two'],
       ['delete', '--cwd'],
       ['detach', 'one', 'two'],
+      ['reload', 'one', 'two'],
       ['wait', 'one', '--force'],
       ['ls', '--list'],
       ['ls', '--format', 'xml'],

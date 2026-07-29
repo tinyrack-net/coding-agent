@@ -26,6 +26,7 @@ class MockAgentSession
   bool interrupted = false;
   Object? interruptError;
   bool disposed = false;
+  Completer<void>? disposeGate;
   String? configuredMode;
   String? configuredModel;
   String? configuredThinking;
@@ -86,6 +87,7 @@ class MockAgentSession
   @override
   Future<void> dispose() async {
     disposed = true;
+    await disposeGate?.future;
     if (!_controller.isClosed) await _controller.close();
   }
 
@@ -828,6 +830,69 @@ void main() {
       expect(manager.hasActiveAgentRun(agent.agentId), isFalse);
     },
   );
+
+  test(
+    'user reload rehydrates provider history under a new timeline epoch',
+    () async {
+      final agent = await createAgent();
+      final first = client.sessions.single;
+      await manager.prompt(agent.agentId, 'stale local turn');
+      first
+        ..emit(
+          const AssistantMessageComplete(
+            itemId: 'stale',
+            fullText: 'stale local answer',
+          ),
+        )
+        ..emit(const TurnCompleted());
+      await pumpEventQueue();
+      final before = manager.fetchTimeline(agent.agentId);
+      client.nextRestoredHistory = const [
+        UserMessageItem(id: 'provider-user', text: 'provider prompt'),
+        AssistantMessageItem(
+          id: 'provider-answer',
+          text: 'provider answer',
+          complete: true,
+        ),
+      ];
+
+      await manager.reloadAgentSession(
+        agent.agentId,
+        systemPrompt: agent.systemPrompt,
+        rehydrateFromProvider: true,
+        unarchive: true,
+      );
+
+      final after = manager.fetchTimeline(agent.agentId);
+      expect(after.epoch, greaterThan(before.epoch));
+      expect(after.items.map((item) => item.id), [
+        'provider-user',
+        'provider-answer',
+      ]);
+      expect(first.disposed, isTrue);
+    },
+  );
+
+  test('reload proceeds after the previous provider close timeout', () async {
+    await manager.dispose();
+    manager = AgentManager(
+      clients: {'claude': client},
+      store: AgentStore(dataDir: tempDir.path),
+      reloadSessionCloseTimeout: const Duration(milliseconds: 10),
+    );
+    final agent = await createAgent();
+    final first = client.sessions.single..disposeGate = Completer<void>();
+
+    final reloaded = await manager.reloadAgentSession(
+      agent.agentId,
+      systemPrompt: null,
+      rehydrateFromProvider: true,
+    );
+
+    expect(reloaded.agentId, agent.agentId);
+    expect(first.disposed, isTrue);
+    expect(client.sessions, hasLength(2));
+  });
 
   test(
     'createAgent stores workspace and worktree ownership across reset',
