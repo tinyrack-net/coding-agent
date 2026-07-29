@@ -5061,10 +5061,13 @@
     },
     {
       "id": "source-unit:packages/app/src/git/forges/github.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge_logic.dart; packages/app/lib/core/forge_url.dart",
+      "evidence": [
+        "packages/app/test/forge_logic_test.dart",
+        "packages/app/test/forge_url_test.dart"
+      ],
+      "notes": "Ports the complete frozen GitHub logic module: nested passthrough facts validation and defaults, nullable auto-merge request, repository policy, CLEAN/HAS_HOOKS direct-merge allowlist, BLOCKED auto-merge enablement gates, active auto-merge and disable permission, merge-queue blocking, allowed/preferred merge methods, GitHub tree/blob URL grammar, and the legacy status.github compatibility path."
     },
     {
       "id": "source-unit:packages/app/src/git/forges/github.view.tsx",

@@ -39,6 +39,203 @@ final class ForgeMergeCapability {
   final String? preferredMethod;
 }
 
+final class GithubAutoMergeRequest {
+  const GithubAutoMergeRequest({
+    required this.enabledAt,
+    required this.mergeMethod,
+    required this.enabledBy,
+  });
+
+  final String? enabledAt;
+  final String? mergeMethod;
+  final String? enabledBy;
+
+  static ({bool valid, GithubAutoMergeRequest? value}) parse(Object? value) {
+    if (value == null) return (valid: true, value: null);
+    if (value is! Map) return (valid: false, value: null);
+    final enabledAt = value['enabledAt'];
+    final mergeMethod = value['mergeMethod'];
+    final enabledBy = value['enabledBy'];
+    if (!_isNullableString(enabledAt) ||
+        !_isNullableString(mergeMethod) ||
+        !_isNullableString(enabledBy)) {
+      return (valid: false, value: null);
+    }
+    return (
+      valid: true,
+      value: GithubAutoMergeRequest(
+        enabledAt: enabledAt as String?,
+        mergeMethod: mergeMethod as String?,
+        enabledBy: enabledBy as String?,
+      ),
+    );
+  }
+}
+
+final class GithubRepositoryPolicy {
+  const GithubRepositoryPolicy({
+    required this.autoMergeAllowed,
+    required this.mergeCommitAllowed,
+    required this.squashMergeAllowed,
+    required this.rebaseMergeAllowed,
+    required this.viewerDefaultMergeMethod,
+  });
+
+  static const empty = GithubRepositoryPolicy(
+    autoMergeAllowed: false,
+    mergeCommitAllowed: false,
+    squashMergeAllowed: false,
+    rebaseMergeAllowed: false,
+    viewerDefaultMergeMethod: null,
+  );
+
+  final bool autoMergeAllowed;
+  final bool mergeCommitAllowed;
+  final bool squashMergeAllowed;
+  final bool rebaseMergeAllowed;
+  final String? viewerDefaultMergeMethod;
+
+  static ({bool valid, GithubRepositoryPolicy value}) parse(
+    Object? value, {
+    required bool present,
+  }) {
+    if (!present) return (valid: true, value: empty);
+    if (value is! Map) return (valid: false, value: empty);
+    for (final field in [
+      'autoMergeAllowed',
+      'mergeCommitAllowed',
+      'squashMergeAllowed',
+      'rebaseMergeAllowed',
+    ]) {
+      final fieldValue = value[field];
+      if (value.containsKey(field) && fieldValue is! bool) {
+        return (valid: false, value: empty);
+      }
+    }
+    final preferred = value['viewerDefaultMergeMethod'];
+    if (!_isNullableString(preferred)) {
+      return (valid: false, value: empty);
+    }
+    return (
+      valid: true,
+      value: GithubRepositoryPolicy(
+        autoMergeAllowed: value['autoMergeAllowed'] as bool? ?? false,
+        mergeCommitAllowed: value['mergeCommitAllowed'] as bool? ?? false,
+        squashMergeAllowed: value['squashMergeAllowed'] as bool? ?? false,
+        rebaseMergeAllowed: value['rebaseMergeAllowed'] as bool? ?? false,
+        viewerDefaultMergeMethod: preferred as String?,
+      ),
+    );
+  }
+}
+
+final class GithubMergeFacts {
+  const GithubMergeFacts({
+    required this.mergeStateStatus,
+    required this.autoMergeRequest,
+    required this.viewerCanEnableAutoMerge,
+    required this.viewerCanDisableAutoMerge,
+    required this.viewerCanMergeAsAdmin,
+    required this.viewerCanUpdateBranch,
+    required this.repository,
+    required this.isMergeQueueEnabled,
+    required this.isInMergeQueue,
+  });
+
+  final String? mergeStateStatus;
+  final GithubAutoMergeRequest? autoMergeRequest;
+  final bool viewerCanEnableAutoMerge;
+  final bool viewerCanDisableAutoMerge;
+  final bool viewerCanMergeAsAdmin;
+  final bool viewerCanUpdateBranch;
+  final GithubRepositoryPolicy repository;
+  final bool isMergeQueueEnabled;
+  final bool isInMergeQueue;
+
+  static GithubMergeFacts? parse(Object? value) {
+    if (value is! Map || value['forge'] != 'github') return null;
+    final mergeStateStatus = value['mergeStateStatus'];
+    if (!_isNullableString(mergeStateStatus)) return null;
+    for (final field in [
+      'viewerCanEnableAutoMerge',
+      'viewerCanDisableAutoMerge',
+      'viewerCanMergeAsAdmin',
+      'viewerCanUpdateBranch',
+      'isMergeQueueEnabled',
+      'isInMergeQueue',
+    ]) {
+      final fieldValue = value[field];
+      if (value.containsKey(field) && fieldValue is! bool) return null;
+    }
+    final autoMerge = GithubAutoMergeRequest.parse(value['autoMergeRequest']);
+    final repository = GithubRepositoryPolicy.parse(
+      value['repository'],
+      present: value.containsKey('repository'),
+    );
+    if (!autoMerge.valid || !repository.valid) return null;
+    return GithubMergeFacts(
+      mergeStateStatus: mergeStateStatus as String?,
+      autoMergeRequest: autoMerge.value,
+      viewerCanEnableAutoMerge:
+          value['viewerCanEnableAutoMerge'] as bool? ?? false,
+      viewerCanDisableAutoMerge:
+          value['viewerCanDisableAutoMerge'] as bool? ?? false,
+      viewerCanMergeAsAdmin: value['viewerCanMergeAsAdmin'] as bool? ?? false,
+      viewerCanUpdateBranch: value['viewerCanUpdateBranch'] as bool? ?? false,
+      repository: repository.value,
+      isMergeQueueEnabled: value['isMergeQueueEnabled'] as bool? ?? false,
+      isInMergeQueue: value['isInMergeQueue'] as bool? ?? false,
+    );
+  }
+}
+
+ForgeMergeCapability? deriveGithubMergeCapability(Object? facts) {
+  final github = GithubMergeFacts.parse(facts);
+  if (github == null) return null;
+  final repository = github.repository;
+  return ForgeMergeCapability(
+    directMergeReady: const {
+      'CLEAN',
+      'HAS_HOOKS',
+    }.contains(github.mergeStateStatus),
+    canEnableAutoMerge:
+        github.mergeStateStatus == 'BLOCKED' &&
+        repository.autoMergeAllowed &&
+        github.viewerCanEnableAutoMerge,
+    autoMergeEnabled: github.autoMergeRequest != null,
+    canDisableAutoMerge: github.viewerCanDisableAutoMerge,
+    mergeBlockedByQueue: github.isMergeQueueEnabled || github.isInMergeQueue,
+    allowedMethods: [
+      if (repository.mergeCommitAllowed) 'merge',
+      if (repository.squashMergeAllowed) 'squash',
+      if (repository.rebaseMergeAllowed) 'rebase',
+    ],
+    preferredMethod: switch (repository.viewerDefaultMergeMethod) {
+      'SQUASH' => 'squash',
+      'MERGE' => 'merge',
+      'REBASE' => 'rebase',
+      _ => null,
+    },
+  );
+}
+
+/// Neutral registry boundary with Paseo's compatibility fallback for daemons
+/// that still put GitHub facts in `status.github`.
+ForgeMergeCapability? deriveForgeMergeCapability(
+  Object? forgeSpecific, {
+  Map<String, Object?>? legacyGithubFacts,
+}) {
+  if (forgeSpecific == null) {
+    if (legacyGithubFacts == null) return null;
+    return deriveGithubMergeCapability({
+      'forge': 'github',
+      ...legacyGithubFacts,
+    });
+  }
+  return deriveGithubMergeCapability(forgeSpecific) ??
+      deriveGiteaMergeCapability(forgeSpecific);
+}
+
 final class GiteaMergeFacts {
   const GiteaMergeFacts({
     required this.mergeable,
@@ -55,8 +252,8 @@ final class GiteaMergeFacts {
     final mergeable = value['mergeable'];
     final hasMerged = value['hasMerged'];
     final ciStatus = value['ciStatus'];
-    if (mergeable != null && mergeable is! bool) return null;
-    if (hasMerged != null && hasMerged is! bool) return null;
+    if (value.containsKey('mergeable') && mergeable is! bool) return null;
+    if (value.containsKey('hasMerged') && hasMerged is! bool) return null;
     if (ciStatus != null && ciStatus is! String) return null;
     return GiteaMergeFacts(
       mergeable: mergeable as bool? ?? false,
@@ -142,3 +339,5 @@ ForgeCheckStatus _mapGiteaCiStatus(String status) =>
     status == 'warning' || status == 'error'
     ? ForgeCheckStatus.failure
     : mapForgeCheckStatus(status);
+
+bool _isNullableString(Object? value) => value == null || value is String;

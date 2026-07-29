@@ -3,6 +3,199 @@ import 'package:coding_agent_app/core/forge_logic.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('GithubMergeFacts', () {
+    test('applies every frozen nested default', () {
+      final facts = GithubMergeFacts.parse({'forge': 'github'});
+      expect(facts, isNotNull);
+      expect(facts!.mergeStateStatus, isNull);
+      expect(facts.autoMergeRequest, isNull);
+      expect(facts.viewerCanEnableAutoMerge, isFalse);
+      expect(facts.viewerCanDisableAutoMerge, isFalse);
+      expect(facts.viewerCanMergeAsAdmin, isFalse);
+      expect(facts.viewerCanUpdateBranch, isFalse);
+      expect(facts.isMergeQueueEnabled, isFalse);
+      expect(facts.isInMergeQueue, isFalse);
+      expect(facts.repository.autoMergeAllowed, isFalse);
+      expect(facts.repository.mergeCommitAllowed, isFalse);
+      expect(facts.repository.squashMergeAllowed, isFalse);
+      expect(facts.repository.rebaseMergeAllowed, isFalse);
+      expect(facts.repository.viewerDefaultMergeMethod, isNull);
+    });
+
+    test('parses auto-merge and repository policy facts', () {
+      final facts = GithubMergeFacts.parse(
+        _githubFacts(
+          autoMergeRequest: {
+            'enabledAt': 'now',
+            'mergeMethod': 'SQUASH',
+            'enabledBy': 'octocat',
+          },
+          repository: {
+            'autoMergeAllowed': true,
+            'mergeCommitAllowed': true,
+            'squashMergeAllowed': true,
+            'rebaseMergeAllowed': false,
+            'viewerDefaultMergeMethod': 'SQUASH',
+          },
+        ),
+      )!;
+      expect(facts.autoMergeRequest!.enabledAt, 'now');
+      expect(facts.autoMergeRequest!.mergeMethod, 'SQUASH');
+      expect(facts.autoMergeRequest!.enabledBy, 'octocat');
+      expect(facts.repository.autoMergeAllowed, isTrue);
+      expect(facts.repository.viewerDefaultMergeMethod, 'SQUASH');
+    });
+
+    test('rejects untagged, wrong-family, and mismatched nested facts', () {
+      for (final value in [
+        null,
+        {'mergeStateStatus': 'CLEAN'},
+        {'forge': 'gitlab', 'mergeStateStatus': 'CLEAN'},
+        {'forge': 'github', 'mergeStateStatus': false},
+        {'forge': 'github', 'viewerCanEnableAutoMerge': null},
+        {'forge': 'github', 'autoMergeRequest': false},
+        {
+          'forge': 'github',
+          'autoMergeRequest': {'enabledAt': 1},
+        },
+        {'forge': 'github', 'repository': null},
+        {
+          'forge': 'github',
+          'repository': {'mergeCommitAllowed': null},
+        },
+        {
+          'forge': 'github',
+          'repository': {'viewerDefaultMergeMethod': false},
+        },
+      ]) {
+        expect(GithubMergeFacts.parse(value), isNull, reason: '$value');
+      }
+    });
+  });
+
+  group('deriveGithubMergeCapability', () {
+    test('allows direct merge only for CLEAN and HAS_HOOKS', () {
+      expect(
+        _githubCapability(mergeStateStatus: 'CLEAN')!.directMergeReady,
+        isTrue,
+      );
+      expect(
+        _githubCapability(mergeStateStatus: 'HAS_HOOKS')!.directMergeReady,
+        isTrue,
+      );
+      expect(
+        _githubCapability(mergeStateStatus: 'BLOCKED')!.directMergeReady,
+        isFalse,
+      );
+      expect(
+        _githubCapability(mergeStateStatus: null)!.directMergeReady,
+        isFalse,
+      );
+    });
+
+    test('enables auto-merge only for the three required conditions', () {
+      final ready = _githubCapability(
+        mergeStateStatus: 'BLOCKED',
+        viewerCanEnableAutoMerge: true,
+        repository: {
+          'autoMergeAllowed': true,
+          'mergeCommitAllowed': true,
+          'squashMergeAllowed': true,
+          'rebaseMergeAllowed': true,
+          'viewerDefaultMergeMethod': 'SQUASH',
+        },
+      )!;
+      expect(ready.canEnableAutoMerge, isTrue);
+      expect(
+        _githubCapability(
+          mergeStateStatus: 'BLOCKED',
+          viewerCanEnableAutoMerge: false,
+        )!.canEnableAutoMerge,
+        isFalse,
+      );
+      expect(
+        _githubCapability(
+          mergeStateStatus: 'CLEAN',
+          viewerCanEnableAutoMerge: true,
+          repository: {'autoMergeAllowed': true},
+        )!.canEnableAutoMerge,
+        isFalse,
+      );
+    });
+
+    test('reports enabled auto-merge and viewer disable permission', () {
+      final capability = _githubCapability(
+        autoMergeRequest: {
+          'enabledAt': 'now',
+          'mergeMethod': 'SQUASH',
+          'enabledBy': 'octocat',
+        },
+        viewerCanDisableAutoMerge: true,
+      )!;
+      expect(capability.autoMergeEnabled, isTrue);
+      expect(capability.canDisableAutoMerge, isTrue);
+      expect(_githubCapability()!.autoMergeEnabled, isFalse);
+    });
+
+    test('treats either queue signal as blocking', () {
+      expect(
+        _githubCapability(isMergeQueueEnabled: true)!.mergeBlockedByQueue,
+        isTrue,
+      );
+      expect(
+        _githubCapability(isInMergeQueue: true)!.mergeBlockedByQueue,
+        isTrue,
+      );
+      expect(_githubCapability()!.mergeBlockedByQueue, isFalse);
+    });
+
+    test('derives allowed and preferred repository merge methods', () {
+      final capability = _githubCapability(
+        repository: {
+          'autoMergeAllowed': false,
+          'mergeCommitAllowed': false,
+          'squashMergeAllowed': true,
+          'rebaseMergeAllowed': true,
+          'viewerDefaultMergeMethod': 'REBASE',
+        },
+      )!;
+      expect(capability.allowedMethods, ['squash', 'rebase']);
+      expect(capability.preferredMethod, 'rebase');
+      expect(
+        _githubCapability(
+          repository: {'viewerDefaultMergeMethod': 'UNKNOWN'},
+        )!.preferredMethod,
+        isNull,
+      );
+    });
+  });
+
+  group('deriveForgeMergeCapability registry', () {
+    test('supports the legacy GitHub facts fallback', () {
+      final legacy = Map<String, Object?>.from(_githubFacts())..remove('forge');
+      final capability = deriveForgeMergeCapability(
+        null,
+        legacyGithubFacts: legacy,
+      );
+      expect(capability, isNotNull);
+      expect(capability!.directMergeReady, isTrue);
+      expect(capability.allowedMethods, ['merge', 'squash', 'rebase']);
+    });
+
+    test('returns null without facts and dispatches registered families', () {
+      expect(deriveForgeMergeCapability(null), isNull);
+      expect(deriveForgeMergeCapability({'forge': 'unknown'}), isNull);
+      expect(
+        deriveForgeMergeCapability({
+          'forge': 'gitea',
+          'mergeable': true,
+          'hasMerged': false,
+        })?.directMergeReady,
+        isTrue,
+      );
+    });
+  });
+
   group('GiteaMergeFacts', () {
     test('validates the family and applies frozen defaults', () {
       final defaults = GiteaMergeFacts.parse({'forge': 'gitea'});
@@ -164,6 +357,55 @@ ForgeMergeCapability? _capability({
   'hasMerged': hasMerged,
   'ciStatus': 'success',
 });
+
+ForgeMergeCapability? _githubCapability({
+  String? mergeStateStatus = 'CLEAN',
+  Object? autoMergeRequest,
+  bool viewerCanEnableAutoMerge = false,
+  bool viewerCanDisableAutoMerge = false,
+  Map<String, Object?>? repository,
+  bool isMergeQueueEnabled = false,
+  bool isInMergeQueue = false,
+}) => deriveGithubMergeCapability(
+  _githubFacts(
+    mergeStateStatus: mergeStateStatus,
+    autoMergeRequest: autoMergeRequest,
+    viewerCanEnableAutoMerge: viewerCanEnableAutoMerge,
+    viewerCanDisableAutoMerge: viewerCanDisableAutoMerge,
+    repository: repository,
+    isMergeQueueEnabled: isMergeQueueEnabled,
+    isInMergeQueue: isInMergeQueue,
+  ),
+);
+
+Map<String, Object?> _githubFacts({
+  String? mergeStateStatus = 'CLEAN',
+  Object? autoMergeRequest,
+  bool viewerCanEnableAutoMerge = false,
+  bool viewerCanDisableAutoMerge = false,
+  Map<String, Object?>? repository,
+  bool isMergeQueueEnabled = false,
+  bool isInMergeQueue = false,
+}) => {
+  'forge': 'github',
+  'mergeStateStatus': mergeStateStatus,
+  'autoMergeRequest': autoMergeRequest,
+  'viewerCanEnableAutoMerge': viewerCanEnableAutoMerge,
+  'viewerCanDisableAutoMerge': viewerCanDisableAutoMerge,
+  'viewerCanMergeAsAdmin': false,
+  'viewerCanUpdateBranch': false,
+  'repository':
+      repository ??
+      {
+        'autoMergeAllowed': false,
+        'mergeCommitAllowed': true,
+        'squashMergeAllowed': true,
+        'rebaseMergeAllowed': true,
+        'viewerDefaultMergeMethod': 'SQUASH',
+      },
+  'isMergeQueueEnabled': isMergeQueueEnabled,
+  'isInMergeQueue': isInMergeQueue,
+};
 
 CheckoutPrStatus _status({
   required String? ciStatus,
