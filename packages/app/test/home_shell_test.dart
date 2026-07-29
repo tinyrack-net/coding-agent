@@ -14,6 +14,7 @@ import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/host_registry_provider.dart';
 import 'package:coding_agent_app/state/sidebar_callout_provider.dart';
 import 'package:coding_agent_app/state/sidebar_callout_state.dart';
+import 'package:coding_agent_app/state/sidebar_order_provider.dart';
 import 'package:coding_agent_app/state/sidebar_width_provider.dart';
 import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
 import 'package:coding_agent_app/widgets/worktree_tabbed_pane.dart';
@@ -124,6 +125,12 @@ const _mainWorktreeB = WorktreeInfo(
   branch: 'main',
   projectPath: '/repo-b',
   isMain: true,
+);
+
+const _luckyOtterWorktree = WorktreeInfo(
+  path: '/repo-b-wt/lucky-otter',
+  branch: 'lucky-otter',
+  projectPath: '/repo-b',
 );
 
 const _projectAgent1 = AgentSummary(
@@ -557,6 +564,71 @@ void main() {
       expect(find.text('Repo B agent'), findsOneWidget);
     },
   );
+
+  testWidgets('project and workspace drag order is applied and persisted', (
+    tester,
+  ) async {
+    final container = await pumpHomeShell(
+      tester,
+      agents: const [_projectAgent1, _projectAgent2],
+      projects: const [_projectA, _projectB],
+      worktreesByProject: const {
+        '/repo-a': [_mainWorktreeA],
+        '/repo-b': [_mainWorktreeB, _luckyOtterWorktree],
+      },
+    );
+
+    final projectA = find.byKey(
+      const ValueKey('sidebar-project-section-/repo-a'),
+    );
+    expect(
+      tester.widget(
+        find.byKey(const ValueKey('sidebar-project-drag-/repo-a')),
+      ),
+      isA<ReorderableDragStartListener>(),
+    );
+    final outerList = find
+        .ancestor(of: projectA, matching: find.byType(ReorderableListView))
+        .first;
+    tester.widget<ReorderableListView>(outerList).onReorderItem!(0, 1);
+    await tester.pump();
+
+    expect(container.read(sidebarOrderProvider).projectOrder, [
+      '/repo-b',
+      '/repo-a',
+    ]);
+    expect(
+      tester.getTopLeft(find.text('repo-b')).dy,
+      lessThan(tester.getTopLeft(find.text('repo-a')).dy),
+    );
+
+    final projectB = find.byKey(
+      const ValueKey('sidebar-project-section-/repo-b'),
+    );
+    expect(
+      tester.widget(
+        find.byKey(
+          const ValueKey('sidebar-workspace-drag-legacy:/repo-b'),
+        ),
+      ),
+      isA<ReorderableDragStartListener>(),
+    );
+    final workspaceList = find.descendant(
+      of: projectB,
+      matching: find.byType(ReorderableListView),
+    );
+    tester.widget<ReorderableListView>(workspaceList).onReorderItem!(0, 1);
+    await tester.pump();
+
+    expect(container.read(sidebarOrderProvider).workspaceOrder('/repo-b'), [
+      'legacy:/repo-b-wt/lucky-otter',
+      'legacy:/repo-b',
+    ]);
+    expect(
+      tester.getTopLeft(find.text('lucky-otter')).dy,
+      lessThan(tester.getTopLeft(find.text('Repo B agent')).dy),
+    );
+  });
 
   testWidgets('pinning an agent via the kebab menu hoists it into Pinned', (
     tester,

@@ -3,6 +3,7 @@ import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/sidebar_grouping_provider.dart';
+import 'package:coding_agent_app/state/sidebar_order_provider.dart';
 import 'package:coding_agent_app/state/sidebar_pins_provider.dart';
 import 'package:coding_agent_app/state/workspace_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -303,5 +304,36 @@ void main() {
     final groups = container.read(sidebarGroupsProvider);
 
     expect(groups.isEmpty, isTrue);
+  });
+
+  test('applies persisted project and workspace order', () async {
+    final container = await makeContainer(
+      [_localAgent, _worktreeAgent],
+      worktreesByProject: {
+        '/repo-a': [_mainWorktreeA],
+        '/repo-b': [_mainWorktreeB, _luckyOtterWorktree],
+      },
+    );
+    container.read(sidebarGroupsProvider);
+    await _pump();
+
+    await container.read(sidebarOrderProvider.notifier).setProjectOrder([
+      '/repo-b',
+      '/repo-a',
+    ]);
+    await container.read(sidebarOrderProvider.notifier).setWorkspaceOrder(
+      '/repo-b',
+      ['legacy:/repo-b-wt/lucky-otter', 'legacy:/repo-b'],
+    );
+
+    final groups = container.read(sidebarGroupsProvider);
+    expect(groups.projectSections.map((section) => section.project.path), [
+      '/repo-b',
+      '/repo-a',
+    ]);
+    expect(groups.projectSections.first.rows.map((row) => row.key), [
+      '/repo-b-wt/lucky-otter',
+      '/repo-b',
+    ]);
   });
 }

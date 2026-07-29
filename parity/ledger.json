@@ -5633,10 +5633,13 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/sidebar-workspaces-view-model.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/sidebar_grouping_provider.dart; packages/app/lib/sidebar/sidebar_reorder.dart",
+      "evidence": [
+        "packages/app/test/sidebar_grouping_provider_test.dart",
+        "packages/app/test/sidebar_reorder_test.dart"
+      ],
+      "notes": "Ordering slice is ported: stored order only permutes known slots, newly visible projects append, newly visible workspaces prepend, and hidden keys survive reorders. Remaining host-spanning view-model projections are tracked separately."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-acp-provider-catalog.ts",
@@ -7620,10 +7623,14 @@
     },
     {
       "id": "source-unit:packages/app/src/stores/sidebar-order-store.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/state/sidebar_order_provider.dart",
+      "evidence": [
+        "packages/app/test/sidebar_order_provider_test.dart",
+        "packages/app/test/sidebar_grouping_provider_test.dart",
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "Persists normalized project and per-project workspace order, atomically reconciles newly visible keys, prevents late hydration from overwriting user mutations, and migrates frozen per-server legacy order into host-prefixed workspace identities."
     },
     {
       "id": "source-unit:packages/app/src/stores/sidebar-view-store.ts",
@@ -8825,10 +8832,13 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/sidebar-reorder.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/sidebar/sidebar_reorder.dart; packages/app/lib/screens/home_shell.dart",
+      "evidence": [
+        "packages/app/test/sidebar_reorder_test.dart",
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "Matches frozen visible-order change detection and hidden-key-preserving merge behavior. Flutter project and workspace reorder callbacks persist the merged visible order and immediately re-render the sidebar."
     },
     {
       "id": "source-unit:packages/app/src/utils/sidebar-shortcuts.ts",

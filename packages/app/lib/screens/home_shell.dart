@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,6 +13,7 @@ import '../core/theme.dart';
 import '../core/worktree_actions.dart';
 import '../layout/desktop_sidebar_layout.dart';
 import '../sidebar/sidebar_project_row_model.dart';
+import '../sidebar/sidebar_reorder.dart';
 import '../sidebar/workspace_agent_activity.dart';
 import '../state/agents_provider.dart';
 import '../state/daemon_providers.dart';
@@ -18,6 +22,7 @@ import '../state/app_sidebar_visibility_provider.dart';
 import '../state/workspace_focus_mode_provider.dart';
 import '../state/workspace_agent_activity_provider.dart';
 import '../state/sidebar_grouping_provider.dart';
+import '../state/sidebar_order_provider.dart';
 import '../state/sidebar_pins_provider.dart';
 import '../state/sidebar_width_provider.dart';
 import '../state/workspace_providers.dart';
@@ -366,9 +371,10 @@ class _SidebarHeaderRow extends StatelessWidget {
   }
 }
 
-/// A collapsible project section header: icon + name + a chevron that
-/// flips to indicate expanded/collapsed (Paseo's `ProjectHeaderRow`, minus
-/// drag-reorder and the project-level kebab menu — out of scope here).
+/// A collapsible project section header: icon + name + project action + a
+/// chevron that flips to indicate expanded/collapsed. The parent supplies the
+/// frozen whole-row drag activator; the project-level kebab menu is tracked
+/// separately.
 class _ProjectHeaderRow extends StatelessWidget {
   const _ProjectHeaderRow({
     required this.name,
@@ -477,6 +483,81 @@ class _SidebarState extends ConsumerState<_Sidebar> {
     });
   }
 
+  void _reorderProjects(
+    List<SidebarProjectSection> sections,
+    int oldIndex,
+    int newIndex,
+  ) {
+    final reordered = reorderAt(sections, oldIndex, newIndex);
+    final visibleKeys = reordered
+        .map((section) => section.orderKey)
+        .toList(growable: false);
+    final current = ref.read(sidebarOrderProvider).projectOrder;
+    if (!hasVisibleOrderChanged(
+      currentOrder: current,
+      reorderedVisibleKeys: visibleKeys,
+    )) {
+      return;
+    }
+    unawaited(
+      ref
+          .read(sidebarOrderProvider.notifier)
+          .setProjectOrder(
+            mergeWithRemainder(
+              currentOrder: current,
+              reorderedVisibleKeys: visibleKeys,
+            ),
+          ),
+    );
+  }
+
+  void _reorderWorkspaces(
+    SidebarProjectSection section,
+    int oldIndex,
+    int newIndex,
+  ) {
+    final reordered = reorderAt(section.rows, oldIndex, newIndex);
+    final visibleKeys = reordered
+        .map((row) => row.orderKey)
+        .toList(growable: false);
+    final current = ref
+        .read(sidebarOrderProvider)
+        .workspaceOrder(section.orderKey);
+    if (!hasVisibleOrderChanged(
+      currentOrder: current,
+      reorderedVisibleKeys: visibleKeys,
+    )) {
+      return;
+    }
+    unawaited(
+      ref
+          .read(sidebarOrderProvider.notifier)
+          .setWorkspaceOrder(
+            section.orderKey,
+            mergeWithRemainder(
+              currentOrder: current,
+              reorderedVisibleKeys: visibleKeys,
+            ),
+          ),
+    );
+  }
+
+  Widget _dragListener({
+    required Key key,
+    required int index,
+    required Widget child,
+  }) {
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.android ||
+      TargetPlatform.iOS => ReorderableDelayedDragStartListener(
+        key: key,
+        index: index,
+        child: child,
+      ),
+      _ => ReorderableDragStartListener(key: key, index: index, child: child),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final selected = ref.watch(selectedWorktreeProvider);
@@ -543,48 +624,84 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                     style: TextStyle(color: context.tokens.outline),
                   ),
                 )
-              : ListView(
-                  children: [
-                    if (groups.pinned.isNotEmpty) ...[
-                      const _SectionLabel('Pinned'),
-                      for (final row in groups.pinned)
-                        _SidebarWorktreeRow(
-                          row: row,
-                          selected: row.key == selected,
-                          onTap: () => selectRow(row),
+              : ReorderableListView.builder(
+                  buildDefaultDragHandles: false,
+                  padding: EdgeInsets.zero,
+                  header: groups.pinned.isEmpty
+                      ? null
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const _SectionLabel('Pinned'),
+                            for (final row in groups.pinned)
+                              _SidebarWorktreeRow(
+                                row: row,
+                                selected: row.key == selected,
+                                onTap: () => selectRow(row),
+                              ),
+                          ],
                         ),
-                    ],
-                    for (final section in groups.projectSections) ...[
-                      Builder(
-                        builder: (context) {
-                          final project = section.project;
-                          final collapsed = _collapsedProjectPaths.contains(
-                            project.path,
-                          );
-                          final entry = SidebarProjectEntry(
-                            projectKey: project.path,
-                            projectName: project.name,
-                            hosts: [
-                              if (serverId != null)
-                                SidebarProjectHost(
-                                  serverId: serverId,
-                                  iconWorkingDir: project.path,
-                                  canCreateWorktree: project.isGitRepo,
-                                ),
-                            ],
-                          );
-                          final model = buildSidebarProjectRowModel(
-                            project: entry,
-                            collapsed: collapsed,
-                            supportsMultiplicityByServerId: {
-                              ?serverId: supportsMultiplicity,
-                            },
-                          );
-                          final action = model.trailingAction;
-                          return _ProjectHeaderRow(
-                            name: project.name.isEmpty
-                                ? project.path
-                                : project.name,
+                  footer: groups.other.isEmpty
+                      ? null
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (final row in groups.other)
+                              _SidebarWorktreeRow(
+                                row: row,
+                                selected: row.key == selected,
+                                onTap: () => selectRow(row),
+                              ),
+                          ],
+                        ),
+                  itemCount: groups.projectSections.length,
+                  onReorderItem: (oldIndex, newIndex) => _reorderProjects(
+                    groups.projectSections,
+                    oldIndex,
+                    newIndex > oldIndex ? newIndex + 1 : newIndex,
+                  ),
+                  itemBuilder: (context, projectIndex) {
+                    final section = groups.projectSections[projectIndex];
+                    final project = section.project;
+                    final collapsed = _collapsedProjectPaths.contains(
+                      project.path,
+                    );
+                    final entry = SidebarProjectEntry(
+                      projectKey: project.path,
+                      projectName: project.name,
+                      hosts: [
+                        if (serverId != null)
+                          SidebarProjectHost(
+                            serverId: serverId,
+                            iconWorkingDir: project.path,
+                            canCreateWorktree: project.isGitRepo,
+                          ),
+                      ],
+                    );
+                    final model = buildSidebarProjectRowModel(
+                      project: entry,
+                      collapsed: collapsed,
+                      supportsMultiplicityByServerId: {
+                        ?serverId: supportsMultiplicity,
+                      },
+                    );
+                    final action = model.trailingAction;
+                    final displayName = project.name.isEmpty
+                        ? project.path
+                        : project.name;
+                    return Column(
+                      key: ValueKey(
+                        'sidebar-project-section-${section.orderKey}',
+                      ),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _dragListener(
+                          key: ValueKey(
+                            'sidebar-project-drag-${section.orderKey}',
+                          ),
+                          index: projectIndex,
+                          child: _ProjectHeaderRow(
+                            name: displayName,
                             isGitRepo: project.isGitRepo,
                             model: model,
                             projectKey: project.path,
@@ -597,34 +714,46 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                                         serverId: action.target.serverId,
                                         sourceDirectory:
                                             action.target.iconWorkingDir,
-                                        displayName: project.name.isEmpty
-                                            ? project.path
-                                            : project.name,
+                                        displayName: displayName,
                                         projectId: project.path,
                                       ),
                                     ),
                                   )
                                 : null,
-                          );
-                        },
-                      ),
-                      if (!_collapsedProjectPaths.contains(
-                        section.project.path,
-                      ))
-                        for (final row in section.rows)
-                          _SidebarWorktreeRow(
-                            row: row,
-                            selected: row.key == selected,
-                            onTap: () => selectRow(row),
                           ),
-                    ],
-                    for (final row in groups.other)
-                      _SidebarWorktreeRow(
-                        row: row,
-                        selected: row.key == selected,
-                        onTap: () => selectRow(row),
-                      ),
-                  ],
+                        ),
+                        if (!collapsed)
+                          ReorderableListView.builder(
+                            shrinkWrap: true,
+                            primary: false,
+                            physics: const NeverScrollableScrollPhysics(),
+                            buildDefaultDragHandles: false,
+                            padding: EdgeInsets.zero,
+                            itemCount: section.rows.length,
+                            onReorderItem: (oldIndex, newIndex) =>
+                                _reorderWorkspaces(
+                                  section,
+                                  oldIndex,
+                                  newIndex > oldIndex ? newIndex + 1 : newIndex,
+                                ),
+                            itemBuilder: (context, workspaceIndex) {
+                              final row = section.rows[workspaceIndex];
+                              return _dragListener(
+                                key: ValueKey(
+                                  'sidebar-workspace-drag-${row.orderKey}',
+                                ),
+                                index: workspaceIndex,
+                                child: _SidebarWorktreeRow(
+                                  row: row,
+                                  selected: row.key == selected,
+                                  onTap: () => selectRow(row),
+                                ),
+                              );
+                            },
+                          ),
+                      ],
+                    );
+                  },
                 ),
         ),
         const SidebarCalloutSlot(),

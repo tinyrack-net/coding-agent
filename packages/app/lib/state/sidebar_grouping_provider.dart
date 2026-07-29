@@ -1,7 +1,10 @@
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../sidebar/sidebar_reorder.dart';
 import 'agents_provider.dart';
+import 'host_registry_provider.dart';
+import 'sidebar_order_provider.dart';
 import 'sidebar_pins_provider.dart';
 import 'workspace_providers.dart';
 
@@ -12,15 +15,23 @@ import 'workspace_providers.dart';
 /// worktree concept — the bundle of agents sharing that project's cwd. At
 /// least one of [worktree]/[agents] is non-empty/non-null.
 class SidebarWorktreeRow {
-  const SidebarWorktreeRow({this.worktree, this.agents = const []})
-    : assert(worktree != null || agents.length > 0);
+  const SidebarWorktreeRow({
+    required this.serverId,
+    this.worktree,
+    this.agents = const [],
+  }) : assert(worktree != null || agents.length > 0);
 
+  final String serverId;
   final WorktreeInfo? worktree;
   final List<AgentSummary> agents;
 
   /// This row's pin/selection key — a worktree's path, or (no worktree
   /// concept) the shared cwd of its agents. Matches `resolveWorktreeKey`.
   String get key => worktree?.path ?? agents.first.cwd;
+
+  /// Persisted order identity. Paseo prefixes workspace ids with the owning
+  /// host so the same path on two connected machines remains unambiguous.
+  String get orderKey => '$serverId:$key';
 }
 
 /// One project's section in the sidebar: the registered project plus its
@@ -32,6 +43,8 @@ class SidebarProjectSection {
 
   final ProjectInfo project;
   final List<SidebarWorktreeRow> rows;
+
+  String get orderKey => project.path;
 }
 
 /// The sidebar's full grouping: pinned rows (hoisted out of their project),
@@ -63,6 +76,8 @@ final sidebarGroupsProvider = Provider<SidebarGroups>((ref) {
   final agents = ref.watch(sortedAgentsProvider);
   final projects = ref.watch(projectsProvider).value ?? const <ProjectInfo>[];
   final pinnedKeys = ref.watch(sidebarPinsProvider);
+  final serverId = ref.watch(activeHostProvider)?.serverId ?? 'legacy';
+  final order = ref.watch(sidebarOrderProvider);
 
   final agentsByCwd = <String, List<AgentSummary>>{};
   for (final agent in agents) {
@@ -92,6 +107,7 @@ final sidebarGroupsProvider = Provider<SidebarGroups>((ref) {
       for (final worktree in worktrees) {
         placeRow(
           SidebarWorktreeRow(
+            serverId: serverId,
             worktree: worktree,
             agents: agentsByCwd[worktree.path] ?? const [],
           ),
@@ -109,7 +125,7 @@ final sidebarGroupsProvider = Provider<SidebarGroups>((ref) {
           .toList();
       if (owned.isEmpty) continue;
       final rows = <SidebarWorktreeRow>[];
-      placeRow(SidebarWorktreeRow(agents: owned), rows);
+      placeRow(SidebarWorktreeRow(serverId: serverId, agents: owned), rows);
       if (rows.isNotEmpty) {
         sections.add(SidebarProjectSection(project: project, rows: rows));
       }
@@ -123,8 +139,52 @@ final sidebarGroupsProvider = Provider<SidebarGroups>((ref) {
   }
   final other = <SidebarWorktreeRow>[];
   for (final bucket in otherByCwd.values) {
-    placeRow(SidebarWorktreeRow(agents: bucket), other);
+    placeRow(SidebarWorktreeRow(serverId: serverId, agents: bucket), other);
   }
 
-  return SidebarGroups(pinned: pinned, projectSections: sections, other: other);
+  final projectOrder = appendMissingOrderKeys(
+    currentOrder: order.projectOrder,
+    visibleKeys: sections.map((section) => section.orderKey).toList(),
+  );
+  final effectiveWorkspaceOrders = <String, List<String>>{};
+  final orderedSections =
+      applyStoredOrdering(
+            items: sections,
+            storedOrder: projectOrder,
+            getKey: (section) => section.orderKey,
+          )
+          .map((section) {
+            final workspaceOrder = prependMissingOrderKeys(
+              currentOrder: order.workspaceOrder(section.orderKey),
+              visibleKeys: section.rows.map((row) => row.orderKey).toList(),
+            );
+            effectiveWorkspaceOrders[section.orderKey] = workspaceOrder;
+            return SidebarProjectSection(
+              project: section.project,
+              rows: applyStoredOrdering(
+                items: section.rows,
+                storedOrder: workspaceOrder,
+                getKey: (row) => row.orderKey,
+              ),
+            );
+          })
+          .toList(growable: false);
+
+  if (order.hydrated) {
+    Future.microtask(() {
+      if (!ref.mounted) return;
+      ref
+          .read(sidebarOrderProvider.notifier)
+          .reconcileVisibleOrder(
+            projectOrder: projectOrder,
+            workspaceOrders: effectiveWorkspaceOrders,
+          );
+    });
+  }
+
+  return SidebarGroups(
+    pinned: pinned,
+    projectSections: orderedSections,
+    other: other,
+  );
 });
