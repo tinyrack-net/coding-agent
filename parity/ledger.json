@@ -8596,13 +8596,14 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/terminal-keys.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/widgets/terminal_pane.dart; packages/protocol/lib/src/terminal/terminal_key_input.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/terminal/terminal_keys.dart; packages/app/lib/terminal/terminal_flutter_keys.dart; packages/app/lib/terminal/terminal_platform.dart; packages/app/lib/terminal/terminal_platform_stub.dart; packages/app/lib/terminal/terminal_platform_web.dart; packages/app/lib/state/terminal_providers.dart; packages/app/lib/widgets/terminal_pane.dart; packages/protocol/lib/src/terminal/terminal_key_input.dart",
       "evidence": [
+        "packages/app/test/terminal_keys_test.dart",
         "packages/app/test/terminal_pane_test.dart",
         "packages/protocol/test/terminal_key_input_test.dart"
       ],
-      "notes": "The Flutter terminal intercepts modified Enter only after Kitty or Win32 mode negotiation and emits the exact enhanced sequence. Pending touch modifiers, DOM key normalization, platform classification, and the remaining interception policy remain."
+      "notes": "Matches the frozen DOM aliases and key filtering, transport normalization, modifier merge and data fallback, enhanced-input Enter gate, Apple handheld Ctrl+C workaround and platform detection. Flutter consumes one-shot modifiers across hardware, soft-text, and virtual-key input and renders the frozen two-row mobile terminal keyboard."
     },
     {
       "id": "source-unit:packages/app/src/utils/terminal-list.ts",

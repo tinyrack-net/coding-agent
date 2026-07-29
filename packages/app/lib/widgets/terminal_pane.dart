@@ -1,3 +1,4 @@
+import 'package:agent_protocol/agent_protocol.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/foundation.dart';
@@ -10,7 +11,10 @@ import '../core/theme.dart';
 import '../state/daemon_providers.dart';
 import '../state/terminal_providers.dart';
 import '../terminal/terminal_file_drop.dart';
+import '../terminal/terminal_flutter_keys.dart';
+import '../terminal/terminal_keys.dart';
 import '../terminal/terminal_local_link_provider.dart';
+import '../terminal/terminal_platform.dart';
 import '../workspace/workspace_file_open.dart';
 import '../keyboard/shortcut_engine.dart';
 import '../keyboard/shortcut_focus_scope.dart';
@@ -58,20 +62,73 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
-    if (event.logicalKey != LogicalKeyboardKey.enter &&
-        event.logicalKey != LogicalKeyboardKey.numpadEnter) {
+    if (isTerminalModifierLogicalKey(event.logicalKey)) {
       return KeyEventResult.ignored;
     }
+    final key = terminalKeyFromFlutterEvent(event);
+    if (key == null) return KeyEventResult.ignored;
     final keyboard = HardwareKeyboard.instance;
-    final handled = ref
-        .read(terminalSessionProvider(_key).notifier)
-        .sendModifiedEnter(
-          ctrl: keyboard.isControlPressed,
-          shift: keyboard.isShiftPressed,
-          alt: keyboard.isAltPressed,
-          meta: keyboard.isMetaPressed,
-        );
+    final pendingModifiers = ref
+        .read(terminalSessionProvider(_key))
+        .pendingModifiers;
+    final notifier = ref.read(terminalSessionProvider(_key).notifier);
+    if (!shouldInterceptDomTerminalKey(
+      key: key,
+      ctrlKey: keyboard.isControlPressed,
+      shiftKey: keyboard.isShiftPressed,
+      altKey: keyboard.isAltPressed,
+      metaKey: keyboard.isMetaPressed,
+      pendingModifiers: pendingModifiers,
+      enhancedInputActive: notifier.enhancedInputActive,
+      isAppleHandheld: currentPlatformIsAppleHandheld,
+    )) {
+      return KeyEventResult.ignored;
+    }
+    final modifiers = mergeTerminalModifiers(
+      pendingModifiers: pendingModifiers,
+      ctrlKey: keyboard.isControlPressed,
+      shiftKey: keyboard.isShiftPressed,
+      altKey: keyboard.isAltPressed,
+      metaKey: keyboard.isMetaPressed,
+    );
+    final handled = notifier.sendKeyInput(
+      TerminalKeyInput(
+        key: normalizeTerminalTransportKey(key),
+        ctrl: modifiers.ctrl,
+        shift: modifiers.shift,
+        alt: modifiers.alt,
+        meta: modifiers.meta,
+      ),
+    );
+    if (pendingModifiers.hasAny) notifier.clearPendingModifiers();
     return handled ? KeyEventResult.handled : KeyEventResult.ignored;
+  }
+
+  bool get _showVirtualKeyboard =>
+      defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS ||
+      currentPlatformIsAppleHandheld;
+
+  void _toggleModifier(TerminalModifier modifier) {
+    ref
+        .read(terminalSessionProvider(_key).notifier)
+        .togglePendingModifier(modifier);
+    _focusNode.requestFocus();
+  }
+
+  void _sendVirtualKey(String key) {
+    final session = ref.read(terminalSessionProvider(_key));
+    final notifier = ref.read(terminalSessionProvider(_key).notifier);
+    notifier.sendKeyInput(
+      TerminalKeyInput(
+        key: normalizeTerminalTransportKey(key),
+        ctrl: session.pendingModifiers.ctrl,
+        shift: session.pendingModifiers.shift,
+        alt: session.pendingModifiers.alt,
+      ),
+    );
+    notifier.clearPendingModifiers();
+    _focusNode.requestFocus();
   }
 
   @override
@@ -318,7 +375,179 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
             ),
           ),
         ),
+        if (_showVirtualKeyboard)
+          _TerminalVirtualKeyboard(
+            modifiers: session.pendingModifiers,
+            onToggleModifier: _toggleModifier,
+            onSendKey: _sendVirtualKey,
+          ),
       ],
+    );
+  }
+}
+
+class _TerminalVirtualKeyboard extends StatelessWidget {
+  const _TerminalVirtualKeyboard({
+    required this.modifiers,
+    required this.onToggleModifier,
+    required this.onSendKey,
+  });
+
+  final PendingTerminalModifiers modifiers;
+  final ValueChanged<TerminalModifier> onToggleModifier;
+  final ValueChanged<String> onSendKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: context.paseoPalette.surface0,
+          border: Border(top: BorderSide(color: context.paseoPalette.border)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Column(
+            key: const ValueKey('terminal-virtual-keyboard'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  _TerminalKeyButton(
+                    id: 'esc',
+                    label: 'Esc',
+                    onPressed: () => onSendKey('Escape'),
+                  ),
+                  _TerminalKeyButton(
+                    id: 'tab',
+                    label: 'Tab',
+                    onPressed: () => onSendKey('Tab'),
+                  ),
+                  _TerminalKeyButton(
+                    id: 'ctrl',
+                    label: 'Ctrl',
+                    active: modifiers.ctrl,
+                    onPressed: () => onToggleModifier(TerminalModifier.ctrl),
+                  ),
+                  _TerminalKeyButton(
+                    id: 'up',
+                    label: '↑',
+                    onPressed: () => onSendKey('ArrowUp'),
+                  ),
+                  _TerminalKeyButton(
+                    id: 'shift',
+                    label: 'Shift',
+                    active: modifiers.shift,
+                    onPressed: () => onToggleModifier(TerminalModifier.shift),
+                  ),
+                  _TerminalKeyButton(
+                    id: 'backspace',
+                    label: '⌫',
+                    onPressed: () => onSendKey('Backspace'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  _TerminalKeyButton(
+                    id: 'alt',
+                    label: 'Alt',
+                    active: modifiers.alt,
+                    onPressed: () => onToggleModifier(TerminalModifier.alt),
+                  ),
+                  _TerminalKeyButton(
+                    id: 'space',
+                    label: 'Space',
+                    onPressed: () => onSendKey(' '),
+                  ),
+                  _TerminalKeyButton(
+                    id: 'left',
+                    label: '←',
+                    onPressed: () => onSendKey('ArrowLeft'),
+                  ),
+                  _TerminalKeyButton(
+                    id: 'down',
+                    label: '↓',
+                    onPressed: () => onSendKey('ArrowDown'),
+                  ),
+                  _TerminalKeyButton(
+                    id: 'right',
+                    label: '→',
+                    onPressed: () => onSendKey('ArrowRight'),
+                  ),
+                  _TerminalKeyButton(
+                    id: 'enter',
+                    label: 'Enter',
+                    onPressed: () => onSendKey('Enter'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TerminalKeyButton extends StatelessWidget {
+  const _TerminalKeyButton({
+    required this.id,
+    required this.label,
+    required this.onPressed,
+    this.active = false,
+  });
+
+  final String id;
+  final String label;
+  final VoidCallback onPressed;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: HoverButton(
+          key: ValueKey('terminal-key-$id'),
+          onPressed: onPressed,
+          builder: (context, states) {
+            final highlighted =
+                active ||
+                states.contains(WidgetState.hovered) ||
+                states.contains(WidgetState.pressed);
+            return Container(
+              height: 34,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: highlighted
+                    ? context.paseoPalette.surface2
+                    : context.paseoPalette.surface1,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: active
+                      ? context.paseoPalette.accent
+                      : context.paseoPalette.border,
+                ),
+              ),
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: active
+                      ? context.paseoPalette.foreground
+                      : context.paseoPalette.foregroundMuted,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 }

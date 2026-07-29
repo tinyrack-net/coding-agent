@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import 'package:xterm/xterm.dart';
 
 import 'daemon_providers.dart';
+import '../terminal/terminal_keys.dart';
 import 'workspace_terminal_session.dart';
 import 'worktree_tabs_provider.dart';
 
@@ -29,6 +30,7 @@ class TerminalSessionState {
     this.status = TerminalSessionStatus.starting,
     this.exitCode,
     this.errorMessage,
+    this.pendingModifiers = PendingTerminalModifiers.empty,
   });
 
   /// The xterm emulator instance rendered by TerminalView. Long-lived: it
@@ -37,17 +39,20 @@ class TerminalSessionState {
   final TerminalSessionStatus status;
   final int? exitCode;
   final String? errorMessage;
+  final PendingTerminalModifiers pendingModifiers;
 
   TerminalSessionState copyWith({
     Terminal? terminal,
     TerminalSessionStatus? status,
     int? exitCode,
     String? errorMessage,
+    PendingTerminalModifiers? pendingModifiers,
   }) => TerminalSessionState(
     terminal: terminal ?? this.terminal,
     status: status ?? this.status,
     exitCode: exitCode ?? this.exitCode,
     errorMessage: errorMessage ?? this.errorMessage,
+    pendingModifiers: pendingModifiers ?? this.pendingModifiers,
   );
 }
 
@@ -70,12 +75,14 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
   int? _slotId;
   WorkspaceTerminalSession? _workspaceSession;
   final TerminalInputModeTracker _inputModeTracker = TerminalInputModeTracker();
+  final List<String> _pendingEncodedKeyInputs = [];
   int _generation = 0;
 
   @override
   TerminalSessionState build() {
     _terminalId = null;
     _slotId = null;
+    _pendingEncodedKeyInputs.clear();
     _inputModeTracker.reset();
     final client = ref.watch(daemonClientProvider);
     final generation = ++_generation;
@@ -248,9 +255,36 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
           : null;
       if (slotId == null) throw StateError('malformed subscribe response');
       _slotId = slotId;
+      for (final encoded in _pendingEncodedKeyInputs) {
+        client.sendTerminalFrame(
+          TerminalFrame(
+            opcode: TerminalOpcode.input,
+            slotId: slotId,
+            payload: Uint8List.fromList(utf8.encode(encoded)),
+          ),
+        );
+      }
+      _pendingEncodedKeyInputs.clear();
 
       terminal.onOutput = (data) {
         if (generation != _generation || _slotId != slotId) return;
+        final resolution = resolvePendingModifierDataInput(
+          data: data,
+          pendingModifiers: state.pendingModifiers,
+        );
+        if (resolution case PendingModifierKeyResolution(:final key)) {
+          sendKeyInput(
+            TerminalKeyInput(
+              key: normalizeTerminalTransportKey(key),
+              ctrl: state.pendingModifiers.ctrl,
+              shift: state.pendingModifiers.shift,
+              alt: state.pendingModifiers.alt,
+            ),
+          );
+          clearPendingModifiers();
+          return;
+        }
+        if (resolution.clearPendingModifiers) clearPendingModifiers();
         client.sendTerminalFrame(
           TerminalFrame(
             opcode: TerminalOpcode.input,
@@ -289,31 +323,39 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
   /// swapping in a new emulator.
   void restart() => ref.invalidateSelf();
 
-  /// Sends modified Enter only when the terminal has negotiated an enhanced
-  /// Kitty or Win32 input mode. Otherwise TerminalView keeps its normal input.
-  bool sendModifiedEnter({
-    required bool ctrl,
-    required bool shift,
-    required bool alt,
-    required bool meta,
-  }) {
-    if ((!ctrl && !shift && !alt && !meta) ||
-        !_inputModeTracker.supportsModifiedEnter()) {
-      return false;
-    }
-    final slotId = _slotId;
-    if (slotId == null) return false;
+  bool get enhancedInputActive => _inputModeTracker.supportsModifiedEnter();
+
+  void togglePendingModifier(TerminalModifier modifier) {
+    final pending = state.pendingModifiers;
+    state = state.copyWith(
+      pendingModifiers: switch (modifier) {
+        TerminalModifier.ctrl => pending.copyWith(ctrl: !pending.ctrl),
+        TerminalModifier.shift => pending.copyWith(shift: !pending.shift),
+        TerminalModifier.alt => pending.copyWith(alt: !pending.alt),
+      },
+    );
+  }
+
+  void clearPendingModifiers() {
+    if (!state.pendingModifiers.hasAny) return;
+    state = state.copyWith(pendingModifiers: PendingTerminalModifiers.empty);
+  }
+
+  /// Sends a normalized key through Paseo's key-input transport. Inputs
+  /// intercepted while the terminal subscription is still starting are
+  /// queued and replayed in order once the daemon assigns a slot.
+  bool sendKeyInput(TerminalKeyInput input) {
     final encoded = encodeTerminalKeyInput(
-      TerminalKeyInput(
-        key: 'Enter',
-        ctrl: ctrl,
-        shift: shift,
-        alt: alt,
-        meta: meta,
-      ),
+      input,
       TerminalKeyInputEncodingOptions(inputMode: _inputModeTracker.getState()),
     );
     if (encoded.isEmpty) return false;
+    final slotId = _slotId;
+    if (slotId == null) {
+      if (state.status != TerminalSessionStatus.starting) return false;
+      _pendingEncodedKeyInputs.add(encoded);
+      return true;
+    }
     ref
         .read(daemonClientProvider)
         .sendTerminalFrame(
@@ -324,6 +366,28 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
           ),
         );
     return true;
+  }
+
+  /// Sends modified Enter only when the terminal has negotiated an enhanced
+  /// Kitty or Win32 input mode. Otherwise TerminalView keeps its normal input.
+  bool sendModifiedEnter({
+    required bool ctrl,
+    required bool shift,
+    required bool alt,
+    required bool meta,
+  }) {
+    if ((!ctrl && !shift && !alt && !meta) || !enhancedInputActive) {
+      return false;
+    }
+    return sendKeyInput(
+      TerminalKeyInput(
+        key: 'Enter',
+        ctrl: ctrl,
+        shift: shift,
+        alt: alt,
+        meta: meta,
+      ),
+    );
   }
 
   /// Sends text directly to the PTY, as terminal file drop does in Paseo.
@@ -352,6 +416,7 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
     final terminalId = _terminalId;
     _terminalId = null;
     _slotId = null;
+    _pendingEncodedKeyInputs.clear();
     if (terminalId == null) return;
     final workspaceSessionScope =
         '${client.uri}|${key.workspaceId ?? key.worktreePath}';

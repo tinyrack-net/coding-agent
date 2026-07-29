@@ -511,8 +511,11 @@ void main() {
       ),
     );
     await tester.pump();
+    final droppedInputs = fake.sentFrames
+        .where((frame) => frame.opcode == TerminalOpcode.input)
+        .toList();
     expect(
-      utf8.decode(fake.sentFrames.single.payload),
+      utf8.decode(droppedInputs.single.payload),
       r'"C:\Program Files\tool.exe"',
     );
     expect(
@@ -584,6 +587,83 @@ void main() {
     final restarted = container.read(terminalSessionProvider(_key));
     expect(restarted.status, TerminalSessionStatus.running);
   });
+
+  testWidgets(
+    'mobile virtual keyboard consumes one-shot modifiers and sends keys',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      try {
+        final fake = FakeDaemonClient();
+        final container = ProviderContainer(
+          overrides: [daemonClientProvider.overrideWithValue(fake)],
+        );
+        addTearDown(container.dispose);
+        container.read(agentsProvider.notifier).upsert(_agent);
+
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: const FluentApp(
+              home: ScaffoldPage(
+                content: TerminalPane(
+                  worktreePath: _worktreePath,
+                  tabId: _tabId,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(
+          find.byKey(const ValueKey('terminal-virtual-keyboard')),
+          findsOneWidget,
+        );
+        fake.sentFrames.clear();
+
+        await tester.tap(find.byKey(const ValueKey('terminal-key-ctrl')));
+        await tester.pump();
+        container.read(terminalSessionProvider(_key)).terminal.textInput('c');
+        await tester.pump();
+
+        var inputs = fake.sentFrames
+            .where((frame) => frame.opcode == TerminalOpcode.input)
+            .toList();
+        expect(inputs, hasLength(1));
+        expect(utf8.decode(inputs.single.payload), '\x03');
+        expect(
+          container.read(terminalSessionProvider(_key)).pendingModifiers.hasAny,
+          isFalse,
+        );
+
+        fake.sentFrames.clear();
+        await tester.tap(find.byKey(const ValueKey('terminal-key-ctrl')));
+        await tester.pump();
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.keyC);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.keyC);
+        await tester.pump();
+
+        inputs = fake.sentFrames
+            .where((frame) => frame.opcode == TerminalOpcode.input)
+            .toList();
+        expect(inputs, hasLength(1));
+        expect(utf8.decode(inputs.single.payload), '\x03');
+
+        fake.sentFrames.clear();
+        await tester.tap(find.byKey(const ValueKey('terminal-key-up')));
+        await tester.pump();
+        inputs = fake.sentFrames
+            .where((frame) => frame.opcode == TerminalOpcode.input)
+            .toList();
+        expect(inputs, hasLength(1));
+        expect(utf8.decode(inputs.single.payload), '\x1b[A');
+        await tester.pump(const Duration(milliseconds: 120));
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    },
+  );
 
   testWidgets('terminal create carries its Paseo workspace identity', (
     tester,
