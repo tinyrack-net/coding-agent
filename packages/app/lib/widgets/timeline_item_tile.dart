@@ -10,6 +10,7 @@ import '../core/theme.dart';
 import '../core/tool_call_parsers.dart';
 import '../state/timeline_provider.dart';
 import '../tool_calls/tool_call_presentation.dart';
+import '../tool_calls/tool_call_icon.dart';
 import 'diff/diff_viewer.dart';
 
 /// Pure presentation of a single [TimelineItem]. Kept free of providers so it
@@ -410,7 +411,7 @@ class _ToolCallCard extends StatelessWidget {
       detail: item.detail,
       metadata: item.metadata,
       cwd: cwd,
-      resolveIcon: resolveToolCallIcon,
+      resolveIcon: resolveToolCallIconName,
     );
     if (presentation.isPlan && item.detail is PlanDetail) {
       final text = (item.detail as PlanDetail).text;
@@ -444,7 +445,7 @@ class _ToolCallCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
       child: !presentation.canOpenDetails || body == null
           ? ListTile(
-              leading: Icon(presentation.icon, size: 20),
+              leading: ToolCallIconView(name: presentation.icon),
               title: _ToolTitle(
                 toolName: presentation.displayName,
                 summary: presentation.summary,
@@ -456,7 +457,7 @@ class _ToolCallCard extends StatelessWidget {
           : Expander(
               headerBackgroundColor: WidgetStateColor.transparent,
               contentBackgroundColor: Colors.transparent,
-              leading: Icon(presentation.icon, size: 20),
+              leading: ToolCallIconView(name: presentation.icon),
               header: _ToolTitle(
                 toolName: presentation.displayName,
                 summary: presentation.summary,

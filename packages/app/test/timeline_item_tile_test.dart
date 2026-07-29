@@ -440,11 +440,11 @@ void main() {
 
       // Read: the canonical path appears in the badge and mounted detail body.
       expect(find.text('lib/main.dart'), findsNWidgets(2));
-      expect(find.byIcon(FluentIcons.open_file), findsOneWidget);
+      expect(find.byIcon(FluentIcons.view), findsOneWidget);
 
       // Write: content preview is rendered once expanded.
       expect(find.text('lib/new.dart'), findsOneWidget);
-      expect(find.byIcon(FluentIcons.save), findsOneWidget);
+      expect(find.byIcon(FluentIcons.edit), findsOneWidget);
       await tester.tap(find.text('Write'));
       await tester.pumpAndSettle(const Duration(milliseconds: 100));
       expect(find.text('void main() {}'), findsOneWidget);
@@ -521,7 +521,7 @@ void main() {
       ),
     );
 
-    expect(find.byIcon(FluentIcons.branch_fork), findsOneWidget);
+    expect(find.byIcon(FluentIcons.robot), findsOneWidget);
     expect(find.text('Inspect routing'), findsOneWidget);
     expect(find.text('canceled'), findsOneWidget);
     await tester.tap(find.text('Research'));

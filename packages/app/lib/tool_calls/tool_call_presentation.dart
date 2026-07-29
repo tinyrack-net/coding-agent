@@ -1,11 +1,11 @@
 import 'package:agent_protocol/agent_protocol.dart';
-import 'package:fluent_ui/fluent_ui.dart';
 
 import 'extract_tool_call_file_path.dart';
 import 'tool_call_detail_state.dart';
+import 'tool_call_icon.dart';
 
 typedef ToolCallIconResolver =
-    IconData Function(String toolName, ToolCallDetail? detail);
+    ToolCallIconName Function(String toolName, ToolCallDetail? detail);
 
 final class ToolCallPresentation {
   const ToolCallPresentation({
@@ -23,7 +23,7 @@ final class ToolCallPresentation {
   final String displayName;
   final String? summary;
   final String? errorText;
-  final IconData icon;
+  final ToolCallIconName icon;
   final bool isLoadingDetails;
   final bool hasDetails;
   final bool canOpenDetails;
@@ -69,21 +69,6 @@ ToolCallPresentation buildToolCallPresentation({
     isPlan: detail is PlanDetail,
   );
 }
-
-IconData resolveToolCallIcon(String toolName, ToolCallDetail? detail) =>
-    switch (detail) {
-      ShellDetail() => FluentIcons.command_prompt,
-      ReadDetail() => FluentIcons.open_file,
-      EditDetail() => FluentIcons.edit,
-      WriteDetail() => FluentIcons.save,
-      SearchDetail() => FluentIcons.search,
-      FetchDetail() => FluentIcons.link,
-      SubAgentDetail() => FluentIcons.branch_fork,
-      WorktreeSetupToolDetail() => FluentIcons.branch_fork2,
-      PlainTextDetail() => FluentIcons.info,
-      PlanDetail() => FluentIcons.processing,
-      GenericDetail() || null => FluentIcons.build,
-    };
 
 bool _isTruthy(Object? value) {
   if (value == null || value == false || value == 0 || value == '') {

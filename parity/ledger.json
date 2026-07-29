@@ -8941,17 +8941,23 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/tool-call-icon-name.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/tool_calls/tool_call_icon.dart",
+      "evidence": [
+        "packages/app/test/tool_call_icon_test.dart"
+      ],
+      "notes": "Matches frozen detail-kind mappings, plain-text custom icons, thinking/speak/task overrides, and Paseo wire-tool recognition. The upstream Paseo logo semantic is intentionally projected to Tinyrack branding."
     },
     {
       "id": "source-unit:packages/app/src/utils/tool-call-icon.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/tool_calls/tool_call_icon.dart; packages/app/lib/tool_calls/tool_call_presentation.dart; packages/app/lib/widgets/timeline_item_tile.dart",
+      "evidence": [
+        "packages/app/test/tool_call_icon_test.dart",
+        "packages/app/test/tool_call_presentation_test.dart",
+        "packages/app/test/timeline_item_tile_test.dart"
+      ],
+      "notes": "Maps every semantic tool icon to a stable Flutter renderer and uses the packaged Tinyrack asset for internal Paseo-compatible wire tools. Timeline cards consume the semantic renderer instead of maintaining a divergent detail switch."
     },
     {
       "id": "source-unit:packages/app/src/utils/tool-call-parsers.ts",

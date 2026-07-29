@@ -1,16 +1,17 @@
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/tool_calls/extract_tool_call_file_path.dart';
 import 'package:coding_agent_app/tool_calls/tool_call_detail_state.dart';
+import 'package:coding_agent_app/tool_calls/tool_call_icon.dart';
 import 'package:coding_agent_app/tool_calls/tool_call_presentation.dart';
-import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  IconData icon(String toolName, ToolCallDetail? detail) => switch (detail) {
-    PlanDetail() => FluentIcons.processing,
-    ReadDetail() => FluentIcons.view,
-    _ => FluentIcons.build,
-  };
+  ToolCallIconName icon(String toolName, ToolCallDetail? detail) =>
+      switch (detail) {
+        PlanDetail() => ToolCallIconName.brain,
+        ReadDetail() => ToolCallIconName.eye,
+        _ => ToolCallIconName.wrench,
+      };
 
   test('builds badge, detail, icon, and file-open policy in one model', () {
     final presentation = buildToolCallPresentation(
@@ -27,7 +28,7 @@ void main() {
 
     expect(presentation.displayName, 'Read');
     expect(presentation.summary, 'src/index.ts');
-    expect(presentation.icon, FluentIcons.view);
+    expect(presentation.icon, ToolCallIconName.eye);
     expect(presentation.isLoadingDetails, isFalse);
     expect(presentation.hasDetails, isTrue);
     expect(presentation.canOpenDetails, isTrue);
@@ -45,7 +46,7 @@ void main() {
     );
 
     expect(presentation.displayName, 'Exec Command');
-    expect(presentation.icon, FluentIcons.build);
+    expect(presentation.icon, ToolCallIconName.wrench);
     expect(presentation.isLoadingDetails, isTrue);
     expect(presentation.hasDetails, isFalse);
     expect(presentation.canOpenDetails, isTrue);
@@ -63,7 +64,7 @@ void main() {
     );
 
     expect(presentation.isPlan, isTrue);
-    expect(presentation.icon, FluentIcons.processing);
+    expect(presentation.icon, ToolCallIconName.brain);
   });
 
   test('detects meaningful values for every detail kind', () {
