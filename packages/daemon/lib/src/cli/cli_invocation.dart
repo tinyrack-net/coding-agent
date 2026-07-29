@@ -9,7 +9,7 @@ sealed class CliInvocation {
 List<String> defaultEmptyCliArguments(List<String> arguments) =>
     arguments.isEmpty ? const ['onboard'] : arguments;
 
-enum RootOutputForwarding { full, jsonOnly, none }
+enum RootOutputForwarding { full, jsonOnly, jsonAndNoColor, none }
 
 final class RootCliOutputOptions {
   const RootCliOutputOptions({
@@ -35,6 +35,9 @@ final class RootCliOutputOptions {
       return json || format?.toLowerCase() == 'json'
           ? const ['--json']
           : const [];
+    }
+    if (forwarding == RootOutputForwarding.jsonAndNoColor) {
+      return [if (json) '--json', if (noColor) '--no-color'];
     }
     return [
       if (format != null) ...['--format', format!],
@@ -195,7 +198,9 @@ RootOutputForwarding rootOutputForwarding(List<String> arguments) {
   if (first == 'terminal') {
     final action = arguments.length > 1 ? arguments[1] : null;
     return const {'ls', 'create', 'kill'}.contains(action)
-        ? RootOutputForwarding.jsonOnly
+        ? RootOutputForwarding.full
+        : const {'capture', 'send-keys'}.contains(action)
+        ? RootOutputForwarding.jsonAndNoColor
         : RootOutputForwarding.none;
   }
   return RootOutputForwarding.none;

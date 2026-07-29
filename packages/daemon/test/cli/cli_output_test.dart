@@ -50,6 +50,16 @@ void main() {
     expect(yaml, contains('  labels:\n    - x\n    - y'));
     expect(yaml, contains('  labels: []'));
     expect(yaml, contains('  note: "@quoted"'));
+    expect(
+      encodeCliYaml({
+        'numericString': '123456789',
+        'dateString': '2026-07-30',
+        'actualNumber': 123456789,
+      }),
+      'numericString: "123456789"\n'
+      'dateString: "2026-07-30"\n'
+      'actualNumber: 123456789',
+    );
   });
 
   test('applies frozen schema serialization and collapses identical lists', () {

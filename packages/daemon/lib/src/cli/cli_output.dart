@@ -260,7 +260,7 @@ String _cliYamlScalar(Object? value) {
   final text = '$value';
   if (text.isNotEmpty &&
       !RegExp(
-        r'''[:#\[\]{},&*!|>'"%@`]|^\s|\s$|^(null|true|false|~)$''',
+        r'''[:#\[\]{},&*!|>'"%@`]|^\s|\s$|^(null|true|false|~|[-+]?\.inf|\.nan)$|^[-+]?(?:0|[1-9][0-9_]*)(?:\.[0-9_]*)?(?:e[-+]?[0-9]+)?$|^[-+]?\.[0-9_]+(?:e[-+]?[0-9]+)?$|^0(?:x[0-9a-f_]+|o[0-7_]+|b[01_]+)$|^\d{4}-\d{2}-\d{2}(?:$|[tT ])''',
         caseSensitive: false,
       ).hasMatch(text)) {
     return text;

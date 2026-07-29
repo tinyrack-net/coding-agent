@@ -20,6 +20,7 @@ void main() {
       expect(parsed.values['--start'], '-2');
       expect(parsed.flags, containsAll(['--ansi', '--json']));
       expect(parsed.json, isTrue);
+      expect(parsed.output.format, 'json');
       expect(
         () => TerminalCliInvocation.parse(const []),
         throwsFormatException,
@@ -102,6 +103,105 @@ void main() {
     ]);
     expect(requests.last['workspaceId'], 'w1');
     expect(jsonDecode(output.toString())['name'], 'Build');
+  });
+
+  test('result actions support frozen shared output options', () async {
+    Future<Map<String, Object?>> listRequest(_) async => {
+      'terminals': [
+        {'id': '123456789', 'name': 'Build', 'cwd': '/repo'},
+      ],
+    };
+    final output = StringBuffer();
+    expect(
+      await runTerminalCommand(
+        arguments: ['ls', '--format=yaml'],
+        request: listRequest,
+        writeOutput: output.write,
+      ),
+      0,
+    );
+    expect(output.toString(), contains('id: "123456789"'));
+    expect(output.toString(), contains('name: Build'));
+
+    output.clear();
+    expect(
+      await runTerminalCommand(
+        arguments: ['ls', '--quiet'],
+        request: listRequest,
+        writeOutput: output.write,
+      ),
+      0,
+    );
+    expect(output.toString(), '123456789\n');
+
+    output.clear();
+    expect(
+      await runTerminalCommand(
+        arguments: ['ls', '--no-headers', '--no-color'],
+        request: listRequest,
+        writeOutput: output.write,
+      ),
+      0,
+    );
+    expect(output.toString(), isNot(startsWith('ID')));
+    expect(output.toString(), startsWith('12345678'));
+
+    output.clear();
+    expect(
+      await runTerminalCommand(
+        arguments: ['kill', 'Build', '-oyaml'],
+        request: (message) async => message['type'] == 'list_terminals_request'
+            ? {
+                'terminals': [
+                  {'id': '123456789', 'name': 'Build'},
+                ],
+              }
+            : {'terminalId': '123456789', 'success': true},
+        writeOutput: output.write,
+      ),
+      0,
+    );
+    expect(output.toString(), contains('terminalId: "123456789"'));
+    expect(output.toString(), contains('success: true'));
+  });
+
+  test('direct actions retain text or JSON output boundaries', () async {
+    Future<Map<String, Object?>> request(message) async {
+      if (message['type'] == 'list_terminals_request') {
+        return {
+          'terminals': [
+            {'id': 'abc', 'name': 'Build'},
+          ],
+        };
+      }
+      return {
+        'terminalId': 'abc',
+        'lines': ['one'],
+        'totalLines': 1,
+      };
+    }
+
+    final output = StringBuffer();
+    expect(
+      await runTerminalCommand(
+        arguments: ['capture', 'abc', '--format=yaml', '--quiet'],
+        request: request,
+        writeOutput: output.write,
+      ),
+      0,
+    );
+    expect(output.toString(), 'one\n');
+
+    output.clear();
+    expect(
+      await runTerminalCommand(
+        arguments: ['capture', 'abc', '--json', '--no-color'],
+        request: request,
+        writeOutput: output.write,
+      ),
+      0,
+    );
+    expect(jsonDecode(output.toString()), containsPair('lines', ['one']));
   });
 
   test(
@@ -244,7 +344,8 @@ void main() {
         ),
         1,
       );
-      expect(errors.toString(), contains('--start must be an integer'));
+      expect(errors.toString(), contains('Invalid --start value: nope'));
+      expect(errors.toString(), contains('Use an integer line number.'));
 
       errors.clear();
       expect(

@@ -137,12 +137,24 @@ void main() {
     expect(
       normalizeRootCliArguments(const [
         '--json',
+        '--no-color',
+        '--quiet',
         'terminal',
         'capture',
         'term',
-        '--json',
       ]).forward(),
-      const ['terminal', 'capture', 'term', '--json'],
+      const ['terminal', 'capture', 'term', '--json', '--no-color'],
+    );
+    expect(
+      normalizeRootCliArguments(const [
+        '--format',
+        'yaml',
+        '--quiet',
+        '--no-headers',
+        'terminal',
+        'ls',
+      ]).forward(),
+      const ['terminal', 'ls', '--format', 'yaml', '--quiet', '--no-headers'],
     );
     expect(
       normalizeRootCliArguments(const [

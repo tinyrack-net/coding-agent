@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_output.dart';
 
 const terminalDaemonRpcTimeout = Duration(seconds: 30);
 
@@ -25,8 +26,9 @@ Future<int> runTerminalCommand({
 }) async {
   final output = writeOutput ?? stdout.write;
   final errorOutput = writeError ?? stderr.write;
+  TerminalCliInvocation? invocation;
   try {
-    final invocation = TerminalCliInvocation.parse(arguments);
+    invocation = TerminalCliInvocation.parse(arguments);
     final env = environment ?? Platform.environment;
     final client = request == null
         ? await _connectTerminalClient(
@@ -44,11 +46,16 @@ Future<int> runTerminalCommand({
         notify,
         currentDirectory ?? Directory.current.path,
       );
-      output(
-        invocation.json
-            ? '${const JsonEncoder.withIndent('  ').convert(result.json)}\n'
-            : result.human,
-      );
+      if (result.output case final shared?) {
+        final rendered = renderCliOutput(shared, invocation.output);
+        if (rendered.isNotEmpty) output('$rendered\n');
+      } else {
+        output(
+          invocation.json
+              ? '${const JsonEncoder.withIndent('  ').convert(result.json)}\n'
+              : result.human,
+        );
+      }
       return 0;
     } finally {
       await client?.close();
@@ -57,19 +64,14 @@ Future<int> runTerminalCommand({
     errorOutput('${error.message}\n$_terminalUsage\n');
     return 64;
   } on _TerminalCommandException catch (error) {
-    if (arguments.contains('--json')) {
-      errorOutput(
-        '${const JsonEncoder.withIndent('  ').convert({
-          'error': {'code': error.code, 'message': error.message, if (error.details != null) 'details': error.details},
-        })}\n',
-      );
-    } else {
-      errorOutput('Error: ${error.message}\n');
-      if (error.details != null) errorOutput('${error.details}\n');
-    }
+    errorOutput(
+      '${renderCliError(code: error.code, message: error.message, details: error.details, options: invocation?.errorOutput ?? const CliOutputOptions())}\n',
+    );
     return 1;
   } on Object catch (error) {
-    errorOutput('TERMINAL_COMMAND_FAILED: ${_errorText(error)}\n');
+    errorOutput(
+      '${renderCliError(code: 'TERMINAL_COMMAND_FAILED', message: _errorText(error), options: invocation?.errorOutput ?? const CliOutputOptions())}\n',
+    );
     return 1;
   }
 }
@@ -102,6 +104,7 @@ final class TerminalCliInvocation {
     required this.values,
     required this.flags,
     required this.json,
+    required this.output,
     required this.host,
   });
 
@@ -110,7 +113,18 @@ final class TerminalCliInvocation {
   final Map<String, String> values;
   final Set<String> flags;
   final bool json;
+  final CliOutputOptions output;
   final String? host;
+
+  bool get usesSharedOutput =>
+      action == 'ls' || action == 'create' || action == 'kill';
+
+  CliOutputOptions get errorOutput => usesSharedOutput
+      ? output
+      : CliOutputOptions(
+          format: json ? 'json' : 'table',
+          noColor: output.noColor,
+        );
 
   static TerminalCliInvocation parse(List<String> arguments) {
     if (arguments.isEmpty)
@@ -133,9 +147,34 @@ final class TerminalCliInvocation {
     final positionals = <String>[];
     final values = <String, String>{};
     final flags = <String>{};
+    var format = 'table';
+    var json = false;
+    var quiet = false;
+    var headers = true;
+    var color = true;
     for (var index = 1; index < arguments.length; index++) {
       final argument = arguments[index];
-      if (booleanOptions.contains(argument)) {
+      if (argument == '--json') {
+        flags.add(argument);
+        json = true;
+      } else if (argument == '-q' || argument == '--quiet') {
+        quiet = true;
+      } else if (argument == '--no-headers') {
+        headers = false;
+      } else if (argument == '--no-color') {
+        color = false;
+      } else if (argument == '-o' || argument == '--format') {
+        if (index + 1 >= arguments.length) {
+          throw FormatException('$argument requires a value');
+        }
+        format = normalizeCliOutputFormat(arguments[++index]);
+      } else if (argument.startsWith('--format=')) {
+        format = normalizeCliOutputFormat(
+          argument.substring('--format='.length),
+        );
+      } else if (argument.startsWith('-o') && argument.length > 2) {
+        format = normalizeCliOutputFormat(argument.substring(2));
+      } else if (booleanOptions.contains(argument)) {
         flags.add(argument);
       } else if (valueOptions.contains(argument)) {
         if (index + 1 >= arguments.length) {
@@ -163,16 +202,27 @@ final class TerminalCliInvocation {
       positionals: List.unmodifiable(positionals),
       values: Map.unmodifiable(values),
       flags: Set.unmodifiable(flags),
-      json: flags.contains('--json'),
+      json: json,
+      output: CliOutputOptions(
+        format: json ? 'json' : format,
+        quiet: quiet,
+        noHeaders: !headers,
+        noColor: !color,
+      ),
       host: values['--host'],
     );
   }
 }
 
 final class _TerminalCommandResult {
-  const _TerminalCommandResult({required this.json, required this.human});
+  const _TerminalCommandResult.direct({required this.json, required this.human})
+    : output = null;
+
+  const _TerminalCommandResult.shared(this.output) : json = null, human = '';
+
   final Object? json;
   final String human;
+  final CliOutputResult? output;
 }
 
 Future<_TerminalCommandResult> _execute(
@@ -198,7 +248,9 @@ Future<_TerminalCommandResult> _execute(
         'list terminals',
       );
       final rows = _terminalRows(payload, fallbackCwd: cwd);
-      return _TerminalCommandResult(json: rows, human: _terminalTable(rows));
+      return _TerminalCommandResult.shared(
+        CliOutputResult.list(rows: rows, schema: _terminalOutputSchema),
+      );
     case 'create':
       final cwd = invocation.values['--cwd'] ?? currentDirectory;
       final opened = await _rpc(
@@ -238,7 +290,9 @@ Future<_TerminalCommandResult> _execute(
         );
       }
       final row = _terminalRow(terminal, fallbackCwd: cwd);
-      return _TerminalCommandResult(json: row, human: _terminalTable([row]));
+      return _TerminalCommandResult.shared(
+        CliOutputResult.single(row: row, schema: _terminalOutputSchema),
+      );
     case 'capture':
       final terminalId = await _requireTerminalId(
         request,
@@ -268,7 +322,7 @@ Future<_TerminalCommandResult> _execute(
         'lines': lines,
         'totalLines': payload['totalLines'],
       };
-      return _TerminalCommandResult(
+      return _TerminalCommandResult.direct(
         json: json,
         human: lines.isEmpty ? '' : '${lines.join('\n')}\n',
       );
@@ -296,7 +350,7 @@ Future<_TerminalCommandResult> _execute(
           'Failed to send terminal keys: ${_errorText(error)}',
         );
       }
-      return _TerminalCommandResult(
+      return _TerminalCommandResult.direct(
         json: {'terminalId': terminalId, 'keysSent': text.length},
         human: '',
       );
@@ -319,18 +373,8 @@ Future<_TerminalCommandResult> _execute(
         'terminalId': payload['terminalId'],
         'success': payload['success'],
       };
-      return _TerminalCommandResult(
-        json: row,
-        human: _table(
-          const ['ID', 'SUCCESS'],
-          [
-            [
-              terminalId.substring(0, terminalId.length.clamp(0, 8)),
-              '${payload['success']}',
-            ],
-          ],
-          minimumWidths: const [8, 8],
-        ),
+      return _TerminalCommandResult.shared(
+        CliOutputResult.single(row: row, schema: _terminalKillOutputSchema),
       );
   }
   throw StateError('unreachable terminal action');
@@ -421,7 +465,8 @@ int? _lineNumber(String flag, String? value) {
   if (parsed == null) {
     throw _TerminalCommandException(
       'INVALID_LINE_NUMBER',
-      '$flag must be an integer',
+      'Invalid $flag value: $value',
+      details: 'Use an integer line number.',
     );
   }
   return parsed;
@@ -447,41 +492,37 @@ Map<String, Object?> _terminalRow(
   'cwd': terminal['cwd'] ?? fallbackCwd ?? '-',
 };
 
-String _terminalTable(List<Map<String, Object?>> rows) => _table(
-  const ['ID', 'NAME', 'CWD'],
-  [
-    for (final row in rows)
-      [
-        (row['id'] as String).substring(
-          0,
-          (row['id'] as String).length.clamp(0, 8),
-        ),
-        '${row['name']}',
-        '${row['cwd']}',
-      ],
+final _terminalOutputSchema = CliOutputSchema(
+  idField: (row) => '${row['id']}',
+  columns: [
+    CliOutputColumn(
+      header: 'ID',
+      field: (row) => _shortTerminalId('${row['id']}'),
+      width: 8,
+    ),
+    CliOutputColumn(header: 'NAME', field: (row) => row['name'], width: 24),
+    CliOutputColumn(header: 'CWD', field: (row) => row['cwd'], width: 48),
   ],
-  minimumWidths: const [8, 24, 48],
 );
 
-String _table(
-  List<String> headers,
-  List<List<String>> rows, {
-  List<int>? minimumWidths,
-}) {
-  final widths = [
-    for (var column = 0; column < headers.length; column++)
-      [
-        headers[column].length,
-        if (minimumWidths != null) minimumWidths[column],
-        for (final row in rows) row[column].length,
-      ].reduce((a, b) => a > b ? a : b),
-  ];
-  String line(List<String> cells) => [
-    for (var index = 0; index < cells.length; index++)
-      cells[index].padRight(widths[index]),
-  ].join('  ').trimRight();
-  return '${[line(headers), for (final row in rows) line(row)].join('\n')}\n';
-}
+final _terminalKillOutputSchema = CliOutputSchema(
+  idField: (row) => '${row['terminalId']}',
+  columns: [
+    CliOutputColumn(
+      header: 'ID',
+      field: (row) => _shortTerminalId('${row['terminalId']}'),
+      width: 8,
+    ),
+    CliOutputColumn(
+      header: 'SUCCESS',
+      field: (row) => row['success'],
+      width: 8,
+    ),
+  ],
+);
+
+String _shortTerminalId(String value) =>
+    value.substring(0, value.length.clamp(0, 8));
 
 List<Map<String, Object?>> _maps(Object? value) => [
   for (final entry in value is List ? value : const [])
