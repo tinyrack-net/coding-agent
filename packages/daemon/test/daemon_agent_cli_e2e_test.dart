@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:agent_daemon/src/agent/agent_store.dart';
 import 'package:agent_daemon/src/agent/timeline_store.dart';
 import 'package:agent_daemon/src/cli/agent_command.dart';
+import 'package:agent_daemon/src/cli/cli_client_id.dart';
 import 'package:agent_daemon/src/cli/agent_logs_command.dart';
 import 'package:agent_daemon/src/daemon_server.dart';
 import 'package:agent_daemon/src/providers/agent_client.dart';
@@ -19,6 +20,7 @@ void main() {
   test('agent ls and inspect cross the real daemon WebSocket', () async {
     final home = Directory.systemTemp.createTempSync('daemon-agent-cli-e2e-');
     addTearDown(() => _deleteDirectoryEventually(home));
+    final environment = {'TINYRACK_HOME': home.path};
     const active = AgentSummary(
       agentId: 'agent-cli-active',
       title: 'Active agent',
@@ -153,7 +155,7 @@ void main() {
     expect(
       await runAgentCommand(
         arguments: ['ls', '--global', '--host', host, '--json'],
-        environment: const {},
+        environment: environment,
         now: () => DateTime.parse('2026-07-29T13:00:00Z'),
         writeOutput: listed.write,
       ),
@@ -164,12 +166,16 @@ void main() {
     expect(activeRows.single['id'], active.agentId);
     expect(activeRows.single['provider'], 'codex/gpt-5.4');
     expect(activeRows.single['thinking'], 'high');
+    final persistedClientId = await File(
+      '${home.path}${Platform.pathSeparator}$cliClientIdFileName',
+    ).readAsString();
+    expect(persistedClientId, matches(RegExp(r'^cid_[0-9a-f]{32}$')));
 
     final all = StringBuffer();
     expect(
       await runAgentCommand(
         arguments: ['ls', '--all', '--global', '--host', host, '--json'],
-        environment: const {},
+        environment: environment,
         now: () => DateTime.parse('2026-07-29T13:00:00Z'),
         writeOutput: all.write,
       ),
@@ -181,7 +187,7 @@ void main() {
     expect(
       await runAgentCommand(
         arguments: ['inspect', 'agent-cli-act', '--host', host, '--json'],
-        environment: const {},
+        environment: environment,
         writeOutput: inspected.write,
       ),
       0,
@@ -218,7 +224,7 @@ void main() {
           host,
           '--json',
         ],
-        environment: const {},
+        environment: environment,
         writeOutput: modes.write,
       ),
       0,
@@ -240,7 +246,7 @@ void main() {
           host,
           '--json',
         ],
-        environment: const {},
+        environment: environment,
         writeOutput: changedMode.write,
       ),
       0,
@@ -270,7 +276,7 @@ void main() {
           '--host',
           host,
         ],
-        environment: const {},
+        environment: environment,
         writeOutput: logs.write,
       ),
       0,
@@ -282,7 +288,7 @@ void main() {
     final stop = StreamController<void>();
     final follow = runAgentLogsCommand(
       arguments: [active.agentId, '--follow', '--tail', '1', '--host', host],
-      environment: const {},
+      environment: environment,
       stopSignals: stop.stream,
       writeOutput: followed.write,
       writeError: followErrors.write,
@@ -311,7 +317,7 @@ void main() {
     expect(
       await runAgentCommand(
         arguments: ['stop', 'agent-cli-act', '--host', host, '--json'],
-        environment: const {},
+        environment: environment,
         writeOutput: stopped.write,
       ),
       0,
@@ -335,7 +341,7 @@ void main() {
           host,
           '--json',
         ],
-        environment: const {},
+        environment: environment,
         writeOutput: waited.write,
       ),
       0,
@@ -365,7 +371,7 @@ void main() {
           host,
           '--json',
         ],
-        environment: const {},
+        environment: environment,
         writeOutput: idleWait.write,
       ),
       0,

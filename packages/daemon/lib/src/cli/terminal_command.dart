@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_client_id.dart';
 import 'cli_output.dart';
 
 const terminalDaemonRpcTimeout = Duration(seconds: 30);
@@ -602,10 +603,14 @@ final class DaemonCliSocketClient {
       socket = connectedSocket;
       final connectedFrames = StreamIterator<dynamic>(connectedSocket);
       frames = connectedFrames;
+      final clientId = await getOrCreateCliClientId(
+        home: config.home,
+        environment: environment,
+      );
       connectedSocket.add(
         jsonEncode(
-          const WebSocketHello(
-            clientId: 'coding-agent-cli',
+          WebSocketHello(
+            clientId: clientId,
             clientType: WebSocketClientType.cli,
             protocolVersion: paseoWebSocketProtocolVersion,
           ).toJson(),

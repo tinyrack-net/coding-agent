@@ -10417,10 +10417,18 @@
     },
     {
       "id": "source-unit:packages/cli/src/utils/client-id.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/cli_client_id.dart; packages/daemon/lib/src/cli/terminal_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/pair_command.dart; packages/daemon/lib/src/cli/hub_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/cli_client_id_test.dart",
+        "packages/daemon/test/daemon_agent_cli_e2e_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart",
+        "packages/daemon/test/daemon_terminal_v2_e2e_test.dart",
+        "packages/daemon/test/daemon_pairing_rpc_e2e_test.dart",
+        "packages/daemon/test/daemon_hub_management_e2e_test.dart"
+      ],
+      "notes": "Frozen trimmed read, cid UUID generation, persistent cli-client-id file, process cache, concurrent creation coalescing, missing-file recovery, read-error propagation, and shared CLI hello identity are ported with Tinyrack home branding."
     },
     {
       "id": "source-unit:packages/cli/src/utils/client.ts",

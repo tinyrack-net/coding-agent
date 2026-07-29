@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_client_id.dart';
 import 'cli_output.dart';
 import 'schedule_command.dart'
     show resolveScheduleDaemonEndpoint, ScheduleDaemonEndpoint;
@@ -232,7 +233,13 @@ Future<ChatRpcClient> connectChatClient({
     environment: environment,
   );
   try {
-    return await _ChatSocketClient.connect(endpoint);
+    return await _ChatSocketClient.connect(
+      endpoint,
+      clientId: await getOrCreateCliClientId(
+        home: config.home,
+        environment: environment,
+      ),
+    );
   } on Object catch (error) {
     throw _ChatCommandException(
       'DAEMON_NOT_RUNNING',
@@ -248,8 +255,9 @@ final class _ChatSocketClient implements ChatRpcClient {
   final StreamIterator<dynamic> _frames;
 
   static Future<_ChatSocketClient> connect(
-    ScheduleDaemonEndpoint endpoint,
-  ) async {
+    ScheduleDaemonEndpoint endpoint, {
+    required String clientId,
+  }) async {
     final socket = await WebSocket.connect(
       endpoint.webSocketUri.toString(),
       protocols: endpoint.password == null
@@ -260,8 +268,8 @@ final class _ChatSocketClient implements ChatRpcClient {
     final frames = StreamIterator<dynamic>(socket);
     socket.add(
       jsonEncode(
-        const WebSocketHello(
-          clientId: 'coding-agent-chat-cli',
+        WebSocketHello(
+          clientId: clientId,
           clientType: WebSocketClientType.cli,
           protocolVersion: paseoWebSocketProtocolVersion,
         ).toJson(),

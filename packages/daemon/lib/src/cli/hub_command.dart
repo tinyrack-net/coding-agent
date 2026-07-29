@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_client_id.dart';
 import 'cli_output.dart';
 import 'hub_device_authorization.dart';
 import 'schedule_command.dart';
@@ -316,10 +317,14 @@ Future<HubCommandResult> requestRunningDaemonHubManagement(
   ).timeout(hubDaemonRpcTimeout);
   final frames = StreamIterator<dynamic>(socket);
   try {
+    final clientId = await getOrCreateCliClientId(
+      home: config.home,
+      environment: environment,
+    );
     socket.add(
       jsonEncode(
-        const WebSocketHello(
-          clientId: 'coding-agent-cli',
+        WebSocketHello(
+          clientId: clientId,
           clientType: WebSocketClientType.cli,
           protocolVersion: paseoWebSocketProtocolVersion,
         ).toJson(),

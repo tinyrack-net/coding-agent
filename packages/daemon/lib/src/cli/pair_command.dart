@@ -6,6 +6,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
 import '../server/pairing_offer.dart';
+import 'cli_client_id.dart';
 
 const pairingDaemonRpcTimeout = Duration(milliseconds: 1500);
 final _ansiPattern = RegExp('${String.fromCharCode(0x1b)}\\[[0-9;]*m');
@@ -93,10 +94,11 @@ Future<DaemonGetPairingOfferResponse?> fetchRunningDaemonPairingOffer(
       compression: CompressionOptions.compressionOff,
     ).timeout(pairingDaemonRpcTimeout);
     frames = StreamIterator<dynamic>(socket);
+    final clientId = await getOrCreateCliClientId(home: config.home);
     socket.add(
       jsonEncode(
-        const WebSocketHello(
-          clientId: 'coding-agent-cli',
+        WebSocketHello(
+          clientId: clientId,
           clientType: WebSocketClientType.cli,
           protocolVersion: paseoWebSocketProtocolVersion,
         ).toJson(),
