@@ -842,6 +842,43 @@ void main() {
     );
   });
 
+  testWidgets(
+    'PR header uses forge identity, reveals its link on hover, and opens',
+    (tester) async {
+      final launcher = _FakeExternalUrlLauncher();
+      await _pumpExplorer(
+        tester,
+        _FakeDaemonClient(forge: 'gitlab'),
+        launcher: launcher,
+      );
+      await _tapPullRequestTab(tester);
+      await tester.pumpAndSettle();
+
+      final header = find.byKey(const ValueKey('pr-pane-header'));
+      final linkIcon = find.byKey(const ValueKey('pr-pane-header-link-icon'));
+      expect(find.text('Port the pull request panel !42'), findsOneWidget);
+      expect(find.text('Port the pull request panel #42'), findsNothing);
+      expect(find.byKey(const ValueKey('pr-pane-repository')), findsOneWidget);
+      expect(find.text('tinyrack/coding-agent'), findsOneWidget);
+      expect(find.textContaining('pr-pane → main'), findsNothing);
+      expect(tester.widget<Opacity>(linkIcon).opacity, 0);
+
+      final hoverDetector = tester.widget<FocusableActionDetector>(
+        find.descendant(
+          of: header,
+          matching: find.byType(FocusableActionDetector),
+        ),
+      );
+      hoverDetector.onShowHoverHighlight!(true);
+      await tester.pump();
+      expect(tester.widget<Opacity>(linkIcon).opacity, 1);
+
+      await tester.tap(header);
+      await tester.pumpAndSettle();
+      expect(launcher.opened, ['https://example.test/pr/42']);
+    },
+  );
+
   testWidgets('renders and opens the complete GitLab pipeline tree', (
     tester,
   ) async {

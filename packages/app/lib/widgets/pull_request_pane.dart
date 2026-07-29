@@ -104,7 +104,10 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
               Expanded(
                 child: ListView(
                   children: [
-                    _PullRequestHeader(status: status),
+                    _PullRequestHeader(
+                      status: status,
+                      onOpen: () => _openExternalUrl(context, ref, status.url),
+                    ),
                     if (gitlabPipeline != null && forgeProvidersEnabled)
                       _GitLabPipelineSection(
                         key: const ValueKey('gitlab-pipeline'),
@@ -252,9 +255,10 @@ class _Toolbar extends StatelessWidget {
 }
 
 class _PullRequestHeader extends StatelessWidget {
-  const _PullRequestHeader({required this.status});
+  const _PullRequestHeader({required this.status, required this.onOpen});
 
   final CheckoutPrStatus status;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -267,70 +271,99 @@ class _PullRequestHeader extends StatelessWidget {
     final repository =
         status.projectPath ??
         [status.repoOwner, status.repoName].whereType<String>().join('/');
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text.rich(
-            TextSpan(
-              text: status.title,
+    final numberPrefix = getForgeDefinitionOrNeutral(
+      status.forge.toLowerCase(),
+    ).changeRequestNumberPrefix;
+    return Semantics(
+      button: true,
+      label: 'Open ${status.title}',
+      child: HoverButton(
+        key: const ValueKey('pr-pane-header'),
+        onPressed: onOpen,
+        builder: (context, states) {
+          final hovered = states.contains(WidgetState.hovered);
+          return Padding(
+            key: const ValueKey('pr-pane-header-content'),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (number != null)
+                Text.rich(
                   TextSpan(
-                    text: ' #$number',
-                    style: TextStyle(color: context.tokens.onSurfaceVariant),
+                    text: status.title,
+                    children: [
+                      if (number != null)
+                        TextSpan(
+                          text: ' $numberPrefix$number',
+                          style: TextStyle(
+                            color: context.tokens.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
                   ),
+                  style: const TextStyle(fontSize: 14, height: 1.55),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(state.icon, size: 14, color: state.color),
+                    const SizedBox(width: 4),
+                    Text(
+                      state.label,
+                      style: TextStyle(fontSize: 11, color: state.color),
+                    ),
+                    if (approvals != null) ...[
+                      const SizedBox(width: 8),
+                      Icon(
+                        FluentIcons.completed,
+                        key: const ValueKey('pr-pane-approvals-icon'),
+                        size: 11,
+                        color: approvals.given >= approvals.required
+                            ? context.statusColors.success
+                            : context.tokens.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${approvals.given} of ${approvals.required} approvals',
+                        key: const ValueKey('pr-pane-approvals'),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: context.tokens.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                    if (repository.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          repository,
+                          key: const ValueKey('pr-pane-repository'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: context.tokens.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ] else
+                      const Spacer(),
+                    const SizedBox(width: 4),
+                    Opacity(
+                      key: const ValueKey('pr-pane-header-link-icon'),
+                      opacity: hovered ? 1 : 0,
+                      child: Icon(
+                        FluentIcons.open_in_new_window,
+                        size: 12,
+                        color: context.tokens.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
-            style: const TextStyle(fontSize: 14, height: 1.55),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Icon(state.icon, size: 14, color: state.color),
-              const SizedBox(width: 4),
-              Text(
-                state.label,
-                style: TextStyle(fontSize: 11, color: state.color),
-              ),
-              if (approvals != null) ...[
-                const SizedBox(width: 8),
-                Icon(
-                  FluentIcons.completed,
-                  key: const ValueKey('pr-pane-approvals-icon'),
-                  size: 11,
-                  color: approvals.given >= approvals.required
-                      ? context.statusColors.success
-                      : context.tokens.onSurfaceVariant,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '${approvals.given} of ${approvals.required} approvals',
-                  key: const ValueKey('pr-pane-approvals'),
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: context.tokens.onSurfaceVariant,
-                  ),
-                ),
-              ],
-              if (repository.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '$repository · ${status.headRefName} → ${status.baseRefName}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: context.tokens.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
