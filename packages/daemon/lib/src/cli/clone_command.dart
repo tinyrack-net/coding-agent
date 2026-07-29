@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_command_options.dart';
 import 'cli_output.dart';
 import 'terminal_command.dart';
 
@@ -414,5 +415,5 @@ const cloneHelp =
     'Options:\n'
     '  --dir <path>           Parent directory to clone into\n'
     '  --protocol <protocol>  https or ssh for owner/repo shorthand\n'
-    '  --host <host>          Daemon host target\n'
-    '  --json                 Output in JSON format\n';
+    '  --host <host>          $cliDaemonHostOptionDescription\n'
+    '  --json                 $cliJsonOptionDescription\n';

@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import '../agent/structured_generation.dart';
 import '../server/daemon_config.dart';
 import 'agent_output_schemas.dart';
+import 'cli_command_options.dart';
 import 'cli_duration.dart';
 import 'cli_output.dart';
 import 'provider_model.dart';
@@ -197,9 +198,9 @@ final class AgentRunInvocation {
   static AgentRunInvocation parse(List<String> arguments) {
     final positionals = <String>[];
     final values = <String, String>{};
-    final images = <String>[];
-    final env = <String>[];
-    final labels = <String>[];
+    var images = <String>[];
+    var env = <String>[];
+    var labels = <String>[];
     var background = false;
     var detach = false;
     var format = 'table';
@@ -238,13 +239,13 @@ final class AgentRunInvocation {
           final (option, value) = longOption;
           switch (option) {
             case '--image':
-              images.add(value);
+              images = collectMultiple(value, images);
               continue;
             case '--env':
-              env.add(value);
+              env = collectMultiple(value, env);
               continue;
             case '--label':
-              labels.add(value);
+              labels = collectMultiple(value, labels);
               continue;
             case '--host':
               host = value;
@@ -274,11 +275,20 @@ final class AgentRunInvocation {
         case '--detach':
           detach = true;
         case '--image':
-          images.add(_requiredValue(arguments, ++index, argument));
+          images = collectMultiple(
+            _requiredValue(arguments, ++index, argument),
+            images,
+          );
         case '--env':
-          env.add(_requiredValue(arguments, ++index, argument));
+          env = collectMultiple(
+            _requiredValue(arguments, ++index, argument),
+            env,
+          );
         case '--label':
-          labels.add(_requiredValue(arguments, ++index, argument));
+          labels = collectMultiple(
+            _requiredValue(arguments, ++index, argument),
+            labels,
+          );
         case '--host':
           host = _requiredValue(arguments, ++index, argument);
         case '--json':

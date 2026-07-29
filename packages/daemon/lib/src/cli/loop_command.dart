@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_command_options.dart';
 import 'cli_duration.dart';
 import 'cli_output.dart';
 import 'provider_model.dart';
@@ -164,7 +165,7 @@ final class LoopCliInvocation {
     };
     final positionals = <String>[];
     final values = <String, String>{};
-    final verifyChecks = <String>[];
+    var verifyChecks = <String>[];
     final flags = <String>{};
     var format = 'table';
     var json = false;
@@ -201,7 +202,7 @@ final class LoopCliInvocation {
         }
         final value = arguments[++index];
         if (argument == '--verify-check') {
-          verifyChecks.add(value);
+          verifyChecks = collectMultiple(value, verifyChecks);
         } else {
           values[argument] = value;
         }

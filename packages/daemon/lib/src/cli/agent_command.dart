@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../server/daemon_config.dart';
 import 'agent_logs_command.dart';
+import 'cli_command_options.dart';
 import 'cli_duration.dart';
 import 'cli_output.dart';
 import 'cli_paths.dart';
@@ -312,7 +313,7 @@ final class AgentCliInvocation {
       throw FormatException('Unknown agent action: $action');
     }
     final positionals = <String>[];
-    final labels = <String>[];
+    var labels = <String>[];
     var includeArchived = false;
     var global = false;
     var listModes = false;
@@ -320,7 +321,7 @@ final class AgentCliInvocation {
     String? cwd;
     String? promptOption;
     String? promptFile;
-    final images = <String>[];
+    var images = <String>[];
     var wait = true;
     String? timeout;
     var force = false;
@@ -359,7 +360,7 @@ final class AgentCliInvocation {
               continue;
             case '--image':
               _onlySend(action, option);
-              images.add(value);
+              images = collectMultiple(value, images);
               continue;
             case '--timeout':
               _onlyWait(action, option);
@@ -371,7 +372,7 @@ final class AgentCliInvocation {
                   '$option is only valid for agent ls/update',
                 );
               }
-              labels.add(value);
+              labels = collectMultiple(value, labels);
               continue;
             case '--name':
               if (action != 'update') {
@@ -447,7 +448,10 @@ final class AgentCliInvocation {
           promptFile = _requiredValue(arguments, ++index, argument);
         case '--image':
           _onlySend(action, argument);
-          images.add(_requiredValue(arguments, ++index, argument));
+          images = collectMultiple(
+            _requiredValue(arguments, ++index, argument),
+            images,
+          );
         case '--no-wait':
           _onlySend(action, argument);
           wait = false;
@@ -463,7 +467,10 @@ final class AgentCliInvocation {
               '$argument is only valid for agent ls/update',
             );
           }
-          labels.add(_requiredValue(arguments, ++index, argument));
+          labels = collectMultiple(
+            _requiredValue(arguments, ++index, argument),
+            labels,
+          );
         case '--name':
           if (action != 'update') {
             throw FormatException('$argument is only valid for agent update');
