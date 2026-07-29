@@ -28,6 +28,8 @@ import 'git/workspace_rpc.dart';
 import 'hub/relationship_controller.dart';
 import 'hub/relationship_remote.dart';
 import 'hub/relationship_retry.dart';
+import 'loop/loop_agent_runtime.dart';
+import 'loop/loop_service.dart';
 import 'providers/agent_client.dart';
 import 'providers/native/credential_store.dart';
 import 'providers/native/native_client.dart';
@@ -106,6 +108,7 @@ class DaemonServerHandle {
     required this.pairingOffer,
     required this.relayTransport,
     required this.hubRelationships,
+    required this.loops,
     required this.schedules,
     required this.voiceBridge,
     required this.serviceProxyStandalone,
@@ -120,6 +123,7 @@ class DaemonServerHandle {
   final LocalPairingOffer pairingOffer;
   final RelayTransportController? relayTransport;
   final HubRelationshipController hubRelationships;
+  final LoopService loops;
   final ScheduleService schedules;
   final VoiceBridgeRegistry voiceBridge;
   final ServiceProxyStandaloneServer? serviceProxyStandalone;
@@ -246,6 +250,7 @@ Future<DaemonServerHandle> startDaemonServer({
   late final WorkspaceV2Service workspaceV2;
   late final CreateAgentLifecycleDispatch createAgentLifecycle;
   late final WorkspaceRegistries workspaceRegistries;
+  late final LoopService loops;
   late final ScheduleService schedules;
   final voiceBridge = VoiceBridgeRegistry();
   final agentDirectorySubscriptions = <String, AgentDirectorySubscription>{};
@@ -991,6 +996,17 @@ Future<DaemonServerHandle> startDaemonServer({
       return owner?.workspaceId;
     },
   );
+  final loopRuntime = LoopAgentRuntime(
+    manager,
+    workspaceV2,
+    resolveCreateMode: paseoProviderCatalog.resolveCreateAgentMode,
+  );
+  loops = LoopService(
+    home: paths.dataDir,
+    createAgentSession: loopRuntime.createSession,
+    resolveWorkspace: loopRuntime.resolveWorkspace,
+    onError: (error, stack) => log!('loop service error: $error\n$stack'),
+  );
   final scheduleRunner = ScheduleAgentRunner(
     manager,
     workspaceV2,
@@ -1446,6 +1462,8 @@ Future<DaemonServerHandle> startDaemonServer({
     if (agentCommandsResponse != null) return agentCommandsResponse;
     final scheduleResponse = await schedules.handle(message);
     if (scheduleResponse != null) return scheduleResponse;
+    final loopResponse = await loops.handle(message);
+    if (loopResponse != null) return loopResponse;
     final terminalResponse = await terminalV2.handle(connection, message);
     if (terminalResponse != null) return terminalResponse;
     final workspaceScriptResponse = await workspaceScripts.handle(
@@ -1614,6 +1632,7 @@ Future<DaemonServerHandle> startDaemonServer({
     stopConfigBroadcast();
     scriptHealth.stop();
     schedules.stop();
+    await loops.prepareForDaemonShutdown();
     stopSpeechReadiness();
     await voiceSessions.dispose();
     speechService?.stop();
@@ -1700,6 +1719,7 @@ Future<DaemonServerHandle> startDaemonServer({
   speechService?.start();
   scriptHealth.start();
   await schedules.start();
+  await loops.initialize();
   await hubRelationships.start();
 
   if (effectiveRelay?.enabled ?? false) {
@@ -1723,6 +1743,7 @@ Future<DaemonServerHandle> startDaemonServer({
     pairingOffer: pairingOffer,
     relayTransport: relayTransport,
     hubRelationships: hubRelationships,
+    loops: loops,
     schedules: schedules,
     voiceBridge: voiceBridge,
     serviceProxyStandalone: serviceProxyStandalone,

@@ -42,6 +42,7 @@ export 'src/messages/directory_suggestions.dart';
 export 'src/messages/directory_updates.dart';
 export 'src/messages/hello.dart';
 export 'src/messages/hub_management.dart';
+export 'src/messages/loop.dart';
 export 'src/messages/terminal.dart';
 export 'src/messages/terminal_v2.dart';
 export 'src/messages/terminal_state.dart';

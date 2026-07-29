@@ -467,45 +467,65 @@
     },
     {
       "id": "cli-command:loop-inspect",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/daemon_loop_e2e_test.dart"
+      ],
+      "notes": "Matches frozen loop inspect full JSON and key/value table including iteration summaries."
     },
     {
       "id": "cli-command:loop-logs",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/daemon_loop_e2e_test.dart"
+      ],
+      "notes": "Matches frozen cursor polling, log rendering, poll interval validation, and terminal-state exit."
     },
     {
       "id": "cli-command:loop-ls",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/daemon_loop_e2e_test.dart"
+      ],
+      "notes": "Matches frozen six-column list and JSON row output."
     },
     {
       "id": "cli-command:loop-run",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/loop/loop_service.dart; packages/daemon/lib/src/loop/loop_agent_runtime.dart",
+      "evidence": [
+        "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/loop/loop_service_test.dart",
+        "packages/daemon/test/daemon_loop_e2e_test.dart"
+      ],
+      "notes": "Matches frozen provider/model resolution, run options, duration parsing, daemon creation, and iterative worker verification lifecycle."
     },
     {
       "id": "cli-command:loop-stop",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/loop/loop_service.dart",
+      "evidence": [
+        "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/loop/loop_service_test.dart",
+        "packages/daemon/test/daemon_loop_e2e_test.dart"
+      ],
+      "notes": "Matches frozen prefix lookup, active provider cancellation, stopped persistence, and output schema."
     },
     {
       "id": "cli-command:loop-types",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/loop.dart; packages/daemon/lib/src/cli/loop_command.dart",
+      "evidence": [
+        "packages/protocol/test/loop_test.dart",
+        "packages/daemon/test/cli/loop_command_test.dart"
+      ],
+      "notes": "All frozen loop record, iteration, log, payload, and client-facing fields are typed and validated."
     },
     {
       "id": "cli-command:onboard",
@@ -9505,52 +9525,70 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/loop/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/cli/loop_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/daemon_loop_e2e_test.dart"
+      ],
+      "notes": "Registers run, ls, inspect, logs, and stop with matching host and JSON option boundaries."
     },
     {
       "id": "source-unit:packages/cli/src/commands/loop/inspect.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/loop_command_test.dart"
+      ],
+      "notes": "Frozen inspect behavior and serialization are verified."
     },
     {
       "id": "source-unit:packages/cli/src/commands/loop/logs.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/daemon_loop_e2e_test.dart"
+      ],
+      "notes": "Frozen streaming log polling and rendering are verified."
     },
     {
       "id": "source-unit:packages/cli/src/commands/loop/ls.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/loop_command_test.dart"
+      ],
+      "notes": "Frozen list schema and output are verified."
     },
     {
       "id": "source-unit:packages/cli/src/commands/loop/run.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/daemon_loop_e2e_test.dart"
+      ],
+      "notes": "Frozen run options, input normalization, validation, and output are verified."
     },
     {
       "id": "source-unit:packages/cli/src/commands/loop/stop.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/daemon_loop_e2e_test.dart"
+      ],
+      "notes": "Frozen stop request and output behavior are verified."
     },
     {
       "id": "source-unit:packages/cli/src/commands/loop/types.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/loop.dart",
+      "evidence": [
+        "packages/protocol/test/loop_test.dart"
+      ],
+      "notes": "Frozen loop CLI payload and record types are represented by validated Dart models."
     },
     {
       "id": "source-unit:packages/cli/src/commands/onboard.ts",
@@ -10927,10 +10965,13 @@
     },
     {
       "id": "source-unit:packages/protocol/src/loop/rpc-schemas.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/loop.dart",
+      "evidence": [
+        "packages/protocol/test/loop_test.dart",
+        "packages/daemon/test/daemon_loop_e2e_test.dart"
+      ],
+      "notes": "Exact loop RPC names, request constraints, response envelopes, records, iterations, checks, and logs cross the real socket."
     },
     {
       "id": "source-unit:packages/protocol/src/messages.ts",
@@ -11113,10 +11154,12 @@
     },
     {
       "id": "source-unit:packages/protocol/src/tool-call-display.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/loop/loop_agent_runtime.dart",
+      "evidence": [
+        "packages/daemon/test/loop/loop_agent_runtime_test.dart"
+      ],
+      "notes": "Canonical detail names, summaries, Paseo tool humanization, external input rendering, overrides, whitespace normalization, and truncation are ported for loop logs; reusable protocol API and all product consumers remain pending."
     },
     {
       "id": "source-unit:packages/protocol/src/tool-name-normalization.ts",
@@ -11252,12 +11295,14 @@
     {
       "id": "source-unit:packages/server/src/server/agent/activity-curator.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/loop/loop_agent_runtime.dart",
       "evidence": [
         "packages/daemon/test/agent_mcp_tools_test.dart",
-        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/daemon/test/loop/loop_agent_runtime_test.dart",
+        "packages/daemon/test/daemon_loop_e2e_test.dart"
       ],
-      "notes": "Core frozen activity projection and curation are ported for user, assistant, thought, tool, task, error, compaction, projected-limit counts, and empty output. Fork-context attachment and the remaining provider-specific summaries are pending."
+      "notes": "Core projected curation and the loop service single-event path cover user, assistant, thought, canonical/external/subagent tool, task, error, compaction, limits, and empty output. Fork-context attachment remains pending."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-archive.ts",
@@ -12717,10 +12762,14 @@
     },
     {
       "id": "source-unit:packages/server/src/server/loop-service.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/loop/loop_service.dart; packages/daemon/lib/src/loop/loop_agent_runtime.dart; packages/daemon/lib/src/daemon_server.dart",
+      "evidence": [
+        "packages/daemon/test/loop/loop_service_test.dart",
+        "packages/daemon/test/loop/loop_agent_runtime_test.dart",
+        "packages/daemon/test/daemon_loop_e2e_test.dart"
+      ],
+      "notes": "Implements persistent iterative workers, exact single-item activity logs, shell and structured verification, retry limits, sleep, stop, log cursors, prefix resolution, internal-agent cleanup, workspace placement, and daemon-restart recovery."
     },
     {
       "id": "source-unit:packages/server/src/server/managed-processes/managed-processes.ts",
