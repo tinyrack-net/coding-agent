@@ -21,20 +21,42 @@ const _status = CheckoutPrStatus(
   checks: [],
 );
 
+const _gitLabStatus = CheckoutPrStatus(
+  forge: 'gitlab',
+  projectPath: 'acme/app',
+  number: 14,
+  url: 'https://gitlab.com/acme/app/-/merge_requests/14',
+  title: 'Wire up pipelines',
+  state: 'OPEN',
+  baseRefName: 'main',
+  headRefName: 'feature',
+  isMerged: false,
+  isDraft: false,
+  mergeable: 'MERGEABLE',
+  checksStatus: 'failure',
+  reviewDecision: null,
+  repoOwner: 'acme',
+  repoName: 'app',
+  checks: [],
+);
+
 PullRequestTimelineComment _comment(
   String id, {
+  String? body,
+  String author = '',
+  String? url,
   String? reviewId,
   String? threadId,
   bool? resolved,
   bool outdated = false,
 }) => PullRequestTimelineComment(
   id: id,
-  author: id,
+  author: author.isEmpty ? id : author,
   authorUrl: null,
   avatarUrl: null,
-  body: 'body $id',
+  body: body ?? 'body $id',
   createdAt: 1760000000,
-  url: 'https://example.test/$id',
+  url: url ?? 'https://example.test/$id',
   reviewId: reviewId,
   threadId: threadId,
   threadIsResolved: resolved,
@@ -51,6 +73,121 @@ PullRequestTimelineComment _comment(
 );
 
 void main() {
+  test('comment and review attachments preserve frozen forge metadata', () {
+    final comment = _comment(
+      'comment-1',
+      body: 'Looks good.',
+      author: 'octocat',
+      url: 'https://example.test/pull/42#issuecomment-1',
+    );
+    const review = PullRequestTimelineReview(
+      id: 'review-1',
+      author: 'reviewer',
+      authorUrl: null,
+      avatarUrl: null,
+      body: 'Please simplify this.',
+      createdAt: 1760000000,
+      url: 'https://example.test/pull/42#pullrequestreview-1',
+      reviewState: PullRequestTimelineReviewState.commented,
+    );
+
+    final commentAttachment = buildPullRequestActivityAttachment(
+      status: _status,
+      activity: comment,
+    )!;
+    final reviewAttachment = buildPullRequestActivityAttachment(
+      status: _status,
+      activity: review,
+    )!;
+
+    expect(commentAttachment.kind, 'forge.change_request_comment');
+    expect(commentAttachment.id, '42:comment-1');
+    expect(commentAttachment.title, 'octocat');
+    expect(commentAttachment.subtitle, '#42 Match Paseo');
+    expect(commentAttachment.url, comment.url);
+    expect(commentAttachment.text, startsWith('GitHub pull request comment'));
+    expect(commentAttachment.text, contains('Author: octocat'));
+    expect(commentAttachment.text, endsWith('\n\nLooks good.'));
+    expect(reviewAttachment.kind, 'forge.change_request_review');
+    expect(reviewAttachment.id, '42:review-1');
+    expect(reviewAttachment.title, 'reviewer');
+    expect(reviewAttachment.subtitle, '#42 Match Paseo');
+    expect(reviewAttachment.url, review.url);
+    expect(reviewAttachment.text, startsWith('GitHub pull request review'));
+    expect(reviewAttachment.text, contains('State: commented'));
+    expect(reviewAttachment.text, endsWith('\n\nPlease simplify this.'));
+  });
+
+  test('GitLab attachments use merge-request nouns and number prefix', () {
+    final comment = buildPullRequestActivityAttachment(
+      status: _gitLabStatus,
+      activity: _comment(
+        'comment-1',
+        body: 'Looks good.',
+        author: 'octocat',
+        url: 'https://gitlab.com/acme/app/-/merge_requests/14#note_401',
+      ),
+    )!;
+    const check = CheckoutPrCheck(
+      name: 'pipeline',
+      status: 'failure',
+      url: 'https://gitlab.com/acme/app/-/pipelines/99',
+    );
+    final checkAttachment = buildPullRequestCheckAttachment(
+      status: _gitLabStatus,
+      check: check,
+    );
+
+    expect(comment.subtitle, '!14 Wire up pipelines');
+    expect(comment.text, startsWith('GitLab merge request comment'));
+    expect(comment.text, contains('Merge request: !14 Wire up pipelines'));
+    expect(checkAttachment.kind, 'forge.change_request_check');
+    expect(checkAttachment.id, '14:check:pipeline');
+    expect(checkAttachment.subtitle, '!14 Wire up pipelines');
+    expect(checkAttachment.url, check.url);
+    expect(checkAttachment.text, startsWith('GitLab merge request check'));
+    expect(
+      checkAttachment.text,
+      contains('Merge request URL: ${_gitLabStatus.url}'),
+    );
+  });
+
+  test('bodyless activity eligibility matches frozen review semantics', () {
+    const approval = PullRequestTimelineReview(
+      id: 'approval',
+      author: 'reviewer',
+      authorUrl: null,
+      avatarUrl: null,
+      body: ' ',
+      createdAt: 1760000000,
+      url: 'https://example.test/approval',
+      reviewState: PullRequestTimelineReviewState.approved,
+    );
+    const changesRequested = PullRequestTimelineReview(
+      id: 'changes',
+      author: 'reviewer',
+      authorUrl: null,
+      avatarUrl: null,
+      body: '',
+      createdAt: 1760000000,
+      url: 'https://example.test/changes',
+      reviewState: PullRequestTimelineReviewState.changesRequested,
+    );
+
+    expect(canAddPullRequestActivityToChat(approval), isFalse);
+    expect(
+      buildPullRequestActivityAttachment(status: _status, activity: approval),
+      isNull,
+    );
+    expect(canAddPullRequestActivityToChat(changesRequested), isTrue);
+    final attachment = buildPullRequestActivityAttachment(
+      status: _status,
+      activity: changesRequested,
+    )!;
+    expect(attachment.text, contains('State: changes_requested'));
+    expect(attachment.text, isNot(endsWith('\n\n')));
+  });
+
   test('groups reply chains and nests them under their review', () {
     const review = PullRequestTimelineReview(
       id: 'review-1',
@@ -128,6 +265,66 @@ void main() {
     expect(combined.text, contains('root'));
     expect(combined.text, contains('reply'));
     expect(combined.text, contains('this thread is outdated'));
+  });
+
+  test('thread attachment keeps the original root URL after filtering', () {
+    final emptyRoot = _comment(
+      'empty-root',
+      body: ' ',
+      url: 'https://example.test/original-root',
+      threadId: 'PRRT_root',
+    );
+    final reply = _comment(
+      'reply',
+      body: 'Actionable reply.',
+      url: 'https://example.test/reply',
+      threadId: 'PRRT_root',
+    );
+    final thread = PullRequestThreadEntry(
+      id: 'thread:PRRT_root',
+      comments: [emptyRoot, reply],
+    );
+
+    final attachment = buildPullRequestThreadAttachment(
+      status: _status,
+      thread: thread,
+    )!;
+
+    expect(attachment.url, emptyRoot.url);
+    expect(attachment.text, contains('URL: ${emptyRoot.url}'));
+    expect(attachment.text, isNot(contains('URL: ${reply.url}')));
+    expect(attachment.text, contains('reply ('));
+    expect(attachment.text, isNot(contains('empty-root (')));
+  });
+
+  test('thread attachment only emits location resolution state', () {
+    final thread = PullRequestThreadEntry(
+      id: 'thread:general',
+      comments: [_comment('root', body: 'Discuss this.')],
+      isResolved: true,
+    );
+
+    final attachment = buildPullRequestThreadAttachment(
+      status: _status,
+      thread: thread,
+    )!;
+
+    expect(attachment.text, isNot(contains('Thread state:')));
+  });
+
+  test('thread attachment is null when every comment body is blank', () {
+    final thread = PullRequestThreadEntry(
+      id: 'thread:blank',
+      comments: [
+        _comment('root', body: ' '),
+        _comment('reply', body: '\n'),
+      ],
+    );
+
+    expect(
+      buildPullRequestThreadAttachment(status: _status, thread: thread),
+      isNull,
+    );
   });
 
   test('formats path-only locations and year-scale activity ages', () {
@@ -239,9 +436,47 @@ void main() {
       ),
       isFalse,
     );
+    expect(
+      canAddPullRequestCheckLogsToChat(
+        const CheckoutPrCheck(name: 'Build', status: 'pending', url: null),
+      ),
+      isFalse,
+    );
+    expect(
+      canAddPullRequestCheckLogsToChat(
+        const CheckoutPrCheck(name: 'Build', status: 'skipped', url: null),
+      ),
+      isFalse,
+    );
     expect(attachment.id, '42:check:Lint');
     expect(attachment.url, isNull);
     expect(attachment.text, contains('Check URL: null'));
     expect(attachment.text, isNot(contains('Conclusion:')));
+  });
+
+  test('same-named checks remain distinct by check-run id', () {
+    const ubuntu = CheckoutPrCheck(
+      name: 'tests',
+      status: 'failure',
+      url: 'https://example.test/ubuntu',
+      checkRunId: 12345,
+      workflowRunId: 456,
+    );
+    const windows = CheckoutPrCheck(
+      name: 'tests',
+      status: 'failure',
+      url: 'https://example.test/windows',
+      checkRunId: 67890,
+      workflowRunId: 456,
+    );
+
+    expect(
+      buildPullRequestCheckAttachment(status: _status, check: ubuntu).id,
+      '42:check-run:12345',
+    );
+    expect(
+      buildPullRequestCheckAttachment(status: _status, check: windows).id,
+      '42:check-run:67890',
+    );
   });
 }

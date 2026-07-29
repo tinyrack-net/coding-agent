@@ -5197,14 +5197,14 @@
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/context-attachment.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/core/pull_request_context.dart",
       "evidence": [
         "packages/app/test/pull_request_context_test.dart",
         "packages/app/test/pull_request_pane_test.dart",
         "packages/app/test/composer_test.dart"
       ],
-      "notes": "PR activity, unresolved review-thread, and failed-check detail or metadata attachments match the frozen formatter and flow into the composer; remaining non-text attachment variants and cross-forge visual conformance keep this partial."
+      "notes": "Ports every frozen context-attachment builder and eligibility rule for comments, reviews, whole review threads, and failed checks. GitHub and GitLab noun/prefix projection, bodyless review semantics, stable check-run identities, metadata fallback, output/annotation/failed-job formatting, truncation notes, original-root URL retention after blank-body filtering, and location-owned resolution state match the frozen source. Widget and composer tests prove deduplicated Add to chat delivery through the real Flutter attachment boundary."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/data.ts",

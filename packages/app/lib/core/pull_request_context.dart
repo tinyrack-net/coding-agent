@@ -191,11 +191,11 @@ WorkspaceContextAttachment? buildPullRequestThreadAttachment({
   required PullRequestThreadEntry thread,
 }) {
   final number = status.number?.toInt();
+  final root = thread.comments.firstOrNull;
   final comments = thread.comments
       .where((comment) => comment.body.trim().isNotEmpty)
       .toList(growable: false);
-  if (number == null || comments.isEmpty) return null;
-  final root = comments.first;
+  if (number == null || comments.isEmpty || root == null) return null;
   final forge = getForgeDefinitionOrNeutral(status.forge.toLowerCase());
   final noun = _capitalize(forge.changeRequestNoun);
   final title = thread.location == null
@@ -208,7 +208,7 @@ WorkspaceContextAttachment? buildPullRequestThreadAttachment({
     'URL: ${root.url}',
     if (thread.location case final location?)
       'Location: ${formatPullRequestThreadPath(location)}',
-    if (thread.isResolved case final resolved?)
+    if (thread.location?.isResolved case final resolved?)
       'Thread state: ${resolved ? 'resolved' : 'unresolved'}',
     if (thread.location?.isOutdated == true)
       'Note: this thread is outdated (the code it refers to has changed)',
