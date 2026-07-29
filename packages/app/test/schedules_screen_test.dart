@@ -13,6 +13,7 @@ import 'package:coding_agent_app/state/schedule_project_targets_provider.dart';
 import 'package:coding_agent_app/state/schedules_provider.dart';
 import 'package:coding_agent_app/widgets/adaptive_modal_sheet.dart';
 import 'package:coding_agent_app/widgets/fluent/select_field.dart';
+import 'package:coding_agent_app/widgets/provider_icon.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -560,15 +561,41 @@ void main() {
     ]);
     await _pumpWithNotifier(tester, notifier);
     expect(find.text('Paused'), findsOneWidget);
+    final pausedBadge =
+        tester
+                .widget<Container>(
+                  find.byKey(const ValueKey('schedule-status-paused')),
+                )
+                .decoration
+            as BoxDecoration;
+    expect(pausedBadge.color, paseoPaletteFor(AppThemeName.dark).surface3);
+    expect(
+      (pausedBadge.border! as Border).top.color,
+      paseoPaletteFor(AppThemeName.dark).border,
+    );
+    expect(find.byKey(const ValueKey('schedule-row-paused')), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('Edit schedule Active schedule'),
+      findsOneWidget,
+    );
+    expect(find.byType(ProviderIcon), findsOneWidget);
 
     await tester.tap(find.byIcon(FluentIcons.more_vertical));
     await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('schedule-menu-resume-paused')),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Resume schedule'));
     await tester.pumpAndSettle();
     expect(notifier.resumed, ['paused']);
 
     await tester.tap(find.byIcon(FluentIcons.more_vertical));
     await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('schedule-menu-run-paused')),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Run now'));
     await tester.pumpAndSettle();
     expect(notifier.ran, ['paused']);
@@ -581,6 +608,39 @@ void main() {
     await tester.tap(find.text('Delete').last);
     await tester.pumpAndSettle();
     expect(notifier.deleted, ['paused']);
+  });
+
+  testWidgets('row keeps its kebab and item-specific pending state', (
+    tester,
+  ) async {
+    final notifier = _FakeSchedulesNotifier([
+      _schedule(id: 'pending', status: ScheduleStatus.paused),
+    ])..resumeCompleter = Completer<ScheduleSummary>();
+    await _pumpWithNotifier(tester, notifier);
+
+    await tester.tap(find.byKey(const ValueKey('schedule-kebab-pending')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Resume schedule'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(notifier.resumed, ['pending']);
+    expect(
+      find.byKey(const ValueKey('schedule-kebab-pending')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('schedule-kebab-state-pending-resume')),
+      findsOneWidget,
+    );
+
+    notifier.resumeCompleter!.complete(
+      _schedule(id: 'pending', status: ScheduleStatus.active),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      find.byKey(const ValueKey('schedule-kebab-state-pending-idle')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('agent target and every cadence render without execution menu', (
@@ -614,13 +674,16 @@ void main() {
     );
     await _pump(tester, [schedule]);
 
-    expect(find.text('Schedule'), findsOneWidget);
+    expect(find.text('Heartbeat'), findsOneWidget);
     expect(find.text('Agent unavailable'), findsOneWidget);
-    expect(find.textContaining('Every'), findsOneWidget);
+    expect(find.textContaining('Every 1 hour'), findsOneWidget);
+    expect(find.bySemanticsLabel('Edit heartbeat Heartbeat'), findsOneWidget);
+    expect(find.bySemanticsLabel('Heartbeat actions'), findsOneWidget);
     await tester.tap(find.byIcon(FluentIcons.more_vertical));
     await tester.pumpAndSettle();
+    expect(find.text('Edit heartbeat'), findsOneWidget);
     expect(find.text('Run now'), findsNothing);
-    expect(find.text('Delete schedule'), findsOneWidget);
+    expect(find.text('Delete heartbeat'), findsOneWidget);
   });
 
   testWidgets('agent-target edit exposes only target and cadence', (
@@ -652,7 +715,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.text('Schedule'));
+    await tester.tap(find.byKey(const ValueKey('schedule-row-heartbeat')));
     await tester.pumpAndSettle();
 
     expect(find.text('Edit heartbeat'), findsOneWidget);
@@ -959,6 +1022,7 @@ class _FakeSchedulesNotifier extends AggregatedSchedulesNotifier {
   String? updatedId;
   String? updatedServerId;
   Map<String, Object?>? updatedChanges;
+  Completer<ScheduleSummary>? resumeCompleter;
 
   @override
   Future<AggregatedSchedulesState> build() async =>
@@ -995,6 +1059,7 @@ class _FakeSchedulesNotifier extends AggregatedSchedulesNotifier {
   @override
   Future<ScheduleSummary> resume(String serverId, String scheduleId) async {
     resumed.add(scheduleId);
+    if (resumeCompleter != null) return await resumeCompleter!.future;
     return _schedule(id: scheduleId);
   }
 

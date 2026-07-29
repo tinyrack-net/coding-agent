@@ -3299,12 +3299,14 @@
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/schedule-row.tsx",
-      "status": "partial",
-      "implementation": "packages/app/lib/screens/schedules_screen.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/screens/schedules_screen.dart; packages/app/lib/state/schedule_row_model.dart; packages/app/lib/widgets/provider_icon.dart; packages/app/lib/core/theme.dart",
       "evidence": [
-        "packages/app/test/schedules_screen_test.dart"
+        "packages/app/test/schedules_screen_test.dart",
+        "packages/app/test/schedule_row_model_test.dart",
+        "packages/app/test/appearance_provider_test.dart"
       ],
-      "notes": null
+      "notes": "The Flutter row now matches the frozen component contract for title and product fallback, cadence and relative-time boundaries, multi-host metadata ordering, provider glyph, 16px row geometry, non-compact hover and pressed surfaces, exact active/error/muted badge tokens, row and action-menu accessibility labels, product-specific heartbeat copy, execution-action visibility, stable interaction keys, and item-specific pending states while retaining the kebab trigger. Focused model, widget, and palette regressions cover the behavior and theme tokens."
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/schedules-table.tsx",

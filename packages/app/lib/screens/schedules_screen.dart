@@ -16,6 +16,7 @@ import '../state/host_registry_provider.dart';
 import '../state/providers_snapshot_provider.dart';
 import '../state/schedule_form_model.dart';
 import '../state/schedule_project_targets_provider.dart';
+import '../state/schedule_row_model.dart';
 import '../state/schedules_provider.dart';
 import '../widgets/adaptive_modal_sheet.dart';
 import '../widgets/combined_model_selector.dart';
@@ -358,20 +359,37 @@ class _ScheduleRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final schedule = row.entry.schedule;
+    final palette = context.paseoPalette;
     final status = switch (row.state) {
-      _ScheduleDerivedState.active => ('Active', context.statusColors.success),
-      _ScheduleDerivedState.paused => ('Paused', context.statusColors.neutral),
+      _ScheduleDerivedState.active => (
+        'Active',
+        const Color(0xFF4ADE80),
+        const Color(0xFF14532D),
+        const Color(0xFF166534),
+      ),
+      _ScheduleDerivedState.paused => (
+        'Paused',
+        palette.foregroundMuted,
+        palette.surface3,
+        palette.border,
+      ),
       _ScheduleDerivedState.expired => (
         'Expired',
-        context.statusColors.neutral,
+        palette.foregroundMuted,
+        palette.surface3,
+        palette.border,
       ),
       _ScheduleDerivedState.finished => (
         'Finished',
-        context.statusColors.neutral,
+        palette.foregroundMuted,
+        palette.surface3,
+        palette.border,
       ),
       _ScheduleDerivedState.targetGone => (
         'Target gone',
-        context.statusColors.danger,
+        const Color(0xFFEF4444),
+        const Color(0xFF7F1D1D),
+        const Color(0xFF991B1B),
       ),
     };
     return Column(
@@ -382,88 +400,107 @@ class _ScheduleRow extends ConsumerWidget {
               decoration: BoxDecoration(color: context.tokens.outlineVariant),
             ),
           ),
-        HoverButton(
-          onPressed: onEdit,
-          builder: (context, states) {
-            final hovered = states.contains(WidgetState.hovered);
-            final pressed = states.contains(WidgetState.pressed);
-            return Container(
-              color: pressed
-                  ? context.tokens.outlineVariant
-                  : hovered
-                  ? context.fluentTheme.cardColor
-                  : Colors.transparent,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 18,
-                    child: Icon(
-                      _providerIcon(row.provider),
-                      size: 16,
-                      color: context.tokens.onSurfaceVariant,
+        Semantics(
+          key: ValueKey('schedule-row-${schedule.id}'),
+          container: true,
+          explicitChildNodes: true,
+          button: true,
+          label:
+              'Edit ${scheduleProductName(schedule).toLowerCase()} '
+              '${resolveScheduleTitle(schedule)}',
+          child: HoverButton(
+            onPressed: onEdit,
+            builder: (context, states) {
+              final compact =
+                  MediaQuery.sizeOf(context).width <
+                  adaptiveModalCompactBreakpoint;
+              final hovered = !compact && states.contains(WidgetState.hovered);
+              final pressed = states.contains(WidgetState.pressed);
+              return Container(
+                color: pressed
+                    ? palette.surface3
+                    : hovered
+                    ? palette.surface2
+                    : Colors.transparent,
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    SizedBox.square(
+                      dimension: 16,
+                      child: row.provider == null
+                          ? null
+                          : ProviderIcon(
+                              provider: row.provider!,
+                              size: 16,
+                              color: palette.foregroundMuted,
+                            ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _title(schedule),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: context.textStyles.labelLarge,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          row.targetLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: context.tokens.onSurfaceVariant,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            resolveScheduleTitle(schedule),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: palette.foreground,
+                              fontSize: 16,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          _meta(
-                            schedule,
-                            state: row.state,
-                            serverName: row.entry.serverName,
-                            singleHost: singleHost,
+                          const SizedBox(height: 4),
+                          Text(
+                            row.targetLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: palette.foregroundMuted,
+                              fontSize: 14,
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: context.textStyles.bodySmall?.copyWith(
-                            color: context.tokens.onSurfaceVariant,
+                          const SizedBox(height: 4),
+                          Text(
+                            buildScheduleRowMeta(
+                              schedule,
+                              active: row.state == _ScheduleDerivedState.active,
+                              serverName: row.entry.serverName,
+                              singleHost: singleHost,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: palette.foregroundMuted,
+                              fontSize: 12,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: status.$2),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      status.$1,
-                      style: context.textStyles.bodySmall?.copyWith(
-                        color: status.$2,
+                        ],
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  _ScheduleMenu(row: row, onEdit: onEdit),
-                ],
-              ),
-            );
-          },
+                    const SizedBox(width: 12),
+                    Container(
+                      key: ValueKey('schedule-status-${schedule.id}'),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: status.$3,
+                        border: Border.all(color: status.$4),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        status.$1,
+                        style: TextStyle(color: status.$2, fontSize: 12),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _ScheduleMenu(row: row, onEdit: onEdit),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ],
     );
@@ -480,95 +517,152 @@ class _ScheduleMenu extends ConsumerStatefulWidget {
 }
 
 class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
-  var _pending = false;
+  _SchedulePendingAction? _pending;
 
-  Future<void> _run(Future<void> Function() action) async {
-    setState(() => _pending = true);
+  Future<void> _run(
+    _SchedulePendingAction pending,
+    Future<void> Function() action,
+  ) async {
+    setState(() => _pending = pending);
     try {
       await action();
     } catch (error) {
       if (mounted) AppToast.show(context, 'Schedule action failed: $error');
     } finally {
-      if (mounted) setState(() => _pending = false);
+      if (mounted) setState(() => _pending = null);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_pending) {
-      return const SizedBox(width: 28, height: 28, child: ProgressRing());
-    }
     final notifier = ref.read(aggregatedSchedulesProvider.notifier);
     final schedule = widget.row.entry.schedule;
     final serverId = widget.row.entry.serverId;
+    final productName = scheduleProductName(schedule);
+    final productNameLower = productName.toLowerCase();
     final canExecute =
         schedule.target is NewAgentScheduleTarget &&
         (widget.row.state == _ScheduleDerivedState.active ||
             widget.row.state == _ScheduleDerivedState.paused);
-    return DropDownButton(
-      title: const Icon(FluentIcons.more_vertical, size: 14),
-      items: [
-        MenuFlyoutItem(
-          leading: const Icon(FluentIcons.edit, size: 14),
-          text: const Text('Edit schedule'),
-          onPressed: widget.onEdit,
+    return Semantics(
+      key: ValueKey('schedule-kebab-${schedule.id}'),
+      container: true,
+      button: true,
+      label: '$productName actions',
+      child: DropDownButton(
+        key: ValueKey(
+          'schedule-kebab-state-${schedule.id}-${_pending?.name ?? 'idle'}',
         ),
-        if (schedule.target is NewAgentScheduleTarget) ...[
-          if (schedule.status == ScheduleStatus.paused)
+        title: const Icon(FluentIcons.more_vertical, size: 14),
+        items: [
+          MenuFlyoutItem(
+            key: ValueKey('schedule-menu-edit-${schedule.id}'),
+            leading: const Icon(FluentIcons.edit, size: 14),
+            text: Text('Edit $productNameLower'),
+            onPressed: widget.onEdit,
+          ),
+          if (schedule.target is NewAgentScheduleTarget) ...[
+            if (schedule.status == ScheduleStatus.paused)
+              MenuFlyoutItem(
+                key: ValueKey('schedule-menu-resume-${schedule.id}'),
+                leading: _menuLeading(
+                  FluentIcons.play,
+                  _pending == _SchedulePendingAction.resume,
+                ),
+                text: Text(
+                  _pending == _SchedulePendingAction.resume
+                      ? 'Resuming...'
+                      : 'Resume schedule',
+                ),
+                onPressed:
+                    canExecute && _pending != _SchedulePendingAction.resume
+                    ? () => _run(_SchedulePendingAction.resume, () async {
+                        await notifier.resume(serverId, schedule.id);
+                      })
+                    : null,
+              )
+            else
+              MenuFlyoutItem(
+                key: ValueKey('schedule-menu-pause-${schedule.id}'),
+                leading: _menuLeading(
+                  FluentIcons.pause,
+                  _pending == _SchedulePendingAction.pause,
+                ),
+                text: Text(
+                  _pending == _SchedulePendingAction.pause
+                      ? 'Pausing...'
+                      : 'Pause schedule',
+                ),
+                onPressed:
+                    canExecute && _pending != _SchedulePendingAction.pause
+                    ? () => _run(_SchedulePendingAction.pause, () async {
+                        await notifier.pause(serverId, schedule.id);
+                      })
+                    : null,
+              ),
             MenuFlyoutItem(
-              leading: const Icon(FluentIcons.play, size: 14),
-              text: const Text('Resume schedule'),
-              onPressed: canExecute
-                  ? () => _run(() async {
-                      await notifier.resume(serverId, schedule.id);
-                    })
-                  : null,
-            )
-          else
-            MenuFlyoutItem(
-              leading: const Icon(FluentIcons.pause, size: 14),
-              text: const Text('Pause schedule'),
-              onPressed: canExecute
-                  ? () => _run(() async {
-                      await notifier.pause(serverId, schedule.id);
+              key: ValueKey('schedule-menu-run-${schedule.id}'),
+              leading: _menuLeading(
+                FluentIcons.refresh,
+                _pending == _SchedulePendingAction.runNow,
+              ),
+              text: Text(
+                _pending == _SchedulePendingAction.runNow
+                    ? 'Starting...'
+                    : 'Run now',
+              ),
+              onPressed: canExecute && _pending != _SchedulePendingAction.runNow
+                  ? () => _run(_SchedulePendingAction.runNow, () async {
+                      await notifier.runOnce(serverId, schedule.id);
                     })
                   : null,
             ),
+          ],
+          const MenuFlyoutSeparator(),
           MenuFlyoutItem(
-            leading: const Icon(FluentIcons.refresh, size: 14),
-            text: const Text('Run now'),
-            onPressed: canExecute
-                ? () => _run(() async {
-                    await notifier.runOnce(serverId, schedule.id);
-                  })
-                : null,
+            key: ValueKey('schedule-menu-delete-${schedule.id}'),
+            leading: _pending == _SchedulePendingAction.delete
+                ? const SizedBox.square(
+                    dimension: 14,
+                    child: ProgressRing(strokeWidth: 2),
+                  )
+                : Icon(
+                    FluentIcons.delete,
+                    size: 14,
+                    color: context.statusColors.danger,
+                  ),
+            text: Text(
+              _pending == _SchedulePendingAction.delete
+                  ? 'Deleting...'
+                  : 'Delete $productNameLower',
+              style: TextStyle(color: context.statusColors.danger),
+            ),
+            onPressed: _pending == _SchedulePendingAction.delete
+                ? null
+                : () => _confirmDelete(notifier),
           ),
         ],
-        const MenuFlyoutSeparator(),
-        MenuFlyoutItem(
-          leading: Icon(
-            FluentIcons.delete,
-            size: 14,
-            color: context.statusColors.danger,
-          ),
-          text: Text(
-            'Delete schedule',
-            style: TextStyle(color: context.statusColors.danger),
-          ),
-          onPressed: () => _confirmDelete(notifier),
-        ),
-      ],
+      ),
     );
   }
 
+  Widget _menuLeading(IconData icon, bool pending) => pending
+      ? const SizedBox.square(
+          dimension: 14,
+          child: ProgressRing(strokeWidth: 2),
+        )
+      : Icon(icon, size: 14);
+
   Future<void> _confirmDelete(AggregatedSchedulesNotifier notifier) async {
     final entry = widget.row.entry;
+    final productName = scheduleProductName(entry.schedule).toLowerCase();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => ContentDialog(
-        title: const Text('Delete schedule'),
+        title: Text('Delete $productName'),
         content: Text(
-          'Delete "${_title(entry.schedule)}"? This cannot be undone.',
+          'Delete "${resolveScheduleTitle(entry.schedule)}"? '
+          'This cannot be undone.',
         ),
         actions: [
           Button(
@@ -583,10 +677,15 @@ class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
       ),
     );
     if (confirmed == true) {
-      await _run(() => notifier.delete(entry.serverId, entry.schedule.id));
+      await _run(
+        _SchedulePendingAction.delete,
+        () => notifier.delete(entry.serverId, entry.schedule.id),
+      );
     }
   }
 }
+
+enum _SchedulePendingAction { pause, resume, runNow, delete }
 
 class _ScheduleFormDialog extends ConsumerStatefulWidget {
   const _ScheduleFormDialog({
@@ -1484,36 +1583,6 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
   }
 }
 
-String _title(ScheduleSummary schedule) =>
-    schedule.name?.trim().isNotEmpty == true ? schedule.name! : 'Schedule';
-
-IconData _providerIcon(String? provider) {
-  final normalized = provider?.toLowerCase();
-  if (normalized?.contains('codex') == true) return FluentIcons.code;
-  if (normalized != null) return FluentIcons.robot;
-  return FluentIcons.contact;
-}
-
-String _meta(
-  ScheduleSummary schedule, {
-  required _ScheduleDerivedState state,
-  required String serverName,
-  required bool singleHost,
-}) {
-  final parts = <String>[
-    _cadenceLabel(schedule.cadence),
-    'Created ${_timeAgo(schedule.createdAt)}',
-    schedule.lastRunAt == null
-        ? 'Never run'
-        : 'Last run ${_timeAgo(schedule.lastRunAt!)}',
-  ];
-  if (state == _ScheduleDerivedState.active && schedule.nextRunAt != null) {
-    parts.add('Next run ${_timeAgo(schedule.nextRunAt!, future: true)}');
-  }
-  if (!singleHost) parts.insert(0, serverName);
-  return parts.join(' · ');
-}
-
 final class _ResolvedScheduleRow {
   const _ResolvedScheduleRow({
     required this.entry,
@@ -1577,30 +1646,4 @@ _ResolvedScheduleRow _resolveSchedule(
     targetLabel: targetLabel,
     provider: provider,
   );
-}
-
-String _cadenceLabel(ScheduleCadence cadence) => switch (cadence) {
-  EveryScheduleCadence(everyMs: final everyMs) =>
-    'Every ${Duration(milliseconds: everyMs)}',
-  CronScheduleCadence(expression: final expression, timezone: final timezone) =>
-    timezone == null ? expression : '$expression ($timezone)',
-};
-
-String _timeAgo(String value, {bool future = false}) {
-  final parsed = DateTime.tryParse(value);
-  if (parsed == null) return value;
-  final delta = future
-      ? parsed.difference(DateTime.now())
-      : DateTime.now().difference(parsed);
-  if (delta.isNegative) return future ? 'now' : 'just now';
-  if (delta.inDays > 0) {
-    return '${delta.inDays}d ${future ? 'from now' : 'ago'}';
-  }
-  if (delta.inHours > 0) {
-    return '${delta.inHours}h ${future ? 'from now' : 'ago'}';
-  }
-  if (delta.inMinutes > 0) {
-    return '${delta.inMinutes}m ${future ? 'from now' : 'ago'}';
-  }
-  return future ? 'soon' : 'just now';
 }

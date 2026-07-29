@@ -71,6 +71,11 @@ void main() {
             const Color(0xFF272A29),
           )
           .having(
+            (palette) => palette.surface3,
+            'surface3',
+            const Color(0xFF434645),
+          )
+          .having(
             (palette) => palette.foreground,
             'foreground',
             const Color(0xFFFAFAFA),
@@ -79,6 +84,11 @@ void main() {
             (palette) => palette.foregroundMuted,
             'foregroundMuted',
             const Color(0xFFA1A5A4),
+          )
+          .having(
+            (palette) => palette.border,
+            'border',
+            const Color(0xFF252B2A),
           )
           .having(
             (palette) => palette.borderAccent,
