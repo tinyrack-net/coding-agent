@@ -11432,12 +11432,14 @@
     },
     {
       "id": "source-unit:packages/protocol/src/provider-manifest.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/providers/paseo/provider_manifest.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/provider_manifest.dart; packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart",
       "evidence": [
-        "packages/daemon/test/providers/paseo/provider_manifest_test.dart"
+        "packages/daemon/test/providers/paseo/provider_manifest_test.dart",
+        "packages/daemon/test/providers/paseo/provider_catalog_registry_test.dart",
+        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart"
       ],
-      "notes": null
+      "notes": "All frozen built-in and development provider definitions, ordered IDs, labels, descriptions, defaults, mode fields, open icon strings, visual tiers, unattended flags, voice defaults, lookup/error behavior, validation, unattended-mode lookup, and mode-visual lookup are ported. Provider overrides preserve manifest voice metadata."
     },
     {
       "id": "source-unit:packages/protocol/src/schedule/cadence.ts",

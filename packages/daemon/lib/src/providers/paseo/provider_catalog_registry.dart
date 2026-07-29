@@ -395,6 +395,7 @@ PaseoProviderDefinition _applyOverride(
     modes: definition.modes,
     capabilities: definition.capabilities,
     source: definition.source,
+    voice: definition.voice,
   );
 }
 

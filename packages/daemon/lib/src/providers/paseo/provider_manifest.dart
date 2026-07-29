@@ -102,6 +102,18 @@ final class PaseoProviderModeDefinition {
   final bool isUnattended;
 }
 
+final class PaseoProviderVoiceDefinition {
+  const PaseoProviderVoiceDefinition({
+    required this.enabled,
+    required this.defaultModeId,
+    this.defaultModel,
+  });
+
+  final bool enabled;
+  final String defaultModeId;
+  final String? defaultModel;
+}
+
 final class PaseoProviderDefinition {
   const PaseoProviderDefinition({
     required this.id,
@@ -116,6 +128,7 @@ final class PaseoProviderDefinition {
     this.providerParams = const {},
     this.enabledByDefault = true,
     this.source = 'builtin',
+    this.voice,
   });
 
   final String id;
@@ -130,6 +143,7 @@ final class PaseoProviderDefinition {
   final String? defaultModeId;
   final List<PaseoProviderModeDefinition> modes;
   final Map<String, bool> capabilities;
+  final PaseoProviderVoiceDefinition? voice;
 }
 
 List<Map<String, Object?>> paseoProviderFeaturesFor(AgentSummary agent) {
@@ -385,6 +399,31 @@ const _ompModes = [
   ),
 ];
 
+const _mockLoadTestModes = [
+  PaseoProviderModeDefinition(
+    mode: ProviderMode(
+      id: 'load-test',
+      label: 'Load Test',
+      description:
+          'Streams repeated markdown, reasoning, and tool calls for app stress testing',
+      icon: 'ShieldOff',
+      colorTier: 'dangerous',
+    ),
+  ),
+];
+
+const _mockSlowModes = [
+  PaseoProviderModeDefinition(
+    mode: ProviderMode(
+      id: 'default',
+      label: 'Default',
+      description: 'Dev-only mode for the mock slow provider',
+      icon: 'ShieldOff',
+      colorTier: 'dangerous',
+    ),
+  ),
+];
+
 abstract final class PaseoProviderManifest {
   static const definitions = [
     PaseoProviderDefinition(
@@ -396,6 +435,11 @@ abstract final class PaseoProviderManifest {
       defaultModeId: 'auto',
       modes: _claudeModes,
       capabilities: _claudeCapabilities,
+      voice: PaseoProviderVoiceDefinition(
+        enabled: true,
+        defaultModeId: 'default',
+        defaultModel: 'haiku',
+      ),
     ),
     PaseoProviderDefinition(
       id: 'codex',
@@ -406,6 +450,11 @@ abstract final class PaseoProviderManifest {
       defaultModeId: 'auto-review',
       modes: _codexModes,
       capabilities: _codexCapabilities,
+      voice: PaseoProviderVoiceDefinition(
+        enabled: true,
+        defaultModeId: 'auto',
+        defaultModel: 'gpt-5.4-mini',
+      ),
     ),
     PaseoProviderDefinition(
       id: 'copilot',
@@ -428,6 +477,10 @@ abstract final class PaseoProviderManifest {
       defaultModeId: null,
       modes: _openCodeModes,
       capabilities: _openCodeCapabilities,
+      voice: PaseoProviderVoiceDefinition(
+        enabled: true,
+        defaultModeId: 'build',
+      ),
     ),
     PaseoProviderDefinition(
       id: 'pi',
@@ -452,9 +505,89 @@ abstract final class PaseoProviderManifest {
     ),
   ];
 
-  static PaseoProviderDefinition? find(String id) {
-    for (final definition in definitions) {
+  static const developmentDefinitions = [
+    PaseoProviderDefinition(
+      id: 'mock',
+      label: 'Mock Load Test',
+      description:
+          'Development-only provider that emits synthetic agent traffic for performance tests',
+      command: 'mock',
+      defaultModeId: 'load-test',
+      modes: _mockLoadTestModes,
+    ),
+    PaseoProviderDefinition(
+      id: 'mock-slow',
+      label: 'Mock Slow Provider',
+      description:
+          'Dev-only: hangs during model discovery to test loading and timeout UI',
+      command: 'mock-slow',
+      defaultModeId: 'default',
+      modes: _mockSlowModes,
+    ),
+  ];
+
+  static const allDefinitions = [...definitions, ...developmentDefinitions];
+
+  static const builtInProviderIds = [
+    'claude',
+    'codex',
+    'copilot',
+    'opencode',
+    'pi',
+    'omp',
+  ];
+
+  static const agentProviderIds = builtInProviderIds;
+
+  static PaseoProviderDefinition? find(
+    String id, [
+    Iterable<PaseoProviderDefinition> source = allDefinitions,
+  ]) {
+    for (final definition in source) {
       if (definition.id == id) return definition;
+    }
+    return null;
+  }
+
+  static PaseoProviderDefinition get(
+    String id, [
+    Iterable<PaseoProviderDefinition> source = allDefinitions,
+  ]) {
+    final definition = find(id, source);
+    if (definition == null) {
+      throw StateError('Unknown agent provider: $id');
+    }
+    return definition;
+  }
+
+  static bool isValid(
+    String id, [
+    Iterable<String> validIds = builtInProviderIds,
+  ]) => validIds.contains(id);
+
+  static String? unattendedModeId(
+    String provider, [
+    Iterable<PaseoProviderDefinition> source = allDefinitions,
+  ]) {
+    final definition = find(provider, source);
+    for (final mode
+        in definition?.modes ?? const <PaseoProviderModeDefinition>[]) {
+      if (mode.isUnattended) return mode.mode.id;
+    }
+    return null;
+  }
+
+  static ({String icon, String colorTier})? modeVisuals(
+    String provider,
+    String modeId,
+    Iterable<PaseoProviderDefinition> source,
+  ) {
+    final definition = find(provider, source);
+    for (final mode
+        in definition?.modes ?? const <PaseoProviderModeDefinition>[]) {
+      if (mode.mode.id == modeId) {
+        return (icon: mode.mode.icon!, colorTier: mode.mode.colorTier!);
+      }
     }
     return null;
   }

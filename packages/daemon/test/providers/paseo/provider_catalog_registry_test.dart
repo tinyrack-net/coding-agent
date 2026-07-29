@@ -15,6 +15,11 @@ void main() {
     description: 'Ready provider',
     command: 'ready',
     defaultModeId: 'default',
+    voice: PaseoProviderVoiceDefinition(
+      enabled: true,
+      defaultModeId: 'default',
+      defaultModel: 'small',
+    ),
     modes: [
       PaseoProviderModeDefinition(
         mode: ProviderMode(id: 'default', label: 'Default'),
@@ -327,6 +332,8 @@ void main() {
 
       expect(catalog.definition('ready')?.label, 'Ready override');
       expect(catalog.definition('ready')?.enabledByDefault, isFalse);
+      expect(catalog.definition('ready')?.voice?.defaultModeId, 'default');
+      expect(catalog.definition('ready')?.voice?.defaultModel, 'small');
       final custom = catalog.definition('amp-acp');
       expect(custom?.source, 'custom');
       expect(custom?.command, 'amp-acp');
