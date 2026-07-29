@@ -8,6 +8,7 @@ import 'core/desktop/desktop_shell.dart';
 import 'core/desktop/notification_service.dart';
 import 'core/desktop/title_bar.dart';
 import 'core/theme.dart';
+import 'hosts/host_chooser.dart';
 import 'state/appearance_provider.dart';
 import 'state/agents_provider.dart';
 import 'state/daemon_providers.dart';
@@ -58,9 +59,11 @@ class CodingAgentApp extends ConsumerWidget {
           ? ThemeMode.light
           : ThemeMode.dark,
       routerConfig: router,
-      builder: (context, child) => AppCommandCenterHost(
-        router: router,
-        child: AppTitleBar(child: child!),
+      builder: (context, child) => HostChooserHost(
+        child: AppCommandCenterHost(
+          router: router,
+          child: AppTitleBar(child: child!),
+        ),
       ),
     );
   }

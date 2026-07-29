@@ -5959,10 +5959,14 @@
     },
     {
       "id": "source-unit:packages/app/src/hosts/host-chooser.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/hosts/host_chooser.dart;packages/app/lib/main.dart;packages/app/lib/widgets/host_picker.dart;packages/app/lib/core/host_routes.dart",
+      "evidence": [
+        "packages/app/test/host_chooser_test.dart",
+        "packages/app/test/host_routes_test.dart",
+        "packages/app/test/host_picker_test.dart"
+      ],
+      "notes": "The globally mounted chooser preserves filtered local-first selection, zero-host Add Host routing, one-host immediate selection, multi-host request isolation, live host removal, label/server-id search, keyboard wrapping and selection, Escape/backdrop dismissal, status-dot rows, exact copy, and the frozen 640px/92%-width desktop panel geometry."
     },
     {
       "id": "source-unit:packages/app/src/i18n/i18next.ts",
