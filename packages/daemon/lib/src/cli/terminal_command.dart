@@ -4,10 +4,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_protocol/agent_protocol.dart';
+import 'package:tinyrack_relay/tinyrack_relay.dart';
 
 import '../server/daemon_config.dart';
 import 'cli_client_id.dart';
 import 'cli_daemon_client.dart';
+import 'cli_errors.dart';
 import 'cli_output.dart';
 import 'cli_version.dart';
 
@@ -554,11 +556,23 @@ final class _TerminalCommandException implements Exception {
 }
 
 final class DaemonCliSocketClient {
-  DaemonCliSocketClient._(this._socket, this._frames, this.serverInfo);
+  DaemonCliSocketClient._(
+    this._socket,
+    this._frames,
+    this.serverInfo, {
+    RelayE2eeClientChannel? relay,
+    StreamSubscription<dynamic>? relaySocketFrames,
+    StreamController<dynamic>? relayFramesController,
+  }) : _relay = relay,
+       _relaySocketFrames = relaySocketFrames,
+       _relayFramesController = relayFramesController;
 
   final WebSocket _socket;
   final StreamIterator<dynamic> _frames;
   final ServerInfoStatus serverInfo;
+  final RelayE2eeClientChannel? _relay;
+  final StreamSubscription<dynamic>? _relaySocketFrames;
+  final StreamController<dynamic>? _relayFramesController;
   final Map<Object?, Completer<Map<String, Object?>>> _responses = {};
   final Queue<Map<String, Object?>> _events = Queue();
   final Queue<Completer<Map<String, Object?>>> _eventWaiters = Queue();
@@ -570,80 +584,211 @@ final class DaemonCliSocketClient {
     required String? hostOverride,
     required Map<String, String> environment,
     Duration timeout = terminalDaemonRpcTimeout,
-  }) => connectToDirectDaemon(
-    host: hostOverride,
-    environment: environment,
-    home: config.home,
-    timeout: timeout,
-    connect:
-        ({
-          required host,
-          required target,
-          required password,
-          required timeout,
-        }) async {
-          if (target is! CliTcpDaemonTarget) {
-            throw UnsupportedError(
-              'IPC daemon transport is not available for $host',
-            );
-          }
-          final deadline = DateTime.now().add(timeout);
-          Duration remaining() {
-            final value = deadline.difference(DateTime.now());
-            return value.isNegative || value == Duration.zero
-                ? const Duration(microseconds: 1)
-                : value;
-          }
+  }) async {
+    final clientId = await getOrCreateCliClientId(
+      home: config.home,
+      environment: environment,
+    );
+    final explicitHost = hostOverride ?? environment['TINYRACK_HOST'];
+    ConnectionOffer? offer;
+    if (explicitHost != null) {
+      try {
+        offer = parseConnectionOfferFromUrl(explicitHost);
+      } on Object catch (error) {
+        throw StateError(
+          'Invalid pairing offer URL: ${getErrorMessage(error)}',
+        );
+      }
+    }
+    if (offer != null) {
+      try {
+        return await _connectRelayOffer(
+          offer: offer,
+          clientId: clientId,
+          timeout: timeout,
+        );
+      } on Object catch (error) {
+        throw StateError(
+          'Failed to connect via relay offer: ${getErrorMessage(error)}',
+        );
+      }
+    }
+    return connectToDirectDaemon(
+      host: hostOverride,
+      environment: environment,
+      home: config.home,
+      timeout: timeout,
+      connect:
+          ({
+            required host,
+            required target,
+            required password,
+            required timeout,
+          }) async {
+            if (target is! CliTcpDaemonTarget) {
+              throw UnsupportedError(
+                'IPC daemon transport is not available for $host',
+              );
+            }
+            final deadline = DateTime.now().add(timeout);
+            Duration remaining() {
+              final value = deadline.difference(DateTime.now());
+              return value.isNegative || value == Duration.zero
+                  ? const Duration(microseconds: 1)
+                  : value;
+            }
 
-          WebSocket? socket;
-          StreamIterator<dynamic>? frames;
-          try {
-            final connectedSocket = await WebSocket.connect(
-              target.url,
-              protocols: password == null || password.isEmpty
-                  ? null
-                  : ['tinyrack.bearer.$password'],
-              compression: CompressionOptions.compressionOff,
-            ).timeout(remaining());
-            socket = connectedSocket;
-            final connectedFrames = StreamIterator<dynamic>(connectedSocket);
-            frames = connectedFrames;
-            final clientId = await getOrCreateCliClientId(
-              home: config.home,
-              environment: environment,
-            );
-            connectedSocket.add(
-              jsonEncode(
-                WebSocketHello(
-                  clientId: clientId,
-                  clientType: WebSocketClientType.cli,
-                  protocolVersion: paseoWebSocketProtocolVersion,
-                  appVersion: resolveCliVersion(),
-                ).toJson(),
-              ),
-            );
-            final serverInfo = ServerInfoStatus.fromJson(
-              await _nextMessage(
+            WebSocket? socket;
+            StreamIterator<dynamic>? frames;
+            try {
+              final connectedSocket = await WebSocket.connect(
+                target.url,
+                protocols: password == null || password.isEmpty
+                    ? null
+                    : ['tinyrack.bearer.$password'],
+                compression: CompressionOptions.compressionOff,
+              ).timeout(remaining());
+              socket = connectedSocket;
+              final connectedFrames = StreamIterator<dynamic>(connectedSocket);
+              frames = connectedFrames;
+              connectedSocket.add(
+                jsonEncode(
+                  WebSocketHello(
+                    clientId: clientId,
+                    clientType: WebSocketClientType.cli,
+                    protocolVersion: paseoWebSocketProtocolVersion,
+                    appVersion: resolveCliVersion(),
+                  ).toJson(),
+                ),
+              );
+              final serverInfo = ServerInfoStatus.fromJson(
+                await _nextMessage(
+                  connectedFrames,
+                  (message) => message['status'] == 'server_info',
+                  allowEnvelope: false,
+                  timeout: remaining(),
+                ),
+              );
+              final client = DaemonCliSocketClient._(
+                connectedSocket,
                 connectedFrames,
-                (message) => message['status'] == 'server_info',
-                allowEnvelope: false,
-                timeout: remaining(),
-              ),
-            );
-            final client = DaemonCliSocketClient._(
-              connectedSocket,
-              connectedFrames,
-              serverInfo,
-            );
-            client._pump = client._pumpFrames();
-            return client;
-          } on Object {
-            await frames?.cancel();
-            await socket?.close();
-            rethrow;
+                serverInfo,
+              );
+              client._pump = client._pumpFrames();
+              return client;
+            } on Object {
+              await frames?.cancel();
+              await socket?.close();
+              rethrow;
+            }
+          },
+    );
+  }
+
+  static Future<DaemonCliSocketClient> _connectRelayOffer({
+    required ConnectionOffer offer,
+    required String clientId,
+    required Duration timeout,
+  }) async {
+    final url = buildRelayWebSocketUrl(
+      endpoint: offer.relay.endpoint,
+      useTls:
+          offer.relay.useTls ??
+          // Paseo 0.2.0 offers may omit useTls for the hosted relay.
+          // ignore: deprecated_member_use
+          shouldUseTlsForDefaultHostedRelay(offer.relay.endpoint),
+      serverId: offer.serverId,
+      role: RelayRole.client,
+    );
+    final deadline = DateTime.now().add(timeout);
+    Duration remaining() {
+      final value = deadline.difference(DateTime.now());
+      return value.isNegative || value == Duration.zero
+          ? const Duration(microseconds: 1)
+          : value;
+    }
+
+    WebSocket? socket;
+    StreamController<dynamic>? decryptedFrames;
+    StreamSubscription<dynamic>? relaySocketFrames;
+    StreamIterator<dynamic>? frames;
+    RelayE2eeClientChannel? relay;
+    try {
+      final connectedSocket = await WebSocket.connect(
+        url,
+        compression: CompressionOptions.compressionOff,
+      ).timeout(remaining());
+      socket = connectedSocket;
+      final connectedDecryptedFrames = StreamController<dynamic>();
+      decryptedFrames = connectedDecryptedFrames;
+      late final RelayE2eeClientChannel connectedRelay;
+      connectedRelay = RelayE2eeClientChannel(
+        daemonPublicKeyB64: offer.daemonPublicKeyB64,
+        transportSend: connectedSocket.add,
+        transportClose: connectedSocket.close,
+        onMessage: connectedDecryptedFrames.add,
+        onError: connectedDecryptedFrames.addError,
+      );
+      relay = connectedRelay;
+      relaySocketFrames = connectedSocket.listen(
+        (frame) => connectedRelay.handleFrame(frame as Object),
+        onError: connectedDecryptedFrames.addError,
+        onDone: () {
+          connectedRelay.transportClosed(
+            connectedSocket.closeCode ?? 0,
+            connectedSocket.closeReason ?? '',
+          );
+          if (!connectedDecryptedFrames.isClosed) {
+            unawaited(connectedDecryptedFrames.close());
           }
         },
-  );
+      );
+      connectedRelay.start();
+      await connectedRelay.ready.timeout(remaining());
+
+      final connectedFrames = StreamIterator<dynamic>(
+        connectedDecryptedFrames.stream,
+      );
+      frames = connectedFrames;
+      connectedRelay.send(
+        jsonEncode(
+          WebSocketHello(
+            clientId: clientId,
+            clientType: WebSocketClientType.cli,
+            protocolVersion: paseoWebSocketProtocolVersion,
+            appVersion: resolveCliVersion(),
+          ).toJson(),
+        ),
+      );
+      final serverInfo = ServerInfoStatus.fromJson(
+        await _nextMessage(
+          connectedFrames,
+          (message) => message['status'] == 'server_info',
+          allowEnvelope: false,
+          timeout: remaining(),
+        ),
+      );
+      final client = DaemonCliSocketClient._(
+        connectedSocket,
+        connectedFrames,
+        serverInfo,
+        relay: connectedRelay,
+        relaySocketFrames: relaySocketFrames,
+        relayFramesController: connectedDecryptedFrames,
+      );
+      client._pump = client._pumpFrames();
+      return client;
+    } on Object {
+      await frames?.cancel();
+      relay?.close(1011, 'Relay connection failed');
+      await relaySocketFrames?.cancel();
+      if (decryptedFrames != null && !decryptedFrames.isClosed) {
+        await decryptedFrames.close();
+      }
+      await socket?.close();
+      rethrow;
+    }
+  }
 
   Future<Map<String, Object?>> request(
     Map<String, Object?> request, {
@@ -685,7 +830,13 @@ final class DaemonCliSocketClient {
   }
 
   Future<void> send(Map<String, Object?> message) async {
-    _socket.add(jsonEncode({'type': 'session', 'message': message}));
+    final frame = jsonEncode({'type': 'session', 'message': message});
+    final relay = _relay;
+    if (relay == null) {
+      _socket.add(frame);
+    } else {
+      relay.send(frame);
+    }
     // `terminal_input` intentionally has no response. Yield once so dart:io
     // writes the frame before the short-lived CLI connection is closed.
     await Future<void>.delayed(const Duration(milliseconds: 25));
@@ -695,6 +846,12 @@ final class DaemonCliSocketClient {
     if (_closed) return;
     _closed = true;
     await _frames.cancel();
+    _relay?.close();
+    await _relaySocketFrames?.cancel();
+    final relayFramesController = _relayFramesController;
+    if (relayFramesController != null && !relayFramesController.isClosed) {
+      await relayFramesController.close();
+    }
     await _socket.close();
     await _pump;
   }

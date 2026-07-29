@@ -10436,13 +10436,14 @@
       "implementation": "packages/daemon/lib/src/cli/cli_daemon_client.dart; packages/daemon/lib/src/cli/terminal_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/agent_command.dart; packages/protocol/lib/src/connection/daemon_endpoints.dart; packages/protocol/lib/src/connection/connection_offer.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_daemon_client_test.dart",
+        "packages/daemon/test/cli/cli_daemon_relay_e2ee_test.dart",
         "packages/daemon/test/daemon_agent_cli_e2e_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/cli/agent_command_test.dart",
         "packages/protocol/test/daemon_endpoints_test.dart",
         "packages/protocol/test/connection_offer_test.dart"
       ],
-      "notes": "Frozen host normalization, default candidate ordering, sequential direct connection failover, nullable try-connect, TCP/IPC target derivation, URI/environment password precedence, connection error shape, and agent ID resolution precedence are ported. IPC socket transport and relay-offer E2EE connection remain."
+      "notes": "Frozen host normalization, default candidate ordering, sequential direct connection failover, nullable try-connect, TCP/IPC target derivation, URI/environment password precedence, connection error shape, agent ID resolution precedence, pairing-offer parsing, relay URL derivation, and relay E2EE CLI hello/RPC transport are ported. IPC socket transport remains."
     },
     {
       "id": "source-unit:packages/cli/src/utils/command-options.ts",
