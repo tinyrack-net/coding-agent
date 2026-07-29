@@ -1349,6 +1349,10 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('activity-actions-review-1')));
     await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.byKey(const ValueKey('activity-actions-review-1'))),
+      const Size.square(22),
+    );
     expect(tester.getSize(find.byType(MenuFlyout)).width, 200);
     expect(
       find.byKey(const ValueKey('activity-action-add-review-1')),
@@ -1393,6 +1397,7 @@ void main() {
     const threadId = 'thread:PRRT_1';
     final trigger = find.byKey(const ValueKey('thread-actions-$threadId'));
 
+    expect(tester.getSize(trigger), const Size.square(22));
     await tester.tap(trigger);
     await tester.pumpAndSettle();
     expect(

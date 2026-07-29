@@ -1752,10 +1752,21 @@ class _PrActionsMenuButtonState extends State<_PrActionsMenuButton> {
       label: widget.semanticLabel,
       child: FlyoutTarget(
         controller: _controller,
-        child: IconButton(
+        child: HoverButton(
           key: widget.triggerKey,
-          icon: const Icon(FluentIcons.more_vertical, size: 12),
           onPressed: _openMenu,
+          builder: (context, states) => Container(
+            width: 22,
+            height: 22,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: states.contains(WidgetState.hovered)
+                  ? context.tokens.surfaceContainerHighest
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Icon(FluentIcons.more_vertical, size: 12),
+          ),
         ),
       ),
     );
