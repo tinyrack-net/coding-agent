@@ -1426,6 +1426,54 @@ void main() {
     expect(find.text('Second reply.'), findsOneWidget);
     expect(find.text('lib/replies.dart:8'), findsOneWidget);
     expect(find.text('commented'), findsNWidgets(3));
+    expect(
+      tester
+          .widget<Container>(
+            find.byKey(
+              const ValueKey('thread-header-content-thread:PRRT_REPLIES'),
+            ),
+          )
+          .padding,
+      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    );
+    final rootComment = tester.widget<Container>(
+      find.byKey(const ValueKey('thread-comment-reply-root')),
+    );
+    expect(rootComment.padding, const EdgeInsets.only(bottom: 8));
+    expect(
+      tester
+          .widget<Container>(
+            find.byKey(const ValueKey('thread-comment-header-reply-root')),
+          )
+          .padding,
+      const EdgeInsets.fromLTRB(12, 8, 12, 4),
+    );
+    expect(
+      tester
+          .widget<Padding>(
+            find.byKey(const ValueKey('thread-comment-body-reply-root')),
+          )
+          .padding,
+      const EdgeInsets.fromLTRB(12, 8, 12, 0),
+    );
+    expect(
+      tester
+          .widget<Padding>(
+            find.byKey(const ValueKey('thread-footer-thread:PRRT_REPLIES')),
+          )
+          .padding,
+      const EdgeInsets.fromLTRB(0, 0, 8, 8),
+    );
+    expect(
+      (tester
+                  .widget<Container>(
+                    find.byKey(const ValueKey('thread-comment-reply-first')),
+                  )
+                  .decoration!
+              as BoxDecoration)
+          .border,
+      isNull,
+    );
 
     final rail = find.byKey(
       const ValueKey('thread-reply-rail-thread:PRRT_REPLIES'),

@@ -1436,8 +1436,9 @@ class _ThreadCard extends StatelessWidget {
           HoverButton(
             onPressed: onToggle,
             builder: (context, states) => Container(
+              key: ValueKey('thread-header-content-${thread.id}'),
               constraints: const BoxConstraints(minHeight: 36),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               color: states.contains(WidgetState.hovered)
                   ? context.tokens.surfaceContainerHighest
                   : FluentTheme.of(context).cardColor,
@@ -1526,7 +1527,8 @@ class _ThreadCard extends StatelessWidget {
                 ),
               ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 8, 8),
+              key: ValueKey('thread-footer-${thread.id}'),
+              padding: const EdgeInsets.fromLTRB(0, 0, 8, 8),
               child: _GhostChatButton(
                 onPressed: onAddThread,
                 label: 'Add to chat',
@@ -1559,60 +1561,70 @@ class _ThreadComment extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: ValueKey('thread-comment-${comment.id}'),
       decoration: BoxDecoration(
         border: showTopBorder
             ? Border(top: BorderSide(color: context.tokens.outlineVariant))
             : null,
       ),
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              _ActivityAvatar(item: comment, size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        comment.author,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 11),
+          Container(
+            key: ValueKey('thread-comment-header-${comment.id}'),
+            constraints: const BoxConstraints(minHeight: 32),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            child: Row(
+              children: [
+                _ActivityAvatar(item: comment, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          comment.author,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(child: _ActivityVerb(item: comment)),
-                  ],
+                      const SizedBox(width: 6),
+                      Flexible(child: _ActivityVerb(item: comment)),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                formatPullRequestAge(comment.createdAt),
-                style: TextStyle(
-                  fontSize: 10,
-                  color: context.tokens.onSurfaceVariant,
+                const SizedBox(width: 8),
+                Text(
+                  formatPullRequestAge(comment.createdAt),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: context.tokens.onSurfaceVariant,
+                  ),
                 ),
-              ),
-              _ActivityActionsMenu(
-                item: comment,
-                brandLabel: brandLabel,
-                onAddToChat: onAddToChat,
-                onOpen: onOpen,
-              ),
-            ],
+                _ActivityActionsMenu(
+                  item: comment,
+                  brandLabel: brandLabel,
+                  onAddToChat: onAddToChat,
+                  onOpen: onOpen,
+                ),
+              ],
+            ),
           ),
           if (comment.body.trim().isNotEmpty)
-            MarkdownBody(
-              data: comment.body,
-              selectable: true,
-              onTapLink: (_, href, _) {
-                if (href != null) onOpenUrl(href);
-              },
-              styleSheet: MarkdownStyleSheet(
-                p: const TextStyle(fontSize: 12, height: 1.4),
+            Padding(
+              key: ValueKey('thread-comment-body-${comment.id}'),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: MarkdownBody(
+                data: comment.body,
+                selectable: true,
+                onTapLink: (_, href, _) {
+                  if (href != null) onOpenUrl(href);
+                },
+                styleSheet: MarkdownStyleSheet(
+                  p: const TextStyle(fontSize: 12, height: 1.4),
+                ),
               ),
             ),
         ],
