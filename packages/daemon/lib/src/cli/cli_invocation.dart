@@ -161,6 +161,7 @@ RootOutputForwarding rootOutputForwarding(List<String> arguments) {
     'script',
     'chat',
     'heartbeat',
+    'schedule',
     'workspace',
     'worktree',
   }.contains(first)) {
@@ -172,14 +173,7 @@ RootOutputForwarding rootOutputForwarding(List<String> arguments) {
         ? RootOutputForwarding.none
         : RootOutputForwarding.full;
   }
-  if (const {
-    'status',
-    'restart',
-    'daemon',
-    'hub',
-    'schedule',
-    'loop',
-  }.contains(first)) {
+  if (const {'status', 'restart', 'daemon', 'hub', 'loop'}.contains(first)) {
     return RootOutputForwarding.jsonOnly;
   }
   if (first == 'terminal') {

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_output.dart';
 import 'provider_model.dart';
 
 const scheduleDaemonRpcTimeout = Duration(seconds: 30);
@@ -41,24 +42,24 @@ Future<int> runScheduleCommand({
     output(scheduleHelp(arguments.isEmpty ? null : arguments.first));
     return 0;
   }
-  final jsonOutput = _hasOptionBeforeTerminator(arguments, const {'--json'});
+  ScheduleCliInvocation? invocation;
   try {
-    final parsed = ScheduleCliInvocation.parse(arguments);
+    invocation = ScheduleCliInvocation.parse(arguments);
     final env = environment ?? Platform.environment;
     final cwd = currentDirectory ?? Directory.current.path;
-    _prevalidate(parsed, cwd, env);
+    _prevalidate(invocation, cwd, env);
     ScheduleRpcClient? client;
     if (request == null) {
       final config = loadDaemonRuntimeConfig(environment: env);
       try {
         client = await connectScheduleRpcClient(
           config,
-          hostOverride: parsed.host,
+          hostOverride: invocation.host,
           environment: env,
         );
       } on Object catch (error) {
         final host =
-            parsed.host ??
+            invocation.host ??
             env['TINYRACK_HOST'] ??
             '${config.host}:${config.port}';
         throw ScheduleCommandException(
@@ -70,24 +71,25 @@ Future<int> runScheduleCommand({
     }
     final send = request ?? client!.request;
     try {
-      final result = await _execute(parsed, send, cwd, env);
-      output(
-        parsed.json
-            ? '${const JsonEncoder.withIndent('  ').convert(result.json)}\n'
-            : result.human,
-      );
+      final result = await _execute(invocation, send, cwd, env);
+      final rendered = renderCliOutput(result, invocation.output);
+      if (rendered.isNotEmpty) output('$rendered\n');
       return 0;
     } finally {
       await client?.close();
     }
   } on ScheduleCommandException catch (error) {
-    _writeScheduleError(errorOutput, error, json: jsonOutput);
+    _writeScheduleError(
+      errorOutput,
+      error,
+      options: invocation?.output ?? const CliOutputOptions(),
+    );
     return 1;
   } on ProviderModelFormatException catch (error) {
     _writeScheduleError(
       errorOutput,
       ScheduleCommandException(error.code, error.message, error.details),
-      json: jsonOutput,
+      options: invocation?.output ?? const CliOutputOptions(),
     );
     return 1;
   } on FormatException catch (error) {
@@ -97,7 +99,7 @@ Future<int> runScheduleCommand({
     _writeScheduleError(
       errorOutput,
       ScheduleCommandException('UNKNOWN_ERROR', _errorText(error)),
-      json: jsonOutput,
+      options: invocation?.output ?? const CliOutputOptions(),
     );
     return 1;
   }
@@ -134,7 +136,7 @@ final class ScheduleCliInvocation {
     required this.positionals,
     required this.values,
     required this.flags,
-    required this.json,
+    required this.output,
     required this.host,
   });
 
@@ -142,7 +144,7 @@ final class ScheduleCliInvocation {
   final List<String> positionals;
   final Map<String, String> values;
   final Set<String> flags;
-  final bool json;
+  final CliOutputOptions output;
   final String? host;
 
   static ScheduleCliInvocation parse(List<String> arguments) {
@@ -163,10 +165,8 @@ final class ScheduleCliInvocation {
     if (!actions.contains(action)) {
       throw FormatException('Unknown schedule action: $action');
     }
-    const commonBooleanOptions = {'--json'};
     const commonValueOptions = {'--host'};
     final booleanOptions = {
-      ...commonBooleanOptions,
       if (action == 'create') '--run-now',
       if (action == 'update') ...{'--no-max-runs', '--no-expires-in'},
     };
@@ -201,6 +201,11 @@ final class ScheduleCliInvocation {
     final positionals = <String>[];
     final values = <String, String>{};
     final flags = <String>{};
+    var format = 'table';
+    var json = false;
+    var quiet = false;
+    var headers = true;
+    var color = true;
     var positionalOnly = false;
     for (var index = 1; index < arguments.length; index++) {
       final argument = arguments[index];
@@ -208,6 +213,19 @@ final class ScheduleCliInvocation {
         positionalOnly = true;
       } else if (positionalOnly) {
         positionals.add(argument);
+      } else if (argument == '--json') {
+        json = true;
+      } else if (argument == '-q' || argument == '--quiet') {
+        quiet = true;
+      } else if (argument == '--no-headers') {
+        headers = false;
+      } else if (argument == '--no-color') {
+        color = false;
+      } else if (argument == '-o' || argument == '--format') {
+        if (index + 1 >= arguments.length) {
+          throw FormatException('$argument requires a value');
+        }
+        format = normalizeCliOutputFormat(arguments[++index]);
       } else if (booleanOptions.contains(argument)) {
         flags.add(argument);
       } else if (valueOptions.contains(argument)) {
@@ -220,6 +238,12 @@ final class ScheduleCliInvocation {
         final value,
       ) when valueOptions.contains(option)) {
         values[option] = value;
+      } else if (argument.startsWith('--format=')) {
+        format = normalizeCliOutputFormat(
+          argument.substring('--format='.length),
+        );
+      } else if (argument.startsWith('-o') && argument.length > 2) {
+        format = normalizeCliOutputFormat(argument.substring(2));
       } else if (argument.startsWith('-')) {
         throw FormatException('Unknown option: $argument');
       } else {
@@ -244,19 +268,18 @@ final class ScheduleCliInvocation {
       positionals: List.unmodifiable(positionals),
       values: Map.unmodifiable(values),
       flags: Set.unmodifiable(flags),
-      json: flags.contains('--json'),
+      output: CliOutputOptions(
+        format: json ? 'json' : format,
+        quiet: quiet,
+        noHeaders: !headers,
+        noColor: !color,
+      ),
       host: values['--host'],
     );
   }
 }
 
-final class _ScheduleCommandResult {
-  const _ScheduleCommandResult({required this.json, required this.human});
-  final Object? json;
-  final String human;
-}
-
-Future<_ScheduleCommandResult> _execute(
+Future<CliOutputResult> _execute(
   ScheduleCliInvocation invocation,
   ScheduleRpcRequester request,
   String cwd,
@@ -279,9 +302,9 @@ Future<_ScheduleCommandResult> _execute(
         final schedules = _mapList(
           payload['schedules'],
         ).where(_isNewAgentSchedule).toList(growable: false);
-        return _ScheduleCommandResult(
-          json: schedules.map(_scheduleRow).toList(growable: false),
-          human: _scheduleTable(schedules),
+        return CliOutputResult.list(
+          rows: schedules.map(_scheduleRow).toList(growable: false),
+          schema: _scheduleSchema,
         );
       case 'inspect':
         final schedule = await _inspectNewAgent(
@@ -289,10 +312,7 @@ Future<_ScheduleCommandResult> _execute(
           invocation.positionals.single,
           requestId,
         );
-        return _ScheduleCommandResult(
-          json: schedule,
-          human: _inspectTable(schedule),
-        );
+        return _scheduleInspectResult(schedule);
       case 'logs':
         final id = invocation.positionals.single;
         await _inspectNewAgent(request, id, '${requestId}_inspect');
@@ -303,9 +323,9 @@ Future<_ScheduleCommandResult> _execute(
         });
         _throwPayloadError(payload);
         final runs = _mapList(payload['runs']);
-        return _ScheduleCommandResult(
-          json: runs.map(_scheduleLogRow).toList(growable: false),
-          human: _logsTable(runs),
+        return CliOutputResult.list(
+          rows: runs.map(_scheduleLogRow).toList(growable: false),
+          schema: _scheduleLogSchema,
         );
       case 'delete':
         final id = invocation.positionals.single;
@@ -316,16 +336,7 @@ Future<_ScheduleCommandResult> _execute(
         });
         _throwPayloadError(payload);
         final row = {'id': payload['scheduleId'], 'status': 'deleted'};
-        return _ScheduleCommandResult(
-          json: row,
-          human: _table(
-            const ['ID', 'STATUS'],
-            [
-              [row['id']?.toString() ?? '', 'deleted'],
-            ],
-            minimumWidths: const [10, 12],
-          ),
-        );
+        return CliOutputResult.single(row: row, schema: _scheduleDeleteSchema);
       case 'pause':
       case 'resume':
       case 'run-once':
@@ -348,10 +359,7 @@ Future<_ScheduleCommandResult> _execute(
         await _inspectNewAgent(request, id, '${requestId}_inspect');
         final payload = await request(update);
         final schedule = _requiredSchedule(payload);
-        return _ScheduleCommandResult(
-          json: schedule,
-          human: _inspectTable(schedule),
-        );
+        return _scheduleInspectResult(schedule);
     }
     throw StateError('Unhandled schedule action');
   } on ScheduleCommandException {
@@ -690,10 +698,10 @@ bool _isNewAgentSchedule(Map<String, Object?> schedule) {
   return target is Map && target['type'] == 'new-agent';
 }
 
-_ScheduleCommandResult _scheduleResult(Map<String, Object?> schedule) =>
-    _ScheduleCommandResult(
-      json: _scheduleRow(schedule),
-      human: _scheduleTable([schedule]),
+CliOutputResult _scheduleResult(Map<String, Object?> schedule) =>
+    CliOutputResult.single(
+      row: _scheduleRow(schedule),
+      schema: _scheduleSchema,
     );
 
 Map<String, Object?> _scheduleRow(Map<String, Object?> schedule) => {
@@ -709,8 +717,25 @@ Map<String, Object?> _scheduleRow(Map<String, Object?> schedule) => {
 Map<String, Object?> scheduleCliRow(Map<String, Object?> schedule) =>
     _scheduleRow(schedule);
 
-String scheduleCliTable(List<Map<String, Object?>> schedules) =>
-    _scheduleTable(schedules);
+final _scheduleSchema = CliOutputSchema(
+  idField: (row) => '${row['id']}',
+  columns: [
+    CliOutputColumn(header: 'ID', field: (row) => row['id'], width: 10),
+    CliOutputColumn(header: 'NAME', field: (row) => row['name'], width: 20),
+    CliOutputColumn(
+      header: 'CADENCE',
+      field: (row) => row['cadence'],
+      width: 20,
+    ),
+    CliOutputColumn(header: 'TARGET', field: (row) => row['target'], width: 20),
+    CliOutputColumn(header: 'STATUS', field: (row) => row['status'], width: 12),
+    CliOutputColumn(
+      header: 'NEXT RUN',
+      field: (row) => row['nextRunAt'],
+      width: 24,
+    ),
+  ],
+);
 
 Map<String, Object?> _scheduleLogRow(Map<String, Object?> run) => {
   'id': run['id'],
@@ -726,65 +751,73 @@ Map<String, Object?> _scheduleLogRow(Map<String, Object?> run) => {
   'error': run['error'],
 };
 
-String _scheduleTable(List<Map<String, Object?>> schedules) => _table(
-  const ['ID', 'NAME', 'CADENCE', 'TARGET', 'STATUS', 'NEXT RUN'],
-  [
-    for (final schedule in schedules)
-      [
-        schedule['id']?.toString() ?? '',
-        schedule['name']?.toString() ?? '',
-        _formatCadence(schedule['cadence']),
-        _formatTarget(schedule['target']),
-        schedule['status']?.toString() ?? '',
-        schedule['nextRunAt']?.toString() ?? '',
-      ],
+final _scheduleLogSchema = CliOutputSchema(
+  idField: (row) => '${row['id']}',
+  columns: [
+    CliOutputColumn(header: 'RUN ID', field: (row) => row['id'], width: 14),
+    CliOutputColumn(header: 'STATUS', field: (row) => row['status'], width: 12),
+    CliOutputColumn(
+      header: 'STARTED',
+      field: (row) => row['startedAt'],
+      width: 24,
+    ),
+    CliOutputColumn(header: 'AGENT', field: (row) => row['agentId'], width: 12),
+    CliOutputColumn(header: 'OUTPUT', field: (row) => row['output'], width: 40),
+    CliOutputColumn(header: 'ERROR', field: (row) => row['error'], width: 40),
   ],
-  minimumWidths: const [10, 20, 20, 20, 12, 24],
 );
 
-String _inspectTable(Map<String, Object?> schedule) => _table(
-  const ['KEY', 'VALUE'],
-  [
-    ['Id', '${schedule['id']}'],
-    ['Name', '${schedule['name']}'],
-    ['Prompt', '${schedule['prompt']}'],
-    ['Cadence', _formatCadence(schedule['cadence'], inspect: true)],
-    ['Target', _formatTarget(schedule['target'])],
-    ['Status', '${schedule['status']}'],
-    ['CreatedAt', '${schedule['createdAt']}'],
-    ['UpdatedAt', '${schedule['updatedAt']}'],
-    ['NextRunAt', '${schedule['nextRunAt']}'],
-    ['LastRunAt', '${schedule['lastRunAt']}'],
-    ['PausedAt', '${schedule['pausedAt']}'],
-    ['ExpiresAt', '${schedule['expiresAt']}'],
-    ['MaxRuns', '${schedule['maxRuns']}'],
-    [
-      'RunCount',
-      '${schedule['runs'] is List ? (schedule['runs'] as List).length : 0}',
-    ],
-  ],
-  minimumWidths: const [18, 80],
-);
-
-String _logsTable(List<Map<String, Object?>> runs) => _table(
-  const ['RUN ID', 'STATUS', 'STARTED', 'AGENT', 'OUTPUT', 'ERROR'],
-  [
-    for (final run in runs)
-      [
-        '${run['id']}',
-        '${run['status']}',
-        '${run['startedAt']}',
-        run['agentId'] == null
-            ? ''
-            : run['agentId'].toString().substring(
-                0,
-                run['agentId'].toString().length.clamp(0, 7),
-              ),
-        run['output']?.toString() ?? '',
-        run['error']?.toString() ?? '',
+CliOutputResult _scheduleInspectResult(Map<String, Object?> schedule) {
+  final rows = _scheduleInspectRows(schedule);
+  return CliOutputResult.list(
+    rows: rows,
+    schema: CliOutputSchema(
+      idField: (row) => '${row['key']}',
+      columns: [
+        CliOutputColumn(header: 'KEY', field: (row) => row['key'], width: 18),
+        CliOutputColumn(
+          header: 'VALUE',
+          field: (row) => row['value'],
+          width: 80,
+        ),
       ],
+      serialize: (_) => schedule,
+    ),
+  );
+}
+
+List<Map<String, Object?>> _scheduleInspectRows(
+  Map<String, Object?> schedule,
+) => [
+  {'key': 'Id', 'value': '${schedule['id']}'},
+  {'key': 'Name', 'value': '${schedule['name']}'},
+  {'key': 'Prompt', 'value': '${schedule['prompt']}'},
+  {
+    'key': 'Cadence',
+    'value': _formatCadence(schedule['cadence'], inspect: true),
+  },
+  {'key': 'Target', 'value': _formatTarget(schedule['target'])},
+  {'key': 'Status', 'value': '${schedule['status']}'},
+  {'key': 'CreatedAt', 'value': '${schedule['createdAt']}'},
+  {'key': 'UpdatedAt', 'value': '${schedule['updatedAt']}'},
+  {'key': 'NextRunAt', 'value': '${schedule['nextRunAt']}'},
+  {'key': 'LastRunAt', 'value': '${schedule['lastRunAt']}'},
+  {'key': 'PausedAt', 'value': '${schedule['pausedAt']}'},
+  {'key': 'ExpiresAt', 'value': '${schedule['expiresAt']}'},
+  {'key': 'MaxRuns', 'value': '${schedule['maxRuns']}'},
+  {
+    'key': 'RunCount',
+    'value':
+        '${schedule['runs'] is List ? (schedule['runs'] as List).length : 0}',
+  },
+];
+
+final _scheduleDeleteSchema = CliOutputSchema(
+  idField: (row) => '${row['id']}',
+  columns: [
+    CliOutputColumn(header: 'ID', field: (row) => row['id'], width: 10),
+    CliOutputColumn(header: 'STATUS', field: (row) => row['status'], width: 12),
   ],
-  minimumWidths: const [14, 12, 24, 12, 40, 40],
 );
 
 String _formatCadence(Object? value, {bool inspect = false}) {
@@ -828,27 +861,6 @@ String _formatDuration(int milliseconds) {
   return parts.join();
 }
 
-String _table(
-  List<String> headers,
-  List<List<String>> rows, {
-  List<int>? minimumWidths,
-}) {
-  if (rows.isEmpty) return '';
-  final widths = [
-    for (var column = 0; column < headers.length; column++)
-      [
-        headers[column].length,
-        minimumWidths?[column] ?? 0,
-        for (final row in rows) row[column].length,
-      ].reduce((a, b) => a > b ? a : b),
-  ];
-  String line(List<String> cells) => [
-    for (var index = 0; index < cells.length; index++)
-      cells[index].padRight(widths[index]),
-  ].join('  ');
-  return '${[line(headers), for (final row in rows) line(row)].join('\n')}\n';
-}
-
 String _errorText(Object error) => switch (error) {
   StateError(message: final message) => message,
   ArgumentError(message: final message) => '$message',
@@ -858,19 +870,10 @@ String _errorText(Object error) => switch (error) {
 void _writeScheduleError(
   void Function(String value) write,
   ScheduleCommandException error, {
-  required bool json,
+  required CliOutputOptions options,
 }) {
-  if (json) {
-    write(
-      '${const JsonEncoder.withIndent('  ').convert({
-        'error': {'code': error.code, 'message': error.message, if (error.details != null) 'details': error.details},
-      })}\n',
-    );
-    return;
-  }
   write(
-    'Error: ${error.message}'
-    '${error.details == null ? '' : '\n${error.details}'}\n',
+    '${renderCliError(code: error.code, message: error.message, details: error.details, options: options)}\n',
   );
 }
 

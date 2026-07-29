@@ -92,7 +92,27 @@ void main() {
         'schedule',
         'ls',
       ]).forward(),
-      const ['schedule', 'ls', '--json'],
+      const ['schedule', 'ls', '--format', 'json'],
+    );
+    expect(
+      normalizeRootCliArguments(const [
+        '--format',
+        'yaml',
+        '--quiet',
+        '--no-headers',
+        'schedule',
+        'logs',
+        'schedule-1',
+      ]).forward(),
+      const [
+        'schedule',
+        'logs',
+        'schedule-1',
+        '--format',
+        'yaml',
+        '--quiet',
+        '--no-headers',
+      ],
     );
     expect(
       normalizeRootCliArguments(const [

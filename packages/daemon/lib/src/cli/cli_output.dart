@@ -44,17 +44,20 @@ final class CliOutputColumn {
 
 typedef CliHumanRenderer =
     String Function(List<Map<String, Object?>> rows, CliOutputOptions options);
+typedef CliOutputSerializer = Object? Function(Map<String, Object?> row);
 
 final class CliOutputSchema {
   const CliOutputSchema({
     required this.idField,
     required this.columns,
     this.renderHuman,
+    this.serialize,
   });
 
   final String Function(Map<String, Object?> row) idField;
   final List<CliOutputColumn> columns;
   final CliHumanRenderer? renderHuman;
+  final CliOutputSerializer? serialize;
 }
 
 final class CliOutputResult {
@@ -76,7 +79,19 @@ final class CliOutputResult {
 
   List<Map<String, Object?>> get allRows => isList ? rows : [singleRow!];
 
-  Object get structuredData => isList ? rows : singleRow!;
+  Object? get structuredData {
+    final serialize = schema.serialize;
+    if (serialize == null) return isList ? rows : singleRow!;
+    if (!isList) return serialize(singleRow!);
+    final serialized = rows.map(serialize).toList(growable: false);
+    if (serialized.isNotEmpty) {
+      final first = jsonEncode(serialized.first);
+      if (serialized.every((value) => jsonEncode(value) == first)) {
+        return serialized.first;
+      }
+    }
+    return serialized;
+  }
 }
 
 String normalizeCliOutputFormat(String raw) {

@@ -977,6 +977,122 @@ void main() {
     );
   });
 
+  test(
+    'schedule supports frozen yaml quiet and table output options',
+    () async {
+      Future<Map<String, Object?>> request(Map<String, Object?> request) async {
+        if (request['type'] == 'schedule/list') {
+          return {
+            'schedules': [_schedule()],
+            'error': null,
+          };
+        }
+        if (request['type'] == 'schedule/inspect') {
+          return {'schedule': _schedule(), 'error': null};
+        }
+        if (request['type'] == 'schedule/delete') {
+          return {'scheduleId': 'deadbeef', 'error': null};
+        }
+        return {'schedule': _schedule(), 'error': null};
+      }
+
+      var inspectYaml = '';
+      expect(
+        await runScheduleCommand(
+          arguments: ['inspect', 'deadbeef', '--format', 'yaml'],
+          request: request,
+          writeOutput: (value) => inspectYaml += value,
+        ),
+        0,
+      );
+      expect(inspectYaml, startsWith('id: deadbeef\n'));
+      expect(inspectYaml, contains('runs: []\n'));
+      expect(inspectYaml, isNot(contains('key: Id')));
+
+      var quiet = '';
+      expect(
+        await runScheduleCommand(
+          arguments: ['ls', '--quiet'],
+          request: request,
+          writeOutput: (value) => quiet += value,
+        ),
+        0,
+      );
+      expect(quiet, 'deadbeef\n');
+
+      var noHeaders = '';
+      expect(
+        await runScheduleCommand(
+          arguments: ['ls', '--no-headers', '--no-color'],
+          request: request,
+          writeOutput: (value) => noHeaders += value,
+        ),
+        0,
+      );
+      expect(noHeaders, isNot(contains('CADENCE')));
+      expect(noHeaders, contains('deadbeef'));
+
+      var deleteYaml = '';
+      expect(
+        await runScheduleCommand(
+          arguments: ['delete', 'deadbeef', '-oyaml'],
+          request: request,
+          writeOutput: (value) => deleteYaml += value,
+        ),
+        0,
+      );
+      expect(deleteYaml, 'id: deadbeef\nstatus: deleted\n');
+
+      var jsonWins = '';
+      expect(
+        await runScheduleCommand(
+          arguments: ['ls', '--format', 'yaml', '--json'],
+          request: request,
+          writeOutput: (value) => jsonWins += value,
+        ),
+        0,
+      );
+      expect(jsonDecode(jsonWins), isA<List>());
+    },
+  );
+
+  test('schedule renders runtime errors in YAML', () async {
+    var error = '';
+    final code = await runScheduleCommand(
+      arguments: ['ls', '--format=yaml'],
+      request: (_) async => {
+        'schedules': const [],
+        'error': 'daemon unavailable',
+      },
+      writeError: (value) => error += value,
+    );
+
+    expect(code, 1);
+    expect(error, startsWith('error:\n  code: SCHEDULE_LIST_FAILED\n'));
+    expect(
+      error,
+      contains('message: "Failed to list schedules: daemon unavailable"\n'),
+    );
+  });
+
+  test('schedule rejects missing and unsupported output formats', () async {
+    for (final arguments in const [
+      ['ls', '--format'],
+      ['ls', '--format', 'xml'],
+      ['ls', '-oxml'],
+    ]) {
+      expect(
+        await runScheduleCommand(
+          arguments: arguments,
+          request: (_) async => fail('invalid format must not call daemon'),
+          writeError: (_) {},
+        ),
+        64,
+        reason: '$arguments',
+      );
+    }
+  });
+
   test('help and action-specific option boundaries are exposed', () async {
     for (final arguments in [
       ['--help'],

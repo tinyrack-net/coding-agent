@@ -650,83 +650,91 @@
     {
       "id": "cli-command:schedule-create",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
         "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "Frozen create parsing, validation, cadence compilation, target selection, stable output rows, structured errors, help, and real daemon socket lifecycle are covered."
+      "notes": "Frozen create parsing, validation, cadence compilation, target selection, stable single-result table/JSON/YAML/quiet output, structured errors, help, and real daemon socket lifecycle are covered."
     },
     {
       "id": "cli-command:schedule-delete",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
         "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "Delete matches the frozen direct mutation path without an extra new-agent inspect gate and returns the exact stable row."
+      "notes": "Delete matches the frozen direct mutation path without an extra new-agent inspect gate and returns the exact stable single-result row in every shared output mode."
     },
     {
       "id": "cli-command:schedule-inspect",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
         "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "Inspect filters legacy heartbeat targets, renders frozen key/value rows, and serializes the full schedule record in JSON."
+      "notes": "Inspect filters legacy heartbeat targets, renders frozen key/value rows, supports quiet/header controls, and uses the frozen schema serializer to emit the full schedule record in JSON and YAML."
     },
     {
       "id": "cli-command:schedule-logs",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
         "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "Logs use the frozen new-agent guard and stable run-row projection, including safe seven-character agent ids."
+      "notes": "Logs use the frozen new-agent guard and stable run-row projection, including safe seven-character agent ids and the full table/JSON/YAML/quiet option contract."
     },
     {
       "id": "cli-command:schedule-ls",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
         "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "List hides legacy heartbeat schedules, emits no human header for an empty result, and returns frozen stable JSON rows."
+      "notes": "List hides legacy heartbeat schedules, emits nothing for an empty human result, and returns frozen stable rows through table/JSON/YAML/quiet output with header suppression."
     },
     {
       "id": "cli-command:schedule-pause",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
         "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "Pause preserves the frozen new-agent inspect guard, action error code, and row output over the real daemon."
+      "notes": "Pause preserves the frozen new-agent inspect guard, action error code, and shared single-result output over the real daemon."
     },
     {
       "id": "cli-command:schedule-resume",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
         "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "Resume preserves the frozen new-agent inspect guard, action error code, and row output over the real daemon."
+      "notes": "Resume preserves the frozen new-agent inspect guard, action error code, and shared single-result output over the real daemon."
     },
     {
       "id": "cli-command:schedule-run-once",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart; packages/daemon/lib/src/schedule/schedule_agent_runner.dart",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart; packages/daemon/lib/src/schedule/schedule_agent_runner.dart",
       "evidence": [
         "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart",
         "packages/daemon/test/schedule/schedule_agent_runner_test.dart"
       ],
-      "notes": "Run-once crosses the CLI socket and real scheduler/agent runner, then appears in the frozen logs projection."
+      "notes": "Run-once crosses the CLI socket and real scheduler/agent runner, returns the shared single-result output, then appears in the frozen logs projection."
     },
     {
       "id": "cli-command:schedule-types",
@@ -741,12 +749,13 @@
     {
       "id": "cli-command:schedule-update",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
         "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "Update validates before connecting, supports every frozen patch and clear operation, guards new-agent targets, serializes full records, and crosses the real daemon."
+      "notes": "Update validates before connecting, supports every frozen patch and clear operation, guards new-agent targets, renders KEY/VALUE human output, serializes full records in JSON/YAML, and crosses the real daemon."
     },
     {
       "id": "cli-command:script-ls",
@@ -9820,89 +9829,106 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/delete.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Ports the frozen direct delete mutation, structured error mapping, daemon cleanup, stable ID/status single result, and every shared output mode."
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/index.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_invocation_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Ports the complete nine-action schedule command surface, action-local and root output options, host forwarding, help, parsing boundaries, and shared result/error rendering."
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/inspect.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Ports the frozen new-agent guard, KEY/VALUE list result, quiet keys, exact widths, and schema serialization of the complete schedule record for JSON and YAML."
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/logs.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Ports the frozen new-agent guard, stable run projection, seven-character agent IDs, exact schema widths, structured errors, and all shared output modes."
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/ls.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Ports new-agent filtering, stable list rows, empty-list behavior, exact table schema, structured errors, and table/JSON/YAML/quiet rendering."
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/pause.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Ports the new-agent inspect guard, pause RPC, stable single result, action-specific errors, daemon cleanup, and all shared output modes."
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/resume.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Ports the new-agent inspect guard, resume RPC, stable single result, action-specific errors, daemon cleanup, and all shared output modes."
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/run-once.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Ports the new-agent inspect guard, one-shot trigger, stable single result, action-specific errors, daemon cleanup, and real scheduler execution."
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/schema.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart"
       ],
-      "notes": "Ports the frozen schedule list, inspect, and log output schemas: exact headers and minimum width hints, untruncated content-driven expansion, null-to-empty table cells, cadence and target projection including timezone and model suffixes, seven-character log agent ids, raw full-record inspect JSON serialization, and stable projected JSON rows."
+      "notes": "Ports the frozen schedule list, inspect, and log output schemas: exact headers and minimum width hints, untruncated content-driven expansion, null-to-empty table cells, cadence and target projection including timezone and model suffixes, seven-character log agent ids, raw full-record inspect JSON/YAML serialization with identical-list collapse, and stable projected structured rows."
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/shared.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/schedule_command_test.dart"
       ],
@@ -9921,11 +9947,12 @@
     {
       "id": "source-unit:packages/cli/src/commands/schedule/update.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart"
       ],
-      "notes": "Ports the frozen update command: pre-connection id and patch validation, trimmed update RPC identity with original inspect identity, cadence/timezone/name/prompt/provider/model/mode/cwd/max-runs/expiry set and clear operations, new-agent target guard, full-record JSON serialization, inspect-table human output, Commander equals syntax, structured error mapping, daemon cleanup, and complete action help."
+      "notes": "Ports the frozen update command: pre-connection id and patch validation, trimmed update RPC identity with original inspect identity, cadence/timezone/name/prompt/provider/model/mode/cwd/max-runs/expiry set and clear operations, new-agent target guard, full-record JSON/YAML serialization, inspect-table/quiet output, Commander equals syntax, structured error mapping, daemon cleanup, and complete action help."
     },
     {
       "id": "source-unit:packages/cli/src/commands/script/index.ts",
@@ -10182,9 +10209,10 @@
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "The shared Dart output entrypoint exports typed result, schema, JSON, YAML, quiet, table, and error rendering used by chat and heartbeat; remaining CLI families still need migration."
+      "notes": "The shared Dart output entrypoint exports typed result, schema, custom serialization, JSON, YAML, quiet, table, and error rendering used by chat, heartbeat, and schedule; remaining CLI families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/json.ts",
@@ -10194,9 +10222,10 @@
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/daemon_chat_e2e_test.dart"
       ],
-      "notes": "Pretty two-space single-object/list JSON and structured errors are ported; schema custom serializers and identical-list collapse remain."
+      "notes": "Pretty two-space single-object/list JSON, schema custom serializers with identical-list collapse, and structured errors are ported; remaining CLI consumers still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/pairing.ts",
@@ -10214,7 +10243,8 @@
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
-        "packages/daemon/test/cli/heartbeat_command_test.dart"
+        "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/schedule_command_test.dart"
       ],
       "notes": "Frozen single and list ID projection, empty-list behavior, and quiet precedence over structured formats are ported."
     },
@@ -10225,9 +10255,10 @@
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
-        "packages/daemon/test/cli/heartbeat_command_test.dart"
+        "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/schedule_command_test.dart"
       ],
-      "notes": "Quiet precedence, JSON/YAML/table dispatch, custom human rendering, and structured errors are ported; ANSI color behavior and remaining consumers are pending."
+      "notes": "Quiet precedence, JSON/YAML/table dispatch, schema serialization, custom human rendering, and structured errors are ported; ANSI color behavior and remaining consumers are pending."
     },
     {
       "id": "source-unit:packages/cli/src/output/table.ts",
@@ -10236,7 +10267,8 @@
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
-        "packages/daemon/test/cli/heartbeat_command_test.dart"
+        "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/schedule_command_test.dart"
       ],
       "notes": "Frozen content-derived minimum widths, left/right/center alignment, header suppression, single/list rows, and no clipping are ported; ANSI-aware color measurement remains."
     },
@@ -10249,25 +10281,27 @@
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": "Root options, single/list results, schemas, columns, alignment, custom human renderers, and output options are typed; schema serializers and column color callbacks remain."
+      "notes": "Root options, single/list results, schemas, columns, alignment, schema serializers, custom human renderers, and output options are typed; column color callbacks remain."
     },
     {
       "id": "source-unit:packages/cli/src/output/with-output.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_invocation_test.dart",
         "packages/daemon/test/cli/cli_root_output_process_test.dart",
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/daemon_chat_e2e_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart",
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": "Global and local options feed shared result and error rendering for chat, heartbeat, and existing full-output commands; remaining JSON-only command families still need migration."
+      "notes": "Global and local options feed shared result and error rendering for chat, heartbeat, schedule, and existing full-output commands; remaining JSON-only command families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/yaml.ts",
@@ -10276,9 +10310,10 @@
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
-        "packages/daemon/test/cli/heartbeat_command_test.dart"
+        "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/schedule_command_test.dart"
       ],
-      "notes": "Recursive maps/lists, empty collections, stable scalar quoting, single/list results, and structured errors are ported; schema custom serializers and document streaming remain."
+      "notes": "Recursive maps/lists, empty collections, stable scalar quoting, single/list results, schema custom serializers with identical-list collapse, and structured errors are ported; document streaming remains."
     },
     {
       "id": "source-unit:packages/cli/src/run.ts",

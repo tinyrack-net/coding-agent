@@ -52,6 +52,50 @@ void main() {
     expect(yaml, contains('  note: "@quoted"'));
   });
 
+  test('applies frozen schema serialization and collapses identical lists', () {
+    final serializedSchema = CliOutputSchema(
+      idField: (row) => '${row['key']}',
+      columns: [CliOutputColumn(header: 'KEY', field: (row) => row['key'])],
+      serialize: (_) => {'id': 'schedule-1', 'runs': <Object?>[]},
+    );
+    final result = CliOutputResult.list(
+      rows: const [
+        {'key': 'Id'},
+        {'key': 'Status'},
+      ],
+      schema: serializedSchema,
+    );
+
+    expect(
+      jsonDecode(
+        renderCliOutput(result, const CliOutputOptions(format: 'json')),
+      ),
+      {'id': 'schedule-1', 'runs': <Object?>[]},
+    );
+    expect(
+      renderCliOutput(result, const CliOutputOptions(format: 'yaml')),
+      'id: schedule-1\nruns: []',
+    );
+
+    final distinct = CliOutputResult.list(
+      rows: const [
+        {'key': 'one', 'value': 1},
+        {'key': 'two', 'value': 2},
+      ],
+      schema: CliOutputSchema(
+        idField: (row) => '${row['key']}',
+        columns: [CliOutputColumn(header: 'KEY', field: (row) => row['key'])],
+        serialize: (row) => row['value'],
+      ),
+    );
+    expect(
+      jsonDecode(
+        renderCliOutput(distinct, const CliOutputOptions(format: 'json')),
+      ),
+      [1, 2],
+    );
+  });
+
   test('renders quiet IDs and content-sized tables without clipping', () {
     final result = CliOutputResult.list(rows: rows, schema: schema);
     expect(
