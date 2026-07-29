@@ -29,15 +29,112 @@ class PaseoPalette {
   final Color accentBright;
 }
 
+/// Paseo's frozen xterm palette. This retains cursor-accent and selection
+/// foreground even though Flutter xterm's public theme API cannot consume
+/// those two colors yet.
+class PaseoTerminalPalette {
+  const PaseoTerminalPalette({
+    required this.background,
+    required this.foreground,
+    required this.cursor,
+    required this.cursorAccent,
+    required this.selectionBackground,
+    required this.selectionForeground,
+    required this.black,
+    required this.red,
+    required this.green,
+    required this.yellow,
+    required this.blue,
+    required this.magenta,
+    required this.cyan,
+    required this.white,
+    required this.brightBlack,
+    required this.brightRed,
+    required this.brightGreen,
+    required this.brightYellow,
+    required this.brightBlue,
+    required this.brightMagenta,
+    required this.brightCyan,
+    required this.brightWhite,
+  });
+
+  final Color background;
+  final Color foreground;
+  final Color cursor;
+  final Color cursorAccent;
+  final Color selectionBackground;
+  final Color selectionForeground;
+  final Color black;
+  final Color red;
+  final Color green;
+  final Color yellow;
+  final Color blue;
+  final Color magenta;
+  final Color cyan;
+  final Color white;
+  final Color brightBlack;
+  final Color brightRed;
+  final Color brightGreen;
+  final Color brightYellow;
+  final Color brightBlue;
+  final Color brightMagenta;
+  final Color brightCyan;
+  final Color brightWhite;
+
+  static PaseoTerminalPalette lerp(
+    PaseoTerminalPalette first,
+    PaseoTerminalPalette second,
+    double t,
+  ) {
+    Color mix(Color left, Color right) => Color.lerp(left, right, t) ?? left;
+    return PaseoTerminalPalette(
+      background: mix(first.background, second.background),
+      foreground: mix(first.foreground, second.foreground),
+      cursor: mix(first.cursor, second.cursor),
+      cursorAccent: mix(first.cursorAccent, second.cursorAccent),
+      selectionBackground: mix(
+        first.selectionBackground,
+        second.selectionBackground,
+      ),
+      selectionForeground: mix(
+        first.selectionForeground,
+        second.selectionForeground,
+      ),
+      black: mix(first.black, second.black),
+      red: mix(first.red, second.red),
+      green: mix(first.green, second.green),
+      yellow: mix(first.yellow, second.yellow),
+      blue: mix(first.blue, second.blue),
+      magenta: mix(first.magenta, second.magenta),
+      cyan: mix(first.cyan, second.cyan),
+      white: mix(first.white, second.white),
+      brightBlack: mix(first.brightBlack, second.brightBlack),
+      brightRed: mix(first.brightRed, second.brightRed),
+      brightGreen: mix(first.brightGreen, second.brightGreen),
+      brightYellow: mix(first.brightYellow, second.brightYellow),
+      brightBlue: mix(first.brightBlue, second.brightBlue),
+      brightMagenta: mix(first.brightMagenta, second.brightMagenta),
+      brightCyan: mix(first.brightCyan, second.brightCyan),
+      brightWhite: mix(first.brightWhite, second.brightWhite),
+    );
+  }
+}
+
 @immutable
 class PaseoThemeTokens extends ThemeExtension<PaseoThemeTokens> {
-  const PaseoThemeTokens(this.palette);
+  const PaseoThemeTokens(this.palette, this.terminalPalette);
 
   final PaseoPalette palette;
+  final PaseoTerminalPalette terminalPalette;
 
   @override
-  PaseoThemeTokens copyWith({PaseoPalette? palette}) =>
-      PaseoThemeTokens(palette ?? this.palette);
+  PaseoThemeTokens copyWith({
+    PaseoPalette? palette,
+    PaseoTerminalPalette? terminalPalette,
+  }) => PaseoThemeTokens(
+    palette ?? this.palette,
+    terminalPalette ?? this.terminalPalette,
+  );
 
   @override
   PaseoThemeTokens lerp(
@@ -63,8 +160,98 @@ class PaseoThemeTokens extends ThemeExtension<PaseoThemeTokens> {
         accent: mix(palette.accent, other.palette.accent),
         accentBright: mix(palette.accentBright, other.palette.accentBright),
       ),
+      PaseoTerminalPalette.lerp(terminalPalette, other.terminalPalette, t),
     );
   }
+}
+
+PaseoTerminalPalette paseoTerminalPaletteFor(
+  AppThemeName name, [
+  Brightness platformBrightness = Brightness.dark,
+]) {
+  final resolvedName = name == AppThemeName.auto
+      ? (platformBrightness == Brightness.light
+            ? AppThemeName.light
+            : AppThemeName.dark)
+      : name;
+  if (resolvedName == AppThemeName.light) {
+    return const PaseoTerminalPalette(
+      background: Color(0xFFFFFFFF),
+      foreground: Color(0xFF1A1A1E),
+      cursor: Color(0xFF1A1A1E),
+      cursorAccent: Color(0xFFFFFFFF),
+      selectionBackground: Color(0x26000000),
+      selectionForeground: Color(0xFF1A1A1E),
+      black: Color(0xFF1A1A1E),
+      red: Color(0xFFDC2626),
+      green: Color(0xFF16A34A),
+      yellow: Color(0xFFCA8A04),
+      blue: Color(0xFF2563EB),
+      magenta: Color(0xFF9333EA),
+      cyan: Color(0xFF0891B2),
+      white: Color(0xFFFFFFFF),
+      brightBlack: Color(0xFF3F3F46),
+      brightRed: Color(0xFFEF4444),
+      brightGreen: Color(0xFF22C55E),
+      brightYellow: Color(0xFFF59E0B),
+      brightBlue: Color(0xFF3B82F6),
+      brightMagenta: Color(0xFFA855F7),
+      brightCyan: Color(0xFF06B6D4),
+      brightWhite: Color(0xFFFAFAFA),
+    );
+  }
+
+  final (background, black, brightBlack) = switch (resolvedName) {
+    AppThemeName.zinc => (
+      const Color(0xFF18181B),
+      const Color(0xFF131316),
+      const Color(0xFF3F3F46),
+    ),
+    AppThemeName.midnight => (
+      const Color(0xFF161820),
+      const Color(0xFF121420),
+      const Color(0xFF3C3E4C),
+    ),
+    AppThemeName.claude => (
+      const Color(0xFF1F1F1E),
+      const Color(0xFF1A1918),
+      const Color(0xFF4A4745),
+    ),
+    AppThemeName.ghostty => (
+      const Color(0xFF282C34),
+      const Color(0xFF21252D),
+      const Color(0xFF4A4F5E),
+    ),
+    AppThemeName.dark || AppThemeName.auto || AppThemeName.light => (
+      const Color(0xFF181B1A),
+      const Color(0xFF141716),
+      const Color(0xFF434645),
+    ),
+  };
+  return PaseoTerminalPalette(
+    background: background,
+    foreground: const Color(0xFFFAFAFA),
+    cursor: const Color(0xFFFAFAFA),
+    cursorAccent: background,
+    selectionBackground: const Color(0x33FFFFFF),
+    selectionForeground: const Color(0xFFFAFAFA),
+    black: black,
+    red: const Color(0xFFE07070),
+    green: const Color(0xFF5DBA80),
+    yellow: const Color(0xFFD4A44A),
+    blue: const Color(0xFF6A9DE0),
+    magenta: const Color(0xFFB07AD0),
+    cyan: const Color(0xFF4AABB8),
+    white: const Color(0xFFD4D4D8),
+    brightBlack: brightBlack,
+    brightRed: const Color(0xFFE89090),
+    brightGreen: const Color(0xFF7ECF9A),
+    brightYellow: const Color(0xFFE0BE6E),
+    brightBlue: const Color(0xFF8AB4E8),
+    brightMagenta: const Color(0xFFC49AE0),
+    brightCyan: const Color(0xFF6EC2CC),
+    brightWhite: const Color(0xFFF0F0F2),
+  );
 }
 
 PaseoPalette paseoPaletteFor(
@@ -165,6 +352,10 @@ FluentThemeData buildAppTheme([
       ? Brightness.light
       : Brightness.dark;
   final palette = paseoPaletteFor(resolvedName, platformBrightness);
+  final terminalPalette = paseoTerminalPaletteFor(
+    resolvedName,
+    platformBrightness,
+  );
   final accent = AccentColor.swatch({
     'darkest': palette.accent,
     'darker': palette.accent,
@@ -176,7 +367,10 @@ FluentThemeData buildAppTheme([
   });
   final base = FluentThemeData(brightness: brightness, accentColor: accent);
   return base.copyWith(
-    extensions: [...base.extensions.values, PaseoThemeTokens(palette)],
+    extensions: [
+      ...base.extensions.values,
+      PaseoThemeTokens(palette, terminalPalette),
+    ],
     scaffoldBackgroundColor: palette.surface0,
     menuColor: palette.surface2,
   );
@@ -250,6 +444,13 @@ extension AppThemeContext on BuildContext {
   PaseoPalette get paseoPalette =>
       FluentTheme.of(this).extension<PaseoThemeTokens>()?.palette ??
       paseoPaletteFor(
+        FluentTheme.of(this).brightness == Brightness.light
+            ? AppThemeName.light
+            : AppThemeName.dark,
+      );
+  PaseoTerminalPalette get paseoTerminalPalette =>
+      FluentTheme.of(this).extension<PaseoThemeTokens>()?.terminalPalette ??
+      paseoTerminalPaletteFor(
         FluentTheme.of(this).brightness == Brightness.light
             ? AppThemeName.light
             : AppThemeName.dark,

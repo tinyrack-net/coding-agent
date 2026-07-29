@@ -16,6 +16,7 @@ import '../terminal/terminal_keys.dart';
 import '../terminal/terminal_local_link_provider.dart';
 import '../terminal/terminal_platform.dart';
 import '../terminal/terminal_renderer_readiness.dart';
+import '../terminal/to_xterm_theme.dart';
 import '../workspace/workspace_file_open.dart';
 import '../keyboard/shortcut_engine.dart';
 import '../keyboard/shortcut_focus_scope.dart';
@@ -294,6 +295,9 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(terminalSessionProvider(_key));
+    final xtermTheme = toFlutterTerminalTheme(
+      toXtermTheme(context.paseoTerminalPalette),
+    );
     if (!identical(_renderedTerminal, session.terminal)) {
       _renderedTerminal = session.terminal;
       _terminalViewKey = GlobalKey<TerminalViewState>();
@@ -362,7 +366,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
             },
             child: ColoredBox(
               key: _surfaceKey,
-              color: const Color(0xFF1E1E1E),
+              color: xtermTheme.background,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -388,6 +392,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
                         backgroundOpacity: 0,
                         padding: const EdgeInsets.all(4),
                         textStyle: const TerminalStyle(fontSize: 13),
+                        theme: xtermTheme,
                       ),
                     ),
                   ),

@@ -3643,13 +3643,14 @@
     {
       "id": "source-unit:packages/app/src/components/terminal-pane.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/widgets/terminal_pane.dart; packages/app/lib/state/terminal_providers.dart; packages/app/lib/terminal/terminal_renderer_readiness.dart; packages/app/lib/terminal/terminal_local_link_provider.dart; packages/app/lib/workspace/workspace_file_open.dart; packages/app/lib/widgets/worktree_tabbed_pane.dart",
+      "implementation": "packages/app/lib/widgets/terminal_pane.dart; packages/app/lib/state/terminal_providers.dart; packages/app/lib/terminal/terminal_renderer_readiness.dart; packages/app/lib/terminal/to_xterm_theme.dart; packages/app/lib/core/theme.dart; packages/app/lib/terminal/terminal_local_link_provider.dart; packages/app/lib/workspace/workspace_file_open.dart; packages/app/lib/widgets/worktree_tabbed_pane.dart",
       "evidence": [
         "packages/app/test/terminal_pane_test.dart",
         "packages/app/test/terminal_renderer_readiness_test.dart",
+        "packages/app/test/to_xterm_theme_test.dart",
         "packages/app/test/worktree_tabbed_pane_test.dart"
       ],
-      "notes": "TerminalPane composes the daemon terminal with renderer-and-subscription readiness loading, focused-pane gating, asynchronous local-file resolution, hover decoration, and main/side workspace-file activation. Upstream focus claims, visibility/refit coordination, browser/mobile bridges, and remaining context actions are still incomplete."
+      "notes": "TerminalPane composes the daemon terminal with renderer-and-subscription readiness loading, focused-pane gating, frozen theme projection, asynchronous local-file resolution, hover decoration, and main/side workspace-file activation. Flutter xterm still lacks cursor-accent and selection-foreground hooks; upstream focus claims, visibility/refit coordination, browser/mobile bridges, and remaining context actions are also incomplete."
     },
     {
       "id": "source-unit:packages/app/src/components/toast-host.tsx",
@@ -7510,10 +7511,13 @@
     },
     {
       "id": "source-unit:packages/app/src/styles/theme.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/theme.dart",
+      "evidence": [
+        "packages/app/test/appearance_provider_test.dart",
+        "packages/app/test/to_xterm_theme_test.dart"
+      ],
+      "notes": "Flutter now carries the frozen named semantic surface palette and the complete 22-color terminal palette, including theme interpolation and Auto brightness resolution. The remaining upstream semantic, diff/status, typography, and component token surface is tracked as incomplete."
     },
     {
       "id": "source-unit:packages/app/src/styles/unistyles-inline-style.native.ts",
@@ -8651,10 +8655,13 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/to-xterm-theme.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/terminal/to_xterm_theme.dart; packages/app/lib/core/theme.dart; packages/app/lib/widgets/terminal_pane.dart",
+      "evidence": [
+        "packages/app/test/to_xterm_theme_test.dart",
+        "packages/app/test/terminal_pane_test.dart"
+      ],
+      "notes": "Preserves and projects all frozen xterm theme fields for light, Paseo, Zinc, Midnight, Claude, Ghostty, and Auto themes. The Flutter adapter maps every color exposed by xterm 4 and TerminalPane consumes it for both canvas and surface background."
     },
     {
       "id": "source-unit:packages/app/src/utils/tool-call-detail-state.ts",

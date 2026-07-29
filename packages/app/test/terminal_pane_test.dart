@@ -4,6 +4,8 @@ import 'dart:ui' show PointerDeviceKind;
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
+import 'package:coding_agent_app/core/theme.dart';
+import 'package:coding_agent_app/state/appearance_provider.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/terminal_providers.dart';
@@ -586,6 +588,45 @@ void main() {
     );
     final restarted = container.read(terminalSessionProvider(_key));
     expect(restarted.status, TerminalSessionStatus.running);
+  });
+
+  testWidgets('terminal renderer consumes the active Paseo terminal palette', (
+    tester,
+  ) async {
+    final fake = FakeDaemonClient();
+    final container = ProviderContainer(
+      overrides: [daemonClientProvider.overrideWithValue(fake)],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: FluentApp(
+          theme: buildAppTheme(AppThemeName.light),
+          home: const ScaffoldPage(
+            content: TerminalPane(worktreePath: _worktreePath, tabId: _tabId),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final view = tester.widget<TerminalView>(find.byType(TerminalView));
+    final palette = paseoTerminalPaletteFor(AppThemeName.light);
+    expect(view.theme.background, palette.background);
+    expect(view.theme.foreground, palette.foreground);
+    expect(view.theme.cursor, palette.cursor);
+    expect(view.theme.selection, palette.selectionBackground);
+    expect(view.theme.red, palette.red);
+    expect(view.theme.brightWhite, palette.brightWhite);
+    expect(
+      tester
+          .widgetList<ColoredBox>(find.byType(ColoredBox))
+          .any((box) => box.color == palette.background),
+      isTrue,
+    );
   });
 
   testWidgets(
