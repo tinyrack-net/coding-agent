@@ -161,10 +161,13 @@
     },
     {
       "id": "cli-command:agent-attach",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/agent_attach_command.dart; packages/daemon/lib/src/cli/agent_logs_command.dart; packages/daemon/lib/src/cli/terminal_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/agent_attach_command_test.dart",
+        "packages/daemon/test/daemon_agent_attach_e2e_test.dart"
+      ],
+      "notes": "Frozen top-level and nested aliases, identifier resolution, two-second projected history replay, exact timeline and lifecycle formatting, agent filtering, non-fatal history warning, signal detach, connection failures, and real WebSocket streaming are verified."
     },
     {
       "id": "cli-command:agent-delete",
@@ -8833,10 +8836,13 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/attach.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/agent_attach_command.dart; packages/daemon/lib/src/cli/agent_logs_command.dart; packages/daemon/lib/src/cli/terminal_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/agent_attach_command_test.dart",
+        "packages/daemon/test/daemon_agent_attach_e2e_test.dart"
+      ],
+      "notes": "Frozen history replay, raw live-event formatting, Ctrl+C/SIGTERM lifetime, aliases, direct errors, and daemon connection behavior are ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/delete.ts",
@@ -8881,9 +8887,10 @@
         "packages/daemon/test/daemon_agent_detach_e2e_test.dart",
         "packages/daemon/test/daemon_agent_reload_e2e_test.dart",
         "packages/daemon/test/daemon_agent_update_e2e_test.dart",
-        "packages/daemon/test/daemon_agent_open_e2e_test.dart"
+        "packages/daemon/test/daemon_agent_open_e2e_test.dart",
+        "packages/daemon/test/daemon_agent_attach_e2e_test.dart"
       ],
-      "notes": "Agent ls, inspect, logs, mode, stop, send, wait, archive, delete, detach, reload, update, and open dispatch are ported; remaining run and attach commands remain."
+      "notes": "Agent ls, inspect, logs, mode, stop, send, wait, archive, delete, detach, reload, update, open, and attach dispatch are ported; only run remains."
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/inspect.ts",

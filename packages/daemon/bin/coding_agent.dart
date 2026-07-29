@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_daemon/src/cli/pair_command.dart';
+import 'package:agent_daemon/src/cli/agent_attach_command.dart';
 import 'package:agent_daemon/src/cli/agent_import_command.dart';
 import 'package:agent_daemon/src/cli/agent_command.dart';
 import 'package:agent_daemon/src/cli/agent_logs_command.dart';
@@ -32,12 +33,19 @@ Future<void> main(List<String> arguments) async {
     exitCode = await runAgentLogsCommand(arguments: arguments.sublist(2));
     return;
   }
+  if (arguments.length >= 2 &&
+      arguments[0] == 'agent' &&
+      arguments[1] == 'attach') {
+    exitCode = await runAgentAttachCommand(arguments: arguments.sublist(2));
+    return;
+  }
   if (arguments.isNotEmpty && arguments[0] == 'agent') {
     exitCode = await runAgentCommand(arguments: arguments.sublist(1));
     return;
   }
   if (arguments.isNotEmpty &&
       (arguments[0] == 'ls' ||
+          arguments[0] == 'attach' ||
           arguments[0] == 'inspect' ||
           arguments[0] == 'logs' ||
           arguments[0] == 'stop' ||
@@ -47,6 +55,10 @@ Future<void> main(List<String> arguments) async {
           arguments[0] == 'delete')) {
     if (arguments[0] == 'logs') {
       exitCode = await runAgentLogsCommand(arguments: arguments.sublist(1));
+      return;
+    }
+    if (arguments[0] == 'attach') {
+      exitCode = await runAgentAttachCommand(arguments: arguments.sublist(1));
       return;
     }
     exitCode = await runAgentCommand(arguments: arguments);
@@ -120,10 +132,12 @@ Future<void> main(List<String> arguments) async {
     '       coding-agent import --provider <provider> <id> [options]\n'
     '       coding-agent agent import --provider <provider> <id> [options]\n'
     '       coding-agent agent '
-    '<ls|inspect|mode|stop|send|wait|archive|delete|detach|reload|update|open> '
+    '<ls|inspect|mode|stop|send|wait|archive|delete|detach|reload|update|open|'
+    'attach> '
     '...\n'
     '       coding-agent agent logs <id> [options]\n'
-    '       coding-agent <ls|inspect|logs|stop|send|wait|archive|delete> ...\n'
+    '       coding-agent <ls|inspect|logs|attach|stop|send|wait|archive|delete> '
+    '...\n'
     '       coding-agent hub connect --url <url> --token <token> '
     '[--home <path>] [--json]\n'
     '       coding-agent hub status [--home <path>] [--json]\n'

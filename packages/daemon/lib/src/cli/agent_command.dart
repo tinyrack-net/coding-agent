@@ -2335,5 +2335,6 @@ String _agentHelp(String? action) => switch (action) {
         '  detach   Make a subagent independent\n'
         '  reload   Reload an agent process\n'
         '  update   Update agent metadata\n'
-        '  open     Open an existing agent in Tinyrack Desktop\n',
+        '  open     Open an existing agent in Tinyrack Desktop\n'
+        '  attach   Attach to a running agent output stream\n',
 };
