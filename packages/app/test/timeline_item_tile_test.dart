@@ -410,9 +410,18 @@ void main() {
     await tester.tap(find.text('Edit'));
     await tester.pumpAndSettle(const Duration(milliseconds: 100));
 
-    expect(find.textContaining('added line'), findsOneWidget);
-    expect(find.textContaining('removed line'), findsOneWidget);
-    expect(find.textContaining('context line'), findsOneWidget);
+    expect(
+      find.textContaining('added line', findRichText: true),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('removed line', findRichText: true),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('context line', findRichText: true),
+      findsOneWidget,
+    );
   });
 
   testWidgets('subagent detail renders identity, log, and canceled state', (

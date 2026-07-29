@@ -3681,12 +3681,14 @@
     {
       "id": "source-unit:packages/app/src/components/tool-call-details.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/widgets/timeline_item_tile.dart; packages/app/lib/widgets/diff/diff_viewer.dart; packages/app/lib/core/tool_call_parsers.dart",
+      "implementation": "packages/app/lib/widgets/timeline_item_tile.dart; packages/app/lib/widgets/diff/diff_viewer.dart; packages/app/lib/core/tool_call_parsers.dart; packages/app/lib/core/diff_highlight.dart; packages/app/lib/core/highlight_cache.dart",
       "evidence": [
         "packages/app/test/timeline_item_tile_test.dart",
-        "packages/app/test/diff_viewer_test.dart"
+        "packages/app/test/diff_viewer_test.dart",
+        "packages/app/test/diff_highlight_test.dart",
+        "packages/app/test/highlight_cache_test.dart"
       ],
-      "notes": "The edit-detail path now matches Paseo unified-diff precedence, old/new fallback, word highlights, nested scrolling, and height cap. The wider frozen tool detail component still has unported shell/file/search/subagent layouts and full-height orchestration."
+      "notes": "The edit-detail path now matches Paseo unified-diff precedence, old/new fallback, whole-document syntax highlighting, word-highlight fallback, nested scrolling, and height cap. The wider frozen tool detail component still has unported shell/file/search/subagent layouts and full-height orchestration."
     },
     {
       "id": "source-unit:packages/app/src/components/tool-call-sheet.tsx",
@@ -8184,10 +8186,14 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/diff-highlight.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/diff_highlight.dart; packages/app/lib/core/highlight_cache.dart; packages/app/lib/core/tool_call_parsers.dart; packages/app/lib/widgets/timeline_item_tile.dart",
+      "evidence": [
+        "packages/app/test/diff_highlight_test.dart",
+        "packages/app/test/highlight_cache_test.dart",
+        "packages/app/test/timeline_item_tile_test.dart"
+      ],
+      "notes": "Ports the frozen contract: extension and grammar gating, unchanged-input fallback, diff-marker stripping, old/new document reconstruction independent of hunk ranges, whole-document tokenization for multiline parser state, position remapping for add/remove/context lines, and tokenless headers."
     },
     {
       "id": "source-unit:packages/app/src/utils/diff-highlighter.ts",
@@ -8282,10 +8288,13 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/highlight-cache.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/highlight_cache.dart",
+      "evidence": [
+        "packages/app/test/highlight_cache_test.dart",
+        "packages/app/test/diff_highlight_test.dart"
+      ],
+      "notes": "Ports the frozen theme-independent cache contract with exact supported extensions, path suffix normalization, whole-document per-line tokens, stable keyed lines and tokens, a 100,000-character safety cap, exception fallback, and a 200-entry access-ordered LRU. Highlight.js scopes are normalized to Paseo's semantic token roles for render-time theming."
     },
     {
       "id": "source-unit:packages/app/src/utils/host-route-browser.ts",

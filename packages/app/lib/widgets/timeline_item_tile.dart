@@ -5,6 +5,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import '../attachments/attachment_store.dart';
 import '../composer/composer_image_attachment_service.dart';
 import '../composer/composer_image_attachments.dart';
+import '../core/diff_highlight.dart';
 import '../core/theme.dart';
 import '../core/tool_call_parsers.dart';
 import '../state/timeline_provider.dart';
@@ -472,12 +473,21 @@ class _ToolCallCard extends StatelessWidget {
     return switch (detail) {
       ShellDetail(:final output) when output != null && output.isNotEmpty =>
         _MonoBlock(text: output),
-      EditDetail(:final diff, :final oldString, :final newString) => DiffViewer(
-        diffLines: diff != null && diff.isNotEmpty
-            ? parseUnifiedDiff(diff)
-            : buildLineDiff(oldString ?? '', newString ?? ''),
-        maxHeight: 300,
-      ),
+      EditDetail(
+        :final path,
+        :final diff,
+        :final oldString,
+        :final newString,
+      ) =>
+        DiffViewer(
+          diffLines: highlightDiffLines(
+            diff != null && diff.isNotEmpty
+                ? parseUnifiedDiff(diff)
+                : buildLineDiff(oldString ?? '', newString ?? ''),
+            path,
+          ),
+          maxHeight: 300,
+        ),
       WriteDetail(:final contentPreview)
           when contentPreview != null && contentPreview.isNotEmpty =>
         _MonoBlock(text: contentPreview),
