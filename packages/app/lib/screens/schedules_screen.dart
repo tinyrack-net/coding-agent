@@ -22,7 +22,6 @@ import '../widgets/adaptive_modal_sheet.dart';
 import '../widgets/combined_model_selector.dart';
 import '../widgets/fluent/form_text_input.dart';
 import '../widgets/fluent/select_field.dart';
-import '../widgets/fluent/toast.dart';
 import '../widgets/provider_icon.dart';
 
 enum _ScheduleFilter { active, ended }
@@ -202,32 +201,13 @@ class _SchedulesScreenState extends ConsumerState<SchedulesScreen> {
                         onCreate: () => _showForm(),
                       )
                     : ListView(
-                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                        key: const ValueKey('schedules-list'),
+                        padding: const EdgeInsets.only(bottom: 24),
                         children: [
-                          DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: context.tokens.surfaceContainerHighest,
-                              border: Border.all(
-                                color: context.tokens.outlineVariant,
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Column(
-                              children: [
-                                for (
-                                  var index = 0;
-                                  index < visible.length;
-                                  index++
-                                )
-                                  _ScheduleRow(
-                                    row: visible[index],
-                                    singleHost: hosts.length <= 1,
-                                    showDivider: index > 0,
-                                    onEdit: () =>
-                                        _showForm(visible[index].entry),
-                                  ),
-                              ],
-                            ),
+                          _SchedulesTable(
+                            rows: visible,
+                            singleHost: hosts.length <= 1,
+                            onEdit: (entry) => _showForm(entry),
                           ),
                         ],
                       ),
@@ -246,6 +226,50 @@ class _SchedulesScreenState extends ConsumerState<SchedulesScreen> {
         schedule: entry?.schedule,
         serverId: entry?.serverId,
         preferencesService: widget.preferencesService,
+      ),
+    );
+  }
+}
+
+class _SchedulesTable extends StatelessWidget {
+  const _SchedulesTable({
+    required this.rows,
+    required this.singleHost,
+    required this.onEdit,
+  });
+
+  final List<_ResolvedScheduleRow> rows;
+  final bool singleHost;
+  final ValueChanged<AggregatedSchedule> onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact =
+        MediaQuery.sizeOf(context).width < adaptiveModalCompactBreakpoint;
+    final palette = context.paseoPalette;
+    return Padding(
+      key: const ValueKey('schedules-table'),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 24),
+      child: Container(
+        key: const ValueKey('schedules-table-card'),
+        clipBehavior: Clip.hardEdge,
+        decoration: BoxDecoration(
+          color: palette.surface1,
+          border: Border.all(color: palette.border),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var index = 0; index < rows.length; index++)
+              _ScheduleRow(
+                row: rows[index],
+                singleHost: singleHost,
+                showDivider: index > 0,
+                onEdit: () => onEdit(rows[index].entry),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -396,8 +420,9 @@ class _ScheduleRow extends ConsumerWidget {
       children: [
         if (showDivider)
           Divider(
+            key: ValueKey('schedule-divider-${schedule.id}'),
             style: DividerThemeData(
-              decoration: BoxDecoration(color: context.tokens.outlineVariant),
+              decoration: BoxDecoration(color: palette.border),
             ),
           ),
         Semantics(
@@ -517,19 +542,20 @@ class _ScheduleMenu extends ConsumerStatefulWidget {
 }
 
 class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
-  _SchedulePendingAction? _pending;
+  final _pending = <_SchedulePendingAction>{};
 
   Future<void> _run(
     _SchedulePendingAction pending,
     Future<void> Function() action,
   ) async {
-    setState(() => _pending = pending);
+    setState(() => _pending.add(pending));
     try {
       await action();
-    } catch (error) {
-      if (mounted) AppToast.show(context, 'Schedule action failed: $error');
+    } catch (_) {
+      // The notifier rolls back its optimistic state and refreshes on settle.
+      // Frozen Paseo deliberately does not add a second per-row error toast.
     } finally {
-      if (mounted) setState(() => _pending = null);
+      if (mounted) setState(() => _pending.remove(pending));
     }
   }
 
@@ -550,9 +576,7 @@ class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
       button: true,
       label: '$productName actions',
       child: DropDownButton(
-        key: ValueKey(
-          'schedule-kebab-state-${schedule.id}-${_pending?.name ?? 'idle'}',
-        ),
+        key: ValueKey('schedule-kebab-state-${schedule.id}-${_pendingKey()}'),
         title: const Icon(FluentIcons.more_vertical, size: 14),
         items: [
           MenuFlyoutItem(
@@ -567,15 +591,16 @@ class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
                 key: ValueKey('schedule-menu-resume-${schedule.id}'),
                 leading: _menuLeading(
                   FluentIcons.play,
-                  _pending == _SchedulePendingAction.resume,
+                  _pending.contains(_SchedulePendingAction.resume),
                 ),
                 text: Text(
-                  _pending == _SchedulePendingAction.resume
+                  _pending.contains(_SchedulePendingAction.resume)
                       ? 'Resuming...'
                       : 'Resume schedule',
                 ),
                 onPressed:
-                    canExecute && _pending != _SchedulePendingAction.resume
+                    canExecute &&
+                        !_pending.contains(_SchedulePendingAction.resume)
                     ? () => _run(_SchedulePendingAction.resume, () async {
                         await notifier.resume(serverId, schedule.id);
                       })
@@ -586,15 +611,16 @@ class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
                 key: ValueKey('schedule-menu-pause-${schedule.id}'),
                 leading: _menuLeading(
                   FluentIcons.pause,
-                  _pending == _SchedulePendingAction.pause,
+                  _pending.contains(_SchedulePendingAction.pause),
                 ),
                 text: Text(
-                  _pending == _SchedulePendingAction.pause
+                  _pending.contains(_SchedulePendingAction.pause)
                       ? 'Pausing...'
                       : 'Pause schedule',
                 ),
                 onPressed:
-                    canExecute && _pending != _SchedulePendingAction.pause
+                    canExecute &&
+                        !_pending.contains(_SchedulePendingAction.pause)
                     ? () => _run(_SchedulePendingAction.pause, () async {
                         await notifier.pause(serverId, schedule.id);
                       })
@@ -604,14 +630,16 @@ class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
               key: ValueKey('schedule-menu-run-${schedule.id}'),
               leading: _menuLeading(
                 FluentIcons.refresh,
-                _pending == _SchedulePendingAction.runNow,
+                _pending.contains(_SchedulePendingAction.runNow),
               ),
               text: Text(
-                _pending == _SchedulePendingAction.runNow
+                _pending.contains(_SchedulePendingAction.runNow)
                     ? 'Starting...'
                     : 'Run now',
               ),
-              onPressed: canExecute && _pending != _SchedulePendingAction.runNow
+              onPressed:
+                  canExecute &&
+                      !_pending.contains(_SchedulePendingAction.runNow)
                   ? () => _run(_SchedulePendingAction.runNow, () async {
                       await notifier.runOnce(serverId, schedule.id);
                     })
@@ -621,7 +649,7 @@ class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
           const MenuFlyoutSeparator(),
           MenuFlyoutItem(
             key: ValueKey('schedule-menu-delete-${schedule.id}'),
-            leading: _pending == _SchedulePendingAction.delete
+            leading: _pending.contains(_SchedulePendingAction.delete)
                 ? const SizedBox.square(
                     dimension: 14,
                     child: ProgressRing(strokeWidth: 2),
@@ -632,18 +660,26 @@ class _ScheduleMenuState extends ConsumerState<_ScheduleMenu> {
                     color: context.statusColors.danger,
                   ),
             text: Text(
-              _pending == _SchedulePendingAction.delete
+              _pending.contains(_SchedulePendingAction.delete)
                   ? 'Deleting...'
                   : 'Delete $productNameLower',
               style: TextStyle(color: context.statusColors.danger),
             ),
-            onPressed: _pending == _SchedulePendingAction.delete
+            onPressed: _pending.contains(_SchedulePendingAction.delete)
                 ? null
                 : () => _confirmDelete(notifier),
           ),
         ],
       ),
     );
+  }
+
+  String _pendingKey() {
+    final names = [
+      for (final action in _SchedulePendingAction.values)
+        if (_pending.contains(action)) action.name,
+    ];
+    return names.isEmpty ? 'idle' : names.join('+');
   }
 
   Widget _menuLeading(IconData icon, bool pending) => pending

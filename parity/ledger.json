@@ -3310,12 +3310,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/schedules-table.tsx",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/screens/schedules_screen.dart",
       "evidence": [
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": null
+      "notes": "The Flutter schedules table now owns the frozen full-width adaptive list wrapper with 12px compact and 24px desktop insets, an 8px clipped surface1 card with the exact border token, ordered row dividers, stable table/list/card keys, and row-local host-scoped mutations. Pending actions are tracked independently per row and per operation, concurrent rows settle without overwriting each other, destructive confirmation remains product-specific, and mutation failures defer to notifier rollback/refetch without an extra row toast. Focused widget regressions cover desktop and compact geometry, palette and clipping, concurrent pending ownership, and failure settlement."
     },
     {
       "id": "source-unit:packages/app/src/components/settings-textarea.tsx",

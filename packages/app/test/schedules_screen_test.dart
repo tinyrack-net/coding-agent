@@ -184,6 +184,56 @@ void main() {
     expect(find.text('Finished'), findsOneWidget);
   });
 
+  testWidgets('table uses frozen desktop card geometry and tokens', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 700);
+    addTearDown(tester.view.reset);
+    await _pump(tester, [_schedule(id: 'first'), _schedule(id: 'second')]);
+
+    final tableRect = tester.getRect(
+      find.byKey(const ValueKey('schedules-table')),
+    );
+    final cardRect = tester.getRect(
+      find.byKey(const ValueKey('schedules-table-card')),
+    );
+    expect(tableRect.left, 0);
+    expect(tableRect.right, 900);
+    expect(cardRect.left, 24);
+    expect(cardRect.right, 876);
+    expect(cardRect.top, tableRect.top);
+    expect(cardRect.bottom, tableRect.bottom);
+    final card = tester.widget<Container>(
+      find.byKey(const ValueKey('schedules-table-card')),
+    );
+    final decoration = card.decoration! as BoxDecoration;
+    final palette = paseoPaletteFor(AppThemeName.dark);
+    expect(card.clipBehavior, Clip.hardEdge);
+    expect(decoration.color, palette.surface1);
+    expect((decoration.border! as Border).top.color, palette.border);
+    expect(decoration.borderRadius, BorderRadius.circular(8));
+    expect(
+      find.byKey(const ValueKey('schedule-divider-second')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('table switches to frozen compact horizontal inset', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(600, 700);
+    addTearDown(tester.view.reset);
+    await _pump(tester, [_schedule(id: 'compact')]);
+
+    final cardRect = tester.getRect(
+      find.byKey(const ValueKey('schedules-table-card')),
+    );
+    expect(cardRect.left, 12);
+    expect(cardRect.right, 588);
+  });
+
   testWidgets('row opens the edit sheet with frozen values', (tester) async {
     await _pump(tester, [_schedule(id: 'active')]);
 
@@ -643,6 +693,81 @@ void main() {
     );
   });
 
+  testWidgets('table keeps concurrent pending state owned by each row', (
+    tester,
+  ) async {
+    final first = Completer<ScheduleSummary>();
+    final second = Completer<ScheduleSummary>();
+    final notifier = _FakeSchedulesNotifier([
+      _schedule(id: 'first', status: ScheduleStatus.paused),
+      _schedule(id: 'second', status: ScheduleStatus.paused),
+    ])..resumeCompleters.addAll({'first': first, 'second': second});
+    await _pumpWithNotifier(tester, notifier);
+
+    await tester.tap(find.byKey(const ValueKey('schedule-kebab-first')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('schedule-menu-resume-first')));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byKey(const ValueKey('schedule-kebab-second')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('schedule-menu-resume-second')));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(
+      find.byKey(
+        const ValueKey('schedule-kebab-state-first-resume'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey('schedule-kebab-state-second-resume'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+
+    first.complete(_schedule(id: 'first'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(
+        const ValueKey('schedule-kebab-state-first-idle'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey('schedule-kebab-state-second-resume'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+
+    second.complete(_schedule(id: 'second'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('table silently settles a failed row mutation', (tester) async {
+    final notifier = _FakeSchedulesNotifier([
+      _schedule(id: 'failed', status: ScheduleStatus.paused),
+    ])..resumeError = StateError('offline');
+    await _pumpWithNotifier(tester, notifier);
+
+    await tester.tap(find.byKey(const ValueKey('schedule-kebab-failed')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('schedule-menu-resume-failed')));
+    await tester.pumpAndSettle();
+
+    expect(notifier.resumed, ['failed']);
+    expect(find.textContaining('Schedule action failed'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('schedule-kebab-state-failed-idle')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('agent target and every cadence render without execution menu', (
     tester,
   ) async {
@@ -1023,6 +1148,8 @@ class _FakeSchedulesNotifier extends AggregatedSchedulesNotifier {
   String? updatedServerId;
   Map<String, Object?>? updatedChanges;
   Completer<ScheduleSummary>? resumeCompleter;
+  final resumeCompleters = <String, Completer<ScheduleSummary>>{};
+  Object? resumeError;
 
   @override
   Future<AggregatedSchedulesState> build() async =>
@@ -1059,6 +1186,10 @@ class _FakeSchedulesNotifier extends AggregatedSchedulesNotifier {
   @override
   Future<ScheduleSummary> resume(String serverId, String scheduleId) async {
     resumed.add(scheduleId);
+    if (resumeError case final error?) throw error;
+    if (resumeCompleters[scheduleId] case final completer?) {
+      return await completer.future;
+    }
     if (resumeCompleter != null) return await resumeCompleter!.future;
     return _schedule(id: scheduleId);
   }
