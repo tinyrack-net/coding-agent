@@ -1339,6 +1339,7 @@ void main() {
     expect(find.text('Root comment.'), findsOneWidget);
     expect(find.text('First reply.'), findsOneWidget);
     expect(find.text('Second reply.'), findsOneWidget);
+    expect(find.text('commented'), findsNWidgets(3));
 
     final rail = find.byKey(
       const ValueKey('thread-reply-rail-thread:PRRT_REPLIES'),

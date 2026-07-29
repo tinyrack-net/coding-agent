@@ -1583,11 +1583,22 @@ class _ThreadComment extends StatelessWidget {
               _ActivityAvatar(item: comment, size: 16),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  comment.author,
-                  style: const TextStyle(fontSize: 11),
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        comment.author,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(child: _ActivityVerb(item: comment)),
+                  ],
                 ),
               ),
+              const SizedBox(width: 8),
               Text(
                 formatPullRequestAge(comment.createdAt),
                 style: TextStyle(
