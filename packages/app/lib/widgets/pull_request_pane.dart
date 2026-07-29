@@ -170,6 +170,10 @@ class _PullRequestHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = _statePresentation(context, status);
+    final gitlabFacts = GitlabMergeFacts.parse(status.forgeSpecific);
+    final approvals = gitlabFacts == null
+        ? null
+        : deriveGitlabApprovals(gitlabFacts);
     final number = status.number?.toInt();
     final repository =
         status.projectPath ??
@@ -201,6 +205,26 @@ class _PullRequestHeader extends StatelessWidget {
                 state.label,
                 style: TextStyle(fontSize: 11, color: state.color),
               ),
+              if (approvals != null) ...[
+                const SizedBox(width: 8),
+                Icon(
+                  FluentIcons.completed,
+                  key: const ValueKey('pr-pane-approvals-icon'),
+                  size: 11,
+                  color: approvals.given >= approvals.required
+                      ? context.statusColors.success
+                      : context.tokens.onSurfaceVariant,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${approvals.given} of ${approvals.required} approvals',
+                  key: const ValueKey('pr-pane-approvals'),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: context.tokens.onSurfaceVariant,
+                  ),
+                ),
+              ],
               if (repository.isNotEmpty) ...[
                 const SizedBox(width: 8),
                 Expanded(

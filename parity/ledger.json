@@ -5081,17 +5081,24 @@
     },
     {
       "id": "source-unit:packages/app/src/git/forges/gitlab.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge_logic.dart; packages/app/lib/core/forge_url.dart; packages/app/lib/widgets/pull_request_pane.dart",
+      "evidence": [
+        "packages/app/test/gitlab_forge_logic_test.dart",
+        "packages/app/test/forge_url_test.dart",
+        "packages/app/test/pull_request_pane_test.dart"
+      ],
+      "notes": "Ports the complete frozen GitLab logic module: passthrough facts validation and defaults, detailed and legacy merge readiness, active pipeline and auto-merge gates, merge methods, pipeline summary and status normalization, approvals metadata, and GitLab tree/blob URL and line-range grammar."
     },
     {
       "id": "source-unit:packages/app/src/git/forges/gitlab.view.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/forge.dart; packages/app/lib/widgets/pull_request_pane.dart",
+      "evidence": [
+        "packages/app/test/forge_test.dart",
+        "packages/app/test/pull_request_pane_test.dart"
+      ],
+      "notes": "GitLab brand presentation and approvals progress in the PR header are implemented. Pipeline section, job rows, and live polling remain."
     },
     {
       "id": "source-unit:packages/app/src/git/forges/index.ts",
@@ -5109,10 +5116,13 @@
     },
     {
       "id": "source-unit:packages/app/src/git/merge-capability.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge_logic.dart",
+      "evidence": [
+        "packages/app/test/forge_logic_test.dart",
+        "packages/app/test/gitlab_forge_logic_test.dart"
+      ],
+      "notes": "Ports the neutral registered-forge merge-capability dispatcher, unknown and schema-mismatch rejection, absent-facts fallback, and legacy GitHub facts compatibility path."
     },
     {
       "id": "source-unit:packages/app/src/git/policy.ts",
@@ -5164,12 +5174,14 @@
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/check-status.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/widgets/pull_request_pane.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge_logic.dart; packages/app/lib/widgets/pull_request_pane.dart",
       "evidence": [
+        "packages/app/test/forge_logic_test.dart",
+        "packages/app/test/gitlab_forge_logic_test.dart",
         "packages/app/test/pull_request_pane_test.dart"
       ],
-      "notes": "Core Windows explorer and PR checks/activity flow implemented; advanced attachment, entry grouping, and forge-specific polish remain."
+      "notes": "Ports the frozen neutral success, failure, pending, skipped and cancelled status mapping, including pending fallback for unknown forge-specific statuses."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/context-attachment.ts",
@@ -5202,12 +5214,13 @@
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/native-data.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/state/pull_request_provider.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge_logic.dart; packages/app/lib/widgets/pull_request_pane.dart",
       "evidence": [
+        "packages/app/test/forge_logic_test.dart",
         "packages/app/test/pull_request_pane_test.dart"
       ],
-      "notes": "Core Windows explorer and PR checks/activity flow implemented; advanced attachment, entry grouping, and forge-specific polish remain."
+      "notes": "Ports registered native fallback-check aggregation, empty results for absent or unsupported facts, and suppression when individual forge checks are available."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/pane-error.tsx",

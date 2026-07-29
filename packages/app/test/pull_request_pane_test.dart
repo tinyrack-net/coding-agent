@@ -165,14 +165,27 @@ class _FakeDaemonClient extends DaemonClient {
                             workflowRunId: 12,
                           ),
                       ],
-                forgeSpecific: forge == 'gitea'
-                    ? const {
-                        'forge': 'gitea',
-                        'mergeable': true,
-                        'hasMerged': false,
-                        'ciStatus': 'warning',
-                      }
-                    : null,
+                forgeSpecific: switch (forge) {
+                  'gitea' => const {
+                    'forge': 'gitea',
+                    'mergeable': true,
+                    'hasMerged': false,
+                    'ciStatus': 'warning',
+                  },
+                  'gitlab' => const {
+                    'forge': 'gitlab',
+                    'detailedMergeStatus': 'mergeable',
+                    'hasConflicts': false,
+                    'blockingDiscussionsResolved': true,
+                    'approvalsRequired': 2,
+                    'approvalsGiven': 1,
+                    'pipelineStatus': 'running',
+                    'pipelineId': 306,
+                    'pipelineUrl': 'https://gitlab.example/pipelines/306',
+                    'mergeWhenPipelineSucceeds': false,
+                  },
+                  _ => null,
+                },
               )
             : null,
         githubFeaturesEnabled: true,
@@ -426,6 +439,22 @@ void main() {
       expect(find.byIcon(FluentIcons.error_badge), findsWidgets);
     },
   );
+
+  testWidgets('renders GitLab approval progress in the PR header', (
+    tester,
+  ) async {
+    await _pumpExplorer(tester, _FakeDaemonClient(forge: 'gitlab'));
+
+    await tester.tap(find.text('#42'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('pr-pane-approvals')), findsOneWidget);
+    expect(find.text('1 of 2 approvals'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('pr-pane-approvals-icon')),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('section headers collapse and refresh reloads native data', (
     tester,

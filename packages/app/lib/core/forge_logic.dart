@@ -219,6 +219,154 @@ ForgeMergeCapability? deriveGithubMergeCapability(Object? facts) {
   );
 }
 
+const _gitlabActivePipelineStatuses = {
+  'created',
+  'waiting_for_resource',
+  'preparing',
+  'pending',
+  'running',
+  'scheduled',
+};
+
+bool isGitlabPipelineActiveStatus(String status) =>
+    _gitlabActivePipelineStatuses.contains(status);
+
+ForgeCheckStatus mapGitlabPipelineStatus(String status) => switch (status) {
+  'success' || 'passed' => ForgeCheckStatus.success,
+  'failed' => ForgeCheckStatus.failure,
+  'canceled' || 'cancelled' || 'skipped' => ForgeCheckStatus.skipped,
+  _ => ForgeCheckStatus.pending,
+};
+
+final class GitlabMergeFacts {
+  const GitlabMergeFacts({
+    required this.detailedMergeStatus,
+    required this.mergeStatus,
+    required this.hasConflicts,
+    required this.blockingDiscussionsResolved,
+    required this.approvalsRequired,
+    required this.approvalsGiven,
+    required this.pipelineStatus,
+    required this.pipelineId,
+    required this.pipelineUrl,
+    required this.mergeWhenPipelineSucceeds,
+  });
+
+  final String? detailedMergeStatus;
+  final String? mergeStatus;
+  final bool hasConflicts;
+  final bool blockingDiscussionsResolved;
+  final num approvalsRequired;
+  final num approvalsGiven;
+  final String? pipelineStatus;
+  final num? pipelineId;
+  final String? pipelineUrl;
+  final bool mergeWhenPipelineSucceeds;
+
+  static GitlabMergeFacts? parse(Object? value) {
+    if (value is! Map || value['forge'] != 'gitlab') return null;
+    for (final field in [
+      'detailedMergeStatus',
+      'mergeStatus',
+      'pipelineStatus',
+      'pipelineUrl',
+    ]) {
+      if (!_isNullableString(value[field])) return null;
+    }
+    for (final field in [
+      'hasConflicts',
+      'blockingDiscussionsResolved',
+      'mergeWhenPipelineSucceeds',
+    ]) {
+      if (value.containsKey(field) && value[field] is! bool) return null;
+    }
+    for (final field in ['approvalsRequired', 'approvalsGiven']) {
+      if (value.containsKey(field) && !_isFiniteNumber(value[field])) {
+        return null;
+      }
+    }
+    if (value['pipelineId'] != null && !_isFiniteNumber(value['pipelineId'])) {
+      return null;
+    }
+    return GitlabMergeFacts(
+      detailedMergeStatus: value['detailedMergeStatus'] as String?,
+      mergeStatus: value['mergeStatus'] as String?,
+      hasConflicts: value['hasConflicts'] as bool? ?? false,
+      blockingDiscussionsResolved:
+          value['blockingDiscussionsResolved'] as bool? ?? true,
+      approvalsRequired: value['approvalsRequired'] as num? ?? 0,
+      approvalsGiven: value['approvalsGiven'] as num? ?? 0,
+      pipelineStatus: value['pipelineStatus'] as String?,
+      pipelineId: value['pipelineId'] as num?,
+      pipelineUrl: value['pipelineUrl'] as String?,
+      mergeWhenPipelineSucceeds:
+          value['mergeWhenPipelineSucceeds'] as bool? ?? false,
+    );
+  }
+}
+
+ForgeMergeCapability? deriveGitlabMergeCapability(Object? facts) {
+  final gitlab = GitlabMergeFacts.parse(facts);
+  if (gitlab == null) return null;
+  final autoMergeEnabled = gitlab.mergeWhenPipelineSucceeds;
+  final hasActivePipeline =
+      gitlab.pipelineStatus != null &&
+      isGitlabPipelineActiveStatus(gitlab.pipelineStatus!);
+  final directMergeReady = gitlab.detailedMergeStatus != null
+      ? gitlab.detailedMergeStatus == 'mergeable'
+      : gitlab.mergeStatus == 'can_be_merged' && !gitlab.hasConflicts;
+  return ForgeMergeCapability(
+    directMergeReady: directMergeReady,
+    canEnableAutoMerge: !autoMergeEnabled && hasActivePipeline,
+    autoMergeEnabled: autoMergeEnabled,
+    canDisableAutoMerge: autoMergeEnabled,
+    mergeBlockedByQueue: false,
+    allowedMethods: const ['merge', 'squash', 'rebase'],
+    preferredMethod: null,
+  );
+}
+
+final class GitlabPipelineSummary {
+  const GitlabPipelineSummary({
+    required this.id,
+    required this.status,
+    required this.rawStatus,
+    required this.url,
+  });
+
+  final num id;
+  final ForgeCheckStatus status;
+  final String rawStatus;
+  final String? url;
+}
+
+GitlabPipelineSummary? deriveGitlabPipelineSummary(GitlabMergeFacts facts) {
+  final id = facts.pipelineId;
+  if (id == null) return null;
+  final rawStatus = facts.pipelineStatus ?? '';
+  return GitlabPipelineSummary(
+    id: id,
+    status: mapGitlabPipelineStatus(rawStatus),
+    rawStatus: rawStatus,
+    url: facts.pipelineUrl,
+  );
+}
+
+final class GitlabApprovals {
+  const GitlabApprovals({required this.given, required this.required});
+
+  final num given;
+  final num required;
+}
+
+GitlabApprovals? deriveGitlabApprovals(GitlabMergeFacts facts) =>
+    facts.approvalsRequired <= 0
+    ? null
+    : GitlabApprovals(
+        given: facts.approvalsGiven,
+        required: facts.approvalsRequired,
+      );
+
 /// Neutral registry boundary with Paseo's compatibility fallback for daemons
 /// that still put GitHub facts in `status.github`.
 ForgeMergeCapability? deriveForgeMergeCapability(
@@ -233,6 +381,7 @@ ForgeMergeCapability? deriveForgeMergeCapability(
     });
   }
   return deriveGithubMergeCapability(forgeSpecific) ??
+      deriveGitlabMergeCapability(forgeSpecific) ??
       deriveGiteaMergeCapability(forgeSpecific);
 }
 
@@ -341,3 +490,5 @@ ForgeCheckStatus _mapGiteaCiStatus(String status) =>
     : mapForgeCheckStatus(status);
 
 bool _isNullableString(Object? value) => value == null || value is String;
+
+bool _isFiniteNumber(Object? value) => value is num && value.isFinite;
