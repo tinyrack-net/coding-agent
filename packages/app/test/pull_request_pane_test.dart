@@ -727,6 +727,30 @@ void main() {
     expect(find.text('Activity'), findsOneWidget);
     expect(find.text('Looks good to me.'), findsOneWidget);
     expect(find.text('lib/pane.dart:18'), findsNothing);
+    expect(
+      tester
+          .widget<Container>(
+            find.byKey(const ValueKey('activity-header-content-review-1')),
+          )
+          .padding,
+      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    );
+    expect(
+      tester
+          .widget<Padding>(
+            find.byKey(const ValueKey('activity-card-body-review-1')),
+          )
+          .padding,
+      const EdgeInsets.fromLTRB(12, 8, 12, 12),
+    );
+    expect(
+      tester
+          .widget<Padding>(
+            find.byKey(const ValueKey('activity-card-footer-review-1')),
+          )
+          .padding,
+      const EdgeInsets.fromLTRB(0, 0, 8, 8),
+    );
   });
 
   testWidgets(

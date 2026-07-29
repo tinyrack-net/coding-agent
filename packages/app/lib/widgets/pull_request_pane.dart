@@ -1170,8 +1170,9 @@ class _ActivityCard extends StatelessWidget {
             key: ValueKey('activity-header-${item.id}'),
             onPressed: item.body.trim().isEmpty ? onOpen : onToggle,
             builder: (context, states) => Container(
+              key: ValueKey('activity-header-content-${item.id}'),
               constraints: const BoxConstraints(minHeight: 36),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               color: states.contains(WidgetState.hovered)
                   ? context.tokens.surfaceContainerHighest
                   : Colors.transparent,
@@ -1246,7 +1247,8 @@ class _ActivityCard extends StatelessWidget {
           ),
           if (!collapsed && item.body.trim().isNotEmpty)
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
+              key: ValueKey('activity-card-body-${item.id}'),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
               child: MarkdownBody(
                 data: item.body,
                 selectable: true,
@@ -1261,7 +1263,8 @@ class _ActivityCard extends StatelessWidget {
             ),
           if (!collapsed && onAddToChat != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 8, 8),
+              key: ValueKey('activity-card-footer-${item.id}'),
+              padding: const EdgeInsets.fromLTRB(0, 0, 8, 8),
               child: _GhostChatButton(
                 onPressed: onAddToChat,
                 label: 'Add to chat',
