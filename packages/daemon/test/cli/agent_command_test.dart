@@ -2285,6 +2285,44 @@ void main() {
     expect(launch['message'], 'desktop missing');
   });
 
+  test('shared output options support frozen option spellings', () async {
+    final parsed = AgentCliInvocation.parse(const [
+      'send',
+      '--prompt=hello',
+      '--image=one.png',
+      '--host=remote:6868',
+      '--format=yaml',
+      '--json',
+      '--quiet',
+      '--no-headers',
+      '--no-color',
+      '--',
+      '-agent',
+    ]);
+    expect(parsed.agentId, '-agent');
+    expect(parsed.promptOption, 'hello');
+    expect(parsed.images, ['one.png']);
+    expect(parsed.host, 'remote:6868');
+    expect(parsed.output.format, 'json');
+    expect(parsed.output.quiet, isTrue);
+    expect(parsed.output.noHeaders, isTrue);
+    expect(parsed.output.noColor, isTrue);
+
+    final compact = AgentCliInvocation.parse(const ['ls', '-ocli']);
+    expect(compact.output.format, 'table');
+
+    final yamlError = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: const ['stop', '--format=yaml'],
+        writeError: yamlError.write,
+      ),
+      1,
+    );
+    expect(yamlError.toString(), startsWith('error:\n'));
+    expect(yamlError.toString(), contains('code: MISSING_ARGUMENT'));
+  });
+
   test('parser and invalid thinking errors are deterministic', () async {
     for (final arguments in const [
       <String>[],

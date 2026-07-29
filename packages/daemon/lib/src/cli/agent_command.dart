@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../server/daemon_config.dart';
 import 'agent_logs_command.dart';
+import 'cli_output.dart';
 import 'desktop_launch.dart';
 import 'terminal_command.dart';
 
@@ -29,8 +30,17 @@ Future<int> runAgentCommand({
     output(_agentHelp(arguments.firstOrNull));
     return 0;
   }
+  AgentCliInvocation? invocation;
   try {
-    final invocation = AgentCliInvocation.parse(arguments);
+    invocation = AgentCliInvocation.parse(arguments);
+    if (invocation.action == 'ls' &&
+        invocation.thinking != null &&
+        invocation.thinking!.isEmpty) {
+      throw const AgentCommandException(
+        'LIST_AGENTS_FAILED',
+        'Failed to list agents: [object Object]',
+      );
+    }
     String? resolvedSendPrompt;
     ({int timeoutMs, String? timeoutLabel})? resolvedWaitTimeout;
     String? resolvedUpdateName;
@@ -203,19 +213,27 @@ Future<int> runAgentCommand({
       resolvedOpenServerId,
       openAgentDesktop ?? launchDesktopWithAgent,
     );
-    output(_render(result, invocation));
+    final rendered = renderCliOutput(
+      result.toCliOutputResult(),
+      invocation.output,
+    );
+    if (rendered.isNotEmpty) output('$rendered\n');
     return 0;
   } on FormatException catch (error) {
     errorOutput('${error.message}\n$agentUsage\n');
     return 64;
   } on AgentCommandException catch (error) {
-    _writeCommandError(errorOutput, error, arguments);
+    _writeCommandError(
+      errorOutput,
+      error,
+      invocation?.output ?? _recoverAgentOutputOptions(arguments),
+    );
     return 1;
   } on Object catch (error) {
     _writeCommandError(
       errorOutput,
       AgentCommandException('AGENT_ERROR', _errorText(error)),
-      arguments,
+      invocation?.output ?? _recoverAgentOutputOptions(arguments),
     );
     return 1;
   } finally {
@@ -245,9 +263,7 @@ final class AgentCliInvocation {
     required this.server,
     required this.thinking,
     required this.host,
-    required this.format,
-    required this.quiet,
-    required this.headers,
+    required this.output,
   });
 
   final String action;
@@ -270,9 +286,7 @@ final class AgentCliInvocation {
   final String? server;
   final String? thinking;
   final String? host;
-  final String format;
-  final bool quiet;
-  final bool headers;
+  final CliOutputOptions output;
 
   static AgentCliInvocation parse(List<String> arguments) {
     if (arguments.isEmpty) {
@@ -316,8 +330,80 @@ final class AgentCliInvocation {
     var json = false;
     var quiet = false;
     var headers = true;
+    var color = true;
+    var positionalOnly = false;
     for (var index = 1; index < arguments.length; index++) {
       final argument = arguments[index];
+      if (!positionalOnly) {
+        final longOption = _splitLongOption(argument);
+        if (longOption != null) {
+          final (option, value) = longOption;
+          switch (option) {
+            case '--cwd':
+              if (action != 'stop' && action != 'delete') {
+                throw FormatException(
+                  '$option is only valid for agent stop/delete',
+                );
+              }
+              cwd = value;
+              continue;
+            case '--prompt':
+              _onlySend(action, option);
+              promptOption = value;
+              continue;
+            case '--prompt-file':
+              _onlySend(action, option);
+              promptFile = value;
+              continue;
+            case '--image':
+              _onlySend(action, option);
+              images.add(value);
+              continue;
+            case '--timeout':
+              _onlyWait(action, option);
+              timeout = value;
+              continue;
+            case '--label':
+              if (action != 'ls' && action != 'update') {
+                throw FormatException(
+                  '$option is only valid for agent ls/update',
+                );
+              }
+              labels.add(value);
+              continue;
+            case '--name':
+              if (action != 'update') {
+                throw FormatException('$option is only valid for agent update');
+              }
+              name = value;
+              continue;
+            case '--server':
+              if (action != 'open') {
+                throw FormatException('$option is only valid for agent open');
+              }
+              server = value;
+              continue;
+            case '--thinking':
+              _onlyList(action, option);
+              thinking = value;
+              continue;
+            case '--host':
+              host = value;
+              continue;
+            case '--format':
+              format = normalizeCliOutputFormat(value);
+              continue;
+          }
+        }
+      }
+      if (!positionalOnly && argument == '--') {
+        positionalOnly = true;
+        continue;
+      }
+      if (positionalOnly) {
+        positionals.add(argument);
+        continue;
+      }
       switch (argument) {
         case '-a':
           _onlyList(action, argument);
@@ -394,26 +480,23 @@ final class AgentCliInvocation {
         case '--json':
           json = true;
         case '-o' || '--format':
-          format = _requiredValue(
-            arguments,
-            ++index,
-            argument,
-          ).trim().toLowerCase();
-          if (format == 'cli') format = 'table';
-          if (!const {'table', 'json', 'yaml'}.contains(format)) {
-            throw FormatException('Unknown output format: $format');
-          }
+          format = normalizeCliOutputFormat(
+            _requiredValue(arguments, ++index, argument),
+          );
         case '-q' || '--quiet':
           quiet = true;
         case '--no-headers':
           headers = false;
         case '--no-color':
-          break;
+          color = false;
         default:
-          if (argument.startsWith('-')) {
+          if (argument.startsWith('-o') && argument.length > 2) {
+            format = normalizeCliOutputFormat(argument.substring(2));
+          } else if (argument.startsWith('-')) {
             throw FormatException('Unknown option: $argument');
+          } else {
+            positionals.add(argument);
           }
-          positionals.add(argument);
       }
     }
     if (action == 'ls' && positionals.isNotEmpty) {
@@ -494,9 +577,12 @@ final class AgentCliInvocation {
       server: server,
       thinking: normalizedThinking,
       host: host,
-      format: json ? 'json' : format,
-      quiet: quiet,
-      headers: headers,
+      output: CliOutputOptions(
+        format: json ? 'json' : format,
+        quiet: quiet,
+        noHeaders: !headers,
+        noColor: !color,
+      ),
     );
   }
 }
@@ -542,12 +628,6 @@ Future<_AgentCommandResult> _listAgents(
   Map<String, String> environment,
   DateTime now,
 ) async {
-  if (invocation.thinking != null && invocation.thinking!.isEmpty) {
-    throw const AgentCommandException(
-      'LIST_AGENTS_FAILED',
-      'Failed to list agents: [object Object]',
-    );
-  }
   final labels = _parseLabelFilters(invocation.labels);
   final filter = AgentDirectoryFilter(
     labels: labels,
@@ -1882,6 +1962,33 @@ final class _AgentCommandResult {
   final List<Map<String, Object?>> rows;
   final _AgentResultKind kind;
   final Object? structured;
+
+  CliOutputResult toCliOutputResult() {
+    final schema = switch (kind) {
+      _AgentResultKind.agents => _agentListSchema,
+      _AgentResultKind.inspect => _agentInspectSchema(structured!),
+      _AgentResultKind.modes => _agentModeListSchema,
+      _AgentResultKind.modeSet => _agentModeSetSchema,
+      _AgentResultKind.stop => _agentStopSchema,
+      _AgentResultKind.send => _agentSendSchema,
+      _AgentResultKind.wait => _agentWaitSchema,
+      _AgentResultKind.archive => _agentArchiveSchema,
+      _AgentResultKind.delete => _agentDeleteSchema,
+      _AgentResultKind.detach => _agentDetachSchema,
+      _AgentResultKind.reload => _agentReloadSchema,
+      _AgentResultKind.update => _agentUpdateSchema,
+      _AgentResultKind.open => _agentOpenSchema,
+    };
+    return switch (kind) {
+      _AgentResultKind.agents ||
+      _AgentResultKind.inspect ||
+      _AgentResultKind.modes => CliOutputResult.list(
+        rows: rows,
+        schema: schema,
+      ),
+      _ => CliOutputResult.single(row: rows.single, schema: schema),
+    };
+  }
 }
 
 enum _AgentResultKind {
@@ -1900,116 +2007,168 @@ enum _AgentResultKind {
   open,
 }
 
-String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
-  if (invocation.quiet) {
-    final field = switch (result.kind) {
-      _AgentResultKind.agents => 'shortId',
-      _AgentResultKind.inspect => 'key',
-      _AgentResultKind.modes => 'id',
-      _AgentResultKind.modeSet => 'agentId',
-      _AgentResultKind.stop => 'agentIds',
-      _AgentResultKind.send => 'agentId',
-      _AgentResultKind.wait => 'agentId',
-      _AgentResultKind.archive => 'agentId',
-      _AgentResultKind.delete => 'agentIds',
-      _AgentResultKind.detach => 'agentId',
-      _AgentResultKind.reload => 'agentId',
-      _AgentResultKind.update => 'agentId',
-      _AgentResultKind.open => 'agentId',
-    };
-    if (result.kind == _AgentResultKind.stop ||
-        result.kind == _AgentResultKind.delete) {
-      final ids = result.rows.single['agentIds'];
-      if (ids is! List || ids.isEmpty) return '';
-      return '${ids.join('\n')}\n';
-    }
-    return result.rows.map((row) => row[field]).join('\n') +
-        (result.rows.isEmpty ? '' : '\n');
-  }
-  final structured = result.structured ?? result.rows;
-  if (invocation.format == 'json') {
-    return '${const JsonEncoder.withIndent('  ').convert(structured)}\n';
-  }
-  if (invocation.format == 'yaml') {
-    return structured is Map
-        ? _yamlMap(structured.cast<String, Object?>())
-        : _yamlList(result.rows);
-  }
-  if (result.rows.isEmpty) return '';
-  final columns = switch (result.kind) {
-    _AgentResultKind.inspect => const [
-      ('KEY', 'key', 3),
-      ('VALUE', 'value', 5),
-    ],
-    _AgentResultKind.modes => const [
-      ('MODE', 'id', 15),
-      ('LABEL', 'label', 25),
-      ('DESCRIPTION', 'description', 40),
-    ],
-    _AgentResultKind.modeSet => const [
-      ('AGENT ID', 'agentId', 12),
-      ('MODE', 'mode', 20),
-    ],
-    _AgentResultKind.stop => const [('INTERRUPTED', 'stoppedCount', 0)],
-    _AgentResultKind.send || _AgentResultKind.wait => const [
-      ('AGENT ID', 'agentId', 12),
-      ('STATUS', 'status', 12),
-      ('MESSAGE', 'message', 40),
-    ],
-    _AgentResultKind.archive => const [
-      ('AGENT ID', 'agentId', 12),
-      ('STATUS', 'status', 12),
-      ('ARCHIVED AT', 'archivedAt', 24),
-    ],
-    _AgentResultKind.delete => const [('DELETED', 'deletedCount', 0)],
-    _AgentResultKind.detach => const [
-      ('AGENT ID', 'agentId', 12),
-      ('STATUS', 'status', 12),
-    ],
-    _AgentResultKind.reload => const [
-      ('AGENT ID', 'agentId', 12),
-      ('STATUS', 'status', 12),
-      ('TIMELINE', 'timelineSize', 8),
-    ],
-    _AgentResultKind.update => const [
-      ('AGENT ID', 'agentId', 12),
-      ('NAME', 'name', 20),
-      ('LABELS', 'labels', 24),
-    ],
-    _AgentResultKind.open => const [
-      ('AGENT ID', 'agentId', 12),
-      ('SERVER ID', 'serverId', 12),
-      ('STATUS', 'status', 12),
-    ],
-    _AgentResultKind.agents => const [
-      ('AGENT ID', 'shortId', 12),
-      ('NAME', 'name', 20),
-      ('PROVIDER', 'provider', 15),
-      ('THINKING', 'thinking', 12),
-      ('STATUS', 'status', 10),
-      ('CWD', 'cwd', 30),
-      ('CREATED', 'created', 15),
-    ],
-  };
-  final widths = [
-    for (final column in columns)
-      [
-        column.$1.length,
-        column.$3,
-        for (final row in result.rows) '${row[column.$2] ?? ''}'.length,
-      ].reduce((a, b) => a > b ? a : b),
-  ];
-  String line(List<String> cells) => [
-    for (var index = 0; index < cells.length; index++)
-      cells[index].padRight(widths[index]),
-  ].join('  ');
-  return [
-        if (invocation.headers) line([for (final column in columns) column.$1]),
-        for (final row in result.rows)
-          line([for (final column in columns) '${row[column.$2] ?? ''}']),
-      ].join('\n') +
-      (invocation.headers || result.rows.isNotEmpty ? '\n' : '');
+final _agentListSchema = CliOutputSchema(
+  idField: (row) => '${row['shortId'] ?? ''}',
+  columns: [
+    CliOutputColumn(
+      header: 'AGENT ID',
+      field: (row) => row['shortId'],
+      width: 12,
+    ),
+    CliOutputColumn(header: 'NAME', field: (row) => row['name'], width: 20),
+    CliOutputColumn(
+      header: 'PROVIDER',
+      field: (row) => row['provider'],
+      width: 15,
+    ),
+    CliOutputColumn(
+      header: 'THINKING',
+      field: (row) => row['thinking'],
+      width: 12,
+    ),
+    CliOutputColumn(
+      header: 'STATUS',
+      field: (row) => row['status'],
+      width: 10,
+      color: (value, _) => _agentStatusColor(value),
+    ),
+    CliOutputColumn(header: 'CWD', field: (row) => row['cwd'], width: 30),
+    CliOutputColumn(
+      header: 'CREATED',
+      field: (row) => row['created'],
+      width: 15,
+    ),
+  ],
+);
+
+CliOutputSchema _agentInspectSchema(Object structured) => CliOutputSchema(
+  idField: (row) => '${row['key'] ?? ''}',
+  columns: [
+    CliOutputColumn(header: 'KEY', field: (row) => row['key']),
+    CliOutputColumn(
+      header: 'VALUE',
+      field: (row) => row['value'],
+      color: (value, row) =>
+          row['key'] == 'Status' ? _agentStatusColor(value) : null,
+    ),
+  ],
+  serialize: (_) => structured,
+);
+
+final _agentModeListSchema = CliOutputSchema(
+  idField: (row) => '${row['id'] ?? ''}',
+  columns: [
+    CliOutputColumn(header: 'MODE', field: (row) => row['id'], width: 15),
+    CliOutputColumn(header: 'LABEL', field: (row) => row['label'], width: 25),
+    CliOutputColumn(
+      header: 'DESCRIPTION',
+      field: (row) => row['description'],
+      width: 40,
+    ),
+  ],
+);
+
+final _agentModeSetSchema = CliOutputSchema(
+  idField: (row) => '${row['agentId'] ?? ''}',
+  columns: [
+    CliOutputColumn(
+      header: 'AGENT ID',
+      field: (row) => row['agentId'],
+      width: 12,
+    ),
+    CliOutputColumn(header: 'MODE', field: (row) => row['mode'], width: 20),
+  ],
+);
+
+final _agentStopSchema = CliOutputSchema(
+  idField: _agentIdsOutput,
+  columns: [
+    CliOutputColumn(header: 'INTERRUPTED', field: (row) => row['stoppedCount']),
+  ],
+);
+
+final _agentSendSchema = _agentMessageSchema();
+final _agentWaitSchema = _agentMessageSchema();
+
+CliOutputSchema _agentMessageSchema() => CliOutputSchema(
+  idField: (row) => '${row['agentId'] ?? ''}',
+  columns: [
+    CliOutputColumn(
+      header: 'AGENT ID',
+      field: (row) => row['agentId'],
+      width: 12,
+    ),
+    CliOutputColumn(header: 'STATUS', field: (row) => row['status'], width: 12),
+    CliOutputColumn(
+      header: 'MESSAGE',
+      field: (row) => row['message'],
+      width: 40,
+    ),
+  ],
+);
+
+final _agentArchiveSchema = CliOutputSchema(
+  idField: (row) => '${row['agentId'] ?? ''}',
+  columns: [
+    CliOutputColumn(header: 'AGENT ID', field: (row) => row['agentId']),
+    CliOutputColumn(header: 'STATUS', field: (row) => row['status']),
+    CliOutputColumn(header: 'ARCHIVED AT', field: (row) => row['archivedAt']),
+  ],
+);
+
+final _agentDeleteSchema = CliOutputSchema(
+  idField: _agentIdsOutput,
+  columns: [
+    CliOutputColumn(header: 'DELETED', field: (row) => row['deletedCount']),
+  ],
+);
+
+final _agentDetachSchema = CliOutputSchema(
+  idField: (row) => '${row['agentId'] ?? ''}',
+  columns: [
+    CliOutputColumn(header: 'AGENT ID', field: (row) => row['agentId']),
+    CliOutputColumn(header: 'STATUS', field: (row) => row['status']),
+  ],
+);
+
+final _agentReloadSchema = CliOutputSchema(
+  idField: (row) => '${row['agentId'] ?? ''}',
+  columns: [
+    CliOutputColumn(header: 'AGENT ID', field: (row) => row['agentId']),
+    CliOutputColumn(header: 'STATUS', field: (row) => row['status']),
+    CliOutputColumn(header: 'TIMELINE', field: (row) => row['timelineSize']),
+  ],
+);
+
+final _agentUpdateSchema = CliOutputSchema(
+  idField: (row) => '${row['agentId'] ?? ''}',
+  columns: [
+    CliOutputColumn(header: 'AGENT ID', field: (row) => row['agentId']),
+    CliOutputColumn(header: 'NAME', field: (row) => row['name']),
+    CliOutputColumn(header: 'LABELS', field: (row) => row['labels']),
+  ],
+);
+
+final _agentOpenSchema = CliOutputSchema(
+  idField: (row) => '${row['agentId'] ?? ''}',
+  columns: [
+    CliOutputColumn(header: 'AGENT ID', field: (row) => row['agentId']),
+    CliOutputColumn(header: 'SERVER ID', field: (row) => row['serverId']),
+    CliOutputColumn(header: 'STATUS', field: (row) => row['status']),
+  ],
+);
+
+String _agentIdsOutput(Map<String, Object?> row) {
+  final ids = row['agentIds'];
+  return ids is List ? ids.join('\n') : '';
 }
+
+String? _agentStatusColor(Object? value) => switch (value) {
+  'running' => 'green',
+  'idle' => 'yellow',
+  'error' => 'red',
+  _ => null,
+};
 
 Map<String, String> _parseLabelFilters(List<String> labels) {
   final result = <String, String>{};
@@ -2090,101 +2249,14 @@ String _formatCost(double cost) {
   return '\$${cost.toStringAsFixed(2)}';
 }
 
-String _yamlList(List<Map<String, Object?>> rows) {
-  if (rows.isEmpty) return '[]\n';
-  return '${[
-    for (final row in rows) ['- ${row.entries.first.key}: ${_yamlScalar(row.entries.first.value)}', for (final entry in row.entries.skip(1)) '  ${entry.key}: ${_yamlScalar(entry.value)}'].join('\n'),
-  ].join('\n')}\n';
-}
-
-String _yamlMap(Map<String, Object?> map, [int indent = 0]) {
-  final prefix = ' ' * indent;
-  final lines = <String>[];
-  for (final entry in map.entries) {
-    final value = entry.value;
-    if (value is Map) {
-      lines
-        ..add('$prefix${entry.key}:')
-        ..add(
-          _yamlMap(Map<String, Object?>.from(value), indent + 2).trimRight(),
-        );
-    } else if (value is List) {
-      if (value.isEmpty) {
-        lines.add('$prefix${entry.key}: []');
-      } else {
-        lines.add('$prefix${entry.key}:');
-        for (final item in value) {
-          if (item is Map) {
-            final itemMap = Map<String, Object?>.from(item);
-            final first = itemMap.entries.first;
-            lines.add(
-              '${' ' * (indent + 2)}- ${first.key}: '
-              '${_yamlScalar(first.value)}',
-            );
-            for (final nested in itemMap.entries.skip(1)) {
-              lines.add(
-                '${' ' * (indent + 4)}${nested.key}: '
-                '${_yamlScalar(nested.value)}',
-              );
-            }
-          } else {
-            lines.add('${' ' * (indent + 2)}- ${_yamlScalar(item)}');
-          }
-        }
-      }
-    } else {
-      lines.add('$prefix${entry.key}: ${_yamlScalar(value)}');
-    }
-  }
-  return '${lines.join('\n')}\n';
-}
-
-String _yamlScalar(Object? value) {
-  if (value == null) return 'null';
-  if (value is num || value is bool) return '$value';
-  final text = '$value';
-  if (text.isNotEmpty &&
-      !RegExp(
-        r'''[:#\[\]{},&*!|>'"%@`]|^\s|\s$|^(null|true|false|~)$''',
-        caseSensitive: false,
-      ).hasMatch(text)) {
-    return text;
-  }
-  return jsonEncode(text);
-}
-
 void _writeCommandError(
   void Function(String value) write,
   AgentCommandException error,
-  List<String> arguments,
+  CliOutputOptions options,
 ) {
-  final json = arguments.contains('--json');
-  final yaml =
-      !json &&
-      (arguments.contains('yaml') &&
-          (arguments.contains('--format') || arguments.contains('-o')));
-  if (json) {
-    write(
-      '${const JsonEncoder.withIndent('  ').convert({
-        'error': {'code': error.code, 'message': error.message, if (error.details != null) 'details': error.details},
-      })}\n',
-    );
-  } else if (yaml) {
-    write(
-      _yamlMap({
-        'error': {
-          'code': error.code,
-          'message': error.message,
-          if (error.details != null) 'details': error.details,
-        },
-      }),
-    );
-  } else {
-    write(
-      'Error: ${error.message}\n'
-      '${error.details == null ? '' : '${error.details}\n'}',
-    );
-  }
+  write(
+    '${renderCliError(code: error.code, message: error.message, details: error.details, options: options)}\n',
+  );
 }
 
 void _onlyList(String action, String option) {
@@ -2216,6 +2288,60 @@ String _requiredValue(List<String> arguments, int index, String option) {
     throw FormatException('$option requires a value');
   }
   return arguments[index];
+}
+
+(String, String)? _splitLongOption(String argument) {
+  if (!argument.startsWith('--')) return null;
+  final separator = argument.indexOf('=');
+  if (separator < 3) return null;
+  return (argument.substring(0, separator), argument.substring(separator + 1));
+}
+
+CliOutputOptions _recoverAgentOutputOptions(List<String> arguments) {
+  var format = 'table';
+  var json = false;
+  var quiet = false;
+  var noHeaders = false;
+  var noColor = false;
+  for (var index = 1; index < arguments.length; index++) {
+    final argument = arguments[index];
+    if (argument == '--') {
+      break;
+    } else if (argument == '--json') {
+      json = true;
+    } else if (argument == '-q' || argument == '--quiet') {
+      quiet = true;
+    } else if (argument == '--no-headers') {
+      noHeaders = true;
+    } else if (argument == '--no-color') {
+      noColor = true;
+    } else if (argument == '-o' || argument == '--format') {
+      if (index + 1 < arguments.length) {
+        format = _safeAgentOutputFormat(arguments[++index], format);
+      }
+    } else if (argument.startsWith('--format=')) {
+      format = _safeAgentOutputFormat(
+        argument.substring('--format='.length),
+        format,
+      );
+    } else if (argument.startsWith('-o') && argument.length > 2) {
+      format = _safeAgentOutputFormat(argument.substring(2), format);
+    }
+  }
+  return CliOutputOptions(
+    format: json ? 'json' : format,
+    quiet: quiet,
+    noHeaders: noHeaders,
+    noColor: noColor,
+  );
+}
+
+String _safeAgentOutputFormat(String value, String fallback) {
+  try {
+    return normalizeCliOutputFormat(value);
+  } on FormatException {
+    return fallback;
+  }
 }
 
 String _string(Map<String, Object?> json, String key) {
