@@ -4971,17 +4971,24 @@
     },
     {
       "id": "source-unit:packages/app/src/git/forge-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge.dart; packages/app/lib/widgets/pull_request_pane.dart",
+      "evidence": [
+        "packages/app/test/forge_test.dart",
+        "packages/app/test/goldens/workspace_pr_explorer.png",
+        "packages/app/test/pull_request_pane_test.dart"
+      ],
+      "notes": "Ports all five frozen Paseo SVG brand glyphs, exact dedicated brand colors, GitHub's neutral theme color, the generic pull-request fallback for unknown icon kinds, and uses the brand glyph in the Flutter pull-request forge action."
     },
     {
       "id": "source-unit:packages/app/src/git/forge-url.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge_url.dart; packages/app/lib/core/forge.dart",
+      "evidence": [
+        "packages/app/test/forge_url_test.dart",
+        "packages/app/test/forge_test.dart"
+      ],
+      "notes": "Ports the complete frozen forge-neutral URL contract: GitHub, GitLab and Gitea-family tree/blob grammars, per-segment branch and path encoding, line anchors, nested groups, scp/SSH/HTTP(S) remotes, cloud SSH alias canonicalization, self-hosted hosts, dot-segment normalization, root-escape rejection, detached-HEAD rejection, and unknown-forge capability gating."
     },
     {
       "id": "source-unit:packages/app/src/git/forge.ts",

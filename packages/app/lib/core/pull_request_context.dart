@@ -1,6 +1,7 @@
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../state/workspace_attachments_provider.dart';
+import 'forge.dart';
 
 sealed class PullRequestTimelineEntry {
   const PullRequestTimelineEntry(this.id);
@@ -121,15 +122,15 @@ WorkspaceContextAttachment? buildPullRequestActivityAttachment({
   if (!canAddPullRequestActivityToChat(activity)) return null;
   final number = status.number?.toInt();
   if (number == null) return null;
-  final forge = _forgePresentation(status.forge);
+  final forge = getForgePresentationOrNeutral(status.forge.toLowerCase());
   final isReview = activity is PullRequestTimelineReview;
   final kind = isReview
       ? 'forge.change_request_review'
       : 'forge.change_request_comment';
-  final noun = _capitalize(forge.noun);
+  final noun = _capitalize(forge.changeRequestNoun);
   final lines = [
-    '${forge.label} ${forge.noun} ${isReview ? 'review' : 'comment'}',
-    '$noun: ${forge.prefix}$number ${status.title}',
+    '${forge.displayName} ${forge.changeRequestNoun} ${isReview ? 'review' : 'comment'}',
+    '$noun: ${forge.changeRequestNumberPrefix}$number ${status.title}',
     '$noun URL: ${status.url}',
     'URL: ${activity.url}',
     'Author: ${activity.author}',
@@ -144,7 +145,7 @@ WorkspaceContextAttachment? buildPullRequestActivityAttachment({
     kind: kind,
     id: '$number:${activity.id}',
     title: activity.author,
-    subtitle: '${forge.prefix}$number ${status.title}',
+    subtitle: '${forge.changeRequestNumberPrefix}$number ${status.title}',
     text: lines.join('\n'),
     url: activity.url,
   );
@@ -160,14 +161,14 @@ WorkspaceContextAttachment? buildPullRequestThreadAttachment({
       .toList(growable: false);
   if (number == null || comments.isEmpty) return null;
   final root = comments.first;
-  final forge = _forgePresentation(status.forge);
-  final noun = _capitalize(forge.noun);
+  final forge = getForgePresentationOrNeutral(status.forge.toLowerCase());
+  final noun = _capitalize(forge.changeRequestNoun);
   final title = thread.location == null
       ? 'Discussion thread'
       : formatPullRequestThreadPath(thread.location!);
   final lines = [
-    '${forge.label} ${forge.noun} review thread',
-    '$noun: ${forge.prefix}$number ${status.title}',
+    '${forge.displayName} ${forge.changeRequestNoun} review thread',
+    '$noun: ${forge.changeRequestNumberPrefix}$number ${status.title}',
     '$noun URL: ${status.url}',
     'URL: ${root.url}',
     if (thread.location case final location?)
@@ -189,7 +190,7 @@ WorkspaceContextAttachment? buildPullRequestThreadAttachment({
     kind: 'forge.change_request_comment',
     id: '$number:${thread.id}',
     title: title,
-    subtitle: '${forge.prefix}$number ${status.title}',
+    subtitle: '${forge.changeRequestNumberPrefix}$number ${status.title}',
     text: lines.join('\n'),
     url: root.url,
   );
@@ -207,11 +208,11 @@ WorkspaceContextAttachment buildPullRequestCheckAttachment({
   if (number == null) {
     throw ArgumentError.value(status.number, 'status.number');
   }
-  final forge = _forgePresentation(status.forge);
-  final noun = _capitalize(forge.noun);
+  final forge = getForgePresentationOrNeutral(status.forge.toLowerCase());
+  final noun = _capitalize(forge.changeRequestNoun);
   final lines = [
-    '${forge.label} ${forge.noun} check',
-    '$noun: ${forge.prefix}$number ${status.title}',
+    '${forge.displayName} ${forge.changeRequestNoun} check',
+    '$noun: ${forge.changeRequestNumberPrefix}$number ${status.title}',
     '$noun URL: ${status.url}',
     'Check: ${check.name}',
     'Status: ${check.status}',
@@ -228,7 +229,7 @@ WorkspaceContextAttachment buildPullRequestCheckAttachment({
   if (details?.truncated == true) {
     lines.addAll([
       '',
-      'Note: Check details were truncated by ${forge.label}/API or local caps.',
+      'Note: Check details were truncated by ${forge.displayName}/API or local caps.',
     ]);
   }
   final checkId = check.checkRunId == null
@@ -238,7 +239,7 @@ WorkspaceContextAttachment buildPullRequestCheckAttachment({
     kind: 'forge.change_request_check',
     id: checkId,
     title: check.name,
-    subtitle: '${forge.prefix}$number ${status.title}',
+    subtitle: '${forge.changeRequestNumberPrefix}$number ${status.title}',
     text: lines.join('\n'),
     url: details?.detailsUrl ?? details?.url ?? check.url,
   );
@@ -349,15 +350,6 @@ String formatPullRequestAge(num createdAt) {
   }
   return '${(difference.inDays / 365).floor()}y ago';
 }
-
-({String label, String noun, String prefix}) _forgePresentation(String forge) =>
-    switch (forge.toLowerCase()) {
-      'gitlab' => (label: 'GitLab', noun: 'merge request', prefix: '!'),
-      'gitea' => (label: 'Gitea', noun: 'pull request', prefix: '#'),
-      'forgejo' => (label: 'Forgejo', noun: 'pull request', prefix: '#'),
-      'codeberg' => (label: 'Codeberg', noun: 'pull request', prefix: '#'),
-      _ => (label: 'GitHub', noun: 'pull request', prefix: '#'),
-    };
 
 String _capitalize(String value) =>
     value.isEmpty ? value : '${value[0].toUpperCase()}${value.substring(1)}';

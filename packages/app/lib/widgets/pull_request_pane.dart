@@ -4,6 +4,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/external_url_launcher.dart';
+import '../core/forge.dart';
 import '../core/pull_request_context.dart';
 import '../core/theme.dart';
 import '../state/pull_request_provider.dart';
@@ -46,6 +47,7 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
             children: [
               _Toolbar(
                 url: status.url,
+                forge: status.forge,
                 onOpen: () => _openExternalUrl(context, ref, status.url),
                 onRefresh: () => ref
                     .read(pullRequestPaneProvider(widget.cwd).notifier)
@@ -98,11 +100,13 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
 class _Toolbar extends StatelessWidget {
   const _Toolbar({
     required this.url,
+    required this.forge,
     required this.onOpen,
     required this.onRefresh,
   });
 
   final String url;
+  final String forge;
   final VoidCallback onOpen;
   final VoidCallback onRefresh;
 
@@ -122,12 +126,22 @@ class _Toolbar extends StatelessWidget {
             message: url,
             child: Button(
               onPressed: onOpen,
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('View'),
-                  SizedBox(width: 4),
-                  Icon(FluentIcons.open_in_new_window, size: 12),
+                  ForgeBrandIcon(
+                    iconKind: getForgePresentationOrNeutral(
+                      forge.toLowerCase(),
+                    ).iconKind,
+                    size: 12,
+                    color: FluentTheme.of(
+                      context,
+                    ).resources.textFillColorPrimary,
+                  ),
+                  const SizedBox(width: 4),
+                  const Text('View'),
+                  const SizedBox(width: 4),
+                  const Icon(FluentIcons.open_in_new_window, size: 12),
                 ],
               ),
             ),
