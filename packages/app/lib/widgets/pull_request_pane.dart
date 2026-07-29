@@ -15,6 +15,7 @@ import '../state/gitlab_pipeline_query.dart';
 import '../state/pull_request_provider.dart';
 import '../state/workspace_attachments_provider.dart';
 import 'fluent/toast.dart';
+import 'pull_request_pane_states.dart';
 
 class PullRequestPane extends ConsumerStatefulWidget {
   const PullRequestPane({super.key, required this.cwd});
@@ -41,10 +42,10 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
     return ColoredBox(
       color: FluentTheme.of(context).scaffoldBackgroundColor,
       child: async.when(
-        loading: () => const Center(child: ProgressRing()),
-        error: (error, _) => _PaneMessage(
-          icon: FluentIcons.error_badge,
-          message: 'Failed to load pull request\n$error',
+        loading: () => const PullRequestPaneSkeleton(),
+        error: (_, _) => PullRequestPaneError(
+          onRetry: () =>
+              ref.read(pullRequestPaneProvider(widget.cwd).notifier).refresh(),
         ),
         data: (data) {
           final status = data.status;

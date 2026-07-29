@@ -9,6 +9,8 @@ class PaseoPalette {
     required this.surface1,
     required this.surface2,
     required this.surface3,
+    required this.surfaceSidebar,
+    required this.surfaceSidebarHover,
     required this.foreground,
     required this.foregroundMuted,
     required this.border,
@@ -21,6 +23,8 @@ class PaseoPalette {
   final Color surface1;
   final Color surface2;
   final Color surface3;
+  final Color surfaceSidebar;
+  final Color surfaceSidebarHover;
   final Color foreground;
   final Color foregroundMuted;
   final Color border;
@@ -150,6 +154,14 @@ class PaseoThemeTokens extends ThemeExtension<PaseoThemeTokens> {
         surface1: mix(palette.surface1, other.palette.surface1),
         surface2: mix(palette.surface2, other.palette.surface2),
         surface3: mix(palette.surface3, other.palette.surface3),
+        surfaceSidebar: mix(
+          palette.surfaceSidebar,
+          other.palette.surfaceSidebar,
+        ),
+        surfaceSidebarHover: mix(
+          palette.surfaceSidebarHover,
+          other.palette.surfaceSidebarHover,
+        ),
         foreground: mix(palette.foreground, other.palette.foreground),
         foregroundMuted: mix(
           palette.foregroundMuted,
@@ -269,6 +281,8 @@ PaseoPalette paseoPaletteFor(
       surface1: Color(0xFFFAFAFA),
       surface2: Color(0xFFF4F4F5),
       surface3: Color(0xFFE4E4E7),
+      surfaceSidebar: Color(0xFFF4F4F5),
+      surfaceSidebarHover: Color(0xFFE9E9EC),
       foreground: Color(0xFF1A1A1E),
       foregroundMuted: Color(0xFF71717A),
       border: Color(0xFFE4E4E7),
@@ -281,6 +295,8 @@ PaseoPalette paseoPaletteFor(
       surface1: Color(0xFF1F1F22),
       surface2: Color(0xFF27272A),
       surface3: Color(0xFF3F3F46),
+      surfaceSidebar: Color(0xFF131316),
+      surfaceSidebarHover: Color(0xFF1B1B1E),
       foreground: Color(0xFFFAFAFA),
       foregroundMuted: Color(0xFFA1A1AA),
       border: Color(0xFF27272A),
@@ -293,6 +309,8 @@ PaseoPalette paseoPaletteFor(
       surface1: Color(0xFF1C1E27),
       surface2: Color(0xFF252731),
       surface3: Color(0xFF3C3E4C),
+      surfaceSidebar: Color(0xFF121420),
+      surfaceSidebarHover: Color(0xFF1A1C28),
       foreground: Color(0xFFFAFAFA),
       foregroundMuted: Color(0xFF9A9DB0),
       border: Color(0xFF242636),
@@ -305,6 +323,8 @@ PaseoPalette paseoPaletteFor(
       surface1: Color(0xFF262523),
       surface2: Color(0xFF2F2D2B),
       surface3: Color(0xFF4A4745),
+      surfaceSidebar: Color(0xFF1A1918),
+      surfaceSidebarHover: Color(0xFF222120),
       foreground: Color(0xFFFAFAFA),
       foregroundMuted: Color(0xFFADA9A5),
       border: Color(0xFF2C2A27),
@@ -317,6 +337,8 @@ PaseoPalette paseoPaletteFor(
       surface1: Color(0xFF2F333D),
       surface2: Color(0xFF383C48),
       surface3: Color(0xFF4A4F5E),
+      surfaceSidebar: Color(0xFF21252D),
+      surfaceSidebarHover: Color(0xFF292D36),
       foreground: Color(0xFFFAFAFA),
       foregroundMuted: Color(0xFFC8CCD8),
       border: Color(0xFF353A47),
@@ -329,6 +351,8 @@ PaseoPalette paseoPaletteFor(
       surface1: Color(0xFF1E2120),
       surface2: Color(0xFF272A29),
       surface3: Color(0xFF434645),
+      surfaceSidebar: Color(0xFF141716),
+      surfaceSidebarHover: Color(0xFF1C1F1E),
       foreground: Color(0xFFFAFAFA),
       foregroundMuted: Color(0xFFA1A5A4),
       border: Color(0xFF252B2A),

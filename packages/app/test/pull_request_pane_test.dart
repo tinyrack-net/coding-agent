@@ -39,6 +39,8 @@ class _FakeDaemonClient extends DaemonClient {
     this.forgeCheckDetailsEnabled = true,
     this.checkDetailsSuccess = true,
     this.checkDetailsGate,
+    this.statusGate,
+    this.statusFailuresRemaining = 0,
   }) : super(uri: Uri.parse('ws://fake')) {
     serverInfo = ServerInfoStatus(
       serverId: 'test-host',
@@ -67,6 +69,8 @@ class _FakeDaemonClient extends DaemonClient {
   final bool forgeCheckDetailsEnabled;
   final bool checkDetailsSuccess;
   final Completer<void>? checkDetailsGate;
+  final Completer<void>? statusGate;
+  int statusFailuresRemaining;
   Completer<void>? pipelineDetailsGate;
   final nativeRequests = <Map<String, Object?>>[];
 
@@ -94,6 +98,13 @@ class _FakeDaemonClient extends DaemonClient {
     Duration timeout = const Duration(seconds: 30),
   }) async {
     nativeRequests.add(message);
+    if (message['type'] == CheckoutPrStatusRequest.type) {
+      await statusGate?.future;
+      if (statusFailuresRemaining > 0) {
+        statusFailuresRemaining -= 1;
+        throw StateError('status unavailable');
+      }
+    }
     if (message['type'] == CheckoutForgeGetCheckDetailsRequest.modernType) {
       final isGitlabPipeline = forge == 'gitlab';
       if (isGitlabPipeline) {
@@ -495,6 +506,23 @@ Future<ProviderContainer> _pumpExplorer(
   await tester.pump(const Duration(milliseconds: 50));
   return container;
 }
+
+Future<void> _pumpPane(WidgetTester tester, _FakeDaemonClient client) =>
+    tester.pumpWidget(
+      ProviderScope(
+        overrides: [daemonClientProvider.overrideWithValue(client)],
+        child: FluentApp(
+          theme: buildAppTheme(),
+          darkTheme: buildAppTheme(),
+          themeMode: ThemeMode.dark,
+          home: const SizedBox(
+            width: 380,
+            height: 700,
+            child: PullRequestPane(cwd: _cwd),
+          ),
+        ),
+      ),
+    );
 
 void _noop() {}
 
@@ -1015,24 +1043,57 @@ void main() {
     tester,
   ) async {
     final client = _FakeDaemonClient(hasPullRequest: false);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [daemonClientProvider.overrideWithValue(client)],
-        child: FluentApp(
-          theme: buildAppTheme(),
-          darkTheme: buildAppTheme(),
-          themeMode: ThemeMode.dark,
-          home: const SizedBox(
-            width: 380,
-            height: 700,
-            child: PullRequestPane(cwd: _cwd),
-          ),
-        ),
-      ),
-    );
+    await _pumpPane(tester, client);
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('No pull request for this branch'), findsOneWidget);
+  });
+
+  testWidgets('pull request pane uses the frozen skeleton while loading', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    await _pumpPane(tester, _FakeDaemonClient(statusGate: gate));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('pr-pane-skeleton')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('pr-pane-activity-skeleton')),
+      findsOneWidget,
+    );
+    expect(find.byType(ProgressRing), findsNothing);
+
+    gate.complete();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byKey(const ValueKey('pr-pane-skeleton')), findsNothing);
+    expect(find.textContaining('Port the pull request panel'), findsOneWidget);
+  });
+
+  testWidgets('fatal pull request load error retries through the notifier', (
+    tester,
+  ) async {
+    final client = _FakeDaemonClient(statusFailuresRemaining: 1);
+    await _pumpPane(tester, client);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.byKey(const ValueKey('pr-pane-error')), findsOneWidget);
+    expect(find.text('Failed to refresh git state.'), findsOneWidget);
+    expect(find.textContaining('status unavailable'), findsNothing);
+    expect(find.text('Retry'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('pr-pane-error-retry')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byKey(const ValueKey('pr-pane-error')), findsNothing);
+    expect(find.textContaining('Port the pull request panel'), findsOneWidget);
+    expect(
+      client.nativeRequests.where(
+        (request) => request['type'] == CheckoutPrStatusRequest.type,
+      ),
+      hasLength(2),
+    );
   });
 
   testWidgets('files tab loads the root directory', (tester) async {

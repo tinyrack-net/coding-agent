@@ -76,6 +76,16 @@ void main() {
             const Color(0xFF434645),
           )
           .having(
+            (palette) => palette.surfaceSidebar,
+            'surfaceSidebar',
+            const Color(0xFF141716),
+          )
+          .having(
+            (palette) => palette.surfaceSidebarHover,
+            'surfaceSidebarHover',
+            const Color(0xFF1C1F1E),
+          )
+          .having(
             (palette) => palette.foreground,
             'foreground',
             const Color(0xFFFAFAFA),
