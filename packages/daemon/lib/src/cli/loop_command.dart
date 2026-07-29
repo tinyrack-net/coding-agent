@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_output.dart';
 import 'provider_model.dart';
 import 'schedule_command.dart';
 
@@ -25,34 +25,40 @@ Future<int> runLoopCommand({
     output(loopHelp(arguments.isEmpty ? null : arguments.first));
     return 0;
   }
-  final jsonOutput = _hasOptionBeforeTerminator(arguments, const {'--json'});
+  LoopCliInvocation? invocation;
   try {
-    final parsed = LoopCliInvocation.parse(arguments);
+    invocation = LoopCliInvocation.parse(arguments);
     final env = environment ?? Platform.environment;
     final cwd = currentDirectory ?? Directory.current.path;
     final result = await _withClient(
-      parsed,
+      invocation,
       env,
       request,
-      (send) =>
-          _execute(parsed, send, cwd, delay ?? Future<void>.delayed, output),
+      (send) => _execute(
+        invocation!,
+        send,
+        cwd,
+        delay ?? Future<void>.delayed,
+        output,
+      ),
     );
     if (result != null) {
-      output(
-        parsed.json
-            ? '${const JsonEncoder.withIndent('  ').convert(result.json)}\n'
-            : result.human,
-      );
+      final rendered = renderCliOutput(result, invocation.output);
+      if (rendered.isNotEmpty) output('$rendered\n');
     }
     return 0;
   } on LoopCommandException catch (error) {
-    _writeLoopError(errorOutput, error, json: jsonOutput);
+    _writeLoopError(
+      errorOutput,
+      error,
+      options: invocation?.output ?? const CliOutputOptions(),
+    );
     return 1;
   } on ProviderModelFormatException catch (error) {
     _writeLoopError(
       errorOutput,
       LoopCommandException(error.code, error.message, error.details),
-      json: jsonOutput,
+      options: invocation?.output ?? const CliOutputOptions(),
     );
     return 1;
   } on FormatException catch (error) {
@@ -62,7 +68,7 @@ Future<int> runLoopCommand({
     _writeLoopError(
       errorOutput,
       LoopCommandException('UNKNOWN_ERROR', _errorText(error)),
-      json: jsonOutput,
+      options: invocation?.output ?? const CliOutputOptions(),
     );
     return 1;
   }
@@ -117,7 +123,7 @@ final class LoopCliInvocation {
     required this.values,
     required this.verifyChecks,
     required this.flags,
-    required this.json,
+    required this.output,
     required this.host,
   });
 
@@ -126,7 +132,7 @@ final class LoopCliInvocation {
   final Map<String, String> values;
   final List<String> verifyChecks;
   final Set<String> flags;
-  final bool json;
+  final CliOutputOptions output;
   final String? host;
 
   static LoopCliInvocation parse(List<String> arguments) {
@@ -136,10 +142,7 @@ final class LoopCliInvocation {
     if (!actions.contains(action)) {
       throw FormatException('Unknown loop action: $action');
     }
-    final booleanOptions = {
-      if (action != 'logs') '--json',
-      if (action == 'run') '--archive',
-    };
+    final booleanOptions = {if (action == 'run') '--archive'};
     final valueOptions = {
       '--host',
       if (action == 'run') ...{
@@ -162,6 +165,11 @@ final class LoopCliInvocation {
     final values = <String, String>{};
     final verifyChecks = <String>[];
     final flags = <String>{};
+    var format = 'table';
+    var json = false;
+    var quiet = false;
+    var headers = true;
+    var color = true;
     var positionalOnly = false;
     for (var index = 1; index < arguments.length; index++) {
       final argument = arguments[index];
@@ -169,6 +177,21 @@ final class LoopCliInvocation {
         positionalOnly = true;
       } else if (positionalOnly) {
         positionals.add(argument);
+      } else if (action != 'logs' && argument == '--json') {
+        json = true;
+      } else if (action != 'logs' &&
+          (argument == '-q' || argument == '--quiet')) {
+        quiet = true;
+      } else if (action != 'logs' && argument == '--no-headers') {
+        headers = false;
+      } else if (action != 'logs' && argument == '--no-color') {
+        color = false;
+      } else if (action != 'logs' &&
+          (argument == '-o' || argument == '--format')) {
+        if (index + 1 >= arguments.length) {
+          throw FormatException('$argument requires a value');
+        }
+        format = normalizeCliOutputFormat(arguments[++index]);
       } else if (booleanOptions.contains(argument)) {
         flags.add(argument);
       } else if (valueOptions.contains(argument)) {
@@ -190,6 +213,14 @@ final class LoopCliInvocation {
         } else {
           values[option] = value;
         }
+      } else if (action != 'logs' && argument.startsWith('--format=')) {
+        format = normalizeCliOutputFormat(
+          argument.substring('--format='.length),
+        );
+      } else if (action != 'logs' &&
+          argument.startsWith('-o') &&
+          argument.length > 2) {
+        format = normalizeCliOutputFormat(argument.substring(2));
       } else if (argument.startsWith('-')) {
         throw FormatException('Unknown option: $argument');
       } else {
@@ -210,20 +241,18 @@ final class LoopCliInvocation {
       values: Map.unmodifiable(values),
       verifyChecks: List.unmodifiable(verifyChecks),
       flags: Set.unmodifiable(flags),
-      json: flags.contains('--json'),
+      output: CliOutputOptions(
+        format: json ? 'json' : format,
+        quiet: quiet,
+        noHeaders: !headers,
+        noColor: !color,
+      ),
       host: values['--host'],
     );
   }
 }
 
-final class _LoopCommandResult {
-  const _LoopCommandResult({required this.json, required this.human});
-
-  final Object? json;
-  final String human;
-}
-
-Future<_LoopCommandResult?> _execute(
+Future<CliOutputResult?> _execute(
   LoopCliInvocation invocation,
   ScheduleRpcRequester request,
   String cwd,
@@ -238,16 +267,7 @@ Future<_LoopCommandResult?> _execute(
         final payload = await request(message);
         final loop = _requiredLoop(payload);
         final row = _runRow(loop);
-        return _LoopCommandResult(
-          json: row,
-          human: _table(
-            const ['LOOP ID', 'STATUS', 'NAME', 'CWD'],
-            [
-              [row['id']!, row['status']!, row['name'] ?? '', row['cwd']!],
-            ],
-            minimumWidths: const [10, 10, 20, 40],
-          ),
-        );
+        return CliOutputResult.single(row: row, schema: _loopRunSchema);
       case 'ls':
         final payload = await request({
           'type': LoopListRequest.type,
@@ -259,24 +279,7 @@ Future<_LoopCommandResult?> _execute(
             LoopListItem.fromJson(value).toJson(),
         ];
         final rows = loops.map(_listRow).toList(growable: false);
-        return _LoopCommandResult(
-          json: rows,
-          human: _table(
-            const ['LOOP ID', 'NAME', 'STATUS', 'ITER', 'CWD', 'UPDATED'],
-            [
-              for (final row in rows)
-                [
-                  row['id']!,
-                  row['name'] ?? '',
-                  row['status']!,
-                  row['activeIteration']!,
-                  row['cwd']!,
-                  row['updated']!,
-                ],
-            ],
-            minimumWidths: const [10, 20, 10, 8, 40, 24],
-          ),
-        );
+        return CliOutputResult.list(rows: rows, schema: _loopListSchema);
       case 'inspect':
         final payload = await request({
           'type': LoopIdRequest.inspectType,
@@ -284,7 +287,7 @@ Future<_LoopCommandResult?> _execute(
           'id': invocation.positionals.single,
         });
         final loop = _requiredLoop(payload);
-        return _LoopCommandResult(json: loop, human: _inspectTable(loop));
+        return _loopInspectResult(loop);
       case 'stop':
         final payload = await request({
           'type': LoopIdRequest.stopType,
@@ -297,20 +300,7 @@ Future<_LoopCommandResult?> _execute(
           'status': loop['status'],
           'activeIteration': loop['activeIteration']?.toString() ?? '-',
         };
-        return _LoopCommandResult(
-          json: row,
-          human: _table(
-            const ['LOOP ID', 'STATUS', 'ITER'],
-            [
-              [
-                row['id']?.toString() ?? '',
-                row['status']?.toString() ?? '',
-                row['activeIteration']!.toString(),
-              ],
-            ],
-            minimumWidths: const [10, 10, 8],
-          ),
-        );
+        return CliOutputResult.single(row: row, schema: _loopStopSchema);
       case 'logs':
         final pollInterval = _positiveInt(
           invocation.values['--poll-interval'] ?? '1000',
@@ -344,15 +334,15 @@ Future<_LoopCommandResult?> _execute(
   } on ProviderModelFormatException {
     rethrow;
   } on Object catch (error) {
-    final (code, action) = switch (invocation.action) {
-      'run' => ('LOOP_RUN_FAILED', 'start loop'),
-      'ls' => ('LOOP_LIST_FAILED', 'list loops'),
-      'inspect' => ('LOOP_INSPECT_FAILED', 'inspect loop'),
-      'logs' => ('LOOP_LOGS_FAILED', 'stream loop logs'),
-      'stop' => ('LOOP_STOP_FAILED', 'stop loop'),
-      _ => ('UNKNOWN_ERROR', 'run loop command'),
+    final (code, prefix) = switch (invocation.action) {
+      'run' => ('LOOP_RUN_FAILED', ''),
+      'ls' => ('LOOP_LIST_FAILED', ''),
+      'inspect' => ('LOOP_INSPECT_FAILED', ''),
+      'logs' => ('LOOP_LOGS_FAILED', 'Failed to stream loop logs: '),
+      'stop' => ('LOOP_STOP_FAILED', ''),
+      _ => ('UNKNOWN_ERROR', ''),
     };
-    throw LoopCommandException(code, 'Failed to $action: ${_errorText(error)}');
+    throw LoopCommandException(code, '$prefix${_errorText(error)}');
   }
 }
 
@@ -362,12 +352,6 @@ Map<String, Object?> _runRequest(
   String cwd,
 ) {
   final prompt = invocation.positionals.single;
-  if (prompt.trim().isEmpty) {
-    throw const LoopCommandException(
-      'INVALID_PROMPT',
-      'Loop prompt cannot be empty',
-    );
-  }
   final result = <String, Object?>{
     'type': LoopRunRequest.type,
     'requestId': requestId,
@@ -418,17 +402,7 @@ Map<String, Object?> _runRequest(
     result['verifyPrompt'] = verify;
   }
   if (invocation.verifyChecks.isNotEmpty) {
-    final checks = [
-      for (final check in invocation.verifyChecks)
-        if (check.trim().isEmpty)
-          throw const LoopCommandException(
-            'INVALID_VERIFY_CHECK',
-            '--verify-check cannot be empty',
-          )
-        else
-          check,
-    ];
-    result['verifyChecks'] = checks;
+    result['verifyChecks'] = invocation.verifyChecks;
   }
   if (invocation.flags.contains('--archive')) result['archive'] = true;
   final name = invocation.values['--name']?.trim();
@@ -495,14 +469,14 @@ void _throwPayloadError(Map<String, Object?> payload) {
   if (error is String && error.isNotEmpty) throw StateError(error);
 }
 
-Map<String, String?> _runRow(Map<String, Object?> loop) => {
+Map<String, Object?> _runRow(Map<String, Object?> loop) => {
   'id': loop['id']?.toString(),
   'status': loop['status']?.toString(),
   'name': loop['name']?.toString(),
   'cwd': loop['cwd']?.toString(),
 };
 
-Map<String, String?> _listRow(Map<String, Object?> loop) => {
+Map<String, Object?> _listRow(Map<String, Object?> loop) => {
   'id': loop['id']?.toString(),
   'name': loop['name']?.toString(),
   'status': loop['status']?.toString(),
@@ -511,7 +485,67 @@ Map<String, String?> _listRow(Map<String, Object?> loop) => {
   'updated': loop['updatedAt']?.toString(),
 };
 
-String _inspectTable(Map<String, Object?> loop) {
+final _loopRunSchema = CliOutputSchema(
+  idField: (row) => '${row['id']}',
+  columns: [
+    CliOutputColumn(header: 'LOOP ID', field: (row) => row['id'], width: 10),
+    CliOutputColumn(header: 'STATUS', field: (row) => row['status'], width: 10),
+    CliOutputColumn(header: 'NAME', field: (row) => row['name'], width: 20),
+    CliOutputColumn(header: 'CWD', field: (row) => row['cwd'], width: 40),
+  ],
+);
+
+final _loopListSchema = CliOutputSchema(
+  idField: (row) => '${row['id']}',
+  columns: [
+    CliOutputColumn(header: 'LOOP ID', field: (row) => row['id'], width: 10),
+    CliOutputColumn(header: 'NAME', field: (row) => row['name'], width: 20),
+    CliOutputColumn(header: 'STATUS', field: (row) => row['status'], width: 10),
+    CliOutputColumn(
+      header: 'ITER',
+      field: (row) => row['activeIteration'],
+      width: 8,
+    ),
+    CliOutputColumn(header: 'CWD', field: (row) => row['cwd'], width: 40),
+    CliOutputColumn(
+      header: 'UPDATED',
+      field: (row) => row['updated'],
+      width: 24,
+    ),
+  ],
+);
+
+final _loopStopSchema = CliOutputSchema(
+  idField: (row) => '${row['id']}',
+  columns: [
+    CliOutputColumn(header: 'LOOP ID', field: (row) => row['id'], width: 10),
+    CliOutputColumn(header: 'STATUS', field: (row) => row['status'], width: 10),
+    CliOutputColumn(
+      header: 'ITER',
+      field: (row) => row['activeIteration'],
+      width: 8,
+    ),
+  ],
+);
+
+CliOutputResult _loopInspectResult(Map<String, Object?> loop) =>
+    CliOutputResult.list(
+      rows: _inspectRows(loop),
+      schema: CliOutputSchema(
+        idField: (row) => '${row['key']}',
+        columns: [
+          CliOutputColumn(header: 'KEY', field: (row) => row['key'], width: 18),
+          CliOutputColumn(
+            header: 'VALUE',
+            field: (row) => row['value'],
+            width: 80,
+          ),
+        ],
+        serialize: (_) => loop,
+      ),
+    );
+
+List<Map<String, Object?>> _inspectRows(Map<String, Object?> loop) {
   final checks = _stringValues(loop['verifyChecks']);
   final iterations = _mapList(loop['iterations']);
   final iterationText = iterations.isEmpty
@@ -531,30 +565,47 @@ String _inspectTable(Map<String, Object?> loop) {
               return parts.join(' ');
             })
             .join(' | ');
-  final rows = <List<String>>[
-    ['Id', '${loop['id']}'],
-    ['Name', loop['name']?.toString() ?? 'null'],
-    ['Status', '${loop['status']}'],
-    ['Cwd', '${loop['cwd']}'],
-    ['Provider', '${loop['provider']}'],
-    ['Model', loop['model']?.toString() ?? 'null'],
-    ['WorkerProvider', loop['workerProvider']?.toString() ?? 'null'],
-    ['WorkerModel', loop['workerModel']?.toString() ?? 'null'],
-    ['VerifierProvider', loop['verifierProvider']?.toString() ?? 'null'],
-    ['VerifierModel', loop['verifierModel']?.toString() ?? 'null'],
-    ['Prompt', '${loop['prompt']}'],
-    ['VerifyPrompt', loop['verifyPrompt']?.toString() ?? 'null'],
-    ['VerifyChecks', checks.isEmpty ? '[]' : checks.join(' | ')],
-    ['Archive', '${loop['archive']}'],
-    ['SleepMs', '${loop['sleepMs']}'],
-    ['MaxIterations', loop['maxIterations']?.toString() ?? 'null'],
-    ['MaxTimeMs', loop['maxTimeMs']?.toString() ?? 'null'],
-    ['CreatedAt', '${loop['createdAt']}'],
-    ['UpdatedAt', '${loop['updatedAt']}'],
-    ['CompletedAt', loop['completedAt']?.toString() ?? 'null'],
-    ['Iterations', iterationText],
+  return <Map<String, Object?>>[
+    {'key': 'Id', 'value': '${loop['id']}'},
+    {'key': 'Name', 'value': loop['name']?.toString() ?? 'null'},
+    {'key': 'Status', 'value': '${loop['status']}'},
+    {'key': 'Cwd', 'value': '${loop['cwd']}'},
+    {'key': 'Provider', 'value': '${loop['provider']}'},
+    {'key': 'Model', 'value': loop['model']?.toString() ?? 'null'},
+    {
+      'key': 'WorkerProvider',
+      'value': loop['workerProvider']?.toString() ?? 'null',
+    },
+    {'key': 'WorkerModel', 'value': loop['workerModel']?.toString() ?? 'null'},
+    {
+      'key': 'VerifierProvider',
+      'value': loop['verifierProvider']?.toString() ?? 'null',
+    },
+    {
+      'key': 'VerifierModel',
+      'value': loop['verifierModel']?.toString() ?? 'null',
+    },
+    {'key': 'Prompt', 'value': '${loop['prompt']}'},
+    {
+      'key': 'VerifyPrompt',
+      'value': loop['verifyPrompt']?.toString() ?? 'null',
+    },
+    {
+      'key': 'VerifyChecks',
+      'value': checks.isEmpty ? '[]' : checks.join(' | '),
+    },
+    {'key': 'Archive', 'value': '${loop['archive']}'},
+    {'key': 'SleepMs', 'value': '${loop['sleepMs']}'},
+    {
+      'key': 'MaxIterations',
+      'value': loop['maxIterations']?.toString() ?? 'null',
+    },
+    {'key': 'MaxTimeMs', 'value': loop['maxTimeMs']?.toString() ?? 'null'},
+    {'key': 'CreatedAt', 'value': '${loop['createdAt']}'},
+    {'key': 'UpdatedAt', 'value': '${loop['updatedAt']}'},
+    {'key': 'CompletedAt', 'value': loop['completedAt']?.toString() ?? 'null'},
+    {'key': 'Iterations', 'value': iterationText},
   ];
-  return _table(const ['KEY', 'VALUE'], rows, minimumWidths: const [18, 80]);
 }
 
 String _renderLogEntry(Map<String, Object?> entry) {
@@ -587,47 +638,14 @@ int _integer(Object? value, String field) {
   return value;
 }
 
-String _table(
-  List<String> headers,
-  List<List<String>> rows, {
-  required List<int> minimumWidths,
-}) {
-  final widths = [
-    for (var column = 0; column < headers.length; column++)
-      [
-        minimumWidths[column],
-        headers[column].length,
-        for (final row in rows) row[column].length,
-      ].reduce((left, right) => left > right ? left : right),
-  ];
-  String line(List<String> cells) => [
-    for (var index = 0; index < cells.length; index++)
-      cells[index].padRight(widths[index]),
-  ].join('  ').trimRight();
-  final buffer = StringBuffer()
-    ..writeln(line(headers))
-    ..writeln(line([for (final width in widths) '-' * width]));
-  for (final row in rows) {
-    buffer.writeln(line(row));
-  }
-  return buffer.toString();
-}
-
 void _writeLoopError(
   void Function(String value) output,
   LoopCommandException error, {
-  required bool json,
+  required CliOutputOptions options,
 }) {
-  if (json) {
-    output(
-      '${jsonEncode({
-        'error': {'code': error.code, 'message': error.message, if (error.details != null) 'details': error.details},
-      })}\n',
-    );
-    return;
-  }
-  output('Error: ${error.message}\n');
-  if (error.details != null) output('${error.details}\n');
+  output(
+    '${renderCliError(code: error.code, message: error.message, details: error.details, options: options)}\n',
+  );
 }
 
 String _errorText(Object error) => switch (error) {

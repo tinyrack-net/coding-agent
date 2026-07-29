@@ -173,7 +173,12 @@ RootOutputForwarding rootOutputForwarding(List<String> arguments) {
         ? RootOutputForwarding.none
         : RootOutputForwarding.full;
   }
-  if (const {'status', 'restart', 'daemon', 'hub', 'loop'}.contains(first)) {
+  if (first == 'loop') {
+    return arguments.length > 1 && arguments[1] == 'logs'
+        ? RootOutputForwarding.none
+        : RootOutputForwarding.full;
+  }
+  if (const {'status', 'restart', 'daemon', 'hub'}.contains(first)) {
     return RootOutputForwarding.jsonOnly;
   }
   if (first == 'terminal') {

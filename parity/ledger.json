@@ -517,12 +517,13 @@
     {
       "id": "cli-command:loop-inspect",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/loop_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_loop_e2e_test.dart"
       ],
-      "notes": "Matches frozen loop inspect full JSON and key/value table including iteration summaries."
+      "notes": "Matches frozen loop inspect key/value table and quiet keys including iteration summaries, plus schema-serialized full JSON/YAML records and structured raw-message errors."
     },
     {
       "id": "cli-command:loop-logs",
@@ -532,39 +533,42 @@
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/daemon_loop_e2e_test.dart"
       ],
-      "notes": "Matches frozen cursor polling, log rendering, poll interval validation, and terminal-state exit."
+      "notes": "Matches frozen streaming-only cursor polling, log rendering, poll interval validation, terminal-state exit, and exclusion from shared output-option forwarding."
     },
     {
       "id": "cli-command:loop-ls",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/loop_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_loop_e2e_test.dart"
       ],
-      "notes": "Matches frozen six-column list and JSON row output."
+      "notes": "Matches frozen six-column list schema and table/JSON/YAML/quiet/header output."
     },
     {
       "id": "cli-command:loop-run",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/loop/loop_service.dart; packages/daemon/lib/src/loop/loop_agent_runtime.dart",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/loop/loop_service.dart; packages/daemon/lib/src/loop/loop_agent_runtime.dart",
       "evidence": [
         "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/loop/loop_service_test.dart",
         "packages/daemon/test/daemon_loop_e2e_test.dart"
       ],
-      "notes": "Matches frozen provider/model resolution, run options, duration parsing, daemon creation, and iterative worker verification lifecycle."
+      "notes": "Matches frozen provider/model resolution, run options including permissive empty prompt/check values, duration parsing, shared single-result output, raw action errors, daemon creation, and iterative worker verification lifecycle."
     },
     {
       "id": "cli-command:loop-stop",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/loop/loop_service.dart",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/loop/loop_service.dart",
       "evidence": [
         "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/loop/loop_service_test.dart",
         "packages/daemon/test/daemon_loop_e2e_test.dart"
       ],
-      "notes": "Matches frozen prefix lookup, active provider cancellation, stopped persistence, and output schema."
+      "notes": "Matches frozen prefix lookup, active provider cancellation, stopped persistence, raw action errors, and shared single-result output schema."
     },
     {
       "id": "cli-command:loop-types",
@@ -9217,17 +9221,18 @@
     {
       "id": "source-unit:packages/cli/src/cli.ts",
       "status": "partial",
-      "implementation": "packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/lib/src/cli/speech_command.dart",
+      "implementation": "packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/speech_command.dart",
       "evidence": [
         "packages/daemon/test/cli/agent_command_test.dart",
         "packages/daemon/test/cli/cli_invocation_test.dart",
         "packages/daemon/test/cli/cli_root_output_process_test.dart",
         "packages/daemon/test/cli/cli_shell_process_test.dart",
+        "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/speech_command_test.dart",
         "packages/daemon/test/daemon_agent_cli_e2e_test.dart",
         "packages/daemon/test/daemon_agent_delete_e2e_test.dart"
       ],
-      "notes": "Frozen command registration, root help/version, hidden worktree compatibility alias, speech namespace, top-level/nested aliases, and Commander-style output options before full-output commands are ported. Chat and heartbeat now use the shared renderer; the remaining JSON-only command families still require migration."
+      "notes": "Frozen command registration, root help/version, hidden worktree compatibility alias, speech namespace, top-level/nested aliases, and Commander-style output options before full-output commands are ported. Chat, heartbeat, schedule, and non-streaming loop actions use the shared renderer; remaining JSON-only command families still require migration."
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/archive.ts",
@@ -9667,21 +9672,24 @@
     {
       "id": "source-unit:packages/cli/src/commands/loop/index.ts",
       "status": "verified",
-      "implementation": "packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/cli/loop_command.dart",
+      "implementation": "packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/cli/cli_invocation_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_loop_e2e_test.dart"
       ],
-      "notes": "Registers run, ls, inspect, logs, and stop with matching host and JSON option boundaries."
+      "notes": "Registers run, ls, inspect, logs, and stop with matching host boundaries, full shared output on four result actions, and no forwarded output options on streaming logs."
     },
     {
       "id": "source-unit:packages/cli/src/commands/loop/inspect.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/loop_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
-        "packages/daemon/test/cli/loop_command_test.dart"
+        "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart"
       ],
-      "notes": "Frozen inspect behavior and serialization are verified."
+      "notes": "Frozen inspect rows, exact widths, quiet keys, iteration summaries, custom full-record JSON/YAML serialization, and raw structured errors are verified."
     },
     {
       "id": "source-unit:packages/cli/src/commands/loop/logs.ts",
@@ -9691,36 +9699,39 @@
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/daemon_loop_e2e_test.dart"
       ],
-      "notes": "Frozen streaming log polling and rendering are verified."
+      "notes": "Frozen streaming log polling/rendering and its deliberate exclusion from withOutput options are verified."
     },
     {
       "id": "source-unit:packages/cli/src/commands/loop/ls.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/loop_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
-        "packages/daemon/test/cli/loop_command_test.dart"
+        "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart"
       ],
-      "notes": "Frozen list schema and output are verified."
+      "notes": "Frozen list projection, exact schema, empty behavior, structured errors, and table/JSON/YAML/quiet/header output are verified."
     },
     {
       "id": "source-unit:packages/cli/src/commands/loop/run.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/loop_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_loop_e2e_test.dart"
       ],
-      "notes": "Frozen run options, input normalization, validation, and output are verified."
+      "notes": "Frozen run options, input normalization including empty prompt/check compatibility, validation, raw structured errors, and shared single-result output are verified."
     },
     {
       "id": "source-unit:packages/cli/src/commands/loop/stop.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/loop_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_loop_e2e_test.dart"
       ],
-      "notes": "Frozen stop request and output behavior are verified."
+      "notes": "Frozen stop request, raw structured errors, and table/JSON/YAML/quiet/header single-result output are verified."
     },
     {
       "id": "source-unit:packages/cli/src/commands/loop/types.ts",
@@ -10209,10 +10220,11 @@
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "The shared Dart output entrypoint exports typed result, schema, custom serialization, JSON, YAML, quiet, table, and error rendering used by chat, heartbeat, and schedule; remaining CLI families still need migration."
+      "notes": "The shared Dart output entrypoint exports typed result, schema, custom serialization, JSON, YAML, quiet, table, and error rendering used by chat, heartbeat, schedule, and non-streaming loop actions; remaining CLI families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/json.ts",
@@ -10222,6 +10234,7 @@
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/daemon_chat_e2e_test.dart"
       ],
@@ -10244,6 +10257,7 @@
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart"
       ],
       "notes": "Frozen single and list ID projection, empty-list behavior, and quiet precedence over structured formats are ported."
@@ -10256,6 +10270,7 @@
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart"
       ],
       "notes": "Quiet precedence, JSON/YAML/table dispatch, schema serialization, custom human rendering, and structured errors are ported; ANSI color behavior and remaining consumers are pending."
@@ -10268,6 +10283,7 @@
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart"
       ],
       "notes": "Frozen content-derived minimum widths, left/right/center alignment, header suppression, single/list rows, and no clipping are ported; ANSI-aware color measurement remains."
@@ -10281,6 +10297,7 @@
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
@@ -10289,19 +10306,20 @@
     {
       "id": "source-unit:packages/cli/src/output/with-output.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_invocation_test.dart",
         "packages/daemon/test/cli/cli_root_output_process_test.dart",
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/daemon_chat_e2e_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart",
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": "Global and local options feed shared result and error rendering for chat, heartbeat, schedule, and existing full-output commands; remaining JSON-only command families still need migration."
+      "notes": "Global and local options feed shared result and error rendering for chat, heartbeat, schedule, and non-streaming loop actions while logs remains streaming-only; remaining JSON-only command families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/yaml.ts",
@@ -10311,6 +10329,7 @@
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart"
       ],
       "notes": "Recursive maps/lists, empty collections, stable scalar quoting, single/list results, schema custom serializers with identical-list collapse, and structured errors are ported; document streaming remains."

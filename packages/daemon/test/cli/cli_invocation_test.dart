@@ -61,6 +61,27 @@ void main() {
     );
     expect(
       normalizeRootCliArguments(const [
+        '--format',
+        'yaml',
+        '--quiet',
+        'loop',
+        'inspect',
+        'loop-1',
+      ]).forward(),
+      const ['loop', 'inspect', 'loop-1', '--format', 'yaml', '--quiet'],
+    );
+    expect(
+      normalizeRootCliArguments(const [
+        '--json',
+        '--quiet',
+        'loop',
+        'logs',
+        'loop-1',
+      ]).forward(),
+      const ['loop', 'logs', 'loop-1'],
+    );
+    expect(
+      normalizeRootCliArguments(const [
         '--format=json',
         'workspace',
         'ls',

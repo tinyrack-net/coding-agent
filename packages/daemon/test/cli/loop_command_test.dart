@@ -218,6 +218,122 @@ void main() {
       expect(output.toString(), contains('stopped'));
     });
 
+    test('supports frozen yaml quiet header and format precedence', () async {
+      Future<Map<String, Object?>> request(Map<String, Object?> request) async {
+        return switch (request['type']) {
+          'loop/list' => {
+            'loops': [_listItem()],
+            'error': null,
+          },
+          'loop/inspect' => {'loop': _loop(withIteration: true), 'error': null},
+          'loop/stop' => {'loop': _loop(status: 'stopped'), 'error': null},
+          _ => {'loop': _loop(), 'error': null},
+        };
+      }
+
+      final inspectYaml = StringBuffer();
+      expect(
+        await runLoopCommand(
+          arguments: const ['inspect', 'abcd', '--format', 'yaml'],
+          request: request,
+          writeOutput: inspectYaml.write,
+        ),
+        0,
+      );
+      expect(inspectYaml.toString(), startsWith('id: abcd1234\n'));
+      expect(inspectYaml.toString(), contains('iterations:\n'));
+      expect(inspectYaml.toString(), isNot(contains('key: Id')));
+
+      final quiet = StringBuffer();
+      expect(
+        await runLoopCommand(
+          arguments: const ['ls', '--quiet'],
+          request: request,
+          writeOutput: quiet.write,
+        ),
+        0,
+      );
+      expect(quiet.toString(), 'abcd1234\n');
+
+      final noHeaders = StringBuffer();
+      expect(
+        await runLoopCommand(
+          arguments: const ['stop', 'abcd', '--no-headers', '--no-color'],
+          request: request,
+          writeOutput: noHeaders.write,
+        ),
+        0,
+      );
+      expect(noHeaders.toString(), isNot(contains('LOOP ID')));
+      expect(noHeaders.toString(), contains('stopped'));
+
+      final jsonWins = StringBuffer();
+      expect(
+        await runLoopCommand(
+          arguments: const ['run', 'go', '--format=yaml', '--json'],
+          request: request,
+          writeOutput: jsonWins.write,
+        ),
+        0,
+      );
+      expect(jsonDecode(jsonWins.toString()), isA<Map>());
+    });
+
+    test('preserves frozen raw action errors in YAML', () async {
+      final error = StringBuffer();
+      final code = await runLoopCommand(
+        arguments: const ['inspect', 'missing', '-oyaml'],
+        request: (_) async => {'loop': null, 'error': 'Loop not found'},
+        writeError: error.write,
+      );
+
+      expect(code, 1);
+      expect(
+        error.toString(),
+        startsWith('error:\n  code: LOOP_INSPECT_FAILED\n'),
+      );
+      expect(error.toString(), contains('message: Loop not found\n'));
+      expect(error.toString(), isNot(contains('Failed to inspect loop')));
+    });
+
+    test('accepts frozen empty prompt and verify-check values', () async {
+      Map<String, Object?>? sent;
+      expect(
+        await runLoopCommand(
+          arguments: const ['run', '', '--verify-check', '', '--quiet'],
+          request: (request) async {
+            sent = request;
+            return {'loop': _loop(), 'error': null};
+          },
+          writeOutput: (_) {},
+        ),
+        0,
+      );
+      expect(sent!['prompt'], '');
+      expect(sent!['verifyChecks'], ['']);
+    });
+
+    test('keeps logs streaming-only and rejects invalid formats', () async {
+      for (final arguments in const [
+        ['logs', 'abcd', '--json'],
+        ['logs', 'abcd', '--quiet'],
+        ['logs', 'abcd', '--format', 'yaml'],
+        ['ls', '--format'],
+        ['ls', '--format', 'xml'],
+        ['stop', 'abcd', '-oxml'],
+      ]) {
+        expect(
+          await runLoopCommand(
+            arguments: arguments,
+            request: (_) async => fail('syntax failure must not call daemon'),
+            writeError: (_) {},
+          ),
+          64,
+          reason: '$arguments',
+        );
+      }
+    });
+
     test(
       'validates options before transport and returns stable error codes',
       () async {
