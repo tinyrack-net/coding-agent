@@ -422,6 +422,12 @@ class StatusColors {
   Color get warning => _theme.resources.systemFillColorCaution;
   Color get danger => _theme.resources.systemFillColorCritical;
   Color get neutral => _theme.resources.textFillColorSecondary;
+  Color get diffAddition => _theme.brightness == Brightness.light
+      ? const Color(0xFF15803D)
+      : const Color(0xFF4ADE80);
+  Color get diffDeletion => _theme.brightness == Brightness.light
+      ? const Color(0xFFB91C1C)
+      : const Color(0xFFEF4444);
 }
 
 /// Text styles used across the app, mapped onto [Typography] (Fluent's

@@ -2570,10 +2570,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/diff-stat.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/theme.dart; packages/app/lib/widgets/diff/diff_stat.dart; packages/app/lib/widgets/diff/diff_view.dart",
+      "evidence": [
+        "packages/app/test/diff_stat_test.dart",
+        "packages/app/test/diff_view_test.dart"
+      ],
+      "notes": "Matches the frozen shared DiffStat contract: en-US compact counts with one fractional digit and lowercase suffixes, exact light and dark addition/deletion colors, 12px normal text, 4px gap, 20px row height, and integration in every diff file row."
     },
     {
       "id": "source-unit:packages/app/src/components/diff-viewer.tsx",

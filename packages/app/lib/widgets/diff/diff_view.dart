@@ -2,6 +2,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../../core/theme.dart';
+import 'diff_stat.dart';
 
 /// Color/icon/letter mapping for a diff file status.
 (Color, IconData, String) diffStatusStyle(DiffFileStatus status) =>
@@ -146,7 +147,6 @@ class _FileRowLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (color, icon, _) = diffStatusStyle(file.status);
-    final small = context.textStyles.bodySmall;
     final path = file.status == DiffFileStatus.renamed && file.oldPath != null
         ? '${file.oldPath} → ${file.path}'
         : file.path;
@@ -163,9 +163,7 @@ class _FileRowLabel extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        Text('+${file.additions}', style: small?.copyWith(color: Colors.green)),
-        const SizedBox(width: 4),
-        Text('-${file.deletions}', style: small?.copyWith(color: Colors.red)),
+        DiffStat(additions: file.additions, deletions: file.deletions),
       ],
     );
   }
