@@ -320,6 +320,19 @@ class _FakeDaemonClient extends DaemonClient {
         prNumber: 42,
         items: timelineMode == 'empty' || timelineMode == 'error'
             ? const []
+            : timelineMode == 'bodyless'
+            ? const [
+                PullRequestTimelineReview(
+                  id: 'review-bodyless',
+                  author: 'observer',
+                  authorUrl: null,
+                  avatarUrl: null,
+                  body: '',
+                  createdAt: 1760000200,
+                  url: 'https://example.test/review/bodyless',
+                  reviewState: PullRequestTimelineReviewState.changesRequested,
+                ),
+              ]
             : timelineMode == 'reply-rail'
             ? const [
                 PullRequestTimelineComment(
@@ -1142,6 +1155,54 @@ void main() {
     );
     expect(approvedIcon.icon, FluentIcons.status_circle_checkmark);
     expect(approvedIcon.size, 12);
+  });
+
+  testWidgets('bodyless activity renders as the frozen compact event row', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(380, 700);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final launcher = _FakeExternalUrlLauncher();
+
+    await _pumpExplorer(
+      tester,
+      _FakeDaemonClient(timelineMode: 'bodyless'),
+      launcher: launcher,
+    );
+    await _tapPullRequestTab(tester);
+    await tester.pump(const Duration(milliseconds: 150));
+
+    final eventRow = find.byKey(
+      const ValueKey('activity-event-row-review-bodyless'),
+    );
+    expect(eventRow, findsOneWidget);
+    final container = tester.widget<Container>(eventRow);
+    final decoration = container.decoration! as BoxDecoration;
+    expect(decoration.border, isNull);
+    expect(decoration.borderRadius, isNull);
+    expect(container.margin, const EdgeInsets.fromLTRB(12, 0, 12, 8));
+    expect(container.clipBehavior, Clip.none);
+    expect(
+      tester.getSize(
+        find.byKey(const ValueKey('activity-avatar-fallback-review-bodyless')),
+      ),
+      const Size.square(20),
+    );
+    expect(find.text('observer'), findsOneWidget);
+    expect(find.text('requested changes'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('activity-header-review-bodyless')),
+    );
+    await tester.pumpAndSettle();
+    expect(launcher.opened, ['https://example.test/review/bodyless']);
+
+    await expectLater(
+      find.byType(WorkspaceExplorer),
+      matchesGoldenFile('goldens/workspace_pr_bodyless_event_row.png'),
+    );
   });
 
   testWidgets('review header matches Paseo state glyph and collapsed actions', (

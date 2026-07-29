@@ -1150,20 +1150,22 @@ class _ActivityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final eventRow = !embedded && item.body.trim().isEmpty;
     final location = item is PullRequestTimelineComment
         ? (item as PullRequestTimelineComment).location
         : null;
     return Container(
+      key: eventRow ? ValueKey('activity-event-row-${item.id}') : null,
       margin: embedded
           ? EdgeInsets.zero
-          : const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          : EdgeInsets.fromLTRB(12, 0, 12, eventRow ? 8 : 12),
       decoration: BoxDecoration(
-        border: embedded
+        border: embedded || eventRow
             ? null
             : Border.all(color: context.tokens.outlineVariant),
-        borderRadius: embedded ? null : BorderRadius.circular(8),
+        borderRadius: embedded || eventRow ? null : BorderRadius.circular(8),
       ),
-      clipBehavior: Clip.antiAlias,
+      clipBehavior: eventRow ? Clip.none : Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
