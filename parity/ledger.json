@@ -5004,45 +5004,60 @@
     },
     {
       "id": "source-unit:packages/app/src/git/forges/codeberg.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge_url.dart",
+      "evidence": [
+        "packages/app/test/forge_url_test.dart"
+      ],
+      "notes": "Ports Codeberg's complete frozen logic module by registering the shared Gitea-family /src/branch/ tree and blob grammar with GitHub-style line anchors."
     },
     {
       "id": "source-unit:packages/app/src/git/forges/codeberg.view.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge.dart",
+      "evidence": [
+        "packages/app/test/forge_test.dart"
+      ],
+      "notes": "Ports the frozen Codeberg SVG brand glyph and exact #2185D0 light/dark brand color."
     },
     {
       "id": "source-unit:packages/app/src/git/forges/forgejo.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge_url.dart",
+      "evidence": [
+        "packages/app/test/forge_url_test.dart"
+      ],
+      "notes": "Ports Forgejo's complete frozen logic module by registering the shared Gitea-family /src/branch/ tree and blob grammar with GitHub-style line anchors."
     },
     {
       "id": "source-unit:packages/app/src/git/forges/forgejo.view.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge.dart",
+      "evidence": [
+        "packages/app/test/forge_test.dart"
+      ],
+      "notes": "Ports the frozen Forgejo SVG brand glyph and exact #FB923C light/dark brand color."
     },
     {
       "id": "source-unit:packages/app/src/git/forges/gitea.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge_logic.dart; packages/app/lib/core/forge_url.dart; packages/app/lib/widgets/pull_request_pane.dart",
+      "evidence": [
+        "packages/app/test/forge_logic_test.dart",
+        "packages/app/test/forge_url_test.dart",
+        "packages/app/test/pull_request_pane_test.dart",
+        "packages/app/test/goldens/workspace_pr_explorer.png"
+      ],
+      "notes": "Ports the complete frozen Gitea logic module: passthrough facts validation with defaults, mergeable-and-unmerged direct merge readiness, all three direct merge methods, no auto-merge or queue support, shared Gitea-family URLs, aggregate CI fallback checks, top-level forge branding, and warning/error terminal-failure mapping."
     },
     {
       "id": "source-unit:packages/app/src/git/forges/gitea.view.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge.dart",
+      "evidence": [
+        "packages/app/test/forge_test.dart"
+      ],
+      "notes": "Ports the frozen Gitea SVG brand glyph and exact #609926 light/dark brand color."
     },
     {
       "id": "source-unit:packages/app/src/git/forges/github.ts",
@@ -5053,10 +5068,13 @@
     },
     {
       "id": "source-unit:packages/app/src/git/forges/github.view.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge.dart",
+      "evidence": [
+        "packages/app/test/forge_test.dart",
+        "packages/app/test/goldens/workspace_pr_explorer.png"
+      ],
+      "notes": "Ports the frozen GitHub SVG brand glyph and its intentionally neutral theme-derived color."
     },
     {
       "id": "source-unit:packages/app/src/git/forges/gitlab.ts",

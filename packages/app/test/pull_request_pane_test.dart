@@ -30,6 +30,7 @@ class _FakeDaemonClient extends DaemonClient {
     this.statusState = 'OPEN',
     this.isMerged = false,
     this.isDraft = false,
+    this.forge = 'github',
     this.timelineMode = 'default',
     this.fileMode = 'default',
     this.checkDetailsSuccess = true,
@@ -40,6 +41,7 @@ class _FakeDaemonClient extends DaemonClient {
   final String statusState;
   final bool isMerged;
   final bool isDraft;
+  final String forge;
   final String timelineMode;
   final String fileMode;
   final bool checkDetailsSuccess;
@@ -124,7 +126,7 @@ class _FakeDaemonClient extends DaemonClient {
         cwd: _cwd,
         status: hasPullRequest
             ? CheckoutPrStatus(
-                forge: 'github',
+                forge: forge,
                 projectPath: 'tinyrack/coding-agent',
                 number: 42,
                 url: 'https://example.test/pr/42',
@@ -139,32 +141,43 @@ class _FakeDaemonClient extends DaemonClient {
                 reviewDecision: 'APPROVED',
                 repoOwner: 'tinyrack',
                 repoName: 'coding-agent',
-                checks: [
-                  CheckoutPrCheck(
-                    name: 'Flutter tests',
-                    status: 'success',
-                    url: 'https://example.test/check/1',
-                    workflow: 'CI',
-                    duration: '1m 12s',
-                  ),
-                  CheckoutPrCheck(
-                    name: 'Package',
-                    status: 'pending',
-                    url: null,
-                  ),
-                  if (timelineMode == 'edge')
-                    const CheckoutPrCheck(
-                      name: 'Lint',
-                      status: 'failure',
-                      url: 'https://example.test/check/2',
-                      checkRunId: 99,
-                      workflowRunId: 12,
-                    ),
-                ],
+                checks: forge == 'gitea'
+                    ? const []
+                    : [
+                        CheckoutPrCheck(
+                          name: 'Flutter tests',
+                          status: 'success',
+                          url: 'https://example.test/check/1',
+                          workflow: 'CI',
+                          duration: '1m 12s',
+                        ),
+                        CheckoutPrCheck(
+                          name: 'Package',
+                          status: 'pending',
+                          url: null,
+                        ),
+                        if (timelineMode == 'edge')
+                          const CheckoutPrCheck(
+                            name: 'Lint',
+                            status: 'failure',
+                            url: 'https://example.test/check/2',
+                            checkRunId: 99,
+                            workflowRunId: 12,
+                          ),
+                      ],
+                forgeSpecific: forge == 'gitea'
+                    ? const {
+                        'forge': 'gitea',
+                        'mergeable': true,
+                        'hasMerged': false,
+                        'ciStatus': 'warning',
+                      }
+                    : null,
               )
             : null,
         githubFeaturesEnabled: true,
         authState: null,
+        forge: forge,
         error: null,
         requestId: message['requestId']! as String,
       ).toJson(),
@@ -394,11 +407,25 @@ void main() {
     expect(find.text('Open'), findsOneWidget);
     expect(find.text('Checks'), findsOneWidget);
     expect(find.text('Flutter tests'), findsOneWidget);
-    expect(find.text('Package'), findsOneWidget);
+    expect(find.text('Package'), findsNothing);
     expect(find.text('Activity'), findsOneWidget);
     expect(find.text('Looks good to me.'), findsOneWidget);
     expect(find.text('lib/pane.dart:18'), findsOneWidget);
   });
+
+  testWidgets(
+    'renders the Gitea aggregate CI fallback with failure semantics',
+    (tester) async {
+      await _pumpExplorer(tester, _FakeDaemonClient(forge: 'gitea'));
+
+      await tester.tap(find.text('#42'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('CI'), findsOneWidget);
+      expect(find.text('No checks reported'), findsNothing);
+      expect(find.byIcon(FluentIcons.error_badge), findsWidgets);
+    },
+  );
 
   testWidgets('section headers collapse and refresh reloads native data', (
     tester,

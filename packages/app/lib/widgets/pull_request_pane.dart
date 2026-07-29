@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/external_url_launcher.dart';
 import '../core/forge.dart';
+import '../core/forge_logic.dart';
 import '../core/pull_request_context.dart';
 import '../core/theme.dart';
 import '../state/pull_request_provider.dart';
@@ -43,6 +44,7 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
               message: data.statusError ?? 'No pull request for this branch',
             );
           }
+          final checks = resolvePullRequestChecks(status);
           return Column(
             children: [
               _Toolbar(
@@ -60,7 +62,7 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
                     _SectionHeader(
                       title: 'Checks',
                       open: _checksOpen,
-                      summary: _CheckSummary(checks: status.checks),
+                      summary: _CheckSummary(checks: checks),
                       onPressed: () =>
                           setState(() => _checksOpen = !_checksOpen),
                     ),
@@ -68,7 +70,7 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
                       _ChecksSection(
                         cwd: widget.cwd,
                         status: status,
-                        checks: status.checks,
+                        checks: checks,
                       ),
                     const Divider(),
                     _SectionHeader(
