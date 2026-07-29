@@ -958,6 +958,7 @@ class AgentManager {
     List<AgentPromptImage> images = const [],
     List<AgentAttachment> attachments = const [],
     String? clientMessageId,
+    Map<String, Object?>? outputSchema,
   }) async {
     final runtime = _runtime(agentId);
     if (hasClientMessageId(agentId, clientMessageId)) return;
@@ -996,7 +997,14 @@ class AgentManager {
     _setRunState(runtime, AgentRunState.running);
     try {
       final session = runtime.session!;
-      if (session is ImagePromptAgentSession) {
+      if (session is RunOptionsAgentSession && outputSchema != null) {
+        await session.promptWithRunOptions(
+          text,
+          images: images,
+          attachments: attachments,
+          outputSchema: outputSchema,
+        );
+      } else if (session is ImagePromptAgentSession) {
         await session.promptWithImagesAndAttachments(text, images, attachments);
       } else if (session is StructuredPromptAgentSession) {
         await session.promptWithAttachments(text, attachments);

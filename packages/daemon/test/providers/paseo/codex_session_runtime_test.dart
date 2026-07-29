@@ -34,6 +34,53 @@ Map<String, Object?> _record(Object? value) {
 }
 
 void main() {
+  test(
+    'normalizes Codex output schemas recursively and rejects open objects',
+    () {
+      expect(
+        normalizeCodexOutputSchema({
+          'type': 'object',
+          'properties': {
+            'answer': {'type': 'string'},
+            'nested': {
+              'type': 'object',
+              'properties': {
+                'count': {'type': 'integer'},
+              },
+            },
+          },
+        }),
+        {
+          'type': 'object',
+          'properties': {
+            'answer': {'type': 'string'},
+            'nested': {
+              'type': 'object',
+              'properties': {
+                'count': {'type': 'integer'},
+              },
+              'additionalProperties': false,
+              'required': ['count'],
+            },
+          },
+          'additionalProperties': false,
+          'required': ['answer', 'nested'],
+        },
+      );
+      expect(
+        () => normalizeCodexOutputSchema({
+          'type': 'object',
+          'additionalProperties': true,
+        }),
+        throwsStateError,
+      );
+      expect(
+        () => normalizeCodexOutputSchema({'type': 'string'}),
+        throwsStateError,
+      );
+    },
+  );
+
   test('live mode, model, and thinking changes affect the next turn', () async {
     final client = await _startClient();
     final runtime = CodexSessionRuntime(

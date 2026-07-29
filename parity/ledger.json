@@ -14495,14 +14495,15 @@
     },
     {
       "id": "wire-message:create_agent_request",
-      "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/create_agent.dart; packages/daemon/lib/src/daemon_server.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/providers/agent_client.dart",
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/create_agent.dart; packages/daemon/lib/src/daemon_server.dart; packages/daemon/lib/src/agent/create_agent_lifecycle_dispatch.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/providers/agent_client.dart; packages/daemon/lib/src/providers/paseo/codex_agent_session.dart; packages/daemon/lib/src/providers/paseo/codex_session_runtime.dart",
       "evidence": [
         "packages/protocol/test/create_agent_request_test.dart",
         "packages/daemon/test/daemon_agent_run_e2e_test.dart",
-        "packages/daemon/test/daemon_agent_continuation_e2e_test.dart"
+        "packages/daemon/test/daemon_agent_continuation_e2e_test.dart",
+        "packages/daemon/test/providers/paseo/codex_agent_session_test.dart"
       ],
-      "notes": "Exact nested config, workspace/caller placement and parent labels, initial prompt, images, attachments, per-agent durable environment overlays, output-schema payload, current worktree target, autoArchive, labels, and typed status response now cross the real daemon. Legacy git/worktreeName compatibility and provider-native outputSchema run options remain partial."
+      "notes": "Exact nested config, workspace/caller placement and parent labels, initial prompt, images, attachments, per-agent durable environment overlays, current and legacy git/worktree placement, autoArchive, labels, typed status response, and Codex provider-native outputSchema run options cross the real daemon. Unsupported providers retain their normal prompt behavior, matching the frozen capability boundary."
     },
     {
       "id": "wire-message:create_paseo_worktree_request",

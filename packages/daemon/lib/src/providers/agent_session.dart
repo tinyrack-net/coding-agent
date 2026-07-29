@@ -40,6 +40,16 @@ abstract interface class ImagePromptAgentSession
   );
 }
 
+/// A provider session that accepts Paseo turn run options.
+abstract interface class RunOptionsAgentSession implements AgentSession {
+  Future<void> promptWithRunOptions(
+    String text, {
+    required List<AgentPromptImage> images,
+    required List<AgentAttachment> attachments,
+    Map<String, Object?>? outputSchema,
+  });
+}
+
 abstract interface class ConfigurableAgentSession implements AgentSession {
   Future<AgentProviderNotice?> setMode(String modeId);
   Future<void> setModel(String? modelId);

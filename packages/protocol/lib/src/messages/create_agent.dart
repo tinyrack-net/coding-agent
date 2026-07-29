@@ -1,6 +1,103 @@
 import '../timeline/paseo_agent_snapshot_codec.dart';
 import 'agent_attachment.dart';
 
+enum GitSetupAction { branchOff, checkout }
+
+final class ChangeRequestCheckoutSource {
+  const ChangeRequestCheckoutSource({
+    required this.number,
+    this.forge,
+    this.projectPath,
+  });
+
+  final int number;
+  final String? forge;
+  final String? projectPath;
+
+  factory ChangeRequestCheckoutSource.fromJson(Map<String, Object?> json) {
+    if (json['kind'] != 'change_request') {
+      throw const FormatException('checkoutSource.kind must be change_request');
+    }
+    return ChangeRequestCheckoutSource(
+      number: _requiredPositiveInt(json, 'number'),
+      forge: _optionalString(json, 'forge', allowEmpty: true),
+      projectPath: _optionalString(json, 'projectPath', allowEmpty: true),
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'kind': 'change_request',
+    if (forge != null) 'forge': forge,
+    'number': number,
+    if (projectPath != null) 'projectPath': projectPath,
+  };
+}
+
+/// Frozen Paseo 0.2.0 legacy git setup accepted by
+/// `create_agent_request`.
+final class GitSetupOptions {
+  const GitSetupOptions({
+    this.baseBranch,
+    this.createNewBranch,
+    this.newBranchName,
+    this.createWorktree,
+    this.worktreeSlug,
+    this.refName,
+    this.action,
+    this.checkoutSource,
+    this.githubPrNumber,
+  });
+
+  final String? baseBranch;
+  final bool? createNewBranch;
+  final String? newBranchName;
+  final bool? createWorktree;
+  final String? worktreeSlug;
+  final String? refName;
+  final GitSetupAction? action;
+  final ChangeRequestCheckoutSource? checkoutSource;
+  final int? githubPrNumber;
+
+  factory GitSetupOptions.fromJson(Map<String, Object?> json) =>
+      GitSetupOptions(
+        baseBranch: _optionalString(json, 'baseBranch', allowEmpty: true),
+        createNewBranch: _optionalBool(json, 'createNewBranch'),
+        newBranchName: _optionalString(json, 'newBranchName', allowEmpty: true),
+        createWorktree: _optionalBool(json, 'createWorktree'),
+        worktreeSlug: _optionalString(json, 'worktreeSlug', allowEmpty: true),
+        refName: _optionalString(json, 'refName'),
+        action: switch (json['action']) {
+          null => null,
+          'branch-off' => GitSetupAction.branchOff,
+          'checkout' => GitSetupAction.checkout,
+          final value => throw FormatException(
+            'Unknown git setup action: $value',
+          ),
+        },
+        checkoutSource: json['checkoutSource'] == null
+            ? null
+            : ChangeRequestCheckoutSource.fromJson(
+                _requiredMap(json, 'checkoutSource'),
+              ),
+        githubPrNumber: json['githubPrNumber'] == null
+            ? null
+            : _requiredPositiveInt(json, 'githubPrNumber'),
+      );
+
+  Map<String, Object?> toJson() => {
+    if (baseBranch != null) 'baseBranch': baseBranch,
+    if (createNewBranch != null) 'createNewBranch': createNewBranch,
+    if (newBranchName != null) 'newBranchName': newBranchName,
+    if (createWorktree != null) 'createWorktree': createWorktree,
+    if (worktreeSlug != null) 'worktreeSlug': worktreeSlug,
+    if (refName != null) 'refName': refName,
+    if (action != null)
+      'action': action == GitSetupAction.branchOff ? 'branch-off' : 'checkout',
+    if (checkoutSource != null) 'checkoutSource': checkoutSource!.toJson(),
+    if (githubPrNumber != null) 'githubPrNumber': githubPrNumber,
+  };
+}
+
 /// Frozen Paseo 0.2.0 session configuration sent with
 /// `create_agent_request`.
 final class CreateAgentSessionConfig {
@@ -116,7 +213,7 @@ final class CreateAgentRequest {
   final Map<String, Object?>? outputSchema;
   final List<AgentPromptImage> images;
   final List<AgentAttachment> attachments;
-  final Map<String, Object?>? git;
+  final GitSetupOptions? git;
   final CreateAgentWorktreeTarget? worktree;
   final bool? autoArchive;
   final Map<String, String> labels;
@@ -140,13 +237,17 @@ final class CreateAgentRequest {
     if (rawWorktree != null && rawWorktree is! Map) {
       throw const FormatException('worktree must be an object');
     }
+    final rawGit = json['git'];
+    if (rawGit != null && rawGit is! Map) {
+      throw const FormatException('git must be an object');
+    }
     return CreateAgentRequest(
       requestId: _requiredString(json, 'requestId'),
       config: CreateAgentSessionConfig.fromJson(_requiredMap(json, 'config')),
       env: _optionalStringMap(json, 'env'),
       workspaceId: _optionalString(json, 'workspaceId'),
       callerAgentId: _optionalString(json, 'callerAgentId'),
-      worktreeName: _optionalString(json, 'worktreeName'),
+      worktreeName: _optionalString(json, 'worktreeName', allowEmpty: true),
       initialPrompt: _optionalString(json, 'initialPrompt', allowEmpty: true),
       clientMessageId: _optionalString(json, 'clientMessageId'),
       outputSchema: _optionalMap(json, 'outputSchema'),
@@ -154,7 +255,9 @@ final class CreateAgentRequest {
       attachments: List.unmodifiable(
         AgentAttachment.normalizeList(json['attachments']),
       ),
-      git: _optionalMap(json, 'git'),
+      git: rawGit == null
+          ? null
+          : GitSetupOptions.fromJson(Map<String, Object?>.from(rawGit as Map)),
       worktree: rawWorktree == null
           ? null
           : CreateAgentWorktreeTarget.fromJson(
@@ -178,7 +281,7 @@ final class CreateAgentRequest {
     if (images.isNotEmpty)
       'images': [for (final image in images) image.toJson()],
     'attachments': [for (final attachment in attachments) attachment.toJson()],
-    if (git != null) 'git': git,
+    if (git != null) 'git': git!.toJson(),
     if (worktree != null) 'worktree': worktree!.toJson(),
     if (autoArchive != null) 'autoArchive': autoArchive,
     'labels': labels,

@@ -433,7 +433,12 @@ Future<DaemonServerHandle> startDaemonServer({
               cwd: cwd,
               target: lifecycleFields.worktree,
               initialPrompt: initialPrompt ?? '',
-              hasLegacyGitOptions: payload['git'] != null,
+              legacyGitOptions: payload['git'] is Map
+                  ? GitSetupOptions.fromJson(
+                      Map<String, Object?>.from(payload['git']! as Map),
+                    )
+                  : null,
+              legacyWorktreeName: payload['worktreeName'] as String?,
             );
         createdWorkspaceId = createdWorkspace?.workspaceId;
         final rawLabels = payload['labels'];
@@ -564,6 +569,9 @@ Future<DaemonServerHandle> startDaemonServer({
           images: images,
           attachments: attachments,
           clientMessageId: clientMessageId,
+          outputSchema: payload['outputSchema'] is Map
+              ? Map<String, Object?>.from(payload['outputSchema']! as Map)
+              : null,
         );
 
         final hasInitialContent =
@@ -954,6 +962,7 @@ Future<DaemonServerHandle> startDaemonServer({
   createAgentLifecycle = CreateAgentLifecycleDispatch(
     manager: manager,
     workspaces: workspaceV2,
+    git: gitService,
     archiveWorkspace: (workspaceId) async {
       await archiveWorkspaceOwnedContent(workspaceId);
       await workspaceV2.archiveAutomationWorkspace(workspaceId);
@@ -1097,6 +1106,8 @@ Future<DaemonServerHandle> startDaemonServer({
                 'workspaceId': request.workspaceId,
               if (request.callerAgentId != null)
                 'callerAgentId': request.callerAgentId,
+              if (request.worktreeName != null)
+                'worktreeName': request.worktreeName,
               'provider': config.provider,
               if (config.model != null) 'model': config.model,
               if (config.modeId != null) 'modeId': config.modeId,
@@ -1122,7 +1133,7 @@ Future<DaemonServerHandle> startDaemonServer({
               if (request.env != null) 'env': request.env,
               if (request.outputSchema != null)
                 'outputSchema': request.outputSchema,
-              if (request.git != null) 'git': request.git,
+              if (request.git != null) 'git': request.git!.toJson(),
               if (request.worktree != null)
                 'worktree': request.worktree!.toJson(),
               if (request.autoArchive != null)

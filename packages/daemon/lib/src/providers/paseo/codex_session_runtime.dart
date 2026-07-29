@@ -11,6 +11,56 @@ import 'jsonl_rpc_process.dart';
 const codexTurnStartTimeout = Duration(seconds: 90);
 const codexInterruptTimeout = Duration(seconds: 2);
 
+Map<String, Object?> normalizeCodexOutputSchema(Map<String, Object?> schema) {
+  final normalized = _normalizeCodexOutputSchemaNode(schema, r'$');
+  if (normalized is! Map<String, Object?> ||
+      !_isCodexObjectSchema(normalized)) {
+    throw StateError('Codex structured outputs require a root object schema.');
+  }
+  return normalized;
+}
+
+Object? _normalizeCodexOutputSchemaNode(Object? schema, String schemaPath) {
+  if (schema is List) {
+    return [
+      for (var index = 0; index < schema.length; index++)
+        _normalizeCodexOutputSchemaNode(schema[index], '$schemaPath[$index]'),
+    ];
+  }
+  if (schema is! Map) return schema;
+  final normalized = <String, Object?>{
+    for (final entry in schema.entries)
+      entry.key as String: _normalizeCodexOutputSchemaNode(
+        entry.value,
+        '$schemaPath.${entry.key}',
+      ),
+  };
+  if (!_isCodexObjectSchema(normalized)) return normalized;
+  if (!normalized.containsKey('additionalProperties')) {
+    normalized['additionalProperties'] = false;
+  } else if (normalized['additionalProperties'] != false) {
+    throw StateError(
+      'Codex structured outputs require $schemaPath to set '
+      'additionalProperties to false for object schemas.',
+    );
+  }
+  final properties = normalized['properties'];
+  if (properties is! Map) return normalized;
+  final required = <String>{
+    ...?((normalized['required'] as List?)?.whereType<String>()),
+    ...properties.keys.cast<String>(),
+  };
+  normalized['required'] = required.toList(growable: false);
+  return normalized;
+}
+
+bool _isCodexObjectSchema(Map<String, Object?> schema) {
+  final type = schema['type'];
+  return schema['properties'] is Map ||
+      type == 'object' ||
+      (type is List && type.contains('object'));
+}
+
 ProviderSubagentStatus _providerSubagentStatus(ToolCallStatus status) =>
     switch (status) {
       ToolCallStatus.success => ProviderSubagentStatus.completed,
@@ -308,7 +358,10 @@ final class CodexSessionRuntime {
     ]);
   }
 
-  Future<void> startTurnInput(List<Map<String, Object?>> input) async {
+  Future<void> startTurnInput(
+    List<Map<String, Object?>> input, {
+    Map<String, Object?>? outputSchema,
+  }) async {
     await connect();
     final threadId = _currentThreadId == null
         ? await ensureThread()
@@ -332,6 +385,8 @@ final class CodexSessionRuntime {
       if (_config.innerConfig case final innerConfig?) 'config': innerConfig,
       if (preset.approvalsReviewer case final approvalsReviewer?)
         'approvalsReviewer': approvalsReviewer,
+      if (outputSchema != null)
+        'outputSchema': normalizeCodexOutputSchema(outputSchema),
     };
     _currentTurnId = null;
     await _client.request('turn/start', params, codexTurnStartTimeout);

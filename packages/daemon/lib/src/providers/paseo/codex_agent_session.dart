@@ -16,6 +16,7 @@ final class CodexAgentSession
         ProviderSubagentRestoringAgentSession,
         ConfigurableAgentSession,
         StructuredPromptAgentSession,
+        RunOptionsAgentSession,
         CommandListingAgentSession {
   CodexAgentSession(this._runtime) {
     _unsubscribeNotification = _runtime.onNotification(_handleNotification);
@@ -95,6 +96,31 @@ final class CodexAgentSession
       for (final attachment in context) _textInput(attachment.text),
     ];
     return _runtime.startTurnInput(input);
+  }
+
+  @override
+  Future<void> promptWithRunOptions(
+    String text, {
+    required List<AgentPromptImage> images,
+    required List<AgentAttachment> attachments,
+    Map<String, Object?>? outputSchema,
+  }) {
+    if (_disposed || _processExited) {
+      throw StateError('Codex session is disposed');
+    }
+    final history = attachments.whereType<TextAgentAttachment>().where(
+      (attachment) => attachment.contextKind == 'chat_history',
+    );
+    final context = attachments.whereType<TextAgentAttachment>().where(
+      (attachment) => attachment.contextKind != 'chat_history',
+    );
+    return _runtime.startTurnInput([
+      for (final attachment in history) _textInput(attachment.text),
+      if (text.trim().isNotEmpty) _textInput(text.trim()),
+      for (final image in images)
+        {'type': 'image', 'url': 'data:${image.mimeType};base64,${image.data}'},
+      for (final attachment in context) _textInput(attachment.text),
+    ], outputSchema: outputSchema);
   }
 
   @override

@@ -1,5 +1,6 @@
 import 'package:agent_protocol/agent_protocol.dart';
 
+import '../git/git_service.dart';
 import '../workspace/workspace_registry.dart';
 import '../workspace/workspace_v2_service.dart';
 import 'agent_manager.dart';
@@ -23,12 +24,14 @@ final class CreateAgentLifecycleDispatch {
   CreateAgentLifecycleDispatch({
     required this.manager,
     required this.workspaces,
+    required this.git,
     required this.archiveWorkspace,
     this.log,
   });
 
   final AgentManager manager;
   final WorkspaceV2Service workspaces;
+  final GitService git;
   final Future<void> Function(String workspaceId) archiveWorkspace;
   final void Function(String message)? log;
   final Set<String> _autoArchiveAgentIds = {};
@@ -37,41 +40,110 @@ final class CreateAgentLifecycleDispatch {
     required String cwd,
     required CreateAgentWorktreeTarget? target,
     required String initialPrompt,
-    required bool hasLegacyGitOptions,
+    required GitSetupOptions? legacyGitOptions,
+    String? legacyWorktreeName,
   }) async {
-    if (target != null && hasLegacyGitOptions) {
+    if (target != null && legacyGitOptions != null) {
       throw StateError(
         'create_agent_request worktree cannot be combined with git options',
       );
     }
-    if (target == null) return null;
-    final source = switch (target) {
-      BranchOffCreateAgentWorktreeTarget(:final newBranch, :final base) =>
+    PersistedWorkspaceRecord? currentWorktree;
+    if (target != null) {
+      final source = switch (target) {
+        BranchOffCreateAgentWorktreeTarget(:final newBranch, :final base) =>
+          WorktreeWorkspaceCreateSource(
+            cwd: cwd,
+            action: WorktreeCreateAction.branchOff,
+            branchName: newBranch,
+            refName: base,
+            worktreeSlug: newBranch,
+          ),
+        CheckoutBranchCreateAgentWorktreeTarget(:final branch) =>
+          WorktreeWorkspaceCreateSource(
+            cwd: cwd,
+            action: WorktreeCreateAction.checkout,
+            refName: branch,
+          ),
+        CheckoutPrCreateAgentWorktreeTarget(:final prNumber) =>
+          WorktreeWorkspaceCreateSource(
+            cwd: cwd,
+            action: WorktreeCreateAction.checkout,
+            githubPrNumber: prNumber,
+          ),
+      };
+      currentWorktree = await _createWorktree(source, initialPrompt);
+    }
+
+    final options = legacyGitOptions ?? _legacyWorktree(legacyWorktreeName);
+    if (options == null) return currentWorktree;
+    final setupCwd = currentWorktree?.cwd ?? cwd;
+    final baseBranch = _trimmed(options.baseBranch);
+    final createNewBranch = options.createNewBranch == true;
+    final newBranchName = options.newBranchName == null
+        ? null
+        : slugify(options.newBranchName!);
+    final requestedSlug = options.worktreeSlug == null
+        ? null
+        : slugify(options.worktreeSlug!);
+    final worktreeSlug = requestedSlug ?? newBranchName;
+
+    if (createNewBranch && (newBranchName == null || newBranchName.isEmpty)) {
+      throw StateError('New branch name is required');
+    }
+    if (options.createWorktree == true) {
+      return _createWorktree(
         WorktreeWorkspaceCreateSource(
-          cwd: cwd,
-          action: WorktreeCreateAction.branchOff,
-          branchName: newBranch,
-          refName: base,
-          worktreeSlug: newBranch,
+          cwd: setupCwd,
+          action: switch (options.action) {
+            GitSetupAction.branchOff => WorktreeCreateAction.branchOff,
+            GitSetupAction.checkout => WorktreeCreateAction.checkout,
+            null => null,
+          },
+          refName: _trimmed(options.refName),
+          baseBranch: baseBranch,
+          branchName: createNewBranch ? newBranchName : null,
+          checkoutSource: options.checkoutSource?.toJson(),
+          githubPrNumber: options.githubPrNumber,
+          worktreeSlug: worktreeSlug,
         ),
-      CheckoutBranchCreateAgentWorktreeTarget(:final branch) =>
-        WorktreeWorkspaceCreateSource(
-          cwd: cwd,
-          action: WorktreeCreateAction.checkout,
-          refName: branch,
-        ),
-      CheckoutPrCreateAgentWorktreeTarget(:final prNumber) =>
-        WorktreeWorkspaceCreateSource(
-          cwd: cwd,
-          action: WorktreeCreateAction.checkout,
-          githubPrNumber: prNumber,
-        ),
-    };
-    return workspaces.createAutomationWorkspace(
-      source,
-      title: resolveFirstAgentPromptTitle({'prompt': initialPrompt}),
-      firstAgentContext: {'prompt': initialPrompt},
+        initialPrompt,
+      );
+    }
+    if (createNewBranch) {
+      await git.createBranchFromBase(
+        cwd: setupCwd,
+        baseBranch: baseBranch ?? await git.resolveDefaultBranch(setupCwd),
+        newBranchName: newBranchName!,
+      );
+    } else if (baseBranch != null) {
+      await git.checkoutExistingBranch(setupCwd, baseBranch);
+    }
+    return currentWorktree;
+  }
+
+  Future<PersistedWorkspaceRecord> _createWorktree(
+    WorktreeWorkspaceCreateSource source,
+    String initialPrompt,
+  ) => workspaces.createAutomationWorkspace(
+    source,
+    title: resolveFirstAgentPromptTitle({'prompt': initialPrompt}),
+    firstAgentContext: {'prompt': initialPrompt},
+  );
+
+  GitSetupOptions? _legacyWorktree(String? name) {
+    if (name == null || name.isEmpty) return null;
+    return GitSetupOptions(
+      createWorktree: true,
+      createNewBranch: true,
+      newBranchName: name,
+      worktreeSlug: name,
     );
+  }
+
+  String? _trimmed(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 
   LifecycleRegistration registerAutoArchiveIfRequested({

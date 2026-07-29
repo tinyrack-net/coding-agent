@@ -224,6 +224,31 @@ void main() {
     ]);
   });
 
+  test('passes frozen output schema as a Codex turn run option', () async {
+    final (session, connection) = _createSession();
+    addTearDown(session.dispose);
+
+    await session.promptWithRunOptions(
+      'Return structured output',
+      images: const [],
+      attachments: const [],
+      outputSchema: const {
+        'type': 'object',
+        'required': ['answer'],
+      },
+    );
+
+    final turn = connection.requests.singleWhere(
+      (request) => request.$1 == 'turn/start',
+    );
+    final params = turn.$2! as Map<String, Object?>;
+    expect(params['outputSchema'], {
+      'type': 'object',
+      'required': ['answer'],
+      'additionalProperties': false,
+    });
+  });
+
   test(
     'normalizes reasoning and uses buffered text when final omits it',
     () async {

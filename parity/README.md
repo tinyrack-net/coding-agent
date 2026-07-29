@@ -151,7 +151,10 @@ Never hand-edit `upstream_inventory.json`. `ledger.json` is merge-preserved by
   overlays, structured-output validation/retry, errors, and output formats.
   The typed create-agent status and real WebSocket lifecycle are covered
   end-to-end, including caller-owned child placement.
-- Ledger status: 406 verified, 252 partial, and 1262 not-started out of 1920.
+- Frozen create-agent legacy `git` and `worktreeName` inputs now preserve
+  branch-only and worktree placement, while `outputSchema` reaches the Codex
+  provider turn boundary.
+- Ledger status: 407 verified, 251 partial, and 1262 not-started out of 1920.
 - Validation: protocol 332 tests, daemon 898 tests, Flutter 802 tests, root
   analysis, frozen
   inventory validation, and package coverage of protocol 95.24%, relay 95.17%,

@@ -95,6 +95,18 @@ class GitService {
     return currentBranch(projectPath);
   }
 
+  Future<void> createBranchFromBase({
+    required String cwd,
+    required String baseBranch,
+    required String newBranchName,
+  }) async {
+    await runner.run(['checkout', '-b', newBranchName, baseBranch], cwd: cwd);
+  }
+
+  Future<void> checkoutExistingBranch(String cwd, String branch) async {
+    await runner.run(['checkout', branch], cwd: cwd);
+  }
+
   /// Resolves the repository's default branch using Paseo's precedence:
   /// origin/HEAD first, then local `main`, then local `master`.
   Future<String> resolveDefaultBranch(String projectPath) async {

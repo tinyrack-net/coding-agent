@@ -20,6 +20,18 @@ void main() {
       initialPrompt: 'Implement it',
       clientMessageId: 'message-1',
       outputSchema: const {'type': 'object'},
+      git: const GitSetupOptions(
+        baseBranch: 'main',
+        createNewBranch: true,
+        newBranchName: 'feature',
+        createWorktree: true,
+        worktreeSlug: 'feature',
+        action: GitSetupAction.branchOff,
+        checkoutSource: ChangeRequestCheckoutSource(
+          number: 42,
+          forge: 'github',
+        ),
+      ),
       images: const [AgentPromptImage(data: 'aGVsbG8=', mimeType: 'image/png')],
       labels: const {'team': 'core'},
     );
@@ -40,6 +52,19 @@ void main() {
       'initialPrompt': 'Implement it',
       'clientMessageId': 'message-1',
       'outputSchema': {'type': 'object'},
+      'git': {
+        'baseBranch': 'main',
+        'createNewBranch': true,
+        'newBranchName': 'feature',
+        'createWorktree': true,
+        'worktreeSlug': 'feature',
+        'action': 'branch-off',
+        'checkoutSource': {
+          'kind': 'change_request',
+          'forge': 'github',
+          'number': 42,
+        },
+      },
       'images': [
         {'data': 'aGVsbG8=', 'mimeType': 'image/png'},
       ],
@@ -103,6 +128,29 @@ void main() {
       () => CreateAgentRequest.fromJson({
         ...base,
         'labels': {'priority': 1},
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => CreateAgentRequest.fromJson({
+        ...base,
+        'git': {'action': 'merge'},
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => CreateAgentRequest.fromJson({
+        ...base,
+        'git': {'githubPrNumber': 0},
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => CreateAgentRequest.fromJson({
+        ...base,
+        'git': {
+          'checkoutSource': {'kind': 'branch', 'number': 1},
+        },
       }),
       throwsFormatException,
     );
