@@ -11,6 +11,8 @@ import 'package:coding_agent_app/screens/status_screen.dart';
 import 'package:coding_agent_app/state/daemon_lifecycle_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
+import 'package:coding_agent_app/state/sidebar_callout_provider.dart';
+import 'package:coding_agent_app/state/sidebar_callout_state.dart';
 import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
 import 'package:coding_agent_app/widgets/worktree_tabbed_pane.dart';
 import 'package:fluent_ui/fluent_ui.dart';
@@ -221,6 +223,36 @@ Future<ProviderContainer> pumpHomeShell(
 }
 
 void main() {
+  testWidgets('renders the active native callout above the footer', (
+    tester,
+  ) async {
+    final container = await pumpHomeShell(tester);
+    container
+        .read(sidebarCalloutProvider.notifier)
+        .show(
+          const SidebarCalloutOptions(
+            id: 'update',
+            title: 'Update available',
+            description: 'v1 is ready.',
+            testId: 'shell-callout',
+          ),
+        );
+    await tester.pump();
+
+    final callout = find.byKey(const ValueKey('shell-callout'));
+    final footer = find.text('Daemon connected');
+    expect(callout, findsOneWidget);
+    expect(footer, findsOneWidget);
+    expect(
+      tester.getBottomLeft(callout).dy,
+      lessThan(tester.getTopLeft(footer).dy),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('shell-callout-dismiss')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(callout, findsNothing);
+  });
+
   testWidgets('shows the Paseo skeleton only during the initial empty load', (
     tester,
   ) async {

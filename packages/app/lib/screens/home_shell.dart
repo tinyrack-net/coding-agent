@@ -18,6 +18,7 @@ import '../state/worktree_tabs_provider.dart';
 import '../state/worktree_titles_provider.dart';
 import '../widgets/fluent/toast.dart';
 import '../widgets/sidebar_agent_list_skeleton.dart';
+import '../widgets/sidebar_callout_slot.dart';
 import '../widgets/worktree_tabbed_pane.dart';
 import '../workspace/workspace_deck_retention.dart';
 
@@ -468,6 +469,7 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                   ],
                 ),
         ),
+        const SidebarCalloutSlot(),
         const Divider(),
         const _ConnectionFooter(),
       ],

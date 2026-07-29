@@ -3339,31 +3339,41 @@
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar-callout-slot.d.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/sidebar_callout_slot.dart",
+      "evidence": [
+        "packages/app/test/sidebar_callout_slot_test.dart",
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "Flutter exposes one stable SidebarCalloutSlot platform adapter and integrates it between the workspace list and connection footer."
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar-callout-slot.native.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/sidebar_callout_slot.dart; packages/app/lib/screens/home_shell.dart",
+      "evidence": [
+        "packages/app/test/sidebar_callout_slot_test.dart",
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "Native Flutter targets render the active callout at full sidebar width above the footer, dismiss it through the shared notifier, and render nothing when no callout is active."
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar-callout-slot.web.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/sidebar_callout_slot.dart",
+      "evidence": [
+        "packages/app/test/sidebar_callout_slot_test.dart"
+      ],
+      "notes": "The Flutter Web branch intentionally returns an empty slot, matching the frozen web implementation while native targets retain the viewport."
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar-callout.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/sidebar_callout.dart",
+      "evidence": [
+        "packages/app/test/sidebar_callout_test.dart"
+      ],
+      "notes": "The reusable Flutter callout matches the frozen alert semantics, 12x16 padding, top border and destructive error border, optional icon/title/description/dismiss control, muted 12px description, 14px title, and at most two equal-width primary/secondary actions with exact spacing, radius, pressed, disabled, and color states."
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar-resize-handle.tsx",
@@ -4250,17 +4260,23 @@
     },
     {
       "id": "source-unit:packages/app/src/contexts/sidebar-callout-context.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/state/sidebar_callout_provider.dart; packages/app/lib/widgets/sidebar_callout_slot.dart",
+      "evidence": [
+        "packages/app/test/sidebar_callout_provider_test.dart",
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "Riverpod now provides the frozen show/dismiss/clear API, active-callout projection, registration cleanup callback, asynchronous dismissal hydration, Tinyrack-keyed SharedPreferences persistence, callback ordering, and native viewport binding."
     },
     {
       "id": "source-unit:packages/app/src/contexts/sidebar-callout-state.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/state/sidebar_callout_state.dart",
+      "evidence": [
+        "packages/app/test/sidebar_callout_state_test.dart",
+        "packages/app/test/sidebar_callout_provider_test.dart"
+      ],
+      "notes": "The immutable Dart state contract reproduces priority then FIFO selection, replacement by ID without reordering, token-safe unregister, normalized dismissal keys, defensive JSON parsing, storage-hydration gating, persistent future suppression, and clear-with-dismissals-preserved behavior."
     },
     {
       "id": "source-unit:packages/app/src/contexts/toast-context.tsx",
