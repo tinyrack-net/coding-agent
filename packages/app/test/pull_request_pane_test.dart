@@ -321,22 +321,26 @@ class _FakeDaemonClient extends DaemonClient {
         items: timelineMode == 'empty' || timelineMode == 'error'
             ? const []
             : [
-                const PullRequestTimelineReview(
+                PullRequestTimelineReview(
                   id: 'review-1',
                   author: 'octocat',
                   authorUrl: null,
                   avatarUrl: null,
-                  body: 'Looks good to me.',
+                  body: timelineMode == 'links'
+                      ? '[Review link](https://example.test/review-link)'
+                      : 'Looks good to me.',
                   createdAt: 1760000000,
                   url: 'https://example.test/review/1',
                   reviewState: PullRequestTimelineReviewState.approved,
                 ),
-                const PullRequestTimelineComment(
+                PullRequestTimelineComment(
                   id: 'comment-1',
                   author: 'reviewer',
                   authorUrl: null,
                   avatarUrl: null,
-                  body: 'Please keep this covered.',
+                  body: timelineMode == 'links'
+                      ? '[Activity link](https://example.test/activity-link)'
+                      : 'Please keep this covered.',
                   createdAt: 1760000100,
                   url: 'https://example.test/comment/1',
                   location: PullRequestTimelineCommentLocation(
@@ -344,6 +348,24 @@ class _FakeDaemonClient extends DaemonClient {
                     line: 18,
                   ),
                 ),
+                if (timelineMode == 'links')
+                  const PullRequestTimelineComment(
+                    id: 'comment-link-thread',
+                    author: 'maintainer',
+                    authorUrl: null,
+                    avatarUrl: null,
+                    body: '[Thread link](https://example.test/thread-link)',
+                    createdAt: 1760000150,
+                    url: 'https://example.test/comment/thread-link',
+                    threadId: 'PRRT_LINK',
+                    location: PullRequestTimelineCommentLocation(
+                      path: 'lib/thread.dart',
+                      line: 3,
+                      threadId: 'PRRT_LINK',
+                      isResolved: false,
+                      isOutdated: false,
+                    ),
+                  ),
                 if (timelineMode == 'edge') ...[
                   const PullRequestTimelineReview(
                     id: 'review-2',
@@ -976,6 +998,33 @@ void main() {
       'https://example.test/pr/42',
       'https://example.test/check/1',
       'https://example.test/review/1',
+    ]);
+  });
+
+  testWidgets('PR Markdown links open through the platform', (tester) async {
+    final launcher = _FakeExternalUrlLauncher();
+    await _pumpExplorer(
+      tester,
+      _FakeDaemonClient(timelineMode: 'links'),
+      launcher: launcher,
+    );
+    await _tapPullRequestTab(tester);
+    await tester.pump(const Duration(milliseconds: 150));
+
+    await tester.tap(find.text('Review link'));
+    await tester.tap(find.text('Activity link'));
+    await tester.pumpAndSettle();
+
+    final threadLink = find.text('Thread link');
+    await tester.drag(find.byType(ListView).first, const Offset(0, -240));
+    await tester.pumpAndSettle();
+    await tester.tap(threadLink);
+    await tester.pumpAndSettle();
+
+    expect(launcher.opened, [
+      'https://example.test/review-link',
+      'https://example.test/activity-link',
+      'https://example.test/thread-link',
     ]);
   });
 

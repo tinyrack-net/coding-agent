@@ -1009,6 +1009,7 @@ class _TimelineEntryCard extends StatelessWidget {
           ? () => onAddActivity(activity)
           : null,
       onOpen: () => onOpen(activity.url),
+      onOpenUrl: onOpen,
       brandLabel: brandLabel,
     ),
     PullRequestThreadEntry() => _ThreadCard(
@@ -1043,6 +1044,7 @@ class _ActivityCard extends StatelessWidget {
     required this.onToggle,
     required this.onAddToChat,
     required this.onOpen,
+    required this.onOpenUrl,
     required this.brandLabel,
     this.embedded = false,
   });
@@ -1052,6 +1054,7 @@ class _ActivityCard extends StatelessWidget {
   final VoidCallback onToggle;
   final VoidCallback? onAddToChat;
   final VoidCallback onOpen;
+  final ValueChanged<String> onOpenUrl;
   final String brandLabel;
   final bool embedded;
 
@@ -1152,6 +1155,9 @@ class _ActivityCard extends StatelessWidget {
               child: MarkdownBody(
                 data: item.body,
                 selectable: true,
+                onTapLink: (_, href, _) {
+                  if (href != null) onOpenUrl(href);
+                },
                 styleSheet: MarkdownStyleSheet(
                   p: const TextStyle(fontSize: 12, height: 1.4),
                   code: const TextStyle(fontFamily: 'monospace', fontSize: 11),
@@ -1216,6 +1222,7 @@ class _ReviewCard extends StatelessWidget {
                 ? () => onAddActivity(review)
                 : null,
             onOpen: () => onOpen(review.url),
+            onOpenUrl: onOpen,
             brandLabel: brandLabel,
             embedded: true,
           ),
@@ -1333,6 +1340,7 @@ class _ThreadCard extends StatelessWidget {
                     ? null
                     : () => onAddActivity(comment),
                 onOpen: () => onOpen(comment.url),
+                onOpenUrl: onOpen,
                 brandLabel: brandLabel,
               ),
             Padding(
@@ -1354,12 +1362,14 @@ class _ThreadComment extends StatelessWidget {
     required this.comment,
     required this.onAddToChat,
     required this.onOpen,
+    required this.onOpenUrl,
     required this.brandLabel,
   });
 
   final PullRequestTimelineComment comment;
   final VoidCallback? onAddToChat;
   final VoidCallback onOpen;
+  final ValueChanged<String> onOpenUrl;
   final String brandLabel;
 
   @override
@@ -1399,6 +1409,9 @@ class _ThreadComment extends StatelessWidget {
             MarkdownBody(
               data: comment.body,
               selectable: true,
+              onTapLink: (_, href, _) {
+                if (href != null) onOpenUrl(href);
+              },
               styleSheet: MarkdownStyleSheet(
                 p: const TextStyle(fontSize: 12, height: 1.4),
               ),
