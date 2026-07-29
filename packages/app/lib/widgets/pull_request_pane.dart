@@ -1430,6 +1430,7 @@ class _ThreadCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final root = thread.comments.first;
+    final replies = thread.comments.skip(1);
     return Container(
       margin: nested
           ? EdgeInsets.zero
@@ -1492,15 +1493,47 @@ class _ThreadCard extends StatelessWidget {
             ),
           ),
           if (!collapsed) ...[
-            for (final comment in thread.comments)
-              _ThreadComment(
-                comment: comment,
-                onAddToChat: comment.body.trim().isEmpty
-                    ? null
-                    : () => onAddActivity(comment),
-                onOpen: () => onOpen(comment.url),
-                onOpenUrl: onOpen,
-                brandLabel: brandLabel,
+            _ThreadComment(
+              comment: root,
+              onAddToChat: root.body.trim().isEmpty
+                  ? null
+                  : () => onAddActivity(root),
+              onOpen: () => onOpen(root.url),
+              onOpenUrl: onOpen,
+              brandLabel: brandLabel,
+            ),
+            if (replies.isNotEmpty)
+              Container(
+                key: ValueKey('thread-reply-rail-${thread.id}'),
+                margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: Column(
+                  children: [
+                    for (final reply in replies)
+                      Container(
+                        key: ValueKey('thread-reply-card-${reply.id}'),
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: FluentTheme.of(context).cardColor,
+                          border: Border.all(
+                            color: context.tokens.outlineVariant,
+                          ),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: _ThreadComment(
+                          comment: reply,
+                          showTopBorder: false,
+                          onAddToChat: reply.body.trim().isEmpty
+                              ? null
+                              : () => onAddActivity(reply),
+                          onOpen: () => onOpen(reply.url),
+                          onOpenUrl: onOpen,
+                          brandLabel: brandLabel,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 0, 8, 8),
@@ -1523,6 +1556,7 @@ class _ThreadComment extends StatelessWidget {
     required this.onOpen,
     required this.onOpenUrl,
     required this.brandLabel,
+    this.showTopBorder = true,
   });
 
   final PullRequestTimelineComment comment;
@@ -1530,12 +1564,15 @@ class _ThreadComment extends StatelessWidget {
   final VoidCallback onOpen;
   final ValueChanged<String> onOpenUrl;
   final String brandLabel;
+  final bool showTopBorder;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: context.tokens.outlineVariant)),
+        border: showTopBorder
+            ? Border(top: BorderSide(color: context.tokens.outlineVariant))
+            : null,
       ),
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
       child: Column(

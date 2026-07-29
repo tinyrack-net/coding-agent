@@ -320,6 +320,60 @@ class _FakeDaemonClient extends DaemonClient {
         prNumber: 42,
         items: timelineMode == 'empty' || timelineMode == 'error'
             ? const []
+            : timelineMode == 'reply-rail'
+            ? const [
+                PullRequestTimelineComment(
+                  id: 'reply-root',
+                  author: 'reviewer',
+                  authorUrl: null,
+                  avatarUrl: null,
+                  body: 'Root comment.',
+                  createdAt: 1760000200,
+                  url: 'https://example.test/comment/root',
+                  threadId: 'PRRT_REPLIES',
+                  location: PullRequestTimelineCommentLocation(
+                    path: 'lib/replies.dart',
+                    line: 8,
+                    threadId: 'PRRT_REPLIES',
+                    isResolved: false,
+                    isOutdated: false,
+                  ),
+                ),
+                PullRequestTimelineComment(
+                  id: 'reply-first',
+                  author: 'maintainer',
+                  authorUrl: null,
+                  avatarUrl: null,
+                  body: 'First reply.',
+                  createdAt: 1760000300,
+                  url: 'https://example.test/comment/reply-first',
+                  threadId: 'PRRT_REPLIES',
+                  location: PullRequestTimelineCommentLocation(
+                    path: 'lib/replies.dart',
+                    line: 8,
+                    threadId: 'PRRT_REPLIES',
+                    isResolved: false,
+                    isOutdated: false,
+                  ),
+                ),
+                PullRequestTimelineComment(
+                  id: 'reply-second',
+                  author: 'octocat',
+                  authorUrl: null,
+                  avatarUrl: null,
+                  body: 'Second reply.',
+                  createdAt: 1760000400,
+                  url: 'https://example.test/comment/reply-second',
+                  threadId: 'PRRT_REPLIES',
+                  location: PullRequestTimelineCommentLocation(
+                    path: 'lib/replies.dart',
+                    line: 8,
+                    threadId: 'PRRT_REPLIES',
+                    isResolved: false,
+                    isOutdated: false,
+                  ),
+                ),
+              ]
             : timelineMode == 'collapsed-review'
             ? const [
                 PullRequestTimelineReview(
@@ -1268,6 +1322,54 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(launcher.opened, ['https://example.test/comment/2']);
+  });
+
+  testWidgets('thread replies render in the frozen inset card rail', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(380, 700);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await _pumpExplorer(tester, _FakeDaemonClient(timelineMode: 'reply-rail'));
+    await _tapPullRequestTab(tester);
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(find.text('Root comment.'), findsOneWidget);
+    expect(find.text('First reply.'), findsOneWidget);
+    expect(find.text('Second reply.'), findsOneWidget);
+
+    final rail = find.byKey(
+      const ValueKey('thread-reply-rail-thread:PRRT_REPLIES'),
+    );
+    expect(rail, findsOneWidget);
+    expect(
+      tester.widget<Container>(rail).margin,
+      const EdgeInsets.fromLTRB(12, 8, 12, 0),
+    );
+
+    for (final id in ['reply-first', 'reply-second']) {
+      final card = find.byKey(ValueKey('thread-reply-card-$id'));
+      expect(card, findsOneWidget);
+      final widget = tester.widget<Container>(card);
+      final decoration = widget.decoration! as BoxDecoration;
+      expect(decoration.border, isA<Border>());
+      expect(decoration.borderRadius, BorderRadius.circular(6));
+      expect(widget.margin, const EdgeInsets.only(bottom: 8));
+      expect(widget.clipBehavior, Clip.antiAlias);
+    }
+
+    final rootTop = tester.getTopLeft(find.text('Root comment.')).dy;
+    final firstTop = tester.getTopLeft(find.text('First reply.')).dy;
+    final secondTop = tester.getTopLeft(find.text('Second reply.')).dy;
+    expect(rootTop, lessThan(firstTop));
+    expect(firstTop, lessThan(secondTop));
+
+    await expectLater(
+      find.byType(WorkspaceExplorer),
+      matchesGoldenFile('goldens/workspace_pr_reply_rail.png'),
+    );
   });
 
   testWidgets('Add to chat publishes a deduplicated composer attachment', (
