@@ -115,6 +115,46 @@ void main() {
     expect(table, contains('agent-1'));
   });
 
+  test('supports frozen shared output aliases and option forms', () async {
+    final parsed = AgentImportCliInvocation.parse(const [
+      '--provider= codex ',
+      '--cwd= C:/repo ',
+      '--label=team=core',
+      '--host=ws://127.0.0.1:7777',
+      '--format=yaml',
+      '--json',
+      '--no-color',
+      'session-1',
+    ]);
+    expect(parsed.provider, 'codex');
+    expect(parsed.cwd, 'C:/repo');
+    expect(parsed.labels, {'team': 'core'});
+    expect(parsed.host, 'ws://127.0.0.1:7777');
+    expect(parsed.output.format, 'json');
+    expect(parsed.output.noColor, isTrue);
+
+    var output = '';
+    expect(
+      await runAgentImportCommand(
+        arguments: const [
+          '--provider',
+          'codex',
+          '-ocli',
+          '--no-headers',
+          '--',
+          '-session-id',
+        ],
+        currentDirectory: 'C:/repo',
+        request: (request) async =>
+            _successResponse(request['requestId']! as String),
+        writeOutput: (value) => output += value,
+      ),
+      0,
+    );
+    expect(output, contains('agent-1'));
+    expect(output, isNot(contains('AGENT ID')));
+  });
+
   test('reports permission-blocked imported sessions as running', () async {
     var output = '';
     final exitCode = await runAgentImportCommand(
@@ -178,6 +218,23 @@ void main() {
     }
   });
 
+  test('rejects an empty invoking directory when cwd is omitted', () async {
+    var error = '';
+    expect(
+      await runAgentImportCommand(
+        arguments: const ['id', '--provider', 'codex', '--json'],
+        currentDirectory: '  ',
+        environment: const {'TINYRACK_LISTEN': '127.0.0.1:1'},
+        writeError: (value) => error += value,
+      ),
+      1,
+    );
+    expect(
+      (jsonDecode(error) as Map)['error'],
+      containsPair('code', 'INVALID_CWD'),
+    );
+  });
+
   test('renders structured import failure in json mode', () async {
     var error = '';
     final exitCode = await runAgentImportCommand(
@@ -235,7 +292,7 @@ void main() {
     );
 
     expect(exitCode, 1);
-    expect(error, contains('AGENT_IMPORT_FAILED: socket closed'));
+    expect(error, contains('Error: Failed to import agent: socket closed'));
   });
 }
 
