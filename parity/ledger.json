@@ -6961,10 +6961,13 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/workspace/terminals/state.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/terminal/workspace_terminal_state.dart; packages/app/lib/terminal/terminal_list.dart",
+      "evidence": [
+        "packages/app/test/workspace_terminal_state_test.dart",
+        "packages/app/test/terminal_list_test.dart"
+      ],
+      "notes": "Matches the frozen 5-second query state contract, host/workspace key and creation gate, pending script reconciliation identity semantics, known/script/standalone classification, terminal removal, and created-terminal cache metadata."
     },
     {
       "id": "source-unit:packages/app/src/screens/workspace/terminals/use-workspace-terminals.ts",
@@ -8607,10 +8610,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/terminal-list.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/terminal/terminal_list.dart",
+      "evidence": [
+        "packages/app/test/terminal_list_test.dart"
+      ],
+      "notes": "Matches the frozen compact create-to-list projection, append behavior, stable in-place replacement order, immutable input handling, and truthy title preservation."
     },
     {
       "id": "source-unit:packages/app/src/utils/terminal-renderer-readiness.ts",
