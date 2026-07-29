@@ -22,6 +22,8 @@ import '../widgets/adaptive_modal_sheet.dart';
 import '../widgets/combined_model_selector.dart';
 import '../widgets/fluent/form_text_input.dart';
 import '../widgets/fluent/select_field.dart';
+import '../widgets/host_filter.dart';
+import '../widgets/host_picker.dart';
 import '../widgets/host_status_dot.dart';
 import '../widgets/provider_icon.dart';
 
@@ -29,7 +31,6 @@ enum _ScheduleFilter { active, ended }
 
 enum _ScheduleDerivedState { active, paused, expired, finished, targetGone }
 
-const _allScheduleHosts = '__all__';
 const _schedulesDocsUrl = 'https://tinyrack.net/docs/schedules';
 
 // Lucide 0.546.0, ISC. Matches the frozen Paseo schedule option glyphs.
@@ -75,16 +76,16 @@ class SchedulesScreen extends ConsumerStatefulWidget {
 
 class _SchedulesScreenState extends ConsumerState<SchedulesScreen> {
   var _filter = _ScheduleFilter.active;
-  var _selectedHost = _allScheduleHosts;
+  var _selectedHost = allHostsOptionId;
 
   @override
   Widget build(BuildContext context) {
     final schedules = ref.watch(aggregatedSchedulesProvider);
     final hosts = ref.watch(hostRegistryProvider).hosts;
     ref.listen(hostRegistryProvider, (previous, next) {
-      if (_selectedHost != _allScheduleHosts &&
+      if (_selectedHost != allHostsOptionId &&
           !next.hosts.any((host) => host.serverId == _selectedHost)) {
-        setState(() => _selectedHost = _allScheduleHosts);
+        setState(() => _selectedHost = allHostsOptionId);
       }
     });
     final agentDirectories = ref.watch(agentDirectoryReplicaStoreProvider);
@@ -93,10 +94,10 @@ class _SchedulesScreenState extends ConsumerState<SchedulesScreen> {
         const <ScheduleProjectTarget>[];
     final projectNameByCwd = buildScheduleProjectNameByCwd(projectTargets);
     final selectedHost =
-        _selectedHost == _allScheduleHosts ||
+        _selectedHost == allHostsOptionId ||
             hosts.any((host) => host.serverId == _selectedHost)
         ? _selectedHost
-        : _allScheduleHosts;
+        : allHostsOptionId;
     return ScaffoldPage(
       header: const PageHeader(title: Text('Schedules')),
       content: schedules.when(
@@ -126,7 +127,7 @@ class _SchedulesScreenState extends ConsumerState<SchedulesScreen> {
               ),
           ];
           final visible = rows.where((row) {
-            if (selectedHost != _allScheduleHosts &&
+            if (selectedHost != allHostsOptionId &&
                 row.entry.serverId != selectedHost) {
               return false;
             }
@@ -237,8 +238,8 @@ class _SchedulesToolbar extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 if (hosts.length > 1)
-                  _ScheduleHostFilter(
-                    key: const ValueKey('schedules-host-filter-trigger'),
+                  HostFilter(
+                    triggerKey: const ValueKey('schedules-host-filter-trigger'),
                     hosts: hosts,
                     selectedHost: selectedHost,
                     onSelectHost: onSelectHost,
@@ -255,113 +256,6 @@ class _SchedulesToolbar extends StatelessWidget {
             key: const ValueKey('schedules-new'),
             onPressed: onCreate,
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ScheduleHostFilter extends StatelessWidget {
-  const _ScheduleHostFilter({
-    super.key,
-    required this.hosts,
-    required this.selectedHost,
-    required this.onSelectHost,
-  });
-
-  final List<HostProfile> hosts;
-  final String selectedHost;
-  final ValueChanged<String> onSelectHost;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.paseoPalette;
-    final label = selectedHost == _allScheduleHosts
-        ? 'All hosts'
-        : hosts
-                  .where((host) => host.serverId == selectedHost)
-                  .map((host) => host.label)
-                  .firstOrNull ??
-              'All hosts';
-    return Semantics(
-      button: true,
-      label: 'Filter: $label',
-      child: DropDownButton(
-        placement: FlyoutPlacementMode.bottomLeft,
-        menuColor: palette.surface1,
-        buttonBuilder: (context, onOpen) => HoverButton(
-          onPressed: onOpen,
-          builder: (context, states) {
-            final hovered = states.contains(WidgetState.hovered);
-            final pressed = states.contains(WidgetState.pressed);
-            return Container(
-              height: 32,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: pressed
-                    ? palette.surface3
-                    : hovered
-                    ? palette.surface2
-                    : palette.surface1,
-                border: Border.all(color: palette.border),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    FluentIcons.server,
-                    size: 14,
-                    color: palette.foregroundMuted,
-                  ),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: palette.foreground,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Icon(
-                    FluentIcons.chevron_down,
-                    size: 14,
-                    color: palette.foregroundMuted,
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-        items: [
-          MenuFlyoutItem(
-            key: const ValueKey('schedules-host-option-all'),
-            leading: Icon(
-              selectedHost == _allScheduleHosts
-                  ? FluentIcons.check_mark
-                  : FluentIcons.server,
-              size: 14,
-            ),
-            text: const Text('All hosts'),
-            onPressed: () => onSelectHost(_allScheduleHosts),
-          ),
-          for (final host in hosts)
-            MenuFlyoutItem(
-              key: ValueKey('schedules-host-option-${host.serverId}'),
-              leading: Icon(
-                selectedHost == host.serverId
-                    ? FluentIcons.check_mark
-                    : FluentIcons.server,
-                size: 14,
-              ),
-              text: Text(host.label),
-              onPressed: () => onSelectHost(host.serverId),
-            ),
         ],
       ),
     );

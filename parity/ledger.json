@@ -2801,24 +2801,32 @@
     },
     {
       "id": "source-unit:packages/app/src/components/hosts/host-filter.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/host_filter.dart;packages/app/lib/screens/schedules_screen.dart",
+      "evidence": [
+        "packages/app/test/host_picker_test.dart",
+        "packages/app/test/schedules_screen_test.dart"
+      ],
+      "notes": "The shared All hosts/selected host filter pill uses the frozen label semantics, host status slot, 32px surface/border geometry, anchored picker behavior, and replaces the schedules-specific implementation."
     },
     {
       "id": "source-unit:packages/app/src/components/hosts/host-picker-constants.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/host_picker.dart",
+      "evidence": [
+        "packages/app/test/host_picker_test.dart"
+      ],
+      "notes": "The frozen special option identifiers and host picker label fallbacks are preserved exactly."
     },
     {
       "id": "source-unit:packages/app/src/components/hosts/host-picker.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/host_picker.dart;packages/app/lib/widgets/fluent/select_field.dart;packages/app/lib/widgets/host_status_dot.dart",
+      "evidence": [
+        "packages/app/test/host_picker_test.dart",
+        "packages/app/test/select_field_test.dart"
+      ],
+      "notes": "The picker preserves local-first and special-option ordering, the greater-than-ten search threshold, connection labels, status slots, settings action dismissal, placement/min-width controls, and independent add/enable callbacks. The Dart runtime's configured preferred connection is its active connection, so the description resolver uses that connection and otherwise the first available one."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/claude-icon.tsx",

@@ -52,16 +52,21 @@ final class SelectFieldRenderOptionInput<T> {
     required this.selected,
     required this.active,
     required this.onPressed,
+    required this.onDismiss,
   });
 
   final SelectFieldOption<T> option;
   final bool selected;
   final bool active;
   final VoidCallback onPressed;
+  final VoidCallback onDismiss;
 }
 
 typedef SelectFieldOptionBuilder<T> =
     Widget Function(SelectFieldRenderOptionInput<T> input);
+
+typedef SelectFieldTriggerBuilder =
+    Widget Function(BuildContext context, VoidCallback onOpen, bool open);
 
 class PaseoSelectField<T> extends StatefulWidget {
   const PaseoSelectField({
@@ -87,6 +92,10 @@ class PaseoSelectField<T> extends StatefulWidget {
     this.leading,
     this.field = true,
     this.triggerKey,
+    this.triggerBuilder,
+    this.onOpenChanged,
+    this.desktopPlacement = FlyoutPlacementMode.bottomLeft,
+    this.desktopMinWidth,
   });
 
   final String label;
@@ -110,6 +119,10 @@ class PaseoSelectField<T> extends StatefulWidget {
   final Widget? leading;
   final bool field;
   final Key? triggerKey;
+  final SelectFieldTriggerBuilder? triggerBuilder;
+  final ValueChanged<bool>? onOpenChanged;
+  final FlyoutPlacementMode desktopPlacement;
+  final double? desktopMinWidth;
 
   @override
   State<PaseoSelectField<T>> createState() => _PaseoSelectFieldState<T>();
@@ -182,6 +195,7 @@ class _PaseoSelectFieldState<T> extends State<PaseoSelectField<T>> {
   Future<void> _openPicker() async {
     if (widget.disabled || _open) return;
     setState(() => _open = true);
+    widget.onOpenChanged?.call(true);
     final compact =
         MediaQuery.sizeOf(context).width < adaptiveModalCompactBreakpoint;
     SelectFieldOption<T>? selection;
@@ -208,7 +222,7 @@ class _PaseoSelectFieldState<T> extends State<PaseoSelectField<T>> {
     } else {
       final anchorWidth = _desktopAnchorWidth;
       selection = await _flyoutController.showFlyout<SelectFieldOption<T>>(
-        placementMode: FlyoutPlacementMode.bottomLeft,
+        placementMode: widget.desktopPlacement,
         forceAvailableSpace: true,
         additionalOffset: 4,
         barrierColor: Colors.transparent,
@@ -217,8 +231,11 @@ class _PaseoSelectFieldState<T> extends State<PaseoSelectField<T>> {
           color: flyoutContext.paseoPalette.surface1,
           useAcrylic: false,
           constraints: const BoxConstraints(maxHeight: 420).copyWith(
-            minWidth: anchorWidth,
-            maxWidth: math.max(400, anchorWidth),
+            minWidth: math.max(anchorWidth, widget.desktopMinWidth ?? 0),
+            maxWidth: math.max(
+              400,
+              math.max(anchorWidth, widget.desktopMinWidth ?? 0),
+            ),
           ),
           child: _SelectFieldOptionsPanel<T>(
             triggerKey: widget.triggerKey,
@@ -236,6 +253,7 @@ class _PaseoSelectFieldState<T> extends State<PaseoSelectField<T>> {
     }
     if (mounted) {
       setState(() => _open = false);
+      widget.onOpenChanged?.call(false);
       if (selection != null) {
         widget.onChanged(selection.value, selection.display);
       }
@@ -250,26 +268,29 @@ class _PaseoSelectFieldState<T> extends State<PaseoSelectField<T>> {
   Widget build(BuildContext context) {
     final selected = _selectedOption;
     final display = widget.selectedDisplay ?? selected?.display;
+    void onOpen() => unawaited(_openPicker());
     final control = FlyoutTarget(
       key: _anchorKey,
       controller: _flyoutController,
-      child: _SelectFieldButton(
-        key: widget.triggerKey,
-        label: display?.label ?? widget.placeholder,
-        isPlaceholder: display == null,
-        placeholder: widget.placeholder,
-        leading: widget.triggerLeading ?? widget.leading,
-        loading: widget.loading,
-        disabled: widget.disabled,
-        active: _open || _focused,
-        hovered: _hovered,
-        size: widget.size,
-        accessibilityLabel:
-            '${widget.label} (${display?.label ?? widget.placeholder})',
-        onPressed: () => unawaited(_openPicker()),
-        onHoverChanged: (value) => setState(() => _hovered = value),
-        onFocusChanged: (value) => setState(() => _focused = value),
-      ),
+      child:
+          widget.triggerBuilder?.call(context, onOpen, _open) ??
+          _SelectFieldButton(
+            key: widget.triggerKey,
+            label: display?.label ?? widget.placeholder,
+            isPlaceholder: display == null,
+            placeholder: widget.placeholder,
+            leading: widget.triggerLeading ?? widget.leading,
+            loading: widget.loading,
+            disabled: widget.disabled,
+            active: _open || _focused,
+            hovered: _hovered,
+            size: widget.size,
+            accessibilityLabel:
+                '${widget.label} (${display?.label ?? widget.placeholder})',
+            onPressed: onOpen,
+            onHoverChanged: (value) => setState(() => _hovered = value),
+            onFocusChanged: (value) => setState(() => _focused = value),
+          ),
     );
     if (!widget.field) return control;
     final helper = widget.error ?? display?.description ?? widget.hint;
@@ -685,6 +706,7 @@ class _SelectFieldOptionsPanelState<T>
                             selected: selected,
                             active: active,
                             onPressed: onPressed,
+                            onDismiss: widget.onDismiss,
                           ),
                         );
                         return KeyedSubtree(
