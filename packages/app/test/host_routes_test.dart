@@ -170,7 +170,167 @@ void main() {
     );
     expect(
       parseHostAgentRouteFromUri(Uri.parse('/h/server/agent/agent/extra')),
-      isNull,
+      isA<HostAgentRoute>()
+          .having((route) => route.serverId, 'serverId', 'server')
+          .having((route) => route.agentId, 'agentId', 'agent'),
     );
+  });
+
+  group('frozen host route surface', () {
+    test('parses host, agent, workspace, and open-intent pathnames', () {
+      expect(
+        parseServerIdFromPathname('/h/server%2Fmain/sessions?tab=all#top'),
+        'server/main',
+      );
+      expect(
+        parseHostAgentRouteFromPathname(
+          '/h/server%2Fmain/agent/agent%20123/details?tab=files',
+        ),
+        isA<HostAgentRoute>()
+            .having((route) => route.serverId, 'serverId', 'server/main')
+            .having((route) => route.agentId, 'agentId', 'agent 123'),
+      );
+      expect(
+        parseHostWorkspaceRouteFromPathname(
+          '/h/server%2Fmain/workspace/b64_L3RtcC9yZXBv?open=draft%3Anew',
+        ),
+        isA<HostWorkspaceRoute>()
+            .having((route) => route.serverId, 'serverId', 'server/main')
+            .having((route) => route.workspaceId, 'workspaceId', '/tmp/repo'),
+      );
+      expect(
+        parseHostWorkspaceOpenIntentFromPathname(
+          '/h/local/workspace/164?open=terminal%3Aterm-1',
+        ),
+        isA<TerminalWorkspaceOpenIntent>().having(
+          (intent) => intent.terminalId,
+          'terminalId',
+          'term-1',
+        ),
+      );
+    });
+
+    test('strips only route echo search parameters', () {
+      expect(
+        stripHostWorkspaceRouteEchoSearch(
+          '/h/local/workspace/164?serverId=local&workspaceId=164'
+          '&open=agent%3Aagent-1#pane',
+        ),
+        '/h/local/workspace/164?open=agent%3Aagent-1#pane',
+      );
+      expect(
+        stripHostWorkspaceRouteEchoSearch(
+          '/h/local/workspace/164?pop=true&open=agent%3Aagent-1',
+        ),
+        '/h/local/workspace/164?open=agent%3Aagent-1',
+      );
+      expect(
+        stripHostWorkspaceRouteEchoSearch(
+          '/h/local/workspace/b64_L3RtcC9yZXBv'
+          '?workspaceId=%2Ftmp%2Frepo',
+        ),
+        '/h/local/workspace/b64_L3RtcC9yZXBv',
+      );
+      expect(
+        stripHostWorkspaceRouteEchoSearch(
+          '/h/local/workspace/164?workspaceId=other&pop=false',
+        ),
+        '/h/local/workspace/164?workspaceId=other&pop=false',
+      );
+      expect(
+        stripHostWorkspaceRouteEchoSearch('/new?pop=true'),
+        '/new?pop=true',
+      );
+    });
+
+    test('builds host and global navigation routes', () {
+      expect(buildHostRootRoute('server/main'), '/h/server%2Fmain');
+      expect(
+        buildHostOpenProjectRoute('server/main'),
+        '/h/server%2Fmain/open-project',
+      );
+      expect(
+        buildHostSessionsRoute('server/main'),
+        '/h/server%2Fmain/sessions',
+      );
+      expect(buildSessionsRoute(), '/sessions');
+      expect(buildSchedulesRoute(), '/schedules');
+      expect(buildOpenProjectRoute(), '/open-project');
+      expect(buildHostRootRoute('  '), '/');
+      expect(buildHostOpenProjectRoute('  '), '/');
+      expect(buildHostSessionsRoute('  '), '/');
+    });
+
+    test('builds agent detail through workspace context when supplied', () {
+      expect(
+        buildHostAgentDetailRoute('local', 'agent-1', workspaceId: '164'),
+        '/h/local/workspace/164?open=agent%3Aagent-1',
+      );
+      expect(
+        buildHostAgentDetailRoute('server/main', 'agent 123'),
+        '/h/server%2Fmain/agent/agent%20123',
+      );
+      expect(buildHostAgentDetailRoute('local', '  '), '/');
+    });
+
+    test('builds new-workspace route with every frozen initial value', () {
+      expect(buildNewWorkspaceRoute(), '/new');
+      expect(
+        buildNewWorkspaceRoute(
+          const NewWorkspaceRouteOptions(
+            serverId: 'local',
+            sourceDirectory: '/repo/project',
+            displayName: 'Project',
+            projectId: 'project-1',
+            draftId: 'draft-1',
+          ),
+        ),
+        '/new?serverId=local&dir=%2Frepo%2Fproject&name=Project'
+        '&projectId=project-1&draftId=draft-1',
+      );
+    });
+  });
+
+  group('frozen settings route surface', () {
+    test('recognizes current and legacy section slugs', () {
+      expect(isSettingsSectionSlug('general'), isTrue);
+      expect(isSettingsSectionSlug('daemon'), isFalse);
+      expect(isHostSectionSlug('terminals'), isTrue);
+      expect(
+        normalizeHostSectionSlug('connections'),
+        HostSectionSlug.connections,
+      );
+      expect(normalizeHostSectionSlug('orchestration'), HostSectionSlug.agents);
+      expect(normalizeHostSectionSlug('daemon'), HostSectionSlug.host);
+      expect(normalizeHostSectionSlug('unknown'), isNull);
+    });
+
+    test('builds app, host, and project settings routes', () {
+      expect(buildSettingsRoute(), '/settings');
+      expect(
+        buildSettingsSectionRoute(SettingsSectionSlug.appearance),
+        '/settings/appearance',
+      );
+      expect(buildSettingsAddHostRoute(), '/settings/general?addHost=1');
+      expect(
+        buildSettingsAddHostRoute('retry 1'),
+        '/settings/general?addHost=retry%201',
+      );
+      expect(
+        buildSettingsHostRoute('server/main'),
+        '/settings/hosts/server%2Fmain',
+      );
+      expect(
+        buildSettingsHostSectionRoute('server/main', HostSectionSlug.providers),
+        '/settings/hosts/server%2Fmain/providers',
+      );
+      expect(buildProjectsSettingsRoute(), '/settings/projects');
+      expect(
+        buildProjectSettingsRoute('remote:github.com/acme/app'),
+        '/settings/projects/remote%3Agithub.com%2Facme%2Fapp',
+      );
+      expect(() => buildSettingsHostRoute(' '), throwsArgumentError);
+      expect(() => buildProjectSettingsRoute(' '), throwsArgumentError);
+    });
   });
 }

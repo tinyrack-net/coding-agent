@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/daemon_client.dart';
+import '../core/host_routes.dart';
 import '../core/theme.dart';
 import '../core/worktree_actions.dart';
 import '../layout/desktop_sidebar_layout.dart';
@@ -487,7 +488,7 @@ class _SidebarState extends ConsumerState<_Sidebar> {
         _SidebarHeaderRow(
           icon: FluentIcons.add,
           label: 'New workspace',
-          onTap: () => context.push('/new-workspace'),
+          onTap: () => context.push(buildNewWorkspaceRoute()),
         ),
         _SidebarHeaderRow(
           icon: FluentIcons.branch_fork2,

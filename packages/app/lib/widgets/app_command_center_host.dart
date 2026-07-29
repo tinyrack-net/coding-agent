@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../command_center/command_center.dart';
 import '../composer/provider_model_selection.dart';
+import '../core/host_routes.dart';
 import '../keyboard/keyboard_action_dispatcher.dart';
 import '../keyboard/shortcut_engine.dart';
 import '../keyboard/shortcut_focus_scope.dart';
@@ -217,7 +218,7 @@ class _AppCommandCenterHostState extends ConsumerState<AppCommandCenterHost> {
         widget.router.push(action.route);
         return true;
       case OpenProjectPickerRoutedShortcutAction():
-        widget.router.push('/new-workspace');
+        widget.router.push(buildNewWorkspaceRoute());
         return true;
       case CallbackRoutedShortcutAction():
         return _runShortcutCallback(action.name);
@@ -268,7 +269,7 @@ class _AppCommandCenterHostState extends ConsumerState<AppCommandCenterHost> {
     final path = ref.read(selectedWorktreeProvider);
     switch (action.id) {
       case 'workspace.new':
-        widget.router.push('/new-workspace');
+        widget.router.push(buildNewWorkspaceRoute());
         return true;
       case 'workspace.pin':
         if (path == null) return false;
@@ -454,7 +455,7 @@ class _AppCommandCenterHostState extends ConsumerState<AppCommandCenterHost> {
                   ['mod', 'O'],
                 ],
               ),
-              run: () => widget.router.push('/new-workspace'),
+              run: () => widget.router.push(buildNewWorkspaceRoute()),
             ),
             CommandCenterContribution(
               id: 'home',

@@ -141,7 +141,7 @@ Future<(ProviderContainer, _FakeDaemonClient)> _pumpHost(
   final router = GoRouter(
     routes: [
       GoRoute(path: '/', builder: (_, _) => const SizedBox()),
-      GoRoute(path: '/new-workspace', builder: (_, _) => const SizedBox()),
+      GoRoute(path: '/new', builder: (_, _) => const SizedBox()),
       GoRoute(path: '/settings/general', builder: (_, _) => const SizedBox()),
     ],
   );
@@ -747,7 +747,7 @@ void main() {
       physicalKey: PhysicalKeyboardKey.keyO,
       control: true,
     );
-    expect(router.routeInformationProvider.value.uri.path, '/new-workspace');
+    expect(router.routeInformationProvider.value.uri.path, '/new');
 
     await _sendShortcut(
       tester,

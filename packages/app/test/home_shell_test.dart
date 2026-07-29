@@ -19,6 +19,7 @@ import 'package:coding_agent_app/widgets/worktree_tabbed_pane.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'support/legacy_agent_list_fetch_mixin.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -393,6 +394,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(NewWorkspaceScreen), findsOneWidget);
+    expect(
+      GoRouterState.of(
+        tester.element(find.byType(NewWorkspaceScreen)),
+      ).uri.path,
+      '/new',
+    );
   });
 
   testWidgets('the Status row navigates to StatusScreen', (tester) async {

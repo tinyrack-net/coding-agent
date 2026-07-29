@@ -61,10 +61,14 @@
     },
     {
       "id": "app-route:/new",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/app_router.dart;packages/app/lib/core/host_routes.dart;packages/app/lib/screens/new_workspace_screen.dart;packages/app/lib/screens/home_shell.dart;packages/app/lib/widgets/app_command_center_host.dart",
+      "evidence": [
+        "packages/app/test/host_routes_test.dart",
+        "packages/app/test/home_shell_test.dart",
+        "packages/app/test/app_command_center_host_test.dart"
+      ],
+      "notes": "The frozen canonical /new route is registered and all current sidebar, command-center, and keyboard entry points use it; /new-workspace remains only as a redirecting compatibility alias. Remaining parity is the exact Paseo New Workspace screen state and Windows visual proof."
     },
     {
       "id": "app-route:/open-project",
@@ -8252,12 +8256,14 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/host-routes.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/core/host_routes.dart;packages/app/lib/core/app_router.dart;packages/app/lib/main.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/core/host_routes.dart;packages/app/lib/core/app_router.dart;packages/app/lib/main.dart;packages/app/lib/screens/home_shell.dart;packages/app/lib/widgets/app_command_center_host.dart",
       "evidence": [
-        "packages/app/test/host_routes_test.dart"
+        "packages/app/test/host_routes_test.dart",
+        "packages/app/test/home_shell_test.dart",
+        "packages/app/test/app_command_center_host_test.dart"
       ],
-      "notes": "Workspace route parsing/building, URL-safe and b64 workspace/file codecs including legacy path links, all open-intent parsing, known-host recovery, and coding-agent deep-link conversion are implemented. Remaining parity is the rest of the source module's global, agent-detail, new-workspace, settings, host-settings, project, and echo-query helper surface."
+      "notes": "The complete frozen helper surface is ported: host/agent/workspace parsing, URL-safe and b64 codecs, all open intents, route-echo query stripping, host/global/new-workspace builders, known-host recovery, settings and host-section slug normalization, settings/project builders, and Tinyrack deep-link conversion. The previously stricter agent parser now preserves Paseo's nested-detail prefix behavior."
     },
     {
       "id": "source-unit:packages/app/src/utils/image-attachments-from-files.ts",

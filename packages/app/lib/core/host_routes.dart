@@ -47,6 +47,46 @@ final class HostAgentRoute {
   final String agentId;
 }
 
+final class NewWorkspaceRouteOptions {
+  const NewWorkspaceRouteOptions({
+    this.serverId,
+    this.sourceDirectory,
+    this.displayName,
+    this.projectId,
+    this.draftId,
+  });
+
+  final String? serverId;
+  final String? sourceDirectory;
+  final String? displayName;
+  final String? projectId;
+  final String? draftId;
+}
+
+enum SettingsSectionSlug {
+  general,
+  appearance,
+  editor,
+  shortcuts,
+  integrations,
+  permissions,
+  diagnostics,
+  about,
+}
+
+enum HostSectionSlug {
+  connections,
+  agents,
+  workspaces,
+  providers,
+  usage,
+  terminals,
+  host,
+}
+
+const settingsSectionSlugs = SettingsSectionSlug.values;
+const hostSectionSlugs = HostSectionSlug.values;
+
 String? _trimNonEmpty(String? value) {
   final trimmed = value?.trim();
   return trimmed == null || trimmed.isEmpty ? null : trimmed;
@@ -181,9 +221,14 @@ HostWorkspaceRoute? parseHostWorkspaceRouteFromUri(Uri uri) {
   return HostWorkspaceRoute(serverId: serverId, workspaceId: workspaceId);
 }
 
+HostWorkspaceRoute? parseHostWorkspaceRouteFromPathname(String pathname) {
+  final uri = Uri.tryParse(pathname);
+  return uri == null ? null : parseHostWorkspaceRouteFromUri(uri);
+}
+
 HostAgentRoute? parseHostAgentRouteFromUri(Uri uri) {
   final segments = uri.pathSegments;
-  if (segments.length != 4 || segments[0] != 'h' || segments[2] != 'agent') {
+  if (segments.length < 4 || segments[0] != 'h' || segments[2] != 'agent') {
     return null;
   }
   final serverId = _trimNonEmpty(segments[1]);
@@ -192,8 +237,69 @@ HostAgentRoute? parseHostAgentRouteFromUri(Uri uri) {
   return HostAgentRoute(serverId: serverId, agentId: agentId);
 }
 
+HostAgentRoute? parseHostAgentRouteFromPathname(String pathname) {
+  final uri = Uri.tryParse(pathname);
+  return uri == null ? null : parseHostAgentRouteFromUri(uri);
+}
+
 WorkspaceOpenIntent? parseHostWorkspaceOpenIntentFromUri(Uri uri) =>
     parseWorkspaceOpenIntent(uri.queryParameters['open']);
+
+WorkspaceOpenIntent? parseHostWorkspaceOpenIntentFromPathname(String pathname) {
+  final uri = Uri.tryParse(pathname);
+  return uri == null ? null : parseHostWorkspaceOpenIntentFromUri(uri);
+}
+
+String? parseServerIdFromUri(Uri uri) {
+  final segments = uri.pathSegments;
+  if (segments.length < 2 || segments.first != 'h') return null;
+  return _trimNonEmpty(segments[1]);
+}
+
+String? parseServerIdFromPathname(String pathname) {
+  final uri = Uri.tryParse(pathname);
+  return uri == null ? null : parseServerIdFromUri(uri);
+}
+
+String stripHostWorkspaceRouteEchoSearch(String route) {
+  final uri = Uri.tryParse(route);
+  if (uri == null) return route;
+  final selection = parseHostWorkspaceRouteFromUri(uri);
+  if (selection == null || !uri.hasQuery) return route;
+
+  final retained = <MapEntry<String, String>>[];
+  var didStrip = false;
+  for (final entry in uri.queryParametersAll.entries) {
+    for (final value in entry.value) {
+      final shouldStrip = switch (entry.key) {
+        'serverId' => _trimNonEmpty(value) == selection.serverId,
+        'workspaceId' =>
+          decodeWorkspaceIdFromPathSegment(value) == selection.workspaceId,
+        'pop' => value == 'true',
+        _ => false,
+      };
+      if (shouldStrip) {
+        didStrip = true;
+      } else {
+        retained.add(MapEntry(entry.key, value));
+      }
+    }
+  }
+  if (!didStrip) return route;
+
+  final query = retained
+      .map(
+        (entry) =>
+            '${Uri.encodeQueryComponent(entry.key)}='
+            '${Uri.encodeQueryComponent(entry.value)}',
+      )
+      .join('&');
+  return Uri(
+    path: uri.path,
+    query: query.isEmpty ? null : query,
+    fragment: uri.hasFragment ? uri.fragment : null,
+  ).toString();
+}
 
 String buildHostWorkspaceRoute(String serverId, String workspaceId) {
   final host = _trimNonEmpty(serverId);
@@ -214,6 +320,20 @@ String buildHostAgentRoute(String serverId, String agentId) {
   }
 }
 
+String buildHostAgentDetailRoute(
+  String serverId,
+  String agentId, {
+  String? workspaceId,
+}) {
+  final workspace = _trimNonEmpty(workspaceId);
+  final agent = _trimNonEmpty(agentId);
+  if (agent == null) return '/';
+  if (workspace != null) {
+    return buildHostWorkspaceOpenRoute(serverId, workspace, 'agent:$agent');
+  }
+  return buildHostAgentRoute(serverId, agent);
+}
+
 String buildHostWorkspaceOpenRoute(
   String serverId,
   String workspaceId,
@@ -222,7 +342,53 @@ String buildHostWorkspaceOpenRoute(
   final base = buildHostWorkspaceRoute(serverId, workspaceId);
   final intent = _trimNonEmpty(openIntent);
   if (base == '/' || intent == null) return base;
-  return '$base?open=${Uri.encodeQueryComponent(intent)}';
+  return '$base?open=${Uri.encodeComponent(intent)}';
+}
+
+String buildHostRootRoute(String serverId) {
+  final normalized = _trimNonEmpty(serverId);
+  return normalized == null ? '/' : '/h/${Uri.encodeComponent(normalized)}';
+}
+
+String buildHostOpenProjectRoute(String serverId) {
+  final base = buildHostRootRoute(serverId);
+  return base == '/' ? base : '$base/open-project';
+}
+
+String buildHostSessionsRoute(String serverId) {
+  final base = buildHostRootRoute(serverId);
+  return base == '/' ? base : '$base/sessions';
+}
+
+String buildSessionsRoute() => '/sessions';
+
+String buildSchedulesRoute() => '/schedules';
+
+String buildOpenProjectRoute() => '/open-project';
+
+String buildNewWorkspaceRoute([
+  NewWorkspaceRouteOptions options = const NewWorkspaceRouteOptions(),
+]) {
+  final query = <String, String>{};
+  final serverId = _trimNonEmpty(options.serverId);
+  if (serverId != null) query['serverId'] = serverId;
+  if (options.sourceDirectory case final String sourceDirectory
+      when sourceDirectory.isNotEmpty) {
+    query['dir'] = sourceDirectory;
+  }
+  if (options.displayName case final String displayName
+      when displayName.isNotEmpty) {
+    query['name'] = displayName;
+  }
+  if (options.projectId case final String projectId when projectId.isNotEmpty) {
+    query['projectId'] = projectId;
+  }
+  if (options.draftId case final String draftId when draftId.isNotEmpty) {
+    query['draftId'] = draftId;
+  }
+  return query.isEmpty
+      ? '/new'
+      : Uri(path: '/new', queryParameters: query).toString();
 }
 
 enum KnownHostRouteResolution { render, openProject, welcome }
@@ -239,6 +405,54 @@ KnownHostRouteResolution resolveKnownHostRoute({
   return hosts.isEmpty
       ? KnownHostRouteResolution.welcome
       : KnownHostRouteResolution.openProject;
+}
+
+bool isSettingsSectionSlug(String value) =>
+    settingsSectionSlugs.any((section) => section.name == value);
+
+bool isHostSectionSlug(String value) =>
+    hostSectionSlugs.any((section) => section.name == value);
+
+HostSectionSlug? normalizeHostSectionSlug(String value) {
+  for (final section in hostSectionSlugs) {
+    if (section.name == value) return section;
+  }
+  return switch (value) {
+    'orchestration' => HostSectionSlug.agents,
+    'daemon' => HostSectionSlug.host,
+    _ => null,
+  };
+}
+
+String buildSettingsRoute() => '/settings';
+
+String buildSettingsSectionRoute(SettingsSectionSlug section) =>
+    '/settings/${section.name}';
+
+String buildSettingsAddHostRoute([Object intentId = '1']) =>
+    '/settings/general?addHost=${Uri.encodeComponent('$intentId')}';
+
+String buildSettingsHostRoute(String serverId) {
+  final normalized = _trimNonEmpty(serverId);
+  if (normalized == null) {
+    throw ArgumentError.value(serverId, 'serverId', 'must be non-empty');
+  }
+  return '/settings/hosts/${Uri.encodeComponent(normalized)}';
+}
+
+String buildSettingsHostSectionRoute(
+  String serverId,
+  HostSectionSlug section,
+) => '${buildSettingsHostRoute(serverId)}/${section.name}';
+
+String buildProjectsSettingsRoute() => '/settings/projects';
+
+String buildProjectSettingsRoute(String projectKey) {
+  final normalized = _trimNonEmpty(projectKey);
+  if (normalized == null) {
+    throw ArgumentError.value(projectKey, 'projectKey', 'must be non-empty');
+  }
+  return '/settings/projects/${Uri.encodeComponent(normalized)}';
 }
 
 String buildCodingAgentDeepLink(String route) {

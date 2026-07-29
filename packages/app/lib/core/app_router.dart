@@ -64,8 +64,12 @@ GoRouter buildAppRouter({String initialLocation = '/'}) {
             builder: (context, state) => const HomeChatPane(),
           ),
           GoRoute(
-            path: '/new-workspace',
+            path: '/new',
             builder: (context, state) => const NewWorkspaceScreen(),
+          ),
+          GoRoute(
+            path: '/new-workspace',
+            redirect: (context, state) => buildNewWorkspaceRoute(),
           ),
           GoRoute(
             path: '/projects',
