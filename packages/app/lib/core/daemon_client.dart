@@ -317,6 +317,24 @@ class DaemonClient {
     return response;
   }
 
+  Future<ProjectIconResponse> requestProjectIcon(
+    String cwd, {
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = ProjectIconResponse.fromJson(
+      await requestSessionMessage(
+        ProjectIconRequest(cwd: cwd, requestId: correlatedId).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != correlatedId || response.cwd != cwd) {
+      throw const FormatException('Project icon response mismatch');
+    }
+    return response;
+  }
+
   Future<ProjectRenameResponse> renameProject(
     String projectId,
     String? customName, {

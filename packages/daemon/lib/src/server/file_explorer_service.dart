@@ -52,25 +52,20 @@ final class WorkspaceFileExplorerService {
       case 'project_icon_request':
         final request = ProjectIconRequest.fromJson(message);
         try {
-          return {
-            'type': 'project_icon_response',
-            'payload': {
-              'cwd': request.cwd,
-              'icon': await getProjectIcon(request.cwd),
-              'error': null,
-              'requestId': request.requestId,
-            },
-          };
+          final icon = await getProjectIcon(request.cwd);
+          return ProjectIconResponse(
+            cwd: request.cwd,
+            icon: icon == null ? null : ProjectIcon.fromJson(icon),
+            error: null,
+            requestId: request.requestId,
+          ).toJson();
         } catch (error) {
-          return {
-            'type': 'project_icon_response',
-            'payload': {
-              'cwd': request.cwd,
-              'icon': null,
-              'error': _errorMessage(error),
-              'requestId': request.requestId,
-            },
-          };
+          return ProjectIconResponse(
+            cwd: request.cwd,
+            icon: null,
+            error: _errorMessage(error),
+            requestId: request.requestId,
+          ).toJson();
         }
       default:
         return null;

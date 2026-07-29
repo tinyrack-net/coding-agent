@@ -48,10 +48,37 @@ void main() {
     expect(write.expectedRevision, 'opaque');
     expect(write.content, 'next');
     final icon = ProjectIconRequest.fromJson({
+      'type': 'project_icon_request',
       'cwd': '/repo',
       'requestId': 'icon',
     });
     expect(icon.cwd, '/repo');
+    expect(icon.toJson(), {
+      'type': 'project_icon_request',
+      'cwd': '/repo',
+      'requestId': 'icon',
+    });
+
+    final iconResponse = ProjectIconResponse.fromJson({
+      'type': 'project_icon_response',
+      'payload': {
+        'cwd': '/repo',
+        'icon': {'data': 'PHN2Zy8+', 'mimeType': 'image/svg+xml'},
+        'error': null,
+        'requestId': 'icon',
+      },
+    });
+    expect(iconResponse.icon?.data, 'PHN2Zy8+');
+    expect(iconResponse.icon?.mimeType, 'image/svg+xml');
+    expect(iconResponse.toJson(), {
+      'type': 'project_icon_response',
+      'payload': {
+        'cwd': '/repo',
+        'icon': {'data': 'PHN2Zy8+', 'mimeType': 'image/svg+xml'},
+        'error': null,
+        'requestId': 'icon',
+      },
+    });
   });
 
   test('rejects malformed file session messages', () {
@@ -91,7 +118,31 @@ void main() {
       throwsFormatException,
     );
     expect(
-      () => ProjectIconRequest.fromJson({'cwd': '/repo', 'requestId': 1}),
+      () => ProjectIconRequest.fromJson({
+        'type': 'project_icon_request',
+        'cwd': '/repo',
+        'requestId': 1,
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => ProjectIconRequest.fromJson({
+        'type': 'wrong',
+        'cwd': '/repo',
+        'requestId': 'icon',
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => ProjectIconResponse.fromJson({
+        'type': 'project_icon_response',
+        'payload': {
+          'cwd': '/repo',
+          'icon': {'data': '', 'mimeType': 'image/png'},
+          'error': null,
+          'requestId': 'icon',
+        },
+      }),
       throwsFormatException,
     );
   });

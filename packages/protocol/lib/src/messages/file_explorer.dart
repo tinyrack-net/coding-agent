@@ -342,15 +342,109 @@ final class FileWriteRequest {
 final class ProjectIconRequest {
   const ProjectIconRequest({required this.cwd, required this.requestId});
 
+  static const type = 'project_icon_request';
+
   final String cwd;
   final String requestId;
 
   factory ProjectIconRequest.fromJson(Map<String, Object?> json) {
+    if (json['type'] != type) {
+      throw const FormatException('Invalid project icon request type');
+    }
     final cwd = json['cwd'];
     final requestId = json['requestId'];
-    if (cwd is! String || requestId is! String) {
+    if (cwd is! String ||
+        cwd.isEmpty ||
+        requestId is! String ||
+        requestId.isEmpty) {
       throw const FormatException('Invalid project icon request');
     }
     return ProjectIconRequest(cwd: cwd, requestId: requestId);
   }
+
+  Map<String, Object?> toJson() => {
+    'type': type,
+    'cwd': cwd,
+    'requestId': requestId,
+  };
+}
+
+final class ProjectIcon {
+  const ProjectIcon({required this.data, required this.mimeType});
+
+  final String data;
+  final String mimeType;
+
+  factory ProjectIcon.fromJson(Map<String, Object?> json) {
+    final data = json['data'];
+    final mimeType = json['mimeType'];
+    if (data is! String ||
+        data.isEmpty ||
+        mimeType is! String ||
+        mimeType.isEmpty) {
+      throw const FormatException('Invalid project icon');
+    }
+    return ProjectIcon(data: data, mimeType: mimeType);
+  }
+
+  Map<String, Object?> toJson() => {'data': data, 'mimeType': mimeType};
+}
+
+final class ProjectIconResponse {
+  const ProjectIconResponse({
+    required this.cwd,
+    required this.icon,
+    required this.error,
+    required this.requestId,
+  });
+
+  static const type = 'project_icon_response';
+
+  final String cwd;
+  final ProjectIcon? icon;
+  final String? error;
+  final String requestId;
+
+  factory ProjectIconResponse.fromJson(Map<String, Object?> json) {
+    if (json['type'] != type) {
+      throw const FormatException('Invalid project icon response type');
+    }
+    final payload = json['payload'];
+    if (payload is! Map) {
+      throw const FormatException('Invalid project icon response payload');
+    }
+    final values = payload.cast<String, Object?>();
+    final cwd = values['cwd'];
+    final icon = values['icon'];
+    final error = values['error'];
+    final requestId = values['requestId'];
+    if (cwd is! String ||
+        cwd.isEmpty ||
+        (icon != null && icon is! Map) ||
+        (error != null && error is! String) ||
+        requestId is! String ||
+        requestId.isEmpty) {
+      throw const FormatException('Invalid project icon response');
+    }
+    return ProjectIconResponse(
+      cwd: cwd,
+      icon: icon == null
+          ? null
+          : ProjectIcon.fromJson(
+              (icon as Map<Object?, Object?>).cast<String, Object?>(),
+            ),
+      error: error as String?,
+      requestId: requestId,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'type': type,
+    'payload': {
+      'cwd': cwd,
+      'icon': icon?.toJson(),
+      'error': error,
+      'requestId': requestId,
+    },
+  };
 }

@@ -361,6 +361,43 @@ void main() {
     });
   });
 
+  test('requests a project icon via typed correlated RPC', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    unawaited(
+      conn.nextRequest(ProjectIconRequest.type).then((frame) {
+        expect(frame, {
+          'type': 'project_icon_request',
+          'cwd': '/repo/app',
+          'requestId': 'project-icon-1',
+        });
+        conn.respondNative(
+          ProjectIconResponse.type,
+          frame['requestId'] as String,
+          const {
+            'cwd': '/repo/app',
+            'icon': {'data': 'PHN2Zy8+', 'mimeType': 'image/svg+xml'},
+            'error': null,
+          },
+        );
+      }),
+    );
+
+    final response = await client.requestProjectIcon(
+      '/repo/app',
+      requestId: 'project-icon-1',
+    );
+    expect(response.icon?.data, 'PHN2Zy8+');
+    expect(response.icon?.mimeType, 'image/svg+xml');
+  });
+
   test('renames a project via typed correlated RPC', () async {
     client = DaemonClient(uri: server.uri);
     final connFuture = nextConnection(server);

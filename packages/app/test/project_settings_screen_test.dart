@@ -38,6 +38,7 @@ void main() {
     expect(find.text('App'), findsOneWidget);
     expect(find.text('Laptop could not load projects'), findsOneWidget);
     expect(find.text('offline'), findsOneWidget);
+    expect(find.bySemanticsLabel('Edit project App'), findsOneWidget);
   });
 
   testWidgets('loads, edits, and saves the full project config form', (
@@ -120,7 +121,15 @@ void main() {
     expect(client.expectedRevision?.toJson(), {'mtimeMs': 10, 'size': 20});
 
     final editNameButton = find.byKey(const Key('project-name-edit-button'));
-    await tester.ensureVisible(editNameButton);
+    await tester.scrollUntilVisible(
+      editNameButton,
+      -300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await Scrollable.ensureVisible(
+      tester.element(editNameButton),
+      alignment: 0.2,
+    );
     await tester.pumpAndSettle();
     await tester.tap(editNameButton);
     await tester.pump();
@@ -215,6 +224,115 @@ void main() {
     expect(find.byKey(const Key('project-settings-no-target')), findsOneWidget);
   });
 
+  testWidgets('connected host loss replaces the form with recovery UI', (
+    tester,
+  ) async {
+    final client = _ProjectClient();
+    final summaries = _ProjectSummaries(_data());
+    addTearDown(client.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          projectSummariesProvider.overrideWith(() => summaries),
+          hostRuntimeClientsProvider.overrideWithValue({'host-a': client}),
+        ],
+        child: const FluentApp(
+          home: ProjectSettingsScreen(projectKey: 'project-app'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('worktree-group')), findsOneWidget);
+    expect(find.bySemanticsLabel('Host Local'), findsOneWidget);
+
+    summaries.publish(_data(hostOnline: false));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('project-settings-no-target')), findsOneWidget);
+    expect(find.byKey(const Key('worktree-group')), findsNothing);
+  });
+
+  testWidgets('host picker switches the editable project replica', (
+    tester,
+  ) async {
+    final local = _ProjectClient();
+    final remote = _ProjectClient();
+    addTearDown(local.dispose);
+    addTearDown(remote.dispose);
+    final data = _data(
+      hosts: const [
+        ProjectHostEntry(
+          serverId: 'host-a',
+          serverName: 'Local',
+          isOnline: true,
+          repoRoot: '/repo/app',
+          workspaceCount: 1,
+          workspaces: [],
+        ),
+        ProjectHostEntry(
+          serverId: 'host-b',
+          serverName: 'Remote',
+          isOnline: true,
+          repoRoot: '/remote/app',
+          workspaceCount: 1,
+          workspaces: [],
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          projectSummariesProvider.overrideWith(() => _ProjectSummaries(data)),
+          hostRuntimeClientsProvider.overrideWithValue({
+            'host-a': local,
+            'host-b': remote,
+          }),
+        ],
+        child: const FluentApp(
+          home: ProjectSettingsScreen(projectKey: 'project-app'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(local.readCount, 1);
+    expect(remote.readCount, 0);
+    await tester.tap(find.byKey(const Key('project-settings-host-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remote').last);
+    await tester.pumpAndSettle();
+
+    expect(remote.readCount, 1);
+    expect(find.text('Remote'), findsWidgets);
+  });
+
+  testWidgets('project settings remain usable at compact mobile width', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final client = _ProjectClient();
+    addTearDown(client.dispose);
+
+    await tester.pumpWidget(
+      _app(
+        client: client,
+        data: _data(),
+        child: const ProjectSettingsScreen(projectKey: 'project-app'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('project-settings-project-app')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('project-name-edit-button')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('registered project deep link restores the settings screen', (
     tester,
   ) async {
@@ -292,38 +410,49 @@ Widget _app({
   child: FluentApp(home: child),
 );
 
-DerivedProjectsResult _data({List<ProjectHostError> hostErrors = const []}) =>
-    DerivedProjectsResult(
-      projects: const [
-        ProjectSummary(
-          projectKey: 'project-app',
-          projectName: 'App',
-          projectCustomName: null,
-          hosts: [
-            ProjectHostEntry(
-              serverId: 'host-a',
-              serverName: 'Local',
-              isOnline: true,
-              repoRoot: '/repo/app',
-              workspaceCount: 1,
-              workspaces: [],
-            ),
-          ],
-          totalWorkspaceCount: 1,
-          hostCount: 1,
-          onlineHostCount: 1,
-          githubUrl: null,
+DerivedProjectsResult _data({
+  List<ProjectHostError> hostErrors = const [],
+  bool hostOnline = true,
+  List<ProjectHostEntry>? hosts,
+}) {
+  final resolvedHosts =
+      hosts ??
+      [
+        ProjectHostEntry(
+          serverId: 'host-a',
+          serverName: 'Local',
+          isOnline: hostOnline,
+          repoRoot: '/repo/app',
+          workspaceCount: 1,
+          workspaces: const [],
         ),
-      ],
-      hostErrors: hostErrors,
-      isLoading: false,
-      isFetching: false,
-    );
+      ];
+  return DerivedProjectsResult(
+    projects: [
+      ProjectSummary(
+        projectKey: 'project-app',
+        projectName: 'App',
+        projectCustomName: null,
+        hosts: resolvedHosts,
+        totalWorkspaceCount: resolvedHosts.fold(
+          0,
+          (total, host) => total + host.workspaceCount,
+        ),
+        hostCount: resolvedHosts.length,
+        onlineHostCount: resolvedHosts.where((host) => host.isOnline).length,
+        githubUrl: null,
+      ),
+    ],
+    hostErrors: hostErrors,
+    isLoading: false,
+    isFetching: false,
+  );
+}
 
 final class _ProjectSummaries extends ProjectSummariesNotifier {
   _ProjectSummaries(this.data);
 
-  final DerivedProjectsResult data;
+  DerivedProjectsResult data;
 
   @override
   Future<DerivedProjectsResult> build() async => data;
@@ -331,6 +460,11 @@ final class _ProjectSummaries extends ProjectSummariesNotifier {
   @override
   Future<void> reload() async {
     state = AsyncData(data);
+  }
+
+  void publish(DerivedProjectsResult value) {
+    data = value;
+    state = AsyncData(value);
   }
 }
 
@@ -363,6 +497,13 @@ final class _ProjectClient extends DaemonClient {
   final List<(String, String?)> renames = [];
   ProjectConfigRevision? expectedRevision;
   int readCount = 0;
+
+  @override
+  DaemonConnectionState get currentState => DaemonConnectionState.connected;
+
+  @override
+  Stream<DaemonConnectionState> get connectionState =>
+      Stream.value(DaemonConnectionState.connected);
 
   @override
   Future<ReadProjectConfigResponse> readProjectConfig(
@@ -411,4 +552,16 @@ final class _ProjectClient extends DaemonClient {
       error: null,
     );
   }
+
+  @override
+  Future<ProjectIconResponse> requestProjectIcon(
+    String cwd, {
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async => ProjectIconResponse(
+    cwd: cwd,
+    icon: null,
+    error: null,
+    requestId: requestId ?? 'icon',
+  );
 }

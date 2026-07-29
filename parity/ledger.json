@@ -3242,10 +3242,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/project-icon-view.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/projects/project_icon.dart",
+      "evidence": [
+        "packages/app/test/project_icon_test.dart"
+      ],
+      "notes": "Flutter renders daemon-provided SVG and raster icons with the frozen geometry and deterministic colored initial fallback while excluding decorative icon content from semantics."
     },
     {
       "id": "source-unit:packages/app/src/components/project-picker-options.ts",
@@ -6061,10 +6063,13 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-project-icon-query.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/projects/project_icon.dart; packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/app/test/project_icon_test.dart",
+        "packages/app/test/daemon_client_test.dart"
+      ],
+      "notes": "The Riverpod family is keyed by host and working directory, requests only on a connected runtime, retains results in the owning container, and re-evaluates on connection changes."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-projects.ts",
@@ -6592,10 +6597,13 @@
     },
     {
       "id": "source-unit:packages/app/src/projects/project-icons.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/projects/project_icon.dart; packages/app/lib/screens/projects_settings_screen.dart; packages/app/lib/screens/project_settings_screen.dart",
+      "evidence": [
+        "packages/app/test/project_icon_test.dart",
+        "packages/app/test/project_settings_screen_test.dart"
+      ],
+      "notes": "Riverpod's keyed family deduplicates host/cwd queries and both frozen project consumers resolve their project keys through the matching editable host."
     },
     {
       "id": "source-unit:packages/app/src/projects/project-remove.ts",
@@ -7011,7 +7019,7 @@
         "packages/app/test/project_settings_screen_test.dart",
         "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Flutter now restores project settings routes, selects an editable multi-host target, renames projects, round-trips worktree/scripts/metadata config with revision checks, and exposes invalid/stale/transport recovery. Frozen icon rendering, host-gone transitions, exact responsive visuals, localization, accessibility, and golden evidence remain."
+      "notes": "Flutter now matches the back/title/host/form information order, 28px project icon, deterministic fallback, multi-host switching, host-loss recovery, compact-width behavior, rename controls, and revision-aware worktree/scripts/metadata editing. Frozen adaptive mobile host-picker behavior, localization, and source-oracle golden evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/screens/projects-screen.tsx",
@@ -7021,7 +7029,7 @@
         "packages/app/test/project_settings_screen_test.dart",
         "packages/app/test/settings_shell_test.dart"
       ],
-      "notes": "Flutter now exposes the Projects settings route, multi-host loading/error/empty/list states, selected rows, and navigation to a restorable project settings route. Exact frozen project icons, responsive visual tokens, localization, accessibility, and golden evidence remain."
+      "notes": "Flutter now exposes the Projects settings route, multi-host loading/error/empty/list states, deterministic 16px project icons, pressed/hovered/selected rows, accessible edit labels, and navigation to a restorable project settings route. Frozen localization and source-oracle golden evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/screens/schedules-screen-state.ts",
@@ -8710,10 +8718,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/project-icon-color.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/projects/project_icon.dart",
+      "evidence": [
+        "packages/app/test/project_icon_test.dart"
+      ],
+      "notes": "The unsigned 31x UTF-16 hash and frozen ten-color palette, including astral-character behavior, match Paseo 0.2.0."
     },
     {
       "id": "source-unit:packages/app/src/utils/project-placement.ts",
@@ -15900,17 +15910,25 @@
     },
     {
       "id": "wire-message:project_icon_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/file_explorer.dart; packages/daemon/lib/src/server/file_explorer_service.dart; packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/protocol/test/file_explorer_messages_test.dart",
+        "packages/daemon/test/daemon_file_explorer_e2e_test.dart",
+        "packages/app/test/daemon_client_test.dart"
+      ],
+      "notes": "Typed request serialization, schema rejection, real daemon dispatch, and correlated Flutter client transport match the frozen wire contract."
     },
     {
       "id": "wire-message:project_icon_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/file_explorer.dart; packages/daemon/lib/src/server/file_explorer_service.dart; packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/protocol/test/file_explorer_messages_test.dart",
+        "packages/daemon/test/daemon_file_explorer_e2e_test.dart",
+        "packages/app/test/daemon_client_test.dart"
+      ],
+      "notes": "Typed nullable icon/error payloads preserve cwd and request correlation across protocol, daemon, and Flutter client boundaries."
     },
     {
       "id": "wire-message:provider_diagnostic_request",

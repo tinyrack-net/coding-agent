@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../core/host_routes.dart';
 import '../core/theme.dart';
+import '../projects/project_icon.dart';
 import '../projects/projects.dart';
 import '../state/project_summaries_provider.dart';
 
@@ -18,7 +19,7 @@ class ProjectsSettingsScreen extends ConsumerWidget {
     final data = projects.value;
     return ScaffoldPage.scrollable(
       key: const Key('projects-list'),
-      header: const PageHeader(title: Text('Projects')),
+      padding: const EdgeInsets.all(16),
       children: [
         if (projects.isLoading && data == null)
           const Center(
@@ -84,48 +85,56 @@ class _ProjectRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initial = project.projectName.trim().isEmpty
-        ? '?'
-        : project.projectName.trim()[0].toUpperCase();
+    final iconHost = project.hosts.firstOrNull;
     return Column(
       children: [
         if (showDivider) const Divider(),
-        HoverButton(
-          key: ValueKey('project-row-${project.projectKey}'),
-          onPressed: () =>
-              context.go(buildProjectSettingsRoute(project.projectKey)),
-          builder: (context, states) {
-            final active = selected || states.contains(WidgetState.hovered);
-            return Container(
-              color: active
-                  ? context.tokens.surfaceContainerHighest
-                  : Colors.transparent,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  Container(
-                    width: 20,
-                    height: 20,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: context.tokens.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(4),
+        Semantics(
+          button: true,
+          selected: selected,
+          label: 'Edit project ${project.projectName}',
+          child: HoverButton(
+            key: ValueKey('project-row-${project.projectKey}'),
+            onPressed: () =>
+                context.go(buildProjectSettingsRoute(project.projectKey)),
+            builder: (context, states) {
+              final active = selected || states.contains(WidgetState.hovered);
+              final pressed = states.contains(WidgetState.pressed);
+              return Container(
+                color: pressed
+                    ? context.paseoPalette.surface3
+                    : active
+                    ? context.tokens.surfaceContainerHighest
+                    : Colors.transparent,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    ProjectIconView(
+                      serverId: iconHost?.serverId ?? '',
+                      cwd: iconHost?.repoRoot ?? '',
+                      projectKey: project.projectKey,
+                      projectName: project.projectName,
+                      size: 16,
+                      borderRadius: 4,
+                      fontSize: 11,
                     ),
-                    child: Text(initial, style: const TextStyle(fontSize: 11)),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      project.projectName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        project.projectName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                  const Icon(FluentIcons.chevron_right, size: 12),
-                ],
-              ),
-            );
-          },
+                    const Icon(FluentIcons.chevron_right, size: 12),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ],
     );

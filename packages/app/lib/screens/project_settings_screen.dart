@@ -7,10 +7,12 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/daemon_client.dart';
 import '../core/theme.dart';
 import '../projects/project_config_form.dart';
+import '../projects/project_icon.dart';
 import '../projects/projects.dart';
 import '../state/daemon_providers.dart';
 import '../state/project_summaries_provider.dart';
 import '../widgets/fluent/toast.dart';
+import '../widgets/host_status_dot.dart';
 
 const _worktreeDocsUrl = 'https://paseo.sh/docs/worktrees';
 
@@ -68,47 +70,52 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
     final client = clients[host.serverId]!;
     return ScaffoldPage.scrollable(
       key: ValueKey('project-settings-${project.projectKey}'),
-      header: PageHeader(
-        title: _ProjectNameEditor(project: project, client: client),
-        commandBar: editableHosts.length > 1
-            ? SizedBox(
-                width: 220,
-                child: ComboBox<String>(
-                  key: const Key('project-settings-host-picker'),
-                  value: host.serverId,
-                  items: [
-                    for (final entry in editableHosts)
-                      ComboBoxItem(
-                        value: entry.serverId,
-                        child: Text(entry.serverName),
-                      ),
-                  ],
-                  onChanged: (value) =>
-                      setState(() => _selectedServerId = value),
-                ),
-              )
-            : Text(
-                host.serverName,
-                style: TextStyle(color: context.tokens.outline),
-              ),
-      ),
+      padding: const EdgeInsets.all(16),
       children: [
         Align(
           alignment: Alignment.centerLeft,
-          child: HyperlinkButton(
-            key: const Key('project-settings-back-link'),
-            onPressed: () => context.go('/settings/projects'),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(FluentIcons.back, size: 12),
-                SizedBox(width: 6),
-                Text('Back to projects'),
-              ],
+          child: Semantics(
+            button: true,
+            label: 'Back to projects',
+            child: HyperlinkButton(
+              key: const Key('project-settings-back-link'),
+              onPressed: () => context.go('/settings/projects'),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(FluentIcons.back, size: 12),
+                  SizedBox(width: 6),
+                  Text('Back to projects'),
+                ],
+              ),
             ),
           ),
         ),
         const SizedBox(height: 8),
+        Row(
+          children: [
+            ProjectIconView(
+              serverId: host.serverId,
+              cwd: host.repoRoot,
+              projectKey: project.projectKey,
+              projectName: project.projectName,
+              size: 28,
+              borderRadius: 6,
+              fontSize: 14,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _ProjectNameEditor(project: project, client: client),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _ProjectHostContext(
+          hosts: editableHosts,
+          selectedHost: host,
+          onSelected: (value) => setState(() => _selectedServerId = value),
+        ),
+        const SizedBox(height: 16),
         _ProjectConfigPane(
           key: ValueKey('${host.serverId}:${host.repoRoot}'),
           client: client,
@@ -128,9 +135,8 @@ class _NoEditableProject extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ScaffoldPage(
     key: const Key('project-settings-no-target'),
-    header: const PageHeader(title: Text('Project settings')),
     content: Padding(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -220,22 +226,24 @@ class _ProjectNameEditorState extends ConsumerState<_ProjectNameEditor> {
   Widget build(BuildContext context) {
     if (!_editing) {
       return Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Flexible(
+          Expanded(
             child: Text(
               widget.project.projectName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          IconButton(
-            key: const Key('project-name-edit-button'),
-            icon: const Icon(FluentIcons.edit, size: 14),
-            onPressed: () {
-              _controller.text = widget.project.projectCustomName ?? '';
-              setState(() => _editing = true);
-            },
+          Tooltip(
+            message: 'Rename project',
+            child: IconButton(
+              key: const Key('project-name-edit-button'),
+              icon: const Icon(FluentIcons.edit, size: 14),
+              onPressed: () {
+                _controller.text = widget.project.projectCustomName ?? '';
+                setState(() => _editing = true);
+              },
+            ),
           ),
           if (widget.project.projectCustomName != null)
             HyperlinkButton(
@@ -247,10 +255,8 @@ class _ProjectNameEditorState extends ConsumerState<_ProjectNameEditor> {
       );
     }
     return Row(
-      mainAxisSize: MainAxisSize.min,
       children: [
-        SizedBox(
-          width: 260,
+        Expanded(
           child: TextBox(
             key: const Key('project-name-input'),
             controller: _controller,
@@ -260,22 +266,98 @@ class _ProjectNameEditorState extends ConsumerState<_ProjectNameEditor> {
             placeholder: widget.project.projectName,
           ),
         ),
-        IconButton(
-          key: const Key('project-name-save-button'),
-          icon: const Icon(FluentIcons.check_mark, size: 14),
-          onPressed: _saving ? null : _save,
+        Tooltip(
+          message: 'Save project name',
+          child: IconButton(
+            key: const Key('project-name-save-button'),
+            icon: const Icon(FluentIcons.check_mark, size: 14),
+            onPressed: _saving ? null : _save,
+          ),
         ),
-        IconButton(
-          key: const Key('project-name-cancel-button'),
-          icon: const Icon(FluentIcons.cancel, size: 14),
-          onPressed: _saving
-              ? null
-              : () {
-                  _controller.text = widget.project.projectCustomName ?? '';
-                  setState(() => _editing = false);
-                },
+        Tooltip(
+          message: 'Cancel project rename',
+          child: IconButton(
+            key: const Key('project-name-cancel-button'),
+            icon: const Icon(FluentIcons.cancel, size: 14),
+            onPressed: _saving
+                ? null
+                : () {
+                    _controller.text = widget.project.projectCustomName ?? '';
+                    setState(() => _editing = false);
+                  },
+          ),
         ),
       ],
+    );
+  }
+}
+
+class _ProjectHostContext extends StatelessWidget {
+  const _ProjectHostContext({
+    required this.hosts,
+    required this.selectedHost,
+    required this.onSelected,
+  });
+
+  final List<ProjectHostEntry> hosts;
+  final ProjectHostEntry selectedHost;
+  final ValueChanged<String?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    if (hosts.length == 1) {
+      return Semantics(
+        key: const Key('host-indicator'),
+        label: 'Host ${selectedHost.serverName}',
+        excludeSemantics: true,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            HostStatusDot(serverId: selectedHost.serverId),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                selectedHost.serverName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: context.tokens.outline),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return Semantics(
+      label: 'Switch host',
+      child: SizedBox(
+        width: 240,
+        child: ComboBox<String>(
+          key: const Key('project-settings-host-picker'),
+          value: selectedHost.serverId,
+          items: [
+            for (final host in hosts)
+              ComboBoxItem(
+                key: ValueKey('host-picker-item-${host.serverId}'),
+                value: host.serverId,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    HostStatusDot(serverId: host.serverId),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        host.serverName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+          onChanged: onSelected,
+        ),
+      ),
     );
   }
 }
@@ -523,10 +605,13 @@ class _ProjectConfigPaneState extends State<_ProjectConfigPane> {
           title: 'Scripts',
           description:
               'Define project commands and long-running services available to workspaces.',
-          trailing: IconButton(
-            key: const Key('scripts-add-button'),
-            icon: const Icon(FluentIcons.add, size: 14),
-            onPressed: () => _editScript(null),
+          trailing: Tooltip(
+            message: 'Add script',
+            child: IconButton(
+              key: const Key('scripts-add-button'),
+              icon: const Icon(FluentIcons.add, size: 14),
+              onPressed: () => _editScript(null),
+            ),
           ),
           children: [
             if (draft.scripts.isEmpty)
@@ -785,15 +870,21 @@ class _ScriptRow extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(
-            key: ValueKey('script-edit-${script.id}'),
-            icon: const Icon(FluentIcons.edit, size: 14),
-            onPressed: onEdit,
+          Tooltip(
+            message: 'Edit ${script.name}',
+            child: IconButton(
+              key: ValueKey('script-edit-${script.id}'),
+              icon: const Icon(FluentIcons.edit, size: 14),
+              onPressed: onEdit,
+            ),
           ),
-          IconButton(
-            key: ValueKey('script-remove-${script.id}'),
-            icon: const Icon(FluentIcons.delete, size: 14),
-            onPressed: onRemove,
+          Tooltip(
+            message: 'Remove ${script.name}',
+            child: IconButton(
+              key: ValueKey('script-remove-${script.id}'),
+              icon: const Icon(FluentIcons.delete, size: 14),
+              onPressed: onRemove,
+            ),
           ),
         ],
       ),
