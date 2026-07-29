@@ -36,12 +36,134 @@ class SidebarReorderDragStartListener extends ReorderableDragStartListener {
 
   final bool? useTouchGestures;
 
+  bool get _touchGesturesEnabled =>
+      useTouchGestures ?? _usesTouchSidebarGestures;
+
+  @override
+  Widget build(BuildContext context) {
+    final listener = super.build(context);
+    if (!_touchGesturesEnabled) return listener;
+    return _SidebarDragIntentFeedbackRegion(child: listener);
+  }
+
   @override
   MultiDragGestureRecognizer createRecognizer() {
-    if (useTouchGestures ?? _usesTouchSidebarGestures) {
+    if (_touchGesturesEnabled) {
       return SidebarDelayedMultiDragGestureRecognizer(debugOwner: this);
     }
     return ImmediateMultiDragGestureRecognizer(debugOwner: this);
+  }
+}
+
+/// Observes the already-armed reorder interaction only to reproduce Paseo's
+/// medium-impact feedback when the pointer first moves beyond the drag slop.
+///
+/// This deliberately stays outside the gesture arena so vertical scrolling
+/// and horizontal swipe gestures keep the precedence decided by the
+/// recognizer above.
+class _SidebarDragIntentFeedbackRegion extends StatefulWidget {
+  const _SidebarDragIntentFeedbackRegion({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_SidebarDragIntentFeedbackRegion> createState() =>
+      _SidebarDragIntentFeedbackRegionState();
+}
+
+class _SidebarDragIntentFeedbackRegionState
+    extends State<_SidebarDragIntentFeedbackRegion> {
+  Timer? _armTimer;
+  int? _pointer;
+  Offset? _start;
+  Offset? _current;
+  bool _dragArmed = false;
+  bool _didStartDrag = false;
+
+  void _reset() {
+    _armTimer?.cancel();
+    _armTimer = null;
+    _pointer = null;
+    _start = null;
+    _current = null;
+    _dragArmed = false;
+    _didStartDrag = false;
+  }
+
+  void _handleDown(PointerDownEvent event) {
+    if (event.kind != PointerDeviceKind.touch &&
+        event.kind != PointerDeviceKind.stylus &&
+        event.kind != PointerDeviceKind.invertedStylus) {
+      return;
+    }
+    _reset();
+    _pointer = event.pointer;
+    _start = event.position;
+    _current = event.position;
+    _armTimer = Timer(sidebarDragArmDelay, () {
+      final start = _start;
+      final current = _current;
+      _armTimer = null;
+      if (!mounted ||
+          start == null ||
+          current == null ||
+          (current - start).distance > sidebarDragArmStationarySlop) {
+        return;
+      }
+      _dragArmed = true;
+    });
+  }
+
+  void _handleMove(PointerMoveEvent event) {
+    if (event.pointer != _pointer || _didStartDrag) return;
+    final start = _start;
+    if (start == null) return;
+    _current = event.position;
+    final decision = decideSidebarLongPressMove(
+      dragArmed: _dragArmed,
+      didStartDrag: _didStartDrag,
+      startPoint: start,
+      currentPoint: event.position,
+    );
+    switch (decision) {
+      case SidebarLongPressMoveDecision.none:
+        return;
+      case SidebarLongPressMoveDecision.startDrag:
+        _didStartDrag = true;
+        _armTimer?.cancel();
+        _armTimer = null;
+        unawaited(HapticFeedback.mediumImpact());
+        return;
+      case SidebarLongPressMoveDecision.cancelLongPress ||
+          SidebarLongPressMoveDecision.verticalScroll ||
+          SidebarLongPressMoveDecision.horizontalSwipe:
+        _armTimer?.cancel();
+        _armTimer = null;
+        _pointer = null;
+        return;
+    }
+  }
+
+  void _handleEnd(PointerEvent event) {
+    if (event.pointer == _pointer) _reset();
+  }
+
+  @override
+  void dispose() {
+    _reset();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _handleDown,
+      onPointerMove: _handleMove,
+      onPointerUp: _handleEnd,
+      onPointerCancel: _handleEnd,
+      child: widget.child,
+    );
   }
 }
 

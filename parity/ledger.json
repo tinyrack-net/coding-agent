@@ -3638,13 +3638,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar/use-long-press-drag-interaction.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/sidebar/sidebar_gesture_interaction.dart; packages/app/lib/screens/home_shell.dart",
       "evidence": [
         "packages/app/test/sidebar_gesture_interaction_test.dart",
         "packages/app/test/home_shell_test.dart"
       ],
-      "notes": "Ports the 180ms/4px mobile drag arm, 450ms/6px stationary context menu, pre-arm scroll/swipe cancellation, web bypass, selection haptics, desktop immediate drag, and workspace-row secondary/touch menu. Project-row context menus and the provider medium-impact drag-intent feedback remain tracked as partial."
+      "notes": "Matches frozen native drag arm and context-menu timers, 4/6/8/10px movement gates, vertical-scroll and horizontal-swipe precedence, press-out cancellation, web bypass, selection and medium-impact haptics, desktop immediate drag, and workspace-row secondary/touch menu integration. Frozen project blocks intentionally pass a null menu controller."
     },
     {
       "id": "source-unit:packages/app/src/components/sortable-inline-list.native.tsx",
