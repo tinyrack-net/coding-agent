@@ -45,7 +45,7 @@ void main() {
   });
 
   test(
-    'start forwards Paseo daemon flags and reports structured result',
+    'start forwards Paseo daemon flags and reports direct human result',
     () async {
       late List<String> arguments;
       late Map<String, String> environment;
@@ -64,7 +64,6 @@ void main() {
           '--web-ui',
           '--hostnames',
           'host,.example.com',
-          '--json',
         ],
         runtime: DaemonCommandRuntime(
           resolveExe: () async => 'daemon.exe',
@@ -109,7 +108,8 @@ void main() {
         ]),
       );
       expect(environment['TINYRACK_LISTEN'], '127.0.0.1:7777');
-      expect(jsonDecode(output.toString()), containsPair('pid', 42));
+      expect(output.toString(), contains('PID 42'));
+      expect(output.toString(), contains('Logs:'));
     },
   );
 
@@ -128,7 +128,7 @@ void main() {
       writeError: errors.write,
     );
 
-    expect(code, 64);
+    expect(code, 1);
     expect(errors.toString(), contains('Cannot use --listen and --port'));
   });
 
@@ -294,7 +294,7 @@ void main() {
       'stop:${p.normalize(p.absolute(home.path))}',
       'start:${p.normalize(p.absolute(home.path))}:7788',
     ]);
-    expect(jsonDecode(output.toString()), containsPair('pid', 99));
+    expect(jsonDecode(output.toString()), containsPair('pid', '99'));
   });
 
   test('restart retries a timed out stop with force', () async {
@@ -337,7 +337,7 @@ void main() {
 
     expect(code, 0);
     expect(forces, [false, true]);
-    expect(output.toString(), contains('"pid":null'));
+    expect(output.toString(), contains('"pid": "-"'));
   });
 
   test('set-password preserves config and stores only a bcrypt hash', () async {
@@ -376,7 +376,7 @@ void main() {
     );
   });
 
-  test('password mismatch and invalid timeout are usage errors', () async {
+  test('password mismatch and invalid timeout are command errors', () async {
     final errors = StringBuffer();
     final answers = <String?>['one', 'two'];
     expect(
@@ -387,7 +387,7 @@ void main() {
         ),
         writeError: errors.write,
       ),
-      64,
+      1,
     );
     expect(errors.toString(), contains('Passwords do not match'));
 
@@ -397,9 +397,156 @@ void main() {
         arguments: ['stop', '--timeout', 'zero'],
         writeError: errors.write,
       ),
-      64,
+      1,
     );
     expect(errors.toString(), contains('Invalid timeout value'));
+  });
+
+  test('result actions support frozen shared output modes', () async {
+    final statusYaml = StringBuffer();
+    expect(
+      await runDaemonCommand(
+        arguments: ['status', '--home', home.path, '--format', 'yaml'],
+        runtime: const DaemonCommandRuntime(environment: {}),
+        writeOutput: statusYaml.write,
+      ),
+      0,
+    );
+    expect(statusYaml.toString(), startsWith('serverId:'));
+    expect(statusYaml.toString(), contains('providers:\n'));
+    expect(statusYaml.toString(), isNot(contains('key: Server ID')));
+
+    final stopQuiet = StringBuffer();
+    expect(
+      await runDaemonCommand(
+        arguments: ['stop', '--home', home.path, '--quiet'],
+        runtime: DaemonCommandRuntime(
+          stop:
+              ({
+                required paths,
+                required host,
+                required port,
+                required token,
+                required force,
+                required exitWait,
+              }) async {},
+          environment: const {},
+        ),
+        writeOutput: stopQuiet.write,
+      ),
+      0,
+    );
+    expect(stopQuiet.toString(), 'not_running\n');
+
+    final passwordYaml = StringBuffer();
+    final answers = <String?>['secret', 'secret'];
+    expect(
+      await runDaemonCommand(
+        arguments: ['set-password', '--home', home.path, '-oyaml'],
+        runtime: DaemonCommandRuntime(
+          readPassword: (_) async => answers.removeAt(0),
+        ),
+        writeOutput: passwordYaml.write,
+      ),
+      0,
+    );
+    expect(passwordYaml.toString(), startsWith('action: password_set\n'));
+
+    final restartNoHeaders = StringBuffer();
+    expect(
+      await runDaemonCommand(
+        arguments: [
+          'restart',
+          '--home',
+          home.path,
+          '--no-headers',
+          '--no-color',
+        ],
+        runtime: DaemonCommandRuntime(
+          resolveExe: () async => 'daemon.exe',
+          stop:
+              ({
+                required paths,
+                required host,
+                required port,
+                required token,
+                required force,
+                required exitWait,
+              }) async {},
+          start:
+              ({
+                required exePath,
+                required paths,
+                required host,
+                required port,
+                required additionalArguments,
+                required additionalEnvironment,
+                required timeout,
+              }) async => const ServerHello(
+                daemonVersion: '0.2.0',
+                protocolVersion: paseoWebSocketProtocolVersion,
+                pid: 77,
+              ),
+          environment: const {},
+        ),
+        writeOutput: restartNoHeaders.write,
+      ),
+      0,
+    );
+    expect(restartNoHeaders.toString(), isNot(contains('STATUS')));
+    expect(restartNoHeaders.toString(), contains('restarted'));
+  });
+
+  test('result action errors honor YAML and frozen codes', () async {
+    final error = StringBuffer();
+    expect(
+      await runDaemonCommand(
+        arguments: ['stop', '--timeout', 'zero', '--format=yaml'],
+        writeError: error.write,
+      ),
+      1,
+    );
+    expect(error.toString(), startsWith('error:\n  code: INVALID_TIMEOUT\n'));
+    expect(
+      error.toString(),
+      contains('details: timeout must be a positive number of seconds\n'),
+    );
+
+    error.clear();
+    expect(
+      await runDaemonCommand(
+        arguments: [
+          'restart',
+          '--listen',
+          '127.0.0.1:1',
+          '--port',
+          '2',
+          '-oyaml',
+        ],
+        writeError: error.write,
+      ),
+      1,
+    );
+    expect(error.toString(), contains('code: INVALID_OPTIONS\n'));
+  });
+
+  test('daemon parser preserves action-specific output boundaries', () async {
+    for (final arguments in const [
+      ['start', '--json'],
+      ['start', '--quiet'],
+      ['pair', '--format', 'yaml'],
+      ['status', '--force'],
+      ['set-password', '--timeout', '1'],
+      ['restart', '--kill-timeout', '1'],
+      ['status', '--format'],
+      ['status', '--format', 'xml'],
+    ]) {
+      expect(
+        await runDaemonCommand(arguments: arguments, writeError: (_) {}),
+        64,
+        reason: '$arguments',
+      );
+    }
   });
 
   test(
@@ -453,7 +600,7 @@ void main() {
         ),
         0,
       );
-      expect(output.toString(), contains('Local daemon was not running'));
+      expect(output.toString(), contains('Daemon is not running'));
 
       output.clear();
       final answers = <String?>['secret', 'secret'];

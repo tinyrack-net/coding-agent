@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 
 import '../server/daemon_auth.dart';
 import '../server/daemon_config.dart';
+import 'cli_output.dart';
 import 'pair_command.dart';
 
 const daemonStopTimeout = Duration(seconds: 15);
@@ -152,7 +153,7 @@ Future<int> runDaemonCommand({
     out('${_usage(command: command, topLevel: topLevel)}\n');
     return 0;
   }
-  final parsed = _parse(arguments.sublist(1));
+  final parsed = _parse(command, arguments.sublist(1));
   if (parsed case _ParseFailure(:final message)) {
     err('$message\n${_usage(command: command, topLevel: topLevel)}\n');
     return 64;
@@ -161,12 +162,31 @@ Future<int> runDaemonCommand({
   try {
     return await switch (command) {
       'start' => _start(options, runtime, out),
-      'status' => _status(options, runtime, out),
-      'stop' => _stop(options, runtime, out),
-      'restart' => _restart(options, runtime, out),
-      'set-password' => _setPassword(options, runtime, out),
+      'status' => _writeDaemonResult(
+        await _status(options, runtime),
+        options.output,
+        out,
+      ),
+      'stop' => _writeDaemonResult(
+        await _stop(options, runtime),
+        options.output,
+        out,
+      ),
+      'restart' => _writeDaemonResult(
+        await _restart(options, runtime),
+        options.output,
+        out,
+      ),
+      'set-password' => _writeDaemonResult(
+        await _setPassword(options, runtime),
+        options.output,
+        out,
+      ),
       'pair' => runPairCommand(
-        options: PairCommandOptions(home: options.home, json: options.json),
+        options: PairCommandOptions(
+          home: options.home,
+          json: options.output.format == 'json',
+        ),
         environment: runtime.environment,
         writeOutput: out,
         writeError: err,
@@ -174,13 +194,76 @@ Future<int> runDaemonCommand({
       ),
       _ => _unknown(command, err, topLevel: topLevel),
     };
+  } on DaemonCommandException catch (error) {
+    if (command == 'start' || command == 'pair') {
+      err('${error.message}\n');
+    } else {
+      err(
+        '${renderCliError(code: error.code, message: error.message, details: error.details, options: options.output)}\n',
+      );
+    }
+    return 1;
   } on FormatException catch (error) {
+    if (_isDaemonResultCommand(command)) {
+      final failure = _daemonUnhandledFailure(command, error);
+      err(
+        '${renderCliError(code: failure.code, message: failure.message, details: failure.details, options: options.output)}\n',
+      );
+      return 1;
+    }
     err('${error.message}\n');
     return 64;
   } on Object catch (error) {
+    if (_isDaemonResultCommand(command)) {
+      final failure = _daemonUnhandledFailure(command, error);
+      err(
+        '${renderCliError(code: failure.code, message: failure.message, details: failure.details, options: options.output)}\n',
+      );
+      return 1;
+    }
     err('${_message(error)}\n');
     return 1;
   }
+}
+
+bool _isDaemonResultCommand(String command) => const {
+  'status',
+  'stop',
+  'restart',
+  'set-password',
+}.contains(command);
+
+DaemonCommandException _daemonUnhandledFailure(String command, Object error) {
+  final message = _message(error);
+  return switch (command) {
+    'stop' => DaemonCommandException(
+      'STOP_FAILED',
+      'Failed to stop local daemon: $message',
+    ),
+    'restart' => DaemonCommandException(
+      'RESTART_FAILED',
+      'Failed to restart local daemon: $message',
+    ),
+    _ => DaemonCommandException('UNKNOWN_ERROR', message),
+  };
+}
+
+final class DaemonCommandException implements Exception {
+  const DaemonCommandException(this.code, this.message, [this.details]);
+
+  final String code;
+  final String message;
+  final String? details;
+}
+
+int _writeDaemonResult(
+  CliOutputResult result,
+  CliOutputOptions options,
+  void Function(String) out,
+) {
+  final rendered = renderCliOutput(result, options);
+  if (rendered.isNotEmpty) out('$rendered\n');
+  return 0;
 }
 
 int _unknown(
@@ -223,21 +306,14 @@ Future<int> _start(
     additionalEnvironment: launch.environment,
     timeout: const Duration(seconds: 30),
   );
-  if (options.json) {
-    out(
-      '${jsonEncode({'action': 'started', 'home': launch.config.home, 'pid': hello.pid, 'listen': launch.config.listen, 'logPath': launch.paths.logFile})}\n',
-    );
-  } else {
-    out('Daemon starting in background (PID ${hello.pid ?? 'unknown'}).\n');
-    out('Logs: ${launch.paths.logFile}\n');
-  }
+  out('Daemon starting in background (PID ${hello.pid ?? 'unknown'}).\n');
+  out('Logs: ${launch.paths.logFile}\n');
   return 0;
 }
 
-Future<int> _status(
+Future<CliOutputResult> _status(
   _DaemonOptions options,
   DaemonCommandRuntime runtime,
-  void Function(String) out,
 ) async {
   final config = loadDaemonRuntimeConfig(
     home: options.home,
@@ -301,45 +377,12 @@ Future<int> _status(
     'desktopManaged': lock?.desktopManaged ?? false,
     'providers': providers,
   };
-  if (options.json) {
-    out('${const JsonEncoder.withIndent('  ').convert(result)}\n');
-  } else {
-    final rows = <(String, Object?)>[
-      ('Server ID', result['serverId']),
-      ('Local Daemon', local),
-      ('Connected Daemon', connected),
-      ('Home', config.home),
-      ('Listen', result['listen']),
-      ('Relay', result['relay']),
-      ('Hostname', result['hostname']),
-      ('PID', lock?.pid),
-      ('Started', result['startedAt']),
-      ('Owner', result['owner']),
-      ('Logs', paths.logFile),
-      ('Daemon Node', result['daemonNode']),
-      ('CLI Node', result['cliNode']),
-      ('CLI', result['cliVersion']),
-      ('Daemon Version', result['daemonVersion']),
-    ];
-    out('KEY                 VALUE\n');
-    for (final (key, value) in rows) {
-      out('${key.padRight(20)}${value ?? '-'}\n');
-    }
-    out('\nProviders\n');
-    for (final provider in providers) {
-      out(
-        '  ${(provider['label'] as String).padRight(17)}'
-        '${provider['path'] ?? 'not found'}\n',
-      );
-    }
-  }
-  return 0;
+  return _daemonStatusResult(result);
 }
 
-Future<int> _stop(
+Future<CliOutputResult> _stop(
   _DaemonOptions options,
   DaemonCommandRuntime runtime,
-  void Function(String) out,
 ) async {
   final config = loadDaemonRuntimeConfig(
     home: options.home,
@@ -349,43 +392,16 @@ Future<int> _stop(
   final before = await PidLock(paths.lockFile).read();
   final host = before?.host ?? config.host;
   final port = before?.port ?? config.port;
-  final timeout = options.timeout ?? daemonStopTimeout;
-  await runtime.stop(
-    paths: paths,
-    host: host,
-    port: port,
-    token: _daemonPassword(runtime),
-    force: options.force,
-    exitWait: timeout,
+  final timeout = _parseDaemonTimeout(
+    options.timeout,
+    fallback: daemonStopTimeout,
+    label: 'timeout',
   );
-  final result = {
-    'action': 'stopped',
-    'home': config.home,
-    'pid': before?.pid,
-    'forced': options.force,
-    'usedLifecycleRpc': before != null,
-    'reason': before == null ? 'not_running' : 'stopped',
-    'message': before == null
-        ? 'Local daemon was not running'
-        : 'Local daemon stopped (PID ${before.pid})',
-  };
-  _writeResult(result, options.json, out);
-  return 0;
-}
-
-Future<int> _restart(
-  _DaemonOptions options,
-  DaemonCommandRuntime runtime,
-  void Function(String) out,
-) async {
-  final config = loadDaemonRuntimeConfig(
-    home: options.home,
-    environment: runtime.environment,
+  _parseDaemonTimeout(
+    options.killTimeout,
+    fallback: const Duration(seconds: 3),
+    label: 'kill-timeout',
   );
-  final paths = DaemonPaths(dataDir: config.home);
-  final before = await PidLock(paths.lockFile).read();
-  final host = before?.host ?? config.host;
-  final port = before?.port ?? config.port;
   try {
     await runtime.stop(
       paths: paths,
@@ -393,38 +409,95 @@ Future<int> _restart(
       port: port,
       token: _daemonPassword(runtime),
       force: options.force,
-      exitWait: options.timeout ?? daemonStopTimeout,
+      exitWait: timeout,
     );
-  } on Object {
-    if (options.force) rethrow;
-    await runtime.stop(
-      paths: paths,
-      host: host,
-      port: port,
-      token: _daemonPassword(runtime),
-      force: true,
-      exitWait: options.timeout ?? daemonStopTimeout,
+  } on Object catch (error) {
+    throw DaemonCommandException(
+      'STOP_FAILED',
+      'Failed to stop local daemon: ${_message(error)}',
     );
   }
-  final launch = await _resolveLaunch(options, runtime);
-  final hello = await runtime.start(
-    exePath: launch.exe,
-    paths: launch.paths,
-    host: launch.config.host,
-    port: launch.config.port,
-    additionalArguments: launch.additionalArguments,
-    additionalEnvironment: launch.environment,
-    timeout: const Duration(seconds: 30),
-  );
-  final result = {
-    'action': 'restarted',
-    'home': launch.config.home,
-    'pid': hello.pid,
-    'message':
-        'Local daemon restarted (${before == null ? 'not running' : 'PID ${before.pid}'} -> ${hello.pid == null ? 'unknown PID' : 'PID ${hello.pid}'})',
+  final row = <String, Object?>{
+    'action': before == null ? 'not_running' : 'stopped',
+    'home': config.home,
+    'pid': before?.pid.toString() ?? '-',
+    'forced': before == null ? false : options.force,
+    'usedLifecycleRpc': before != null,
+    'reason': before == null ? 'not_running' : 'lifecycle_shutdown_rpc',
+    'message': before == null
+        ? 'Daemon is not running'
+        : 'Local daemon stopped (PID ${before.pid})',
   };
-  _writeResult(result, options.json, out);
-  return 0;
+  return CliOutputResult.single(row: row, schema: _daemonStopSchema);
+}
+
+Future<CliOutputResult> _restart(
+  _DaemonOptions options,
+  DaemonCommandRuntime runtime,
+) async {
+  final config = loadDaemonRuntimeConfig(
+    home: options.home,
+    environment: runtime.environment,
+  );
+  final paths = DaemonPaths(dataDir: config.home);
+  final before = await PidLock(paths.lockFile).read();
+  final host = before?.host ?? config.host;
+  final port = before?.port ?? config.port;
+  final timeout = _parseDaemonTimeout(
+    options.timeout,
+    fallback: daemonStopTimeout,
+    label: 'timeout',
+  );
+  try {
+    try {
+      await runtime.stop(
+        paths: paths,
+        host: host,
+        port: port,
+        token: _daemonPassword(runtime),
+        force: options.force,
+        exitWait: timeout,
+      );
+    } on Object catch (error) {
+      final isTimeout = _message(
+        error,
+      ).contains('Timed out waiting for daemon PID');
+      if (options.force || !isTimeout) rethrow;
+      await runtime.stop(
+        paths: paths,
+        host: host,
+        port: port,
+        token: _daemonPassword(runtime),
+        force: true,
+        exitWait: timeout,
+      );
+    }
+    final launch = await _resolveLaunch(options, runtime);
+    final hello = await runtime.start(
+      exePath: launch.exe,
+      paths: launch.paths,
+      host: launch.config.host,
+      port: launch.config.port,
+      additionalArguments: launch.additionalArguments,
+      additionalEnvironment: launch.environment,
+      timeout: const Duration(seconds: 30),
+    );
+    final row = <String, Object?>{
+      'action': 'restarted',
+      'home': launch.config.home,
+      'pid': hello.pid?.toString() ?? '-',
+      'message':
+          'Local daemon restarted (${before == null ? 'not running' : 'PID ${before.pid}'} -> ${hello.pid == null ? 'unknown PID' : 'PID ${hello.pid}'})',
+    };
+    return CliOutputResult.single(row: row, schema: _daemonRestartSchema);
+  } on DaemonCommandException {
+    rethrow;
+  } on Object catch (error) {
+    throw DaemonCommandException(
+      'RESTART_FAILED',
+      'Failed to restart local daemon: ${_message(error)}',
+    );
+  }
 }
 
 String? _daemonPassword(DaemonCommandRuntime runtime) {
@@ -434,17 +507,36 @@ String? _daemonPassword(DaemonCommandRuntime runtime) {
   return value == null || value.isEmpty ? null : value;
 }
 
-Future<int> _setPassword(
+Future<CliOutputResult> _setPassword(
   _DaemonOptions options,
   DaemonCommandRuntime runtime,
-  void Function(String) out,
 ) async {
   final first = await runtime.readPassword('New daemon password');
-  if (first == null) throw const FormatException('Password update cancelled');
-  if (first.isEmpty) throw const FormatException('Password cannot be empty');
+  if (first == null) {
+    throw const DaemonCommandException(
+      'PASSWORD_CANCELLED',
+      'Password update cancelled',
+    );
+  }
+  if (first.isEmpty) {
+    throw const DaemonCommandException(
+      'PASSWORD_REQUIRED',
+      'Password cannot be empty',
+    );
+  }
   final second = await runtime.readPassword('Confirm daemon password');
-  if (second == null) throw const FormatException('Password update cancelled');
-  if (first != second) throw const FormatException('Passwords do not match');
+  if (second == null) {
+    throw const DaemonCommandException(
+      'PASSWORD_CANCELLED',
+      'Password update cancelled',
+    );
+  }
+  if (first != second) {
+    throw const DaemonCommandException(
+      'PASSWORD_MISMATCH',
+      'Passwords do not match',
+    );
+  }
   final home = p.normalize(
     p.absolute(
       options.home ??
@@ -469,7 +561,7 @@ Future<int> _setPassword(
   );
   if (await file.exists()) await file.delete();
   await temporary.rename(file.path);
-  final result = {
+  final row = <String, Object?>{
     'action': 'password_set',
     'configPath': file.path,
     'restartCommand': 'coding-agent daemon restart',
@@ -478,12 +570,7 @@ Future<int> _setPassword(
         'Restart the daemon for the change to take effect.\n'
         'Run: coding-agent daemon restart',
   };
-  if (options.json) {
-    out('${jsonEncode(result)}\n');
-  } else {
-    out('${result['message']}\n');
-  }
-  return 0;
+  return CliOutputResult.single(row: row, schema: _daemonPasswordSchema);
 }
 
 Future<_Launch> _resolveLaunch(
@@ -491,7 +578,10 @@ Future<_Launch> _resolveLaunch(
   DaemonCommandRuntime runtime,
 ) async {
   if (options.listen != null && options.port != null) {
-    throw const FormatException('Cannot use --listen and --port together');
+    throw const DaemonCommandException(
+      'INVALID_OPTIONS',
+      'Cannot use --listen and --port together',
+    );
   }
   final listen =
       options.listen ??
@@ -567,16 +657,100 @@ Future<String?> _readServerId(String home) async {
   return value.isEmpty ? null : value;
 }
 
-void _writeResult(
-  Map<String, Object?> result,
-  bool json,
-  void Function(String) out,
-) {
-  if (json) {
-    out('${jsonEncode(result)}\n');
-  } else {
-    out('${result['action']}  ${result['home']}\n${result['message']}\n');
+CliOutputResult _daemonStatusResult(Map<String, Object?> status) {
+  final providers = [
+    for (final value
+        in status['providers'] is List
+            ? status['providers']! as List
+            : const <Object?>[])
+      if (value is Map) Map<String, Object?>.from(value),
+  ];
+  final rows = <Map<String, Object?>>[
+    {'key': 'Server ID', 'value': status['serverId'] ?? '-'},
+    {'key': 'Local Daemon', 'value': status['localDaemon']},
+    {'key': 'Connected Daemon', 'value': status['connectedDaemon']},
+    {'key': 'Home', 'value': status['home']},
+    {'key': 'Listen', 'value': status['listen']},
+    {'key': 'Relay', 'value': status['relay']},
+    {'key': 'Hostname', 'value': status['hostname'] ?? '-'},
+    {'key': 'PID', 'value': status['pid']?.toString() ?? '-'},
+    {'key': 'Started', 'value': status['startedAt'] ?? '-'},
+    {'key': 'Owner', 'value': status['owner'] ?? '-'},
+    {'key': 'Logs', 'value': status['logPath']},
+    {'key': 'Daemon Node', 'value': status['daemonNode']},
+    {'key': 'CLI Node', 'value': status['cliNode']},
+    {'key': 'CLI', 'value': status['cliVersion']},
+    {'key': 'Daemon Version', 'value': status['daemonVersion'] ?? '-'},
+    {'key': '', 'value': ''},
+    {'key': 'Providers', 'value': ''},
+    for (final provider in providers)
+      {
+        'key': '  ${provider['label']}',
+        'value': switch ((provider['path'], provider['version'])) {
+          (null, _) => 'not found',
+          (final path, null) => '$path (--version failed)',
+          (final path, final version) => '$path ($version)',
+        },
+      },
+  ];
+  return CliOutputResult.list(
+    rows: rows,
+    schema: CliOutputSchema(
+      idField: (row) => '${row['key']}',
+      columns: [
+        CliOutputColumn(header: 'KEY', field: (row) => row['key']),
+        CliOutputColumn(header: 'VALUE', field: (row) => row['value']),
+      ],
+      serialize: (_) => status,
+    ),
+  );
+}
+
+final _daemonStopSchema = CliOutputSchema(
+  idField: (row) => '${row['action']}',
+  columns: [
+    CliOutputColumn(header: 'STATUS', field: (row) => row['action']),
+    CliOutputColumn(header: 'HOME', field: (row) => row['home']),
+    CliOutputColumn(header: 'PID', field: (row) => row['pid']),
+    CliOutputColumn(header: 'MESSAGE', field: (row) => row['message']),
+  ],
+);
+
+final _daemonRestartSchema = CliOutputSchema(
+  idField: (row) => '${row['action']}',
+  columns: [
+    CliOutputColumn(header: 'STATUS', field: (row) => row['action']),
+    CliOutputColumn(header: 'HOME', field: (row) => row['home']),
+    CliOutputColumn(header: 'PID', field: (row) => row['pid']),
+    CliOutputColumn(header: 'MESSAGE', field: (row) => row['message']),
+  ],
+);
+
+final _daemonPasswordSchema = CliOutputSchema(
+  idField: (row) => '${row['action']}',
+  columns: [
+    CliOutputColumn(header: 'STATUS', field: (row) => row['action']),
+    CliOutputColumn(header: 'CONFIG', field: (row) => row['configPath']),
+    CliOutputColumn(header: 'RESTART', field: (row) => row['restartCommand']),
+  ],
+  renderHuman: (rows, _) => '${rows.single['message']}',
+);
+
+Duration _parseDaemonTimeout(
+  String? raw, {
+  required Duration fallback,
+  required String label,
+}) {
+  if (raw == null || raw.trim().isEmpty) return fallback;
+  final seconds = double.tryParse(raw);
+  if (seconds == null || !seconds.isFinite || seconds <= 0) {
+    throw DaemonCommandException(
+      'INVALID_TIMEOUT',
+      'Invalid $label value: $raw',
+      '$label must be a positive number of seconds',
+    );
   }
+  return Duration(milliseconds: (seconds * 1000).ceil());
 }
 
 String _message(Object error) => switch (error) {
@@ -601,8 +775,9 @@ final class _DaemonOptions extends _Parsed {
   String? listen;
   int? port;
   String? hostnames;
-  Duration? timeout;
-  bool json = false;
+  String? timeout;
+  String? killTimeout;
+  CliOutputOptions output = const CliOutputOptions();
   bool force = false;
   bool foreground = false;
   bool? relay;
@@ -612,64 +787,112 @@ final class _DaemonOptions extends _Parsed {
   bool? webUi;
 }
 
-_Parsed _parse(List<String> arguments) {
+_Parsed _parse(String command, List<String> arguments) {
   final value = _DaemonOptions();
+  final fullOutput = const {
+    'status',
+    'stop',
+    'restart',
+    'set-password',
+  }.contains(command);
+  var format = 'table';
+  var json = false;
+  var quiet = false;
+  var headers = true;
+  var color = true;
   for (var index = 0; index < arguments.length; index++) {
     final argument = arguments[index];
     String? next() => index + 1 < arguments.length ? arguments[++index] : null;
     switch (argument) {
-      case '--json':
-        value.json = true;
-      case '--force':
+      case '--json' when fullOutput || command == 'pair':
+        json = true;
+      case '-q' || '--quiet' when fullOutput:
+        quiet = true;
+      case '--no-headers' when fullOutput:
+        headers = false;
+      case '--no-color' when fullOutput:
+        color = false;
+      case '-o' || '--format' when fullOutput:
+        final raw = next();
+        if (raw == null) return _ParseFailure('$argument requires a value');
+        try {
+          format = normalizeCliOutputFormat(raw);
+        } on FormatException catch (error) {
+          return _ParseFailure(error.message);
+        }
+      case '--force' when command == 'stop' || command == 'restart':
         value.force = true;
-      case '--foreground':
+      case '--foreground' when command == 'start':
         value.foreground = true;
-      case '--no-relay':
+      case '--no-relay' when command == 'start' || command == 'restart':
         value.relay = false;
-      case '--relay-use-tls':
+      case '--relay-use-tls' when command == 'start':
         value.relayUseTls = true;
-      case '--no-mcp':
+      case '--no-mcp' when command == 'start' || command == 'restart':
         value.mcp = false;
-      case '--no-inject-mcp':
+      case '--no-inject-mcp' when command == 'start' || command == 'restart':
         value.injectMcp = false;
-      case '--web-ui':
+      case '--web-ui' when command == 'start' || command == 'restart':
         value.webUi = true;
-      case '--no-web-ui':
+      case '--no-web-ui' when command == 'start' || command == 'restart':
         value.webUi = false;
       case '--home':
         value.home = next();
         if (value.home == null) return _ParseFailure('--home requires a path');
-      case '--listen':
+      case '--listen' when command == 'start' || command == 'restart':
         value.listen = next();
         if (value.listen == null) {
           return _ParseFailure('--listen requires a target');
         }
-      case '--port':
+      case '--port' when command == 'start' || command == 'restart':
         final raw = next();
         value.port = raw == null ? null : int.tryParse(raw);
         if (value.port == null || value.port! < 0 || value.port! > 65535) {
           return _ParseFailure('Invalid port value: ${raw ?? ''}');
         }
-      case '--hostnames':
-      case '--allowed-hosts':
+      case '--hostnames' || '--allowed-hosts'
+          when command == 'start' || command == 'restart':
         value.hostnames = next();
         if (value.hostnames == null) {
           return _ParseFailure('$argument requires a value');
         }
-      case '--timeout':
-      case '--kill-timeout':
+      case '--timeout' when command == 'stop' || command == 'restart':
+      case '--kill-timeout' when command == 'stop':
         final raw = next();
-        final seconds = raw == null ? null : double.tryParse(raw);
-        if (seconds == null || !seconds.isFinite || seconds <= 0) {
-          return _ParseFailure('Invalid timeout value: ${raw ?? ''}');
-        }
+        if (raw == null) return _ParseFailure('$argument requires a value');
         if (argument == '--timeout') {
-          value.timeout = Duration(milliseconds: (seconds * 1000).ceil());
+          value.timeout = raw;
+        } else {
+          value.killTimeout = raw;
         }
       default:
-        return _ParseFailure('Unknown option: $argument');
+        if (fullOutput && argument.startsWith('--format=')) {
+          try {
+            format = normalizeCliOutputFormat(
+              argument.substring('--format='.length),
+            );
+          } on FormatException catch (error) {
+            return _ParseFailure(error.message);
+          }
+        } else if (fullOutput &&
+            argument.startsWith('-o') &&
+            argument.length > 2) {
+          try {
+            format = normalizeCliOutputFormat(argument.substring(2));
+          } on FormatException catch (error) {
+            return _ParseFailure(error.message);
+          }
+        } else {
+          return _ParseFailure('Unknown option: $argument');
+        }
     }
   }
+  value.output = CliOutputOptions(
+    format: json ? 'json' : format,
+    quiet: quiet,
+    noHeaders: !headers,
+    noColor: !color,
+  );
   return value;
 }
 

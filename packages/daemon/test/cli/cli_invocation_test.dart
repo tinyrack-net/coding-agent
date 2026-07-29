@@ -82,6 +82,44 @@ void main() {
     );
     expect(
       normalizeRootCliArguments(const [
+        '--format',
+        'yaml',
+        '--quiet',
+        'daemon',
+        'status',
+      ]).forward(),
+      const ['daemon', 'status', '--format', 'yaml', '--quiet'],
+    );
+    expect(
+      normalizeRootCliArguments(const [
+        '--format',
+        'yaml',
+        '--quiet',
+        'status',
+      ]).forward(),
+      const ['status', '--format', 'yaml', '--quiet'],
+    );
+    expect(
+      normalizeRootCliArguments(const [
+        '--json',
+        '--quiet',
+        'daemon',
+        'start',
+      ]).forward(),
+      const ['daemon', 'start'],
+    );
+    expect(
+      normalizeRootCliArguments(const [
+        '--format',
+        'yaml',
+        '--json',
+        'daemon',
+        'pair',
+      ]).forward(),
+      const ['daemon', 'pair', '--json'],
+    );
+    expect(
+      normalizeRootCliArguments(const [
         '--format=json',
         'workspace',
         'ls',

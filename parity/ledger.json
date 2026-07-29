@@ -431,13 +431,14 @@
     {
       "id": "cli-command:daemon-restart",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon_lifecycle/lib/src/daemon_spawner.dart;packages/daemon_lifecycle/lib/src/daemon_stopper.dart",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon_lifecycle/lib/src/daemon_spawner.dart;packages/daemon_lifecycle/lib/src/daemon_stopper.dart",
       "evidence": [
         "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon_lifecycle/test/daemon_spawner_test.dart",
         "packages/daemon_lifecycle/test/daemon_stopper_test.dart"
       ],
-      "notes": null
+      "notes": "Restart preserves stop/force-fallback/start lifecycle and returns the frozen string PID single-result schema through table/JSON/YAML/quiet/header rendering with structured INVALID_TIMEOUT, INVALID_OPTIONS, and RESTART_FAILED errors."
     },
     {
       "id": "cli-command:daemon-runtime-toolchain",
@@ -451,11 +452,12 @@
     {
       "id": "cli-command:daemon-set-password",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon/lib/src/server/daemon_auth.dart",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/cli_output.dart;packages/daemon/lib/src/server/daemon_auth.dart",
       "evidence": [
-        "packages/daemon/test/cli/daemon_command_test.dart"
+        "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart"
       ],
-      "notes": null
+      "notes": "Password prompting, cancellation/required/mismatch command codes, config preservation, bcrypt storage, Tinyrack restart guidance, custom human rendering, and structured output modes match the frozen command."
     },
     {
       "id": "cli-command:daemon-start",
@@ -466,28 +468,30 @@
         "packages/daemon_lifecycle/test/daemon_spawner_test.dart",
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Start remains a direct side-effect command outside withOutput, rejects shared output flags, preserves frozen action options, detached/foreground launch, PID/log guidance, and INVALID_OPTIONS exit behavior."
     },
     {
       "id": "cli-command:daemon-status",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon_lifecycle/lib/src/hello_probe.dart;packages/daemon_lifecycle/lib/src/pid_lock.dart",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/cli_output.dart;packages/daemon_lifecycle/lib/src/hello_probe.dart;packages/daemon_lifecycle/lib/src/pid_lock.dart",
       "evidence": [
         "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_lock_test.dart"
       ],
-      "notes": null
+      "notes": "Status retains the local/connected daemon, runtime, relay, provider, and ownership projection; KEY/VALUE human rows use a schema serializer so JSON/YAML emit the full status object and quiet/header options follow withOutput."
     },
     {
       "id": "cli-command:daemon-stop",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon_lifecycle/lib/src/daemon_stopper.dart",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/cli_output.dart;packages/daemon_lifecycle/lib/src/daemon_stopper.dart",
       "evidence": [
         "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon_lifecycle/test/daemon_stopper_test.dart",
         "packages/daemon/test/daemon_lock_test.dart"
       ],
-      "notes": null
+      "notes": "Stop preserves lifecycle shutdown, timeout/force handling, not-running projection, and returns the frozen action/home/string-PID/message schema through every shared output mode with structured errors."
     },
     {
       "id": "cli-command:hooks",
@@ -9221,18 +9225,19 @@
     {
       "id": "source-unit:packages/cli/src/cli.ts",
       "status": "partial",
-      "implementation": "packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/speech_command.dart",
+      "implementation": "packages/daemon/bin/coding_agent.dart; packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/speech_command.dart",
       "evidence": [
         "packages/daemon/test/cli/agent_command_test.dart",
         "packages/daemon/test/cli/cli_invocation_test.dart",
         "packages/daemon/test/cli/cli_root_output_process_test.dart",
         "packages/daemon/test/cli/cli_shell_process_test.dart",
+        "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/speech_command_test.dart",
         "packages/daemon/test/daemon_agent_cli_e2e_test.dart",
         "packages/daemon/test/daemon_agent_delete_e2e_test.dart"
       ],
-      "notes": "Frozen command registration, root help/version, hidden worktree compatibility alias, speech namespace, top-level/nested aliases, and Commander-style output options before full-output commands are ported. Chat, heartbeat, schedule, and non-streaming loop actions use the shared renderer; remaining JSON-only command families still require migration."
+      "notes": "Frozen command registration, root help/version, hidden worktree compatibility alias, speech namespace, top-level/nested aliases, and Commander-style output options before full-output commands are ported. Chat, heartbeat, schedule, non-streaming loop actions, daemon status/stop/restart/set-password, and root status/restart use the shared renderer; remaining JSON-only command families still require migration."
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/archive.ts",
@@ -9532,11 +9537,13 @@
     {
       "id": "source-unit:packages/cli/src/commands/daemon/index.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart;packages/daemon/bin/coding_agent.dart",
       "evidence": [
-        "packages/daemon/test/cli/daemon_command_test.dart"
+        "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon/test/cli/cli_invocation_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart"
       ],
-      "notes": null
+      "notes": "Registers start/pair as direct-output actions and status/stop/restart/set-password as full withOutput actions with matching root alias forwarding and action-specific option boundaries."
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/local-daemon.ts",
@@ -9564,11 +9571,12 @@
     {
       "id": "source-unit:packages/cli/src/commands/daemon/restart.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
-        "packages/daemon/test/cli/daemon_command_test.dart"
+        "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart"
       ],
-      "notes": null
+      "notes": "Frozen timeout, force fallback, start-option validation, string PID result schema, structured action errors, and all shared output modes are verified."
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/runtime-toolchain.ts",
@@ -9582,11 +9590,12 @@
     {
       "id": "source-unit:packages/cli/src/commands/daemon/set-password.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon/lib/src/server/daemon_auth.dart",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/cli_output.dart;packages/daemon/lib/src/server/daemon_auth.dart",
       "evidence": [
-        "packages/daemon/test/cli/daemon_command_test.dart"
+        "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart"
       ],
-      "notes": null
+      "notes": "Frozen prompt error codes, persisted config mutation, custom human renderer, and table/JSON/YAML/quiet output are verified with Tinyrack-branded restart guidance."
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/start.ts",
@@ -9596,27 +9605,29 @@
         "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Frozen direct-output start boundary, option surface, detached/foreground launch, error exit behavior, and PID/log guidance are verified; shared output flags are rejected."
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/status.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_lock_test.dart"
       ],
-      "notes": null
+      "notes": "Frozen status rows, full structured serialization, provider section, quiet keys, header suppression, and shared JSON/YAML errors are verified."
     },
     {
       "id": "source-unit:packages/cli/src/commands/daemon/stop.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon_lifecycle/lib/src/daemon_stopper.dart",
+      "implementation": "packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/cli_output.dart;packages/daemon_lifecycle/lib/src/daemon_stopper.dart",
       "evidence": [
         "packages/daemon/test/cli/daemon_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon_lifecycle/test/daemon_stopper_test.dart"
       ],
-      "notes": null
+      "notes": "Frozen timeout validation, lifecycle outcome projection, string PID schema, structured STOP_FAILED errors, and all shared output modes are verified."
     },
     {
       "id": "source-unit:packages/cli/src/commands/heartbeat/index.ts",
@@ -10219,12 +10230,13 @@
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "The shared Dart output entrypoint exports typed result, schema, custom serialization, JSON, YAML, quiet, table, and error rendering used by chat, heartbeat, schedule, and non-streaming loop actions; remaining CLI families still need migration."
+      "notes": "The shared Dart output entrypoint exports typed result, schema, custom serialization, JSON, YAML, quiet, table, and error rendering used by chat, heartbeat, schedule, non-streaming loop actions, and daemon result actions; remaining CLI families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/json.ts",
@@ -10233,6 +10245,7 @@
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
@@ -10256,6 +10269,7 @@
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart"
@@ -10269,6 +10283,7 @@
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart"
@@ -10282,6 +10297,7 @@
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart"
@@ -10296,6 +10312,7 @@
         "packages/daemon/test/cli/cli_invocation_test.dart",
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
@@ -10306,12 +10323,13 @@
     {
       "id": "source-unit:packages/cli/src/output/with-output.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_invocation_test.dart",
         "packages/daemon/test/cli/cli_root_output_process_test.dart",
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
@@ -10319,7 +10337,7 @@
         "packages/daemon/test/daemon_schedule_e2e_test.dart",
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": "Global and local options feed shared result and error rendering for chat, heartbeat, schedule, and non-streaming loop actions while logs remains streaming-only; remaining JSON-only command families still need migration."
+      "notes": "Global and local options feed shared result and error rendering for chat, heartbeat, schedule, non-streaming loop actions, and daemon result actions while direct/streaming actions retain their frozen boundaries; remaining JSON-only command families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/yaml.ts",
@@ -10328,6 +10346,7 @@
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart"

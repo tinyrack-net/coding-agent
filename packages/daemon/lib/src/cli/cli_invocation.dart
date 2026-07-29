@@ -162,6 +162,8 @@ RootOutputForwarding rootOutputForwarding(List<String> arguments) {
     'chat',
     'heartbeat',
     'schedule',
+    'status',
+    'restart',
     'workspace',
     'worktree',
   }.contains(first)) {
@@ -178,7 +180,16 @@ RootOutputForwarding rootOutputForwarding(List<String> arguments) {
         ? RootOutputForwarding.none
         : RootOutputForwarding.full;
   }
-  if (const {'status', 'restart', 'daemon', 'hub'}.contains(first)) {
+  if (first == 'daemon') {
+    final action = arguments.length > 1 ? arguments[1] : null;
+    if (const {'status', 'stop', 'restart', 'set-password'}.contains(action)) {
+      return RootOutputForwarding.full;
+    }
+    return action == 'pair'
+        ? RootOutputForwarding.jsonOnly
+        : RootOutputForwarding.none;
+  }
+  if (first == 'hub') {
     return RootOutputForwarding.jsonOnly;
   }
   if (first == 'terminal') {
