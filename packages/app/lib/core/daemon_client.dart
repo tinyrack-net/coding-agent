@@ -271,6 +271,52 @@ class DaemonClient {
     );
   }
 
+  Future<ReadProjectConfigResponse> readProjectConfig(
+    String repoRoot, {
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = ReadProjectConfigResponse.fromJson(
+      await requestSessionMessage(
+        ReadProjectConfigRequest(
+          requestId: correlatedId,
+          repoRoot: repoRoot,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != correlatedId) {
+      throw const FormatException('Project config read response mismatch');
+    }
+    return response;
+  }
+
+  Future<WriteProjectConfigResponse> writeProjectConfig({
+    required String repoRoot,
+    required Map<String, Object?> config,
+    required ProjectConfigRevision? expectedRevision,
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = WriteProjectConfigResponse.fromJson(
+      await requestSessionMessage(
+        WriteProjectConfigRequest(
+          requestId: correlatedId,
+          repoRoot: repoRoot,
+          config: config,
+          expectedRevision: expectedRevision,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != correlatedId) {
+      throw const FormatException('Project config write response mismatch');
+    }
+    return response;
+  }
+
   /// Removes a registered project and archives its active workspaces.
   Future<ProjectRemoveResponse> removeProject(
     String projectId, {

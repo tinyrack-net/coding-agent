@@ -262,6 +262,105 @@ void main() {
     expect((response['payload'] as Map)['cwd'], '/repo');
   });
 
+  test('reads project config via typed correlated RPC', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    unawaited(
+      conn.nextRequest(ReadProjectConfigRequest.type).then((frame) {
+        expect(frame, {
+          'type': 'read_project_config_request',
+          'requestId': 'read-project-config-1',
+          'repoRoot': '/repo/app',
+        });
+        conn.respondNative(
+          ReadProjectConfigResponse.type,
+          frame['requestId'] as String,
+          const {
+            'repoRoot': '/repo/app',
+            'ok': true,
+            'config': {
+              'worktree': {'setup': 'npm install'},
+            },
+            'revision': {'mtimeMs': 10, 'size': 20},
+          },
+        );
+      }),
+    );
+
+    final response = await client.readProjectConfig(
+      '/repo/app',
+      requestId: 'read-project-config-1',
+    );
+    expect(response, isA<ReadProjectConfigSuccess>());
+    final success = response as ReadProjectConfigSuccess;
+    expect((success.config?['worktree'] as Map)['setup'], 'npm install');
+    expect(success.revision?.toJson(), {'mtimeMs': 10, 'size': 20});
+  });
+
+  test('writes project config and returns inline stale failures', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    unawaited(
+      conn.nextRequest(WriteProjectConfigRequest.type).then((frame) {
+        expect(frame, {
+          'type': 'write_project_config_request',
+          'requestId': 'write-project-config-1',
+          'repoRoot': '/repo/app',
+          'config': {
+            'worktree': {
+              'setup': ['npm install'],
+            },
+          },
+          'expectedRevision': {'mtimeMs': 10, 'size': 20},
+        });
+        conn.respondNative(
+          WriteProjectConfigResponse.type,
+          frame['requestId'] as String,
+          const {
+            'repoRoot': '/repo/app',
+            'ok': false,
+            'error': {
+              'code': 'stale_project_config',
+              'currentRevision': {'mtimeMs': 11, 'size': 21},
+            },
+          },
+        );
+      }),
+    );
+
+    final response = await client.writeProjectConfig(
+      requestId: 'write-project-config-1',
+      repoRoot: '/repo/app',
+      config: const {
+        'worktree': {
+          'setup': ['npm install'],
+        },
+      },
+      expectedRevision: const ProjectConfigRevision(mtimeMs: 10, size: 20),
+    );
+    expect(response, isA<WriteProjectConfigFailure>());
+    final error = (response as WriteProjectConfigFailure).error;
+    expect(error, isA<ProjectConfigStale>());
+    expect((error as ProjectConfigStale).currentRevision?.toJson(), {
+      'mtimeMs': 11,
+      'size': 21,
+    });
+  });
+
   test('typed agent config surfaces notices and rejected changes', () async {
     client = DaemonClient(uri: server.uri);
     final connFuture = nextConnection(server);

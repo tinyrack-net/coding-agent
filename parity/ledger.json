@@ -11423,7 +11423,7 @@
     {
       "id": "source-unit:packages/protocol/src/messages.ts",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/workspace_v2.dart; packages/protocol/lib/src/messages/provider_subagent.dart; packages/protocol/lib/src/messages/terminal.dart; packages/protocol/lib/src/messages/daemon_config.dart; packages/protocol/lib/src/messages/file_transfer.dart; packages/protocol/lib/src/messages/file_explorer.dart; packages/protocol/lib/src/messages/forge.dart; packages/protocol/lib/src/messages/checkout_pr.dart; packages/protocol/lib/src/messages/checkout_refresh.dart; packages/protocol/lib/src/messages/checkout_pr_status.dart; packages/protocol/lib/src/messages/checkout_check_details.dart; packages/protocol/lib/src/messages/pull_request_timeline.dart; packages/protocol/lib/src/messages/agent_attachment.dart; packages/protocol/lib/src/messages/voice.dart; packages/protocol/lib/src/timeline/paseo_agent_stream_codec.dart; packages/protocol/lib/src/timeline/paseo_agent_snapshot_codec.dart; packages/daemon/lib/src/agent/timeline_projection.dart; packages/daemon/lib/src/daemon_server.dart",
+      "implementation": "packages/protocol/lib/src/messages/workspace_v2.dart; packages/protocol/lib/src/messages/provider_subagent.dart; packages/protocol/lib/src/messages/terminal.dart; packages/protocol/lib/src/messages/daemon_config.dart; packages/protocol/lib/src/messages/file_transfer.dart; packages/protocol/lib/src/messages/file_explorer.dart; packages/protocol/lib/src/messages/forge.dart; packages/protocol/lib/src/messages/checkout_pr.dart; packages/protocol/lib/src/messages/checkout_refresh.dart; packages/protocol/lib/src/messages/checkout_pr_status.dart; packages/protocol/lib/src/messages/checkout_check_details.dart; packages/protocol/lib/src/messages/pull_request_timeline.dart; packages/protocol/lib/src/messages/agent_attachment.dart; packages/protocol/lib/src/messages/voice.dart; packages/protocol/lib/src/messages/project_config.dart; packages/protocol/lib/src/timeline/paseo_agent_stream_codec.dart; packages/protocol/lib/src/timeline/paseo_agent_snapshot_codec.dart; packages/daemon/lib/src/agent/timeline_projection.dart; packages/daemon/lib/src/daemon_server.dart",
       "evidence": [
         "packages/protocol/test/v2_websocket_test.dart",
         "packages/protocol/test/workspace_v2_test.dart",
@@ -11435,6 +11435,7 @@
         "packages/protocol/test/file_editing_test.dart",
         "packages/daemon/test/file_explorer_service_test.dart",
         "packages/app/test/daemon_client_test.dart",
+        "packages/protocol/test/project_config_test.dart",
         "packages/protocol/test/forge_search_test.dart",
         "packages/daemon/test/forge/forge_search_service_test.dart",
         "packages/protocol/test/checkout_pr_test.dart",
@@ -11456,7 +11457,7 @@
         "packages/daemon/test/daemon_agent_continuation_e2e_test.dart",
         "packages/protocol/test/voice_messages_test.dart"
       ],
-      "notes": "WS hello/server_info, canonical agent_stream, AgentSnapshot-bearing canonical/projected fetch_agent_timeline windows with collapse metadata and stale/gap recovery, snapshot last-user/error/labels/provider-unavailable persistence, frozen built-in provider capabilities/modes and model-aware Claude/Codex/OpenCode features, project/workspace, provider-subagent, terminal ownership/activity, terminal_attention_required, mutable daemon config, file explorer/editing versions/subscriptions/writes, download token/upload, uploaded_file, send-message base64 image payloads, audio_played and complete audio_output grouping payloads, modern forge.search, exact checkout_pr_create/merge/status and checkout.refresh request/response, modern plus legacy-GitHub auto-merge, modern plus legacy-GitHub check-details with annotations/failed jobs/pipeline, and pull_request_timeline request/response/review/comment/thread/location/error compatibility contracts are ported. Dynamic ACP/Pi runtime snapshot state, the remaining attachment variants and messages, legacy github_search compatibility, and json_serializable migration are pending."
+      "notes": "WS hello/server_info, canonical agent_stream, AgentSnapshot-bearing canonical/projected fetch_agent_timeline windows with collapse metadata and stale/gap recovery, snapshot last-user/error/labels/provider-unavailable persistence, frozen built-in provider capabilities/modes and model-aware Claude/Codex/OpenCode features, project/workspace, provider-subagent, terminal ownership/activity, terminal_attention_required, mutable daemon config, strict project-config read/write discriminated responses and inline errors, file explorer/editing versions/subscriptions/writes, download token/upload, uploaded_file, send-message base64 image payloads, audio_played and complete audio_output grouping payloads, modern forge.search, exact checkout_pr_create/merge/status and checkout.refresh request/response, modern plus legacy-GitHub auto-merge, modern plus legacy-GitHub check-details with annotations/failed jobs/pipeline, and pull_request_timeline request/response/review/comment/thread/location/error compatibility contracts are ported. Dynamic ACP/Pi runtime snapshot state, the remaining attachment variants and messages, legacy github_search compatibility, and json_serializable migration are pending."
     },
     {
       "id": "source-unit:packages/protocol/src/paseo-config-schema.ts",
@@ -15948,17 +15949,27 @@
     },
     {
       "id": "wire-message:read_project_config_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/project_config.dart; packages/daemon/lib/src/server/project_config_service.dart; packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/protocol/test/project_config_test.dart",
+        "packages/daemon/test/project_config_service_test.dart",
+        "packages/daemon/test/daemon_project_config_e2e_test.dart",
+        "packages/app/test/daemon_client_test.dart"
+      ],
+      "notes": "Exact root-level request type, requestId, repoRoot, serialization, daemon routing, and Flutter client correlation match the frozen contract."
     },
     {
       "id": "wire-message:read_project_config_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/project_config.dart; packages/daemon/lib/src/server/project_config_service.dart; packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/protocol/test/project_config_test.dart",
+        "packages/daemon/test/project_config_service_test.dart",
+        "packages/daemon/test/daemon_project_config_e2e_test.dart",
+        "packages/app/test/daemon_client_test.dart"
+      ],
+      "notes": "Exact ok-discriminated nullable config/revision success and typed inline project_not_found/invalid_project_config failure payloads are validated and correlated."
     },
     {
       "id": "wire-message:refresh_agent_request",
@@ -16375,17 +16386,27 @@
     },
     {
       "id": "wire-message:write_project_config_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/project_config.dart; packages/daemon/lib/src/server/project_config_service.dart; packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/protocol/test/project_config_test.dart",
+        "packages/daemon/test/project_config_service_test.dart",
+        "packages/daemon/test/daemon_project_config_e2e_test.dart",
+        "packages/app/test/daemon_client_test.dart"
+      ],
+      "notes": "Exact root-level config plus required nullable expectedRevision contract crosses the real daemon and typed Flutter client boundary."
     },
     {
       "id": "wire-message:write_project_config_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/project_config.dart; packages/daemon/lib/src/server/project_config_service.dart; packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/protocol/test/project_config_test.dart",
+        "packages/daemon/test/project_config_service_test.dart",
+        "packages/daemon/test/daemon_project_config_e2e_test.dart",
+        "packages/app/test/daemon_client_test.dart"
+      ],
+      "notes": "Exact success config/revision payload and all frozen inline errors, including nullable stale currentRevision, are sealed, validated, serialized, and returned without throwing."
     }
   ]
 }
