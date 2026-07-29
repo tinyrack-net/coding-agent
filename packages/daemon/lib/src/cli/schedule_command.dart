@@ -453,10 +453,17 @@ Map<String, Object?> _updateRequest(
   String requestId,
   String id,
 ) {
+  final scheduleId = id.trim();
+  if (scheduleId.isEmpty) {
+    throw const ScheduleCommandException(
+      'INVALID_SCHEDULE_ID',
+      'Schedule id cannot be empty',
+    );
+  }
   final result = <String, Object?>{
     'type': ScheduleUpdateRequest.type,
     'requestId': requestId,
-    'scheduleId': id,
+    'scheduleId': scheduleId,
   };
   if (invocation.values.containsKey('--name')) {
     final name = invocation.values['--name']!.trim();
@@ -865,11 +872,27 @@ String scheduleHelp(String? action) => switch (action) {
         '  --host <host>           Daemon host target\n'
         '  --json                  Output in JSON format\n',
   'update' =>
-    'Usage: coding-agent schedule update <id> [fields]\n'
+    'Usage: coding-agent schedule update <id> [options]\n'
         'Update an existing schedule in place\n\n'
-        'Fields: --every --cron --timezone --name --prompt --provider '
-        '--model --mode --cwd --max-runs --no-max-runs --expires-in '
-        '--no-expires-in\n',
+        'Options:\n'
+        '  --every <duration>      Cron-compatible cadence preset '
+        '(for example: 5m, 1h)\n'
+        '  --cron <expr>           Switch to cron cadence expression\n'
+        '  --timezone <iana>       IANA time zone '
+        '(requires --cron)\n'
+        '  --name <name>           Rename schedule '
+        '(empty string clears)\n'
+        '  --prompt <text>         Replace the schedule prompt\n'
+        '  --provider <provider>   New agent provider or provider/model\n'
+        '  --model <model>         New agent model\n'
+        '  --mode <mode>           New agent provider mode\n'
+        '  --cwd <path>            New working directory\n'
+        '  --max-runs <n>          Set maximum number of runs\n'
+        '  --no-max-runs           Clear the max-runs limit\n'
+        '  --expires-in <duration> Set schedule time to live\n'
+        '  --no-expires-in         Clear the expiration\n'
+        '  --host <host>           Daemon host target\n'
+        '  --json                  Output in JSON format\n',
   'ls' => 'Usage: coding-agent schedule ls [--host <host>] [--json]\n',
   'inspect' || 'logs' || 'pause' || 'resume' || 'delete' || 'run-once' =>
     'Usage: coding-agent schedule $action <id> '

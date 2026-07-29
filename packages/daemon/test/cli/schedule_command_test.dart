@@ -550,6 +550,69 @@ void main() {
     expect(output, contains('RunCount'));
   });
 
+  test('update trims its RPC id and accepts equals-style fields', () async {
+    final sent = <Map<String, Object?>>[];
+    expect(
+      await runScheduleCommand(
+        arguments: [
+          'update',
+          '  deadbeef  ',
+          '--name= Renamed ',
+          '--prompt= next prompt ',
+          '--cron=30 10 * * *',
+          '--timezone=Asia/Seoul',
+          '--provider=codex',
+          '--model=gpt-5.4',
+          '--mode=',
+          '--cwd=C:/next',
+          '--max-runs=4runs',
+          '--no-expires-in',
+        ],
+        request: (request) async {
+          sent.add(request);
+          return {'schedule': _schedule(), 'error': null};
+        },
+        writeOutput: (_) {},
+      ),
+      0,
+    );
+
+    expect(sent.map((request) => request['type']), [
+      'schedule/inspect',
+      'schedule/update',
+    ]);
+    expect(sent.first['scheduleId'], '  deadbeef  ');
+    expect(sent.last, containsPair('scheduleId', 'deadbeef'));
+    expect(sent.last['name'], 'Renamed');
+    expect(sent.last['prompt'], 'next prompt');
+    expect(sent.last['cadence'], {
+      'type': 'cron',
+      'expression': '30 10 * * *',
+      'timezone': 'Asia/Seoul',
+    });
+    expect(sent.last['newAgentConfig'], {
+      'provider': 'codex',
+      'model': 'gpt-5.4',
+      'modeId': null,
+      'cwd': 'C:/next',
+    });
+    expect(sent.last['maxRuns'], 4);
+    expect(sent.last['expiresAt'], isNull);
+  });
+
+  test('update rejects an empty id before daemon connection', () async {
+    var error = '';
+    expect(
+      await runScheduleCommand(
+        arguments: ['update', '   ', '--name', 'Renamed'],
+        request: (_) async => fail('empty id must not reach the daemon'),
+        writeError: (value) => error += value,
+      ),
+      1,
+    );
+    expect(error, contains('Schedule id cannot be empty'));
+  });
+
   test(
     'syntax failures return usage while semantic failures are command errors',
     () async {
@@ -793,6 +856,26 @@ void main() {
         expect(output, contains('--cron <expr>'));
         expect(output, contains('(default: UTC)'));
         expect(output, isNot(contains('--target')));
+      }
+      if (arguments.first == 'update') {
+        for (final option in const [
+          '--every <duration>',
+          '--cron <expr>',
+          '--timezone <iana>',
+          '--name <name>',
+          '--prompt <text>',
+          '--provider <provider>',
+          '--model <model>',
+          '--mode <mode>',
+          '--cwd <path>',
+          '--max-runs <n>',
+          '--no-max-runs',
+          '--expires-in <duration>',
+          '--no-expires-in',
+        ]) {
+          expect(output, contains(option), reason: option);
+        }
+        expect(output, isNot(contains('--run-now')));
       }
     }
   });

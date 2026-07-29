@@ -9720,12 +9720,12 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/update.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
       "evidence": [
         "packages/daemon/test/cli/schedule_command_test.dart"
       ],
-      "notes": null
+      "notes": "Ports the frozen update command: pre-connection id and patch validation, trimmed update RPC identity with original inspect identity, cadence/timezone/name/prompt/provider/model/mode/cwd/max-runs/expiry set and clear operations, new-agent target guard, full-record JSON serialization, inspect-table human output, Commander equals syntax, structured error mapping, daemon cleanup, and complete action help."
     },
     {
       "id": "source-unit:packages/cli/src/commands/script/index.ts",
