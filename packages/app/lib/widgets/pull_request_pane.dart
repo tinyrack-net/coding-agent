@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/external_url_launcher.dart';
 import '../core/forge.dart';
 import '../core/forge_logic.dart';
+import '../core/pull_request_activity_state.dart';
 import '../core/pull_request_context.dart';
 import '../core/theme.dart';
 import '../state/daemon_providers.dart';
@@ -861,31 +862,16 @@ class _ActivitySection extends ConsumerStatefulWidget {
 }
 
 class _ActivitySectionState extends ConsumerState<_ActivitySection> {
-  final _collapsed = <String>{};
-  final _expanded = <String>{};
+  var _activityState = const PullRequestActivityState();
 
-  bool _isCollapsed(PullRequestTimelineEntry entry) {
-    if (_collapsed.contains(entry.id)) return true;
-    if (_expanded.contains(entry.id)) return false;
-    return switch (entry) {
-      PullRequestThreadEntry() => entry.collapsedByDefault,
-      PullRequestSingleEntry(
-        activity: PullRequestTimelineComment(location: final location?),
-      ) =>
-        location.isResolved == true || location.isOutdated == true,
-      _ => false,
-    };
-  }
+  int get _prNumber => widget.status.number?.toInt() ?? 0;
+
+  bool _isCollapsed(PullRequestTimelineEntry entry) =>
+      _activityState.isCollapsed(prNumber: _prNumber, entry: entry);
 
   void _toggle(PullRequestTimelineEntry entry) {
     setState(() {
-      if (_isCollapsed(entry)) {
-        _collapsed.remove(entry.id);
-        _expanded.add(entry.id);
-      } else {
-        _expanded.remove(entry.id);
-        _collapsed.add(entry.id);
-      }
+      _activityState = _activityState.toggle(prNumber: _prNumber, entry: entry);
     });
   }
 

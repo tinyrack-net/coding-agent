@@ -5173,13 +5173,13 @@
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/activity-state.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/core/pull_request_context.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/core/pull_request_activity_state.dart; packages/app/lib/widgets/pull_request_pane.dart",
       "evidence": [
-        "packages/app/test/pull_request_context_test.dart",
+        "packages/app/test/pull_request_activity_state_test.dart",
         "packages/app/test/pull_request_pane_test.dart"
       ],
-      "notes": "Review states and resolved or outdated default-collapse behavior are implemented; final cross-forge visual conformance remains."
+      "notes": "Ports the frozen immutable activity state machine with PR-number-scoped stable keys, explicit collapse and expansion overrides, resolved and outdated default collapse for single items and threads, general resolved discussions, visible-entry projection, recursive nested-review collapsed IDs, and UI state restoration when switching between pull requests."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/check-status.ts",
@@ -5255,12 +5255,13 @@
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/pane.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/widgets/pull_request_pane.dart",
+      "implementation": "packages/app/lib/core/pull_request_activity_state.dart; packages/app/lib/widgets/pull_request_pane.dart",
       "evidence": [
+        "packages/app/test/pull_request_activity_state_test.dart",
         "packages/app/test/pull_request_pane_test.dart",
         "packages/app/test/goldens/workspace_pr_explorer.png"
       ],
-      "notes": "PR checks now fetch details with loading and metadata fallback, activity supports Add all while skipping resolved threads, and compact ghost actions are golden-covered; the full pane remains partial pending all forge and platform states."
+      "notes": "PR checks fetch details with loading and metadata fallback; activity supports Add all while skipping resolved threads and now uses the frozen PR-scoped collapse/expand state machine including nested defaults and restoration across PR switches. Compact ghost actions are golden-covered; the full pane remains partial pending exact activity action menus and remaining forge/platform states."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/query-keys.ts",

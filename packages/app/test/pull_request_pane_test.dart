@@ -5,6 +5,7 @@ import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/core/external_url_launcher.dart';
 import 'package:coding_agent_app/core/theme.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
+import 'package:coding_agent_app/state/pull_request_provider.dart';
 import 'package:coding_agent_app/state/workspace_attachments_provider.dart';
 import 'package:coding_agent_app/widgets/pull_request_pane.dart';
 import 'package:coding_agent_app/widgets/pull_request_section_kit.dart';
@@ -1224,6 +1225,34 @@ void main() {
     await _tapPullRequestTab(tester);
     await tester.pump(const Duration(milliseconds: 150));
     expect(find.text('Timeline is unavailable'), findsOneWidget);
+  });
+
+  testWidgets('scopes expanded activity state to the pull request number', (
+    tester,
+  ) async {
+    final client = _FakeDaemonClient(timelineMode: 'edge');
+    final container = await _pumpExplorer(tester, client);
+    await _tapPullRequestTab(tester);
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(find.text('This resolved thread must be skipped.'), findsNothing);
+    await tester.drag(find.byType(ListView).first, const Offset(0, -600));
+    await tester.pump();
+    await tester.ensureVisible(find.text('lib/resolved.dart:9'));
+    await tester.tap(find.text('lib/resolved.dart:9'));
+    await tester.pumpAndSettle();
+    expect(find.text('This resolved thread must be skipped.'), findsOneWidget);
+
+    client.changeRequestNumber = 43;
+    await container.read(pullRequestPaneProvider(_cwd).notifier).refresh();
+    await tester.pumpAndSettle();
+    expect(find.text('43'), findsOneWidget);
+    expect(find.text('This resolved thread must be skipped.'), findsNothing);
+
+    client.changeRequestNumber = 42;
+    await container.read(pullRequestPaneProvider(_cwd).notifier).refresh();
+    await tester.pumpAndSettle();
+    expect(find.text('This resolved thread must be skipped.'), findsOneWidget);
   });
 
   for (final variant in [
