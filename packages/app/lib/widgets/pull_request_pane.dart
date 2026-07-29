@@ -130,7 +130,7 @@ class _Toolbar extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   ForgeBrandIcon(
-                    iconKind: getForgePresentationOrNeutral(
+                    iconKind: getForgeDefinitionOrNeutral(
                       forge.toLowerCase(),
                     ).iconKind,
                     size: 12,

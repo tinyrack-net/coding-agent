@@ -1,9 +1,23 @@
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-/// Paseo 0.2.0's declarative presentation contract for a git forge.
-final class ForgePresentation {
-  const ForgePresentation({
+import 'forge_url.dart';
+
+final class ForgeSignInCommand {
+  const ForgeSignInCommand({
+    required this.cli,
+    required this.command,
+    this.hostnameFlag,
+  });
+
+  final String cli;
+  final String command;
+  final String? hostnameFlag;
+}
+
+/// Paseo 0.2.0's declarative manifest entry for a git forge.
+final class ForgeDefinition {
+  const ForgeDefinition({
     required this.id,
     required this.displayName,
     required this.changeRequestAbbrev,
@@ -12,6 +26,7 @@ final class ForgePresentation {
     required this.issueNumberPrefix,
     required this.iconKind,
     required this.cloudHosts,
+    required this.signIn,
     this.brandColor,
   });
 
@@ -23,11 +38,12 @@ final class ForgePresentation {
   final String issueNumberPrefix;
   final String iconKind;
   final List<String> cloudHosts;
+  final ForgeSignInCommand? signIn;
   final Color? brandColor;
 }
 
-const forgePresentations = <ForgePresentation>[
-  ForgePresentation(
+const forgeDefinitions = <ForgeDefinition>[
+  ForgeDefinition(
     id: 'github',
     displayName: 'GitHub',
     changeRequestAbbrev: 'PR',
@@ -36,8 +52,9 @@ const forgePresentations = <ForgePresentation>[
     issueNumberPrefix: '#',
     iconKind: 'github',
     cloudHosts: ['github.com', 'ssh.github.com'],
+    signIn: ForgeSignInCommand(cli: 'gh', command: 'gh auth login'),
   ),
-  ForgePresentation(
+  ForgeDefinition(
     id: 'gitlab',
     displayName: 'GitLab',
     changeRequestAbbrev: 'MR',
@@ -46,9 +63,14 @@ const forgePresentations = <ForgePresentation>[
     issueNumberPrefix: '#',
     iconKind: 'gitlab',
     cloudHosts: ['gitlab.com'],
+    signIn: ForgeSignInCommand(
+      cli: 'glab',
+      command: 'glab auth login',
+      hostnameFlag: '--hostname',
+    ),
     brandColor: Color(0xfffc6d26),
   ),
-  ForgePresentation(
+  ForgeDefinition(
     id: 'gitea',
     displayName: 'Gitea',
     changeRequestAbbrev: 'PR',
@@ -57,9 +79,10 @@ const forgePresentations = <ForgePresentation>[
     issueNumberPrefix: '#',
     iconKind: 'gitea',
     cloudHosts: ['gitea.com'],
+    signIn: ForgeSignInCommand(cli: 'tea', command: 'tea login add'),
     brandColor: Color(0xff609926),
   ),
-  ForgePresentation(
+  ForgeDefinition(
     id: 'forgejo',
     displayName: 'Forgejo',
     changeRequestAbbrev: 'PR',
@@ -68,9 +91,10 @@ const forgePresentations = <ForgePresentation>[
     issueNumberPrefix: '#',
     iconKind: 'forgejo',
     cloudHosts: [],
+    signIn: ForgeSignInCommand(cli: 'tea', command: 'tea login add'),
     brandColor: Color(0xfffb923c),
   ),
-  ForgePresentation(
+  ForgeDefinition(
     id: 'codeberg',
     displayName: 'Codeberg',
     changeRequestAbbrev: 'PR',
@@ -79,20 +103,21 @@ const forgePresentations = <ForgePresentation>[
     issueNumberPrefix: '#',
     iconKind: 'codeberg',
     cloudHosts: ['codeberg.org'],
+    signIn: ForgeSignInCommand(cli: 'tea', command: 'tea login add'),
     brandColor: Color(0xff2185d0),
   ),
 ];
 
-ForgePresentation? getForgePresentation(String id) {
-  for (final presentation in forgePresentations) {
-    if (presentation.id == id) return presentation;
+ForgeDefinition? getForgeDefinition(String id) {
+  for (final definition in forgeDefinitions) {
+    if (definition.id == id) return definition;
   }
   return null;
 }
 
-ForgePresentation getForgePresentationOrNeutral(String id) =>
-    getForgePresentation(id) ??
-    ForgePresentation(
+ForgeDefinition getForgeDefinitionOrNeutral(String id) =>
+    getForgeDefinition(id) ??
+    ForgeDefinition(
       id: id,
       displayName: id,
       changeRequestAbbrev: 'PR',
@@ -101,10 +126,107 @@ ForgePresentation getForgePresentationOrNeutral(String id) =>
       issueNumberPrefix: '#',
       iconKind: 'git',
       cloudHosts: const [],
+      signIn: null,
     );
 
 Color? getForgeBrandColor(String iconKind) =>
-    getForgePresentation(iconKind)?.brandColor;
+    getForgeDefinition(iconKind)?.brandColor;
+
+enum ForgeAuthState {
+  authenticated('authenticated'),
+  unauthenticated('unauthenticated'),
+  cliMissing('cli_missing'),
+  noRemote('no_remote'),
+  error('error');
+
+  const ForgeAuthState(this.wireName);
+
+  final String wireName;
+}
+
+ForgeAuthState? parseForgeAuthState(Object? value) {
+  for (final state in ForgeAuthState.values) {
+    if (state.wireName == value) return state;
+  }
+  return null;
+}
+
+String normalizeForge(String? raw) =>
+    raw != null && raw.isNotEmpty ? raw : 'github';
+
+String? forgeFromRemoteUrl(String? remoteUrl) {
+  if (remoteUrl == null || remoteUrl.isEmpty) return null;
+  final host = parseGitRemoteLocation(remoteUrl)?.host;
+  if (host == null) return null;
+  final normalized = normalizeGitRemoteHost(host);
+  for (final definition in forgeDefinitions) {
+    if (definition.cloudHosts
+        .map(normalizeGitRemoteHost)
+        .contains(normalized)) {
+      return definition.id;
+    }
+  }
+  return null;
+}
+
+final class ForgePresentation {
+  const ForgePresentation({
+    required this.forge,
+    required this.icon,
+    required this.brandLabel,
+    required this.changeRequestAbbrev,
+    required this.changeRequestNoun,
+    required this.numberPrefix,
+    required this.issueNumberPrefix,
+    required this.signInCli,
+    required this.changeRequestContext,
+    required this.buildBlobUrl,
+    required this.buildBranchTreeUrl,
+  });
+
+  final String forge;
+  final String icon;
+  final String brandLabel;
+  final String changeRequestAbbrev;
+  final String changeRequestNoun;
+  final String numberPrefix;
+  final String issueNumberPrefix;
+  final String? signInCli;
+  final String? changeRequestContext;
+  final String? Function(ForgeBlobUrlInput input)? buildBlobUrl;
+  final String? Function(ForgeBranchTreeUrlInput input)? buildBranchTreeUrl;
+}
+
+ForgePresentation getForgePresentation(String forge) {
+  final definition = getForgeDefinitionOrNeutral(forge);
+  final hasWebUrls = hasForgeWebUrls(definition.id);
+  return ForgePresentation(
+    forge: definition.id,
+    icon: definition.iconKind,
+    brandLabel: definition.displayName,
+    changeRequestAbbrev: definition.changeRequestAbbrev,
+    changeRequestNoun: definition.changeRequestNoun,
+    numberPrefix: definition.changeRequestNumberPrefix,
+    issueNumberPrefix: definition.issueNumberPrefix,
+    signInCli: definition.signIn?.cli,
+    changeRequestContext: definition.changeRequestAbbrev == 'MR' ? 'mr' : null,
+    buildBlobUrl: hasWebUrls
+        ? (input) => buildForgeBlobUrl(definition.id, input)
+        : null,
+    buildBranchTreeUrl: hasWebUrls
+        ? (input) => buildForgeBranchTreeUrl(definition.id, input)
+        : null,
+  );
+}
+
+String? buildForgeSignInCommand(String forge, String? host) {
+  final signIn = getForgeDefinitionOrNeutral(forge).signIn;
+  if (signIn == null) return null;
+  if (signIn.hostnameFlag != null && host != null) {
+    return '${signIn.command} ${signIn.hostnameFlag} $host';
+  }
+  return signIn.command;
+}
 
 /// Dedicated brand glyph with Paseo's generic pull-request fallback.
 class ForgeBrandIcon extends StatelessWidget {

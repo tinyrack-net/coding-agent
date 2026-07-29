@@ -38,8 +38,8 @@ final class _ForgeUrlGrammar {
   final String Function(int start, int? end) lineAnchor;
 }
 
-final class _GitRemoteLocation {
-  const _GitRemoteLocation({required this.host, required this.path});
+final class GitRemoteLocation {
+  const GitRemoteLocation({required this.host, required this.path});
 
   final String host;
   final String path;
@@ -116,25 +116,25 @@ String? buildForgeBlobUrl(String forge, ForgeBlobUrlInput input) {
 
 _ForgeWebLocation? _resolveForgeWebLocation(String forge, String? remoteUrl) {
   if (remoteUrl == null || remoteUrl.isEmpty) return null;
-  final location = _parseGitRemoteLocation(remoteUrl);
+  final location = parseGitRemoteLocation(remoteUrl);
   if (location == null || !_isValidRepoPath(location.path)) return null;
-  final cloudHosts = getForgePresentation(forge)?.cloudHosts ?? const [];
-  final normalizedCloudHosts = cloudHosts.map(_normalizeHost).toList();
+  final cloudHosts = getForgeDefinition(forge)?.cloudHosts ?? const [];
+  final normalizedCloudHosts = cloudHosts.map(normalizeGitRemoteHost).toList();
   final host = normalizedCloudHosts.contains(location.host)
       ? normalizedCloudHosts.first
       : location.host;
   return _ForgeWebLocation(host: host, repo: location.path);
 }
 
-_GitRemoteLocation? _parseGitRemoteLocation(String remoteUrl) {
+GitRemoteLocation? parseGitRemoteLocation(String remoteUrl) {
   final trimmed = remoteUrl.trim();
   if (trimmed.isEmpty) return null;
   final scpMatch = _scpRemotePattern.firstMatch(trimmed);
   if (scpMatch != null) {
-    final host = _normalizeHost(scpMatch.group(1) ?? '');
+    final host = normalizeGitRemoteHost(scpMatch.group(1) ?? '');
     final path = _normalizeRemotePath(scpMatch.group(2) ?? '');
     if (!_validHostPattern.hasMatch(host) || path == null) return null;
-    return _GitRemoteLocation(host: host, path: path);
+    return GitRemoteLocation(host: host, path: path);
   }
 
   final uri = Uri.tryParse(trimmed);
@@ -142,7 +142,7 @@ _GitRemoteLocation? _parseGitRemoteLocation(String remoteUrl) {
       !const {'https', 'http', 'ssh'}.contains(uri.scheme.toLowerCase())) {
     return null;
   }
-  final host = _normalizeHost(uri.host);
+  final host = normalizeGitRemoteHost(uri.host);
   String decodedPath;
   try {
     decodedPath = Uri.decodeComponent(uri.path);
@@ -151,10 +151,10 @@ _GitRemoteLocation? _parseGitRemoteLocation(String remoteUrl) {
   }
   final path = _normalizeRemotePath(decodedPath);
   if (!_validHostPattern.hasMatch(host) || path == null) return null;
-  return _GitRemoteLocation(host: host, path: path);
+  return GitRemoteLocation(host: host, path: path);
 }
 
-String _normalizeHost(String host) =>
+String normalizeGitRemoteHost(String host) =>
     host.trim().replaceFirst(RegExp(r'\.+$'), '').toLowerCase();
 
 String? _normalizeRemotePath(String path) {

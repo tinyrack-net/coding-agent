@@ -122,7 +122,7 @@ WorkspaceContextAttachment? buildPullRequestActivityAttachment({
   if (!canAddPullRequestActivityToChat(activity)) return null;
   final number = status.number?.toInt();
   if (number == null) return null;
-  final forge = getForgePresentationOrNeutral(status.forge.toLowerCase());
+  final forge = getForgeDefinitionOrNeutral(status.forge.toLowerCase());
   final isReview = activity is PullRequestTimelineReview;
   final kind = isReview
       ? 'forge.change_request_review'
@@ -161,7 +161,7 @@ WorkspaceContextAttachment? buildPullRequestThreadAttachment({
       .toList(growable: false);
   if (number == null || comments.isEmpty) return null;
   final root = comments.first;
-  final forge = getForgePresentationOrNeutral(status.forge.toLowerCase());
+  final forge = getForgeDefinitionOrNeutral(status.forge.toLowerCase());
   final noun = _capitalize(forge.changeRequestNoun);
   final title = thread.location == null
       ? 'Discussion thread'
@@ -208,7 +208,7 @@ WorkspaceContextAttachment buildPullRequestCheckAttachment({
   if (number == null) {
     throw ArgumentError.value(status.number, 'status.number');
   }
-  final forge = getForgePresentationOrNeutral(status.forge.toLowerCase());
+  final forge = getForgeDefinitionOrNeutral(status.forge.toLowerCase());
   final noun = _capitalize(forge.changeRequestNoun);
   final lines = [
     '${forge.displayName} ${forge.changeRequestNoun} check',

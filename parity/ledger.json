@@ -4992,10 +4992,15 @@
     },
     {
       "id": "source-unit:packages/app/src/git/forge.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge.dart; packages/app/lib/core/forge_url.dart; packages/app/lib/core/pull_request_context.dart; packages/app/lib/widgets/pull_request_pane.dart",
+      "evidence": [
+        "packages/app/test/forge_test.dart",
+        "packages/app/test/forge_url_test.dart",
+        "packages/app/test/pull_request_context_test.dart",
+        "packages/app/test/pull_request_pane_test.dart"
+      ],
+      "notes": "Ports the complete frozen forge-neutral integration facade: absent-only GitHub normalization, exact auth-state parsing, exact-cloud-host remote detection without self-hosted substring guessing, manifest-driven PR/MR vocabulary and icon data, known-grammar URL builder capabilities, neutral unknown-forge degradation, and per-forge sign-in command construction including self-hosted GitLab hostname targeting."
     },
     {
       "id": "source-unit:packages/app/src/git/forges/codeberg.ts",
