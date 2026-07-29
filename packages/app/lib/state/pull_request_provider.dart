@@ -118,6 +118,39 @@ class PullRequestPaneNotifier extends AsyncNotifier<PullRequestPaneData> {
       return null;
     }
   }
+
+  Future<CheckoutPipeline?> loadGitlabPipeline(
+    CheckoutPrStatus status,
+    num pipelineId,
+  ) async {
+    if (!pipelineId.isFinite ||
+        pipelineId <= 0 ||
+        pipelineId.toInt() != pipelineId) {
+      throw ArgumentError.value(
+        pipelineId,
+        'pipelineId',
+        'must be a positive integer',
+      );
+    }
+    final request = CheckoutForgeGetCheckDetailsRequest(
+      type: CheckoutForgeGetCheckDetailsRequest.modernType,
+      cwd: cwd,
+      checkRunId: pipelineId.toInt(),
+      changeRequestNumber: status.number?.toInt(),
+      requestId: _uuid.v4(),
+    );
+    final response = CheckoutForgeGetCheckDetailsResponse.fromJson(
+      await ref
+          .read(daemonClientProvider)
+          .requestSessionMessage(request.toJson()),
+    );
+    if (!response.success) {
+      throw StateError(
+        response.error?.message ?? 'Could not load pipeline jobs',
+      );
+    }
+    return response.details?.pipeline;
+  }
 }
 
 final pullRequestPaneProvider =

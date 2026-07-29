@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -8,6 +10,7 @@ import '../core/forge.dart';
 import '../core/forge_logic.dart';
 import '../core/pull_request_context.dart';
 import '../core/theme.dart';
+import '../state/daemon_providers.dart';
 import '../state/pull_request_provider.dart';
 import '../state/workspace_attachments_provider.dart';
 import 'fluent/toast.dart';
@@ -28,6 +31,12 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(pullRequestPaneProvider(widget.cwd));
+    final daemonFeatures =
+        ref.watch(daemonClientProvider).serverInfo?.features ??
+        const <String, bool>{};
+    final forgeProvidersEnabled = daemonFeatures['forgeProviders'] == true;
+    final canFetchForgeCheckDetails =
+        daemonFeatures['forgeCheckDetails'] == true;
     return ColoredBox(
       color: FluentTheme.of(context).scaffoldBackgroundColor,
       child: async.when(
@@ -45,6 +54,10 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
             );
           }
           final checks = resolvePullRequestChecks(status);
+          final gitlabFacts = GitlabMergeFacts.parse(status.forgeSpecific);
+          final gitlabPipeline = gitlabFacts == null
+              ? null
+              : deriveGitlabPipelineSummary(gitlabFacts);
           return Column(
             children: [
               _Toolbar(
@@ -59,19 +72,34 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
                 child: ListView(
                   children: [
                     _PullRequestHeader(status: status),
-                    _SectionHeader(
-                      title: 'Checks',
-                      open: _checksOpen,
-                      summary: _CheckSummary(checks: checks),
-                      onPressed: () =>
-                          setState(() => _checksOpen = !_checksOpen),
-                    ),
-                    if (_checksOpen)
-                      _ChecksSection(
+                    if (gitlabPipeline != null && forgeProvidersEnabled)
+                      _GitLabPipelineSection(
+                        key: ValueKey(
+                          'gitlab-pipeline-${status.number}-${gitlabPipeline.id}',
+                        ),
                         cwd: widget.cwd,
                         status: status,
-                        checks: checks,
+                        summary: gitlabPipeline,
+                        canFetchCheckDetails: canFetchForgeCheckDetails,
+                        open: _checksOpen,
+                        onToggle: () =>
+                            setState(() => _checksOpen = !_checksOpen),
+                      )
+                    else ...[
+                      _SectionHeader(
+                        title: 'Checks',
+                        open: _checksOpen,
+                        summary: _CheckSummary(checks: checks),
+                        onPressed: () =>
+                            setState(() => _checksOpen = !_checksOpen),
                       ),
+                      if (_checksOpen)
+                        _ChecksSection(
+                          cwd: widget.cwd,
+                          status: status,
+                          checks: checks,
+                        ),
+                    ],
                     const Divider(),
                     _SectionHeader(
                       title: 'Activity',
@@ -337,6 +365,7 @@ class _CheckSummary extends StatelessWidget {
 
 class _SummaryPill extends StatelessWidget {
   const _SummaryPill({
+    super.key,
     required this.icon,
     required this.count,
     required this.color,
@@ -361,6 +390,387 @@ class _SummaryPill extends StatelessWidget {
           const SizedBox(width: 3),
           Text('$count', style: TextStyle(fontSize: 10, color: color)),
         ],
+      ),
+    );
+  }
+}
+
+class _GitLabPipelineSection extends ConsumerStatefulWidget {
+  const _GitLabPipelineSection({
+    super.key,
+    required this.cwd,
+    required this.status,
+    required this.summary,
+    required this.canFetchCheckDetails,
+    required this.open,
+    required this.onToggle,
+  });
+
+  final String cwd;
+  final CheckoutPrStatus status;
+  final GitlabPipelineSummary summary;
+  final bool canFetchCheckDetails;
+  final bool open;
+  final VoidCallback onToggle;
+
+  @override
+  ConsumerState<_GitLabPipelineSection> createState() =>
+      _GitLabPipelineSectionState();
+}
+
+class _GitLabPipelineSectionState
+    extends ConsumerState<_GitLabPipelineSection> {
+  static const _liveRefetchInterval = Duration(seconds: 15);
+
+  CheckoutPipeline? _pipeline;
+  Object? _error;
+  var _loading = false;
+  Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.open && widget.canFetchCheckDetails) unawaited(_fetch());
+  }
+
+  @override
+  void didUpdateWidget(covariant _GitLabPipelineSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final identityChanged =
+        oldWidget.cwd != widget.cwd ||
+        oldWidget.status.number != widget.status.number ||
+        oldWidget.summary.id != widget.summary.id;
+    if (identityChanged) {
+      _pollTimer?.cancel();
+      _pipeline = null;
+      _error = null;
+      _loading = false;
+      if (widget.open && widget.canFetchCheckDetails) unawaited(_fetch());
+      return;
+    }
+    if (!oldWidget.canFetchCheckDetails && widget.canFetchCheckDetails) {
+      if (widget.open) unawaited(_fetch());
+    } else if (oldWidget.canFetchCheckDetails && !widget.canFetchCheckDetails) {
+      _pollTimer?.cancel();
+    }
+    if (oldWidget.open != widget.open) {
+      if (widget.open && widget.canFetchCheckDetails) {
+        unawaited(_fetch());
+      } else {
+        _pollTimer?.cancel();
+      }
+    }
+    if (oldWidget.summary.rawStatus != widget.summary.rawStatus) {
+      _schedulePoll();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetch() async {
+    if (_loading || !widget.open || !widget.canFetchCheckDetails) return;
+    setState(() => _loading = true);
+    try {
+      final pipeline = await ref
+          .read(pullRequestPaneProvider(widget.cwd).notifier)
+          .loadGitlabPipeline(widget.status, widget.summary.id);
+      if (!mounted) return;
+      setState(() {
+        _pipeline = pipeline;
+        _error = null;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error;
+        _loading = false;
+      });
+    } finally {
+      if (mounted) _schedulePoll();
+    }
+  }
+
+  void _schedulePoll() {
+    _pollTimer?.cancel();
+    if (!widget.open ||
+        !widget.canFetchCheckDetails ||
+        !isGitlabPipelineActiveStatus(widget.summary.rawStatus)) {
+      return;
+    }
+    _pollTimer = Timer(_liveRefetchInterval, () => unawaited(_fetch()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pipeline = _pipeline;
+    final counts = countGitlabPipelineJobs(
+      pipeline?.stages ?? const <CheckoutPipelineStage>[],
+    );
+    final showBreakdown = pipeline != null && counts.total > 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionHeader(
+          title: 'Pipeline',
+          open: widget.open,
+          summary: showBreakdown
+              ? Wrap(
+                  spacing: 8,
+                  children: [
+                    if (counts.passed > 0)
+                      _SummaryPill(
+                        key: const ValueKey('pr-pane-pipeline-passed'),
+                        icon: FluentIcons.completed_solid,
+                        count: counts.passed,
+                        color: context.statusColors.success,
+                      ),
+                    if (counts.failed > 0)
+                      _SummaryPill(
+                        key: const ValueKey('pr-pane-pipeline-failed'),
+                        icon: FluentIcons.error_badge,
+                        count: counts.failed,
+                        color: context.statusColors.danger,
+                      ),
+                    if (counts.pending > 0)
+                      _SummaryPill(
+                        key: const ValueKey('pr-pane-pipeline-pending'),
+                        icon: FluentIcons.clock,
+                        count: counts.pending,
+                        color: context.statusColors.warning,
+                      ),
+                  ],
+                )
+              : _PipelineStatusIcon(status: widget.summary.status),
+          onPressed: widget.onToggle,
+        ),
+        if (widget.open) ...[
+          _PipelineLinkRow(
+            summary: widget.summary,
+            onOpen: widget.summary.url == null
+                ? null
+                : () => _openExternalUrl(context, ref, widget.summary.url!),
+          ),
+          if (_loading && pipeline == null)
+            const _PipelineMessage('Loading pipeline…')
+          else if (pipeline != null && pipeline.stages.isEmpty)
+            const _PipelineMessage('No jobs')
+          else if (pipeline != null)
+            for (final stage in pipeline.stages)
+              _PipelineStageGroup(stage: stage)
+          else if (_error != null)
+            const _PipelineMessage('Could not load pipeline jobs'),
+          const SizedBox(height: 12),
+        ],
+      ],
+    );
+  }
+}
+
+class _PipelineStatusIcon extends StatelessWidget {
+  const _PipelineStatusIcon({required this.status});
+
+  final ForgeCheckStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, color) = switch (status) {
+      ForgeCheckStatus.success => (
+        FluentIcons.completed_solid,
+        context.statusColors.success,
+      ),
+      ForgeCheckStatus.failure => (
+        FluentIcons.error_badge,
+        context.statusColors.danger,
+      ),
+      ForgeCheckStatus.pending => (
+        FluentIcons.clock,
+        context.statusColors.warning,
+      ),
+      ForgeCheckStatus.skipped => (
+        FluentIcons.blocked2,
+        context.tokens.onSurfaceVariant,
+      ),
+    };
+    return Icon(icon, size: 14, color: color);
+  }
+}
+
+class _PipelineLinkRow extends StatelessWidget {
+  const _PipelineLinkRow({required this.summary, required this.onOpen});
+
+  final GitlabPipelineSummary summary;
+  final VoidCallback? onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return HoverButton(
+      key: const ValueKey('pr-pane-pipeline-link'),
+      onPressed: onOpen,
+      builder: (context, states) => Container(
+        constraints: const BoxConstraints(minHeight: 32),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        color: states.contains(WidgetState.hovered)
+            ? context.tokens.surfaceContainerHighest
+            : Colors.transparent,
+        child: Row(
+          children: [
+            _PipelineStatusIcon(status: summary.status),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                'Pipeline #${summary.id}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+            if (summary.rawStatus.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  summary.rawStatus,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: context.tokens.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+            if (summary.url != null) ...[
+              const Spacer(),
+              Icon(
+                FluentIcons.open_in_new_window,
+                size: 12,
+                color: context.tokens.onSurfaceVariant,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PipelineStageGroup extends StatelessWidget {
+  const _PipelineStageGroup({required this.stage});
+
+  final CheckoutPipelineStage stage;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: Row(
+            children: [
+              _PipelineStatusIcon(
+                status: mapGitlabPipelineStatus(stage.status),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  stage.name.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: .5,
+                    color: context.tokens.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        for (final job in stage.jobs)
+          _PipelineJobRow(key: ValueKey('pipeline-job-${job.id}'), job: job),
+      ],
+    );
+  }
+}
+
+class _PipelineJobRow extends ConsumerWidget {
+  const _PipelineJobRow({super.key, required this.job});
+
+  final CheckoutPipelineJob job;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final duration = formatGitlabPipelineDuration(job.durationSeconds);
+    return HoverButton(
+      onPressed: job.url == null
+          ? null
+          : () => _openExternalUrl(context, ref, job.url!),
+      builder: (context, states) => Container(
+        constraints: const BoxConstraints(minHeight: 32),
+        padding: const EdgeInsets.fromLTRB(24, 6, 12, 6),
+        color: states.contains(WidgetState.hovered)
+            ? context.tokens.surfaceContainerHighest
+            : Colors.transparent,
+        child: Row(
+          children: [
+            _PipelineStatusIcon(status: mapGitlabPipelineStatus(job.status)),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                job.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+            if (job.allowFailure) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  'allowed to fail',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: context.tokens.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+            if (duration.isNotEmpty) ...[
+              const Spacer(),
+              Text(
+                duration,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: context.tokens.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PipelineMessage extends StatelessWidget {
+  const _PipelineMessage(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Text(
+        message,
+        style: TextStyle(fontSize: 10, color: context.tokens.onSurfaceVariant),
       ),
     );
   }

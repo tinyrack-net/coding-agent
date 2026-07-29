@@ -5092,13 +5092,16 @@
     },
     {
       "id": "source-unit:packages/app/src/git/forges/gitlab.view.tsx",
-      "status": "partial",
-      "implementation": "packages/app/lib/core/forge.dart; packages/app/lib/widgets/pull_request_pane.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge.dart; packages/app/lib/core/forge_logic.dart; packages/app/lib/state/pull_request_provider.dart; packages/app/lib/widgets/pull_request_pane.dart; packages/daemon/lib/src/server/ws_server.dart",
       "evidence": [
         "packages/app/test/forge_test.dart",
-        "packages/app/test/pull_request_pane_test.dart"
+        "packages/app/test/gitlab_forge_logic_test.dart",
+        "packages/app/test/pull_request_pane_test.dart",
+        "packages/app/test/goldens/workspace_gitlab_pipeline_explorer.png",
+        "packages/daemon/test/ws_server_test.dart"
       ],
-      "notes": "GitLab brand presentation and approvals progress in the PR header are implemented. Pipeline section, job rows, and live polling remain."
+      "notes": "Ports the frozen GitLab view contribution: brand presentation, approvals badge, capability-gated Pipeline replacement for Checks, summary counts, status fallback, pipeline link, loading/empty/error states, stage and job rows, allow-failure and compact duration metadata, external links, and 15-second polling only while an active pipeline section is open. The daemon advertises the matching forgeProviders and forgeCheckDetails features."
     },
     {
       "id": "source-unit:packages/app/src/git/forges/index.ts",
@@ -5308,11 +5311,12 @@
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/use-pipeline.ts",
       "status": "partial",
-      "implementation": "packages/app/lib/state/pull_request_provider.dart",
+      "implementation": "packages/app/lib/state/pull_request_provider.dart; packages/app/lib/widgets/pull_request_pane.dart; packages/daemon/lib/src/server/ws_server.dart",
       "evidence": [
-        "packages/app/test/pull_request_pane_test.dart"
+        "packages/app/test/pull_request_pane_test.dart",
+        "packages/daemon/test/ws_server_test.dart"
       ],
-      "notes": "Core Windows explorer and PR checks/activity flow implemented; advanced attachment, entry grouping, and forge-specific polish remain."
+      "notes": "Capability-gated neutral RPC fetch, request identity, first-load/error state, 15-second active polling, open/closed lifecycle, and no finished-pipeline polling are implemented. TanStack-equivalent 24-hour finished cache and keep-previous-data behavior across pipeline identity changes remain."
     },
     {
       "id": "source-unit:packages/app/src/git/query-keys.ts",

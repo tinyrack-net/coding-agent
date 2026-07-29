@@ -1,3 +1,4 @@
+import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/forge_logic.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -214,6 +215,75 @@ void main() {
         deriveForgeMergeCapability({..._facts(), 'approvalsRequired': 'two'}),
         isNull,
       );
+    });
+  });
+
+  group('GitLab pipeline view derivations', () {
+    test('counts mapped jobs and excludes skipped jobs', () {
+      final counts = countGitlabPipelineJobs([
+        const CheckoutPipelineStage(
+          name: 'test',
+          status: 'running',
+          jobs: [
+            CheckoutPipelineJob(
+              id: 1,
+              name: 'passed',
+              stage: 'test',
+              status: 'success',
+              rawStatus: 'success',
+              url: null,
+              allowFailure: false,
+              durationSeconds: 1,
+            ),
+            CheckoutPipelineJob(
+              id: 2,
+              name: 'failed',
+              stage: 'test',
+              status: 'failed',
+              rawStatus: 'failed',
+              url: null,
+              allowFailure: false,
+              durationSeconds: null,
+            ),
+            CheckoutPipelineJob(
+              id: 3,
+              name: 'pending',
+              stage: 'test',
+              status: 'future_status',
+              rawStatus: 'future_status',
+              url: null,
+              allowFailure: false,
+              durationSeconds: null,
+            ),
+            CheckoutPipelineJob(
+              id: 4,
+              name: 'skipped',
+              stage: 'test',
+              status: 'skipped',
+              rawStatus: 'skipped',
+              url: null,
+              allowFailure: false,
+              durationSeconds: null,
+            ),
+          ],
+        ),
+      ]);
+
+      expect(counts.passed, 1);
+      expect(counts.failed, 1);
+      expect(counts.pending, 1);
+      expect(counts.total, 3);
+    });
+
+    test('formats positive durations with Paseo compact rules', () {
+      expect(formatGitlabPipelineDuration(null), '');
+      expect(formatGitlabPipelineDuration(0), '');
+      expect(formatGitlabPipelineDuration(double.infinity), '');
+      expect(formatGitlabPipelineDuration(47.9), '47s');
+      expect(formatGitlabPipelineDuration(60), '1m');
+      expect(formatGitlabPipelineDuration(132), '2m 12s');
+      expect(formatGitlabPipelineDuration(3600), '1h');
+      expect(formatGitlabPipelineDuration(3900), '1h 5m');
     });
   });
 }

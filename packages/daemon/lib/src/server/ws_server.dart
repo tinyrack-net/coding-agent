@@ -484,6 +484,8 @@ class WsServer {
       'workspaceFileEditing': true,
       'workspaceRecovery': true,
       'workspaceScriptManagement': true,
+      'forgeProviders': true,
+      'forgeCheckDetails': true,
     },
   ).toJson();
 

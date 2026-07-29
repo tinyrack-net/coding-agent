@@ -33,9 +33,24 @@ class _FakeDaemonClient extends DaemonClient {
     this.forge = 'github',
     this.timelineMode = 'default',
     this.fileMode = 'default',
+    this.pipelineMode = 'populated',
+    this.pipelineStatus = 'running',
+    this.forgeProvidersEnabled = true,
+    this.forgeCheckDetailsEnabled = true,
     this.checkDetailsSuccess = true,
     this.checkDetailsGate,
-  }) : super(uri: Uri.parse('ws://fake'));
+  }) : super(uri: Uri.parse('ws://fake')) {
+    serverInfo = ServerInfoStatus(
+      serverId: 'test-host',
+      hostname: 'test-host',
+      version: '0.2.0',
+      desktopManaged: true,
+      features: {
+        'forgeProviders': forgeProvidersEnabled,
+        'forgeCheckDetails': forgeCheckDetailsEnabled,
+      },
+    );
+  }
 
   final bool hasPullRequest;
   final String statusState;
@@ -44,6 +59,10 @@ class _FakeDaemonClient extends DaemonClient {
   final String forge;
   final String timelineMode;
   final String fileMode;
+  final String pipelineMode;
+  final String pipelineStatus;
+  final bool forgeProvidersEnabled;
+  final bool forgeCheckDetailsEnabled;
   final bool checkDetailsSuccess;
   final Completer<void>? checkDetailsGate;
   final nativeRequests = <Map<String, Object?>>[];
@@ -74,43 +93,111 @@ class _FakeDaemonClient extends DaemonClient {
     nativeRequests.add(message);
     if (message['type'] == CheckoutForgeGetCheckDetailsRequest.modernType) {
       await checkDetailsGate?.future;
+      final isGitlabPipeline =
+          forge == 'gitlab' && message['checkRunId'] == 306;
       return CheckoutForgeGetCheckDetailsResponse(
         type: CheckoutForgeGetCheckDetailsResponse.modernType,
         cwd: _cwd,
         success: checkDetailsSuccess,
         details: checkDetailsSuccess
-            ? const CheckoutCheckDetails(
-                checkRunId: 99,
-                workflowRunId: 12,
-                name: 'Lint',
-                status: 'completed',
-                conclusion: 'failure',
-                url: 'https://api.example.test/check/99',
-                detailsUrl: 'https://example.test/check/99/details',
-                output: {
-                  'title': 'Lint failed',
-                  'summary': 'One error',
-                  'text': 'Analyze this output.',
-                },
-                annotations: [
-                  CheckoutCheckAnnotation(
-                    path: 'lib/pane.dart',
-                    startLine: 18,
-                    endLine: 18,
-                    annotationLevel: 'failure',
-                    message: 'Avoid nested controls',
-                  ),
-                ],
-                failedJobs: [
-                  CheckoutCheckFailedJob(
-                    jobId: 7,
-                    name: 'lint',
-                    conclusion: 'failure',
-                    logTail: 'error: nested control',
-                  ),
-                ],
-                truncated: false,
-              )
+            ? isGitlabPipeline
+                  ? CheckoutCheckDetails(
+                      checkRunId: 306,
+                      name: 'Pipeline #306',
+                      annotations: const [],
+                      failedJobs: const [],
+                      truncated: false,
+                      pipeline: CheckoutPipeline(
+                        id: 306,
+                        status: 'running',
+                        rawStatus: 'running',
+                        url: 'https://gitlab.example/pipelines/306',
+                        ref: 'pr-pane',
+                        sha: 'abc123',
+                        stages: pipelineMode == 'empty'
+                            ? const []
+                            : const [
+                                CheckoutPipelineStage(
+                                  name: 'verify',
+                                  status: 'failed',
+                                  jobs: [
+                                    CheckoutPipelineJob(
+                                      id: 501,
+                                      name: 'analyze',
+                                      stage: 'verify',
+                                      status: 'success',
+                                      rawStatus: 'success',
+                                      url: 'https://gitlab.example/jobs/501',
+                                      allowFailure: false,
+                                      durationSeconds: 72,
+                                    ),
+                                    CheckoutPipelineJob(
+                                      id: 502,
+                                      name: 'windows',
+                                      stage: 'verify',
+                                      status: 'failed',
+                                      rawStatus: 'failed',
+                                      url: 'https://gitlab.example/jobs/502',
+                                      allowFailure: true,
+                                      durationSeconds: null,
+                                    ),
+                                    CheckoutPipelineJob(
+                                      id: 503,
+                                      name: 'mobile',
+                                      stage: 'verify',
+                                      status: 'running',
+                                      rawStatus: 'running',
+                                      url: null,
+                                      allowFailure: false,
+                                      durationSeconds: 5,
+                                    ),
+                                    CheckoutPipelineJob(
+                                      id: 504,
+                                      name: 'web',
+                                      stage: 'verify',
+                                      status: 'skipped',
+                                      rawStatus: 'skipped',
+                                      url: null,
+                                      allowFailure: false,
+                                      durationSeconds: null,
+                                    ),
+                                  ],
+                                ),
+                              ],
+                      ),
+                    )
+                  : const CheckoutCheckDetails(
+                      checkRunId: 99,
+                      workflowRunId: 12,
+                      name: 'Lint',
+                      status: 'completed',
+                      conclusion: 'failure',
+                      url: 'https://api.example.test/check/99',
+                      detailsUrl: 'https://example.test/check/99/details',
+                      output: {
+                        'title': 'Lint failed',
+                        'summary': 'One error',
+                        'text': 'Analyze this output.',
+                      },
+                      annotations: [
+                        CheckoutCheckAnnotation(
+                          path: 'lib/pane.dart',
+                          startLine: 18,
+                          endLine: 18,
+                          annotationLevel: 'failure',
+                          message: 'Avoid nested controls',
+                        ),
+                      ],
+                      failedJobs: [
+                        CheckoutCheckFailedJob(
+                          jobId: 7,
+                          name: 'lint',
+                          conclusion: 'failure',
+                          logTail: 'error: nested control',
+                        ),
+                      ],
+                      truncated: false,
+                    )
             : null,
         error: checkDetailsSuccess
             ? null
@@ -172,14 +259,14 @@ class _FakeDaemonClient extends DaemonClient {
                     'hasMerged': false,
                     'ciStatus': 'warning',
                   },
-                  'gitlab' => const {
+                  'gitlab' => {
                     'forge': 'gitlab',
                     'detailedMergeStatus': 'mergeable',
                     'hasConflicts': false,
                     'blockingDiscussionsResolved': true,
                     'approvalsRequired': 2,
                     'approvalsGiven': 1,
-                    'pipelineStatus': 'running',
+                    'pipelineStatus': pipelineStatus,
                     'pipelineId': 306,
                     'pipelineUrl': 'https://gitlab.example/pipelines/306',
                     'mergeWhenPipelineSucceeds': false,
@@ -454,6 +541,176 @@ void main() {
       find.byKey(const ValueKey('pr-pane-approvals-icon')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('renders and opens the complete GitLab pipeline tree', (
+    tester,
+  ) async {
+    final client = _FakeDaemonClient(forge: 'gitlab');
+    final launcher = _FakeExternalUrlLauncher();
+    await _pumpExplorer(tester, client, launcher: launcher);
+
+    await tester.tap(find.text('#42'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pipeline'), findsOneWidget);
+    expect(find.text('Checks'), findsNothing);
+    expect(find.text('Pipeline #306'), findsOneWidget);
+    expect(find.text('running'), findsOneWidget);
+    expect(find.text('VERIFY'), findsOneWidget);
+    expect(find.text('analyze'), findsOneWidget);
+    expect(find.text('windows'), findsOneWidget);
+    expect(find.text('mobile'), findsOneWidget);
+    expect(find.text('web'), findsOneWidget);
+    expect(find.text('allowed to fail'), findsOneWidget);
+    expect(find.text('1m 12s'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('pr-pane-pipeline-passed')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('pr-pane-pipeline-failed')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('pr-pane-pipeline-pending')),
+      findsOneWidget,
+    );
+
+    final request = client.nativeRequests.lastWhere(
+      (request) =>
+          request['type'] == CheckoutForgeGetCheckDetailsRequest.modernType &&
+          request['checkRunId'] == 306,
+    );
+    expect(request['cwd'], _cwd);
+    expect(request['changeRequestNumber'], 42);
+    expect(request.containsKey('repoOwner'), isFalse);
+    expect(request.containsKey('repoName'), isFalse);
+
+    await tester.tap(find.byKey(const ValueKey('pr-pane-pipeline-link')));
+    await tester.tap(find.text('analyze'));
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(launcher.opened, [
+      'https://gitlab.example/pipelines/306',
+      'https://gitlab.example/jobs/501',
+    ]);
+  });
+
+  testWidgets('polls only an open live GitLab pipeline', (tester) async {
+    final client = _FakeDaemonClient(forge: 'gitlab');
+    await _pumpExplorer(tester, client);
+    await tester.tap(find.text('#42'));
+    await tester.pumpAndSettle();
+
+    int pipelineRequests() => client.nativeRequests
+        .where(
+          (request) =>
+              request['type'] ==
+                  CheckoutForgeGetCheckDetailsRequest.modernType &&
+              request['checkRunId'] == 306,
+        )
+        .length;
+
+    expect(pipelineRequests(), 1);
+    await tester.pump(const Duration(seconds: 15));
+    await tester.pump();
+    expect(pipelineRequests(), 2);
+
+    await tester.tap(find.text('Pipeline'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 15));
+    await tester.pump();
+    expect(pipelineRequests(), 2);
+  });
+
+  testWidgets('does not poll a finished GitLab pipeline', (tester) async {
+    final client = _FakeDaemonClient(
+      forge: 'gitlab',
+      pipelineStatus: 'success',
+    );
+    await _pumpExplorer(tester, client);
+    await tester.tap(find.text('#42'));
+    await tester.pumpAndSettle();
+
+    int pipelineRequests() => client.nativeRequests
+        .where(
+          (request) =>
+              request['type'] ==
+                  CheckoutForgeGetCheckDetailsRequest.modernType &&
+              request['checkRunId'] == 306,
+        )
+        .length;
+
+    expect(pipelineRequests(), 1);
+    await tester.pump(const Duration(seconds: 15));
+    await tester.pump();
+    expect(pipelineRequests(), 1);
+  });
+
+  testWidgets('honors GitLab forge feature capability gates', (tester) async {
+    final providersDisabled = _FakeDaemonClient(
+      forge: 'gitlab',
+      forgeProvidersEnabled: false,
+    );
+    await _pumpExplorer(tester, providersDisabled);
+    await tester.tap(find.text('#42'));
+    await tester.pumpAndSettle();
+    expect(find.text('Checks'), findsOneWidget);
+    expect(find.text('Pipeline'), findsNothing);
+
+    final detailsDisabled = _FakeDaemonClient(
+      forge: 'gitlab',
+      forgeCheckDetailsEnabled: false,
+    );
+    await _pumpExplorer(tester, detailsDisabled);
+    await tester.tap(find.text('#42'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pipeline'), findsOneWidget);
+    expect(find.text('Pipeline #306'), findsOneWidget);
+    expect(find.text('analyze'), findsNothing);
+    expect(
+      detailsDisabled.nativeRequests.where(
+        (request) =>
+            request['type'] == CheckoutForgeGetCheckDetailsRequest.modernType,
+      ),
+      isEmpty,
+    );
+  });
+
+  testWidgets('shows GitLab pipeline loading before the first response', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    final client = _FakeDaemonClient(forge: 'gitlab', checkDetailsGate: gate);
+    await _pumpExplorer(tester, client);
+    await tester.tap(find.text('#42'));
+    await tester.pump();
+
+    expect(find.text('Loading pipeline…'), findsOneWidget);
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Loading pipeline…'), findsNothing);
+    expect(find.text('analyze'), findsOneWidget);
+  });
+
+  testWidgets('renders GitLab pipeline empty and failure states', (
+    tester,
+  ) async {
+    await _pumpExplorer(
+      tester,
+      _FakeDaemonClient(forge: 'gitlab', pipelineMode: 'empty'),
+    );
+    await tester.tap(find.text('#42'));
+    await tester.pumpAndSettle();
+    expect(find.text('No jobs'), findsOneWidget);
+
+    await _pumpExplorer(
+      tester,
+      _FakeDaemonClient(forge: 'gitlab', checkDetailsSuccess: false),
+    );
+    await tester.tap(find.text('#42'));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not load pipeline jobs'), findsOneWidget);
   });
 
   testWidgets('section headers collapse and refresh reloads native data', (
@@ -795,6 +1052,24 @@ void main() {
     await expectLater(
       find.byType(WorkspaceExplorer),
       matchesGoldenFile('goldens/workspace_pr_explorer.png'),
+    );
+  });
+
+  testWidgets('GitLab pipeline matches the frozen Windows golden', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(380, 700);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await _pumpExplorer(tester, _FakeDaemonClient(forge: 'gitlab'));
+    await tester.tap(find.text('#42'));
+    await tester.pumpAndSettle();
+
+    await expectLater(
+      find.byType(WorkspaceExplorer),
+      matchesGoldenFile('goldens/workspace_gitlab_pipeline_explorer.png'),
     );
   });
 }

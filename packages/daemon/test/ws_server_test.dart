@@ -150,13 +150,16 @@ void main() {
         serverInfo['features'],
         containsPair('importSessionWorkspaceTarget', true),
       );
+      expect(serverInfo['features'], containsPair('forgeProviders', true));
+      expect(serverInfo['features'], containsPair('forgeCheckDetails', true));
 
-      server.broadcast(const RpcEvent(type: 'agent.state', payload: {'id': 1}));
-      final event = await frames.firstWhere(
+      final eventFuture = frames.firstWhere(
         (frame) =>
             frame['type'] == 'session' &&
             (frame['message'] as Map<String, Object?>)['type'] == 'agent.state',
       );
+      server.broadcast(const RpcEvent(type: 'agent.state', payload: {'id': 1}));
+      final event = await eventFuture;
       expect((event['message'] as Map<String, Object?>)['payload'], {'id': 1});
 
       channel.sink.add(
@@ -192,6 +195,12 @@ void main() {
       );
       expect(server.connectionById(nativeConnectionId!)?.appVersion, '0.2.0');
 
+      final broadcastFuture = frames.firstWhere(
+        (frame) =>
+            frame['type'] == 'session' &&
+            (frame['message'] as Map<String, Object?>)['type'] ==
+                'workspace_update',
+      );
       server.broadcastV2(
         const {
           'type': 'workspace_update',
@@ -199,12 +208,7 @@ void main() {
         },
         connectionIds: {nativeConnectionId!},
       );
-      final broadcast = await frames.firstWhere(
-        (frame) =>
-            frame['type'] == 'session' &&
-            (frame['message'] as Map<String, Object?>)['type'] ==
-                'workspace_update',
-      );
+      final broadcast = await broadcastFuture;
       expect((broadcast['message'] as Map<String, Object?>)['payload'], {
         'kind': 'remove',
       });
@@ -417,6 +421,12 @@ void main() {
     final selectedId = server.authenticatedV2Connections
         .singleWhere((connection) => connection.clientName == 'selected')
         .id;
+    final selectedEnvelopeFuture = selectedFrames.firstWhere(
+      (frame) => frame['type'] == 'session',
+    );
+    final otherEnvelopeFuture = otherFrames.firstWhere(
+      (frame) => frame['type'] == 'session',
+    );
 
     server.broadcast(
       const RpcEvent(type: 'legacy.marker'),
@@ -425,12 +435,8 @@ void main() {
     );
     server.broadcastV2(const {'type': 'all_clients_marker'});
 
-    final selectedEnvelope = await selectedFrames.firstWhere(
-      (frame) => frame['type'] == 'session',
-    );
-    final otherEnvelope = await otherFrames.firstWhere(
-      (frame) => frame['type'] == 'session',
-    );
+    final selectedEnvelope = await selectedEnvelopeFuture;
+    final otherEnvelope = await otherEnvelopeFuture;
     expect(
       (selectedEnvelope['message'] as Map<String, Object?>)['type'],
       'selected_update',
@@ -808,9 +814,15 @@ void main() {
 
     expect(server.connectionCount, 2);
 
+    final eventAFuture = framesA.firstWhere(
+      (frame) => frame['type'] == 'test.event',
+    );
+    final eventBFuture = framesB.firstWhere(
+      (frame) => frame['type'] == 'test.event',
+    );
     server.broadcast(const RpcEvent(type: 'test.event', payload: {'x': 1}));
-    final eventA = await framesA.firstWhere((f) => f['type'] == 'test.event');
-    final eventB = await framesB.firstWhere((f) => f['type'] == 'test.event');
+    final eventA = await eventAFuture;
+    final eventB = await eventBFuture;
     expect(eventA['payload'], {'x': 1});
     expect(eventB['payload'], {'x': 1});
 

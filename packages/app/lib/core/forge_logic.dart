@@ -367,6 +367,61 @@ GitlabApprovals? deriveGitlabApprovals(GitlabMergeFacts facts) =>
         required: facts.approvalsRequired,
       );
 
+final class GitlabPipelineJobCounts {
+  const GitlabPipelineJobCounts({
+    required this.passed,
+    required this.failed,
+    required this.pending,
+  });
+
+  final int passed;
+  final int failed;
+  final int pending;
+
+  int get total => passed + failed + pending;
+}
+
+GitlabPipelineJobCounts countGitlabPipelineJobs(
+  Iterable<CheckoutPipelineStage> stages,
+) {
+  var passed = 0;
+  var failed = 0;
+  var pending = 0;
+  for (final job in stages.expand((stage) => stage.jobs)) {
+    switch (mapGitlabPipelineStatus(job.status)) {
+      case ForgeCheckStatus.success:
+        passed += 1;
+      case ForgeCheckStatus.failure:
+        failed += 1;
+      case ForgeCheckStatus.pending:
+        pending += 1;
+      case ForgeCheckStatus.skipped:
+        break;
+    }
+  }
+  return GitlabPipelineJobCounts(
+    passed: passed,
+    failed: failed,
+    pending: pending,
+  );
+}
+
+String formatGitlabPipelineDuration(num? seconds) {
+  if (seconds == null || !seconds.isFinite || seconds <= 0) return '';
+  final totalSeconds = seconds.floor();
+  if (totalSeconds < 60) return '${totalSeconds}s';
+  final totalMinutes = totalSeconds ~/ 60;
+  if (totalMinutes < 60) {
+    final remainingSeconds = totalSeconds % 60;
+    return remainingSeconds == 0
+        ? '${totalMinutes}m'
+        : '${totalMinutes}m ${remainingSeconds}s';
+  }
+  final hours = totalMinutes ~/ 60;
+  final remainingMinutes = totalMinutes % 60;
+  return remainingMinutes == 0 ? '${hours}h' : '${hours}h ${remainingMinutes}m';
+}
+
 /// Neutral registry boundary with Paseo's compatibility fallback for daemons
 /// that still put GitHub facts in `status.github`.
 ForgeMergeCapability? deriveForgeMergeCapability(
