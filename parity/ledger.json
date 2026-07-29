@@ -4951,10 +4951,12 @@
     },
     {
       "id": "source-unit:packages/app/src/git/diff-scroll.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/diff_scroll.dart",
+      "evidence": [
+        "packages/app/test/diff_scroll_geometry_test.dart"
+      ],
+      "notes": "Ports the frozen collapse-anchor geometry exactly: fully or partially visible headers skip anchoring, offscreen headers anchor, non-finite or non-positive viewport metrics preserve anchoring, negative threshold and header height clamp to zero, and edge contact remains non-visible."
     },
     {
       "id": "source-unit:packages/app/src/git/diff-tree.ts",
