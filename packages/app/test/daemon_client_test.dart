@@ -320,6 +320,60 @@ void main() {
     );
   });
 
+  test('removeProject sends, correlates, and surfaces rejection', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    unawaited(
+      conn.nextRequest('project.remove.request').then((frame) {
+        expect(frame['projectId'], 'project-1');
+        conn.respondNative(
+          'project.remove.response',
+          frame['requestId'] as String,
+          const {
+            'projectId': 'project-1',
+            'accepted': true,
+            'removedWorkspaceIds': ['workspace-1'],
+            'error': null,
+          },
+        );
+      }),
+    );
+    final removed = await client.removeProject('project-1');
+    expect(removed.removedWorkspaceIds, ['workspace-1']);
+
+    unawaited(
+      conn.nextRequest('project.remove.request').then((frame) {
+        conn.respondNative(
+          'project.remove.response',
+          frame['requestId'] as String,
+          const {
+            'projectId': 'project-1',
+            'accepted': false,
+            'removedWorkspaceIds': [],
+            'error': 'worktree archive failed',
+          },
+        );
+      }),
+    );
+    await expectLater(
+      client.removeProject('project-1'),
+      throwsA(
+        isA<DaemonRpcException>().having(
+          (error) => error.error.message,
+          'message',
+          'worktree archive failed',
+        ),
+      ),
+    );
+  });
+
   test(
     'listProviderFeatures sends and validates the typed draft query',
     () async {

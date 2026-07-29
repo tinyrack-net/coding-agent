@@ -488,6 +488,7 @@ class WsServer {
       'forgeCheckDetails': true,
       'checkoutRefresh': true,
       'projectGithubClone': true,
+      'projectRemove': true,
     },
   ).toJson();
 

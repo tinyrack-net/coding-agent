@@ -271,6 +271,35 @@ class DaemonClient {
     );
   }
 
+  /// Removes a registered project and archives its active workspaces.
+  Future<ProjectRemoveResponse> removeProject(
+    String projectId, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final requestId = _uuid.v4();
+    final response = ProjectRemoveResponse.fromJson(
+      await requestSessionMessage(
+        ProjectRemoveRequest(
+          projectId: projectId,
+          requestId: requestId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != requestId || response.projectId != projectId) {
+      throw const FormatException('Project remove response mismatch');
+    }
+    if (!response.accepted) {
+      throw DaemonRpcException(
+        RpcError(
+          code: 'project_remove_failed',
+          message: response.error ?? 'Failed to remove project',
+        ),
+      );
+    }
+    return response;
+  }
+
   Future<AgentProviderNotice?> setAgentMode(String agentId, String modeId) =>
       _requestAgentConfig(
         type: 'set_agent_mode_request',

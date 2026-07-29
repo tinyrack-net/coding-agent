@@ -6595,10 +6595,14 @@
     },
     {
       "id": "source-unit:packages/app/src/projects/project-remove.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/projects/project_remove.dart; packages/app/lib/core/daemon_client.dart; packages/daemon/lib/src/server/ws_server.dart",
+      "evidence": [
+        "packages/app/test/project_remove_test.dart",
+        "packages/app/test/daemon_client_test.dart",
+        "packages/daemon/test/ws_server_test.dart"
+      ],
+      "notes": "Matches the frozen all-host capability gate, preflight disconnected-host abort, concurrent all-settled removals, failed-host reporting, typed project.remove correlation/rejection, and projectRemove server feature advertisement."
     },
     {
       "id": "source-unit:packages/app/src/projects/workspace-fetching.ts",
