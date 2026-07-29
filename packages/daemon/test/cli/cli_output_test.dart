@@ -126,6 +126,52 @@ void main() {
     expect(noHeaders, contains('long-id'));
   });
 
+  test('renders ANSI colors without corrupting visible column widths', () {
+    final colorSchema = CliOutputSchema(
+      idField: (row) => '${row['id']}',
+      columns: [
+        CliOutputColumn(
+          header: 'STATE',
+          field: (row) => row['state'],
+          width: 8,
+          color: (value, _) => value == 'ok' ? 'green' : 'red',
+        ),
+        CliOutputColumn(
+          header: 'COUNT',
+          field: (row) => row['count'],
+          alignment: CliOutputAlignment.right,
+        ),
+      ],
+    );
+    final result = CliOutputResult.list(
+      rows: const [
+        {'id': 'one', 'state': 'ok', 'count': 2},
+        {'id': 'two', 'state': 'failed', 'count': 10},
+      ],
+      schema: colorSchema,
+    );
+
+    final colored = renderCliOutput(
+      result,
+      const CliOutputOptions(colorEnabled: true),
+    );
+    expect(colored, startsWith('\x1b[1mSTATE'));
+    expect(colored, contains('\x1b[32mok\x1b[39m'));
+    expect(colored, contains('\x1b[31mfailed\x1b[39m'));
+    expect(
+      colored.replaceAll(RegExp(r'\x1b\[[0-9;]*m'), ''),
+      'STATE     COUNT\n'
+      'ok            2\n'
+      'failed       10',
+    );
+
+    final plain = renderCliOutput(
+      result,
+      const CliOutputOptions(colorEnabled: true, noColor: true),
+    );
+    expect(plain, isNot(contains('\x1b[')));
+  });
+
   test('normalizes supported formats and rejects unknown values', () {
     expect(normalizeCliOutputFormat(' CLI '), 'table');
     expect(normalizeCliOutputFormat('JSON'), 'json');

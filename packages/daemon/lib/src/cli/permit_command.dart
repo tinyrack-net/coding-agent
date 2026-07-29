@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_output.dart';
 import 'terminal_command.dart';
 
 abstract interface class PermitDaemonClient {
@@ -34,14 +35,18 @@ Future<int> runPermitCommand({
   }
 
   PermitDaemonClient? client;
-  late final PermitCliInvocation invocation;
+  PermitCliInvocation? invocation;
   try {
     invocation = PermitCliInvocation.parse(arguments);
   } on FormatException catch (error) {
     errorOutput('${error.message}\n$permitUsage\n');
     return 64;
   } on PermitCommandException catch (error) {
-    _renderError(errorOutput, error, json: arguments.contains('--json'));
+    _renderPermitError(
+      errorOutput,
+      error,
+      options: _permitOutputOptions(arguments),
+    );
     return 1;
   }
 
@@ -60,10 +65,17 @@ Future<int> runPermitCommand({
     }
 
     final rows = await _execute(client, invocation);
-    output(_renderRows(rows, invocation));
+    final result = CliOutputResult.list(
+      rows: rows,
+      schema: invocation.action == 'ls'
+          ? _permitListSchema
+          : _permitResponseSchema,
+    );
+    final rendered = renderCliOutput(result, invocation.output);
+    if (rendered.isNotEmpty) output('$rendered\n');
     return 0;
   } on PermitCommandException catch (error) {
-    _renderError(errorOutput, error, json: invocation.json);
+    _renderPermitError(errorOutput, error, options: invocation.output);
     return 1;
   } on Object catch (error) {
     final code = switch (invocation.action) {
@@ -76,10 +88,10 @@ Future<int> runPermitCommand({
       'allow' => 'allow permission',
       _ => 'deny permission',
     };
-    _renderError(
+    _renderPermitError(
       errorOutput,
       PermitCommandException(code, 'Failed to $verb: ${_errorText(error)}'),
-      json: invocation.json,
+      options: invocation.output,
     );
     return 1;
   } finally {
@@ -125,10 +137,7 @@ final class PermitCliInvocation {
     required this.message,
     required this.interrupt,
     required this.host,
-    required this.json,
-    required this.format,
-    required this.quiet,
-    required this.headers,
+    required this.output,
   });
 
   final String action;
@@ -139,10 +148,7 @@ final class PermitCliInvocation {
   final String? message;
   final bool interrupt;
   final String? host;
-  final bool json;
-  final String format;
-  final bool quiet;
-  final bool headers;
+  final CliOutputOptions output;
 
   static PermitCliInvocation parse(List<String> arguments) {
     if (arguments.isEmpty) {
@@ -163,6 +169,7 @@ final class PermitCliInvocation {
     var format = 'table';
     var quiet = false;
     var headers = true;
+    var color = true;
     for (var index = 1; index < arguments.length; index++) {
       final argument = arguments[index];
       switch (argument) {
@@ -178,24 +185,28 @@ final class PermitCliInvocation {
           host = _requiredValue(arguments, ++index, argument);
         case '--json':
           json = true;
-          format = 'json';
         case '-o' || '--format':
-          format = _requiredValue(arguments, ++index, argument).toLowerCase();
-          if (!const {'table', 'json', 'yaml', 'cli'}.contains(format)) {
-            throw FormatException('Unsupported output format: $format');
-          }
-          if (format == 'cli') format = 'table';
+          format = normalizeCliOutputFormat(
+            _requiredValue(arguments, ++index, argument),
+          );
         case '-q' || '--quiet':
           quiet = true;
         case '--no-headers':
           headers = false;
         case '--no-color':
-          break;
+          color = false;
         default:
-          if (argument.startsWith('-')) {
+          if (argument.startsWith('--format=')) {
+            format = normalizeCliOutputFormat(
+              argument.substring('--format='.length),
+            );
+          } else if (argument.startsWith('-o') && argument.length > 2) {
+            format = normalizeCliOutputFormat(argument.substring(2));
+          } else if (argument.startsWith('-')) {
             throw FormatException('Unknown option: $argument');
+          } else {
+            positional.add(argument);
           }
-          positional.add(argument);
       }
     }
 
@@ -249,10 +260,12 @@ final class PermitCliInvocation {
       message: message,
       interrupt: interrupt,
       host: host,
-      json: json || format == 'json',
-      format: format,
-      quiet: quiet,
-      headers: headers,
+      output: CliOutputOptions(
+        format: json ? 'json' : format,
+        quiet: quiet,
+        noHeaders: !headers,
+        noColor: !color,
+      ),
     );
   }
 }
@@ -408,93 +421,106 @@ List<_PendingPermission> _pendingPermissions(Map<String, Object?> agent) {
   ];
 }
 
-String _renderRows(
-  List<Map<String, Object?>> rows,
-  PermitCliInvocation invocation,
-) {
-  final idField = invocation.action == 'ls' ? 'id' : 'requestId';
-  if (invocation.quiet) {
-    return rows.isEmpty
-        ? ''
-        : '${rows.map((row) => row[idField]).join('\n')}\n';
-  }
-  if (invocation.format == 'json') {
-    return '${const JsonEncoder.withIndent('  ').convert(rows)}\n';
-  }
-  if (invocation.format == 'yaml') return _yamlRows(rows);
-  final columns = invocation.action == 'ls'
-      ? const [
-          ('AGENT', 'agentShortId', 12),
-          ('REQ_ID', 'id', 12),
-          ('TOOL', 'name', 20),
-          ('DESCRIPTION', 'description', 50),
-        ]
-      : const [
-          ('REQUEST ID', 'requestId', 12),
-          ('AGENT', 'agentShortId', 10),
-          ('TOOL', 'name', 20),
-          ('RESULT', 'result', 10),
-        ];
-  final widths = [
-    for (final column in columns)
-      [
-        column.$1.length,
-        column.$3,
-        for (final row in rows) '${row[column.$2] ?? ''}'.length,
-      ].reduce(math.max),
-  ];
-  String line(Iterable<String> cells) {
-    final values = cells.toList();
-    return [
-      for (var index = 0; index < values.length; index++)
-        values[index].padRight(widths[index]),
-    ].join('  ').trimRight();
-  }
+final _permitListSchema = CliOutputSchema(
+  idField: (row) => '${row['id']}',
+  columns: [
+    CliOutputColumn(
+      header: 'AGENT',
+      field: (row) => row['agentShortId'],
+      width: 12,
+    ),
+    CliOutputColumn(header: 'REQ_ID', field: (row) => row['id'], width: 12),
+    CliOutputColumn(header: 'TOOL', field: (row) => row['name'], width: 20),
+    CliOutputColumn(
+      header: 'DESCRIPTION',
+      field: (row) => row['description'],
+      width: 50,
+    ),
+  ],
+);
 
-  final lines = <String>[
-    if (invocation.headers) line([for (final column in columns) column.$1]),
-    for (final row in rows)
-      line([for (final column in columns) '${row[column.$2] ?? ''}']),
-  ];
-  return lines.isEmpty ? '' : '${lines.join('\n')}\n';
-}
+final _permitResponseSchema = CliOutputSchema(
+  idField: (row) => '${row['requestId']}',
+  columns: [
+    CliOutputColumn(
+      header: 'REQUEST ID',
+      field: (row) => row['requestId'],
+      width: 12,
+    ),
+    CliOutputColumn(
+      header: 'AGENT',
+      field: (row) => row['agentShortId'],
+      width: 10,
+    ),
+    CliOutputColumn(header: 'TOOL', field: (row) => row['name'], width: 20),
+    CliOutputColumn(
+      header: 'RESULT',
+      field: (row) => row['result'],
+      width: 10,
+      color: (value, _) => switch (value) {
+        'allowed' => 'green',
+        'denied' => 'red',
+        _ => null,
+      },
+    ),
+  ],
+);
 
-String _yamlRows(List<Map<String, Object?>> rows) {
-  if (rows.isEmpty) return '[]\n';
-  return '${[
-    for (final row in rows) ['- ${row.entries.first.key}: ${_yamlScalar(row.entries.first.value)}', for (final entry in row.entries.skip(1)) '  ${entry.key}: ${_yamlScalar(entry.value)}'].join('\n'),
-  ].join('\n')}\n';
-}
-
-String _yamlScalar(Object? value) {
-  if (value == null) return 'null';
-  if (value is bool || value is num) return '$value';
-  final text = '$value';
-  if (text.isNotEmpty &&
-      !RegExp(
-        r'''[:#\[\]{},&*!|>'"%@`]|^\s|\s$|^(null|true|false|~)$''',
-        caseSensitive: false,
-      ).hasMatch(text)) {
-    return text;
-  }
-  return jsonEncode(text);
-}
-
-void _renderError(
+void _renderPermitError(
   void Function(String value) write,
   PermitCommandException error, {
-  required bool json,
+  required CliOutputOptions options,
 }) {
-  if (json) {
-    write(
-      '${const JsonEncoder.withIndent('  ').convert({
-        'error': {'code': error.code, 'message': error.message, if (error.details != null) 'details': error.details},
-      })}\n',
-    );
-    return;
+  write(
+    '${renderCliError(code: error.code, message: error.message, details: error.details, options: options)}\n',
+  );
+}
+
+CliOutputOptions _permitOutputOptions(List<String> arguments) {
+  var format = 'table';
+  var json = false;
+  var quiet = false;
+  var headers = true;
+  var color = true;
+  for (var index = 1; index < arguments.length; index++) {
+    final argument = arguments[index];
+    if (argument == '--json') {
+      json = true;
+    } else if (argument == '-q' || argument == '--quiet') {
+      quiet = true;
+    } else if (argument == '--no-headers') {
+      headers = false;
+    } else if (argument == '--no-color') {
+      color = false;
+    } else if ((argument == '-o' || argument == '--format') &&
+        index + 1 < arguments.length) {
+      try {
+        format = normalizeCliOutputFormat(arguments[++index]);
+      } on FormatException {
+        // Syntax reporting owns invalid formats.
+      }
+    } else if (argument.startsWith('--format=')) {
+      try {
+        format = normalizeCliOutputFormat(
+          argument.substring('--format='.length),
+        );
+      } on FormatException {
+        // Syntax reporting owns invalid formats.
+      }
+    } else if (argument.startsWith('-o') && argument.length > 2) {
+      try {
+        format = normalizeCliOutputFormat(argument.substring(2));
+      } on FormatException {
+        // Syntax reporting owns invalid formats.
+      }
+    }
   }
-  write('Error: ${error.message}\n');
-  if (error.details != null) write('${error.details}\n');
+  return CliOutputOptions(
+    format: json ? 'json' : format,
+    quiet: quiet,
+    noHeaders: !headers,
+    noColor: !color,
+  );
 }
 
 List<Map<String, Object?>> _objectList(Map<String, Object?> map, String key) {

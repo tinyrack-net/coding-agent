@@ -610,7 +610,7 @@
     {
       "id": "cli-command:permit-allow",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/permit_command_test.dart",
         "packages/daemon/test/daemon_permit_cli_e2e_test.dart"
@@ -620,7 +620,7 @@
     {
       "id": "cli-command:permit-deny",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/permit_command_test.dart",
         "packages/daemon/test/daemon_permit_cli_e2e_test.dart"
@@ -630,7 +630,7 @@
     {
       "id": "cli-command:permit-ls",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/permit_command_test.dart",
         "packages/daemon/test/daemon_permit_cli_e2e_test.dart"
@@ -9777,41 +9777,41 @@
     {
       "id": "source-unit:packages/cli/src/commands/permit/allow.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/permit_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/permit_command_test.dart",
         "packages/daemon/test/daemon_permit_cli_e2e_test.dart"
       ],
-      "notes": "Paseo permit allow command ported."
+      "notes": "Paseo permit allow selection, modified input, shared list schema, green result styling, output formats, and structured pre-connect/runtime errors are ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/permit/deny.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/permit_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/permit_command_test.dart",
         "packages/daemon/test/daemon_permit_cli_e2e_test.dart"
       ],
-      "notes": "Paseo permit deny command ported."
+      "notes": "Paseo permit deny selection, message/interrupt options, shared list schema, red result styling, output formats, and structured errors are ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/permit/index.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/permit_command_test.dart"
       ],
-      "notes": "Paseo permit dispatcher, help, and command option surface ported."
+      "notes": "Paseo permit dispatcher, help, command options, JSON precedence, compact/equal format aliases, quiet/header/color flags, and shared output boundary are ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/permit/ls.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/permit_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/permit_command_test.dart",
         "packages/daemon/test/daemon_permit_cli_e2e_test.dart"
       ],
-      "notes": "Paseo pending permission list projection and output schema ported."
+      "notes": "Paseo all-agent pending permission projection and exact shared output schema are ported, including empty list formats."
     },
     {
       "id": "source-unit:packages/cli/src/commands/provider/index.ts",
@@ -10234,11 +10234,12 @@
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/hub_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/cli/permit_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/terminal_command_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "The shared Dart output entrypoint exports typed result, schema, custom serialization, JSON, YAML, quiet, table, and error rendering used by chat, heartbeat, Hub, schedule, terminal result actions, non-streaming loop actions, and daemon result actions; remaining CLI families still need migration."
+      "notes": "The shared Dart output entrypoint exports typed result, schema, custom serialization, JSON, YAML, quiet, table, and error rendering used by chat, heartbeat, Hub, permit, schedule, terminal result actions, non-streaming loop actions, and daemon result actions; remaining CLI families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/json.ts",
@@ -10294,7 +10295,7 @@
     },
     {
       "id": "source-unit:packages/cli/src/output/table.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
@@ -10304,11 +10305,11 @@
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart"
       ],
-      "notes": "Frozen content-derived minimum widths, left/right/center alignment, header suppression, single/list rows, and no clipping are ported; ANSI-aware color measurement remains."
+      "notes": "Frozen content-derived minimum widths, left/right/center alignment, header suppression, single/list rows, bold headers, named ANSI column colors, TTY/NO_COLOR/FORCE_COLOR gates, ANSI-aware measurement, and no clipping are ported."
     },
     {
       "id": "source-unit:packages/cli/src/output/types.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/provider_command.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_invocation_test.dart",
@@ -10320,12 +10321,12 @@
         "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": "Root options, single/list results, schemas, columns, alignment, schema serializers, custom human renderers, and output options are typed; column color callbacks remain."
+      "notes": "Root options, single/list results, schemas, columns, alignment, column color callbacks, schema serializers, custom human renderers, and output options are typed."
     },
     {
       "id": "source-unit:packages/cli/src/output/with-output.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/hub_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/terminal_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/hub_command.dart; packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/terminal_command.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_invocation_test.dart",
         "packages/daemon/test/cli/cli_root_output_process_test.dart",
@@ -10335,13 +10336,14 @@
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/hub_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
+        "packages/daemon/test/cli/permit_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/terminal_command_test.dart",
         "packages/daemon/test/daemon_chat_e2e_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart",
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": "Global and local options feed shared result and error rendering for chat, heartbeat, Hub, schedule, terminal result actions, non-streaming loop actions, and daemon result actions while capture/send-keys and other direct or streaming actions retain their frozen boundaries; remaining JSON-only command families still need migration."
+      "notes": "Global and local options feed shared result and error rendering for chat, heartbeat, Hub, permit, schedule, terminal result actions, non-streaming loop actions, and daemon result actions while capture/send-keys and other direct or streaming actions retain their frozen boundaries; remaining JSON-only command families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/yaml.ts",

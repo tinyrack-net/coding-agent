@@ -107,6 +107,56 @@ void main() {
     expect(yaml.toString(), '[]\n');
   });
 
+  test(
+    'shared output aliases, precedence, and headers match frozen CLI',
+    () async {
+      _FakePermitClient client() => _FakePermitClient(
+        agents: [
+          _agent(
+            'agent-123456',
+            permissions: const [
+              {'id': 'permission-1', 'name': 'Edit'},
+            ],
+          ),
+        ],
+      );
+
+      final yaml = StringBuffer();
+      expect(
+        await runPermitCommand(
+          arguments: const ['ls', '-oyaml'],
+          connect: _connector(client()),
+          writeOutput: yaml.write,
+        ),
+        0,
+      );
+      expect(yaml.toString(), contains('- id: permissi'));
+
+      final json = StringBuffer();
+      expect(
+        await runPermitCommand(
+          arguments: const ['ls', '--format=yaml', '--json'],
+          connect: _connector(client()),
+          writeOutput: json.write,
+        ),
+        0,
+      );
+      expect(jsonDecode(json.toString()), isA<List<Object?>>());
+
+      final table = StringBuffer();
+      expect(
+        await runPermitCommand(
+          arguments: const ['ls', '--no-headers', '--no-color'],
+          connect: _connector(client()),
+          writeOutput: table.write,
+        ),
+        0,
+      );
+      expect(table.toString(), isNot(startsWith('AGENT')));
+      expect(table.toString(), startsWith('agent-1'));
+    },
+  );
+
   test('allow defaults to every request and forwards modified input', () async {
     final client = _FakePermitClient(
       fetchedAgent: _agent(
@@ -257,6 +307,24 @@ void main() {
       expect(errors.toString(), contains(testCase.$2));
       expect(connected, isFalse);
     }
+  });
+
+  test('pre-connect validation errors honor structured output', () async {
+    final errors = StringBuffer();
+    expect(
+      await runPermitCommand(
+        arguments: const ['allow', 'agent', '--input', '{bad', '--format=yaml'],
+        connect:
+            ({
+              required String? host,
+              required Map<String, String> environment,
+            }) async => fail('validation must not connect'),
+        writeError: errors.write,
+      ),
+      1,
+    );
+    expect(errors.toString(), contains('code: INVALID_JSON'));
+    expect(errors.toString(), contains('message: "Invalid JSON for --input:'));
   });
 
   test('agent and permission lookup errors use frozen codes', () async {

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 enum CliOutputAlignment { left, right, center }
 
@@ -8,23 +9,27 @@ final class CliOutputOptions {
     this.quiet = false,
     this.noHeaders = false,
     this.noColor = false,
+    this.colorEnabled,
   });
 
   final String format;
   final bool quiet;
   final bool noHeaders;
   final bool noColor;
+  final bool? colorEnabled;
 
   CliOutputOptions copyWith({
     String? format,
     bool? quiet,
     bool? noHeaders,
     bool? noColor,
+    bool? colorEnabled,
   }) => CliOutputOptions(
     format: format ?? this.format,
     quiet: quiet ?? this.quiet,
     noHeaders: noHeaders ?? this.noHeaders,
     noColor: noColor ?? this.noColor,
+    colorEnabled: colorEnabled ?? this.colorEnabled,
   );
 }
 
@@ -34,12 +39,14 @@ final class CliOutputColumn {
     required this.field,
     this.width,
     this.alignment = CliOutputAlignment.left,
+    this.color,
   });
 
   final String header;
   final Object? Function(Map<String, Object?> row) field;
   final int? width;
   final CliOutputAlignment alignment;
+  final String? Function(Object? value, Map<String, Object?> row)? color;
 }
 
 typedef CliHumanRenderer =
@@ -141,6 +148,7 @@ String _renderCliTable(CliOutputResult result, CliOutputOptions options) {
   if (rows.isEmpty) return '';
   final columns = result.schema.columns;
   final includeHeaders = !options.noHeaders;
+  final useColor = _cliOutputUsesColor(options);
   final widths = [
     for (final column in columns)
       [
@@ -150,21 +158,36 @@ String _renderCliTable(CliOutputResult result, CliOutputOptions options) {
       ].reduce((left, right) => left > right ? left : right),
   ];
 
-  String renderRow(List<String> cells) => [
-    for (var index = 0; index < cells.length; index++)
-      _alignCliCell(cells[index], widths[index], columns[index].alignment),
+  String renderRow(Map<String, Object?> row) => [
+    for (var index = 0; index < columns.length; index++)
+      () {
+        final column = columns[index];
+        final value = column.field(row);
+        var cell = '${value ?? ''}';
+        final color = useColor ? column.color?.call(value, row) : null;
+        if (color != null) cell = _applyCliAnsiColor(cell, color);
+        return _alignCliCell(cell, widths[index], column.alignment);
+      }(),
+  ].join('  ');
+
+  final header = [
+    for (var index = 0; index < columns.length; index++)
+      _alignCliCell(
+        columns[index].header,
+        widths[index],
+        columns[index].alignment,
+      ),
   ].join('  ');
 
   return [
-    if (includeHeaders)
-      renderRow([for (final column in columns) column.header]),
-    for (final row in rows)
-      renderRow([for (final column in columns) '${column.field(row) ?? ''}']),
+    if (includeHeaders) useColor ? _applyCliAnsiColor(header, 'bold') : header,
+    for (final row in rows) renderRow(row),
   ].join('\n');
 }
 
 String _alignCliCell(String value, int width, CliOutputAlignment alignment) {
-  final padding = width > value.length ? width - value.length : 0;
+  final visibleLength = _stripCliAnsi(value).length;
+  final padding = width > visibleLength ? width - visibleLength : 0;
   return switch (alignment) {
     CliOutputAlignment.right => '${' ' * padding}$value',
     CliOutputAlignment.center =>
@@ -172,6 +195,40 @@ String _alignCliCell(String value, int width, CliOutputAlignment alignment) {
     CliOutputAlignment.left => '$value${' ' * padding}',
   };
 }
+
+bool _cliOutputUsesColor(CliOutputOptions options) {
+  if (options.noColor) return false;
+  if (options.colorEnabled case final enabled?) return enabled;
+  final environment = Platform.environment;
+  if (environment.containsKey('NO_COLOR')) return false;
+  final forced = environment['FORCE_COLOR'];
+  if (forced != null) return forced != '0';
+  return stdout.supportsAnsiEscapes;
+}
+
+String _applyCliAnsiColor(String value, String name) {
+  final codes = switch (name) {
+    'red' => ('31', '39'),
+    'green' => ('32', '39'),
+    'blue' => ('34', '39'),
+    'yellow' => ('33', '39'),
+    'cyan' => ('36', '39'),
+    'magenta' => ('35', '39'),
+    'white' => ('37', '39'),
+    'gray' || 'grey' => ('90', '39'),
+    'dim' => ('2', '22'),
+    'bold' => ('1', '22'),
+    _ => null,
+  };
+  return codes == null ? value : '\x1b[${codes.$1}m$value\x1b[${codes.$2}m';
+}
+
+String _stripCliAnsi(String value) => value.replaceAll(
+  RegExp(
+    r'[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]',
+  ),
+  '',
+);
 
 String encodeCliYaml(Object? value) {
   final lines = <String>[];
