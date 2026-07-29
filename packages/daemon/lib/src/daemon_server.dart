@@ -256,9 +256,10 @@ Future<DaemonServerHandle> startDaemonServer({
   late final LoopService loops;
   late final ScheduleService schedules;
   late final FileBackedChatService chat;
+  late final AgentManager manager;
   final voiceBridge = VoiceBridgeRegistry();
   final agentDirectorySubscriptions = <String, AgentDirectorySubscription>{};
-  final manager = AgentManager(
+  manager = AgentManager(
     clients:
         agentClients ??
         {
@@ -321,7 +322,14 @@ Future<DaemonServerHandle> startDaemonServer({
         );
         final entry = project == null
             ? null
-            : AgentDirectoryEntry(agent: snapshot, project: project);
+            : AgentDirectoryEntry(
+                agent: snapshot,
+                project: project,
+                pendingPermissions: _pendingPermissionPayloads(
+                  manager,
+                  snapshot,
+                ),
+              );
         for (final subscription in agentDirectorySubscriptions.entries) {
           final connection = server.connectionById(subscription.key);
           if (connection == null) continue;
@@ -1523,6 +1531,21 @@ Future<DaemonServerHandle> startDaemonServer({
         };
       }
     }
+    if (message['type'] == AgentPermissionResponseMessage.type) {
+      final request = AgentPermissionResponseMessage.fromJson(message);
+      final response = request.response;
+      await manager.respondPermissionDetailed(
+        agentId: request.agentId,
+        permissionId: request.requestId,
+        behavior: response.behavior.name,
+        selectedActionId: response.selectedActionId,
+        updatedInput: response.updatedInput,
+        updatedPermissions: response.updatedPermissions,
+        message: response.message,
+        interrupt: response.interrupt,
+      );
+      return v2HandledNoResponse;
+    }
     final agentDirectoryResponse = await _handlePaseoFetchAgents(
       manager,
       workspaceRegistries,
@@ -2358,7 +2381,13 @@ Future<Object?> _handlePaseoFetchAgents(
       activeOnly: activeRequest?.activeScope ?? false,
     );
     if (project != null) {
-      entries.add(AgentDirectoryEntry(agent: snapshot, project: project));
+      entries.add(
+        AgentDirectoryEntry(
+          agent: snapshot,
+          project: project,
+          pendingPermissions: _pendingPermissionPayloads(manager, snapshot),
+        ),
+      );
     }
   }
   entries.removeWhere((entry) => !_matchesAgentDirectoryFilter(entry, filter));
@@ -2433,6 +2462,17 @@ Future<Object?> _handlePaseoFetchAgents(
             _emitAgentDirectoryUpdate(server, connection.id, update),
       );
     },
+  );
+}
+
+List<Map<String, Object?>> _pendingPermissionPayloads(
+  AgentManager manager,
+  AgentSummary agent,
+) {
+  final timeline = manager.fetchCanonicalTimeline(agent.agentId);
+  return PaseoAgentSnapshotCodec.encodePendingPermissions(
+    agent,
+    timeline.rows.map((row) => row.item).whereType<PermissionItem>(),
   );
 }
 

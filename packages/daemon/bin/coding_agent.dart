@@ -12,6 +12,7 @@ import 'package:agent_daemon/src/cli/agent_run_command.dart';
 import 'package:agent_daemon/src/cli/hub_command.dart';
 import 'package:agent_daemon/src/cli/heartbeat_command.dart';
 import 'package:agent_daemon/src/cli/loop_command.dart';
+import 'package:agent_daemon/src/cli/permit_command.dart';
 import 'package:agent_daemon/src/cli/provider_command.dart';
 import 'package:agent_daemon/src/cli/schedule_command.dart';
 import 'package:agent_daemon/src/cli/script_command.dart';
@@ -102,6 +103,10 @@ Future<void> main(List<String> arguments) async {
     exitCode = await runLoopCommand(arguments: arguments.sublist(1));
     return;
   }
+  if (arguments.isNotEmpty && arguments[0] == 'permit') {
+    exitCode = await runPermitCommand(arguments: arguments.sublist(1));
+    return;
+  }
   if (arguments.isNotEmpty && arguments[0] == 'script') {
     exitCode = await runScriptCommand(arguments: arguments.sublist(1));
     return;
@@ -158,6 +163,7 @@ Future<void> main(List<String> arguments) async {
     'delete|run-once|update> ...\n'
     '       coding-agent heartbeat <create|update|delete> ...\n'
     '       coding-agent loop <run|ls|inspect|logs|stop> ...\n'
+    '       coding-agent permit <ls|allow|deny> ...\n'
     '       coding-agent script <ls|start|stop> ...\n'
     '       coding-agent provider <ls|models> ...\n'
     '       coding-agent workspace <create|ls|archive> ...\n'

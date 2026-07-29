@@ -2,6 +2,38 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('pending projection keeps only the latest state per request', () {
+    const agent = AgentSummary(
+      agentId: 'agent',
+      title: 'Agent',
+      cwd: '/repo',
+      provider: 'codex',
+      model: 'gpt',
+      mode: AgentMode.normal,
+      runState: AgentRunState.running,
+      createdAtMs: 1,
+    );
+    expect(
+      PaseoAgentSnapshotCodec.encodePendingPermissions(agent, const [
+        PermissionItem(
+          id: 'permission',
+          permissionId: 'permission-1',
+          toolName: 'Bash',
+          status: PermissionStatus.pending,
+          detail: ShellDetail(command: 'dart test'),
+        ),
+        PermissionItem(
+          id: 'permission',
+          permissionId: 'permission-1',
+          toolName: 'Bash',
+          status: PermissionStatus.allowed,
+          detail: ShellDetail(command: 'dart test'),
+        ),
+      ]),
+      isEmpty,
+    );
+  });
+
   test('projects AgentSummary to the frozen AgentSnapshot payload shape', () {
     const summary = AgentSummary(
       agentId: 'agent-1',

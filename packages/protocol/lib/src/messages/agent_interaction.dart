@@ -4,6 +4,107 @@ library;
 import '../timeline/paseo_agent_snapshot_codec.dart';
 import 'agent_attachment.dart';
 
+enum AgentPermissionBehavior { allow, deny }
+
+/// Frozen Paseo 0.2.0 permission response discriminated union.
+final class AgentPermissionResponse {
+  const AgentPermissionResponse.allow({
+    this.selectedActionId,
+    this.updatedInput,
+    this.updatedPermissions,
+  }) : behavior = AgentPermissionBehavior.allow,
+       message = null,
+       interrupt = null;
+
+  const AgentPermissionResponse.deny({
+    this.selectedActionId,
+    this.message,
+    this.interrupt,
+  }) : behavior = AgentPermissionBehavior.deny,
+       updatedInput = null,
+       updatedPermissions = null;
+
+  final AgentPermissionBehavior behavior;
+  final String? selectedActionId;
+  final Map<String, Object?>? updatedInput;
+  final List<Map<String, Object?>>? updatedPermissions;
+  final String? message;
+  final bool? interrupt;
+
+  factory AgentPermissionResponse.fromJson(Map<String, Object?> json) {
+    final selectedActionId = _optionalString(json, 'selectedActionId');
+    return switch (json['behavior']) {
+      'allow' => AgentPermissionResponse.allow(
+        selectedActionId: selectedActionId,
+        updatedInput: _optionalObject(json, 'updatedInput'),
+        updatedPermissions: _optionalObjectList(json, 'updatedPermissions'),
+      ),
+      'deny' => AgentPermissionResponse.deny(
+        selectedActionId: selectedActionId,
+        message: _optionalString(json, 'message'),
+        interrupt: _optionalBool(json, 'interrupt'),
+      ),
+      _ => throw const FormatException(
+        'permission behavior must be allow or deny',
+      ),
+    };
+  }
+
+  Map<String, Object?> toJson() => switch (behavior) {
+    AgentPermissionBehavior.allow => {
+      'behavior': 'allow',
+      if (selectedActionId != null) 'selectedActionId': selectedActionId,
+      if (updatedInput != null) 'updatedInput': updatedInput,
+      if (updatedPermissions != null) 'updatedPermissions': updatedPermissions,
+    },
+    AgentPermissionBehavior.deny => {
+      'behavior': 'deny',
+      if (selectedActionId != null) 'selectedActionId': selectedActionId,
+      if (message != null) 'message': message,
+      if (interrupt != null) 'interrupt': interrupt,
+    },
+  };
+}
+
+/// Fire-and-forget client message used to resolve a pending permission.
+final class AgentPermissionResponseMessage {
+  const AgentPermissionResponseMessage({
+    required this.agentId,
+    required this.requestId,
+    required this.response,
+  });
+
+  static const type = 'agent_permission_response';
+
+  final String agentId;
+  final String requestId;
+  final AgentPermissionResponse response;
+
+  factory AgentPermissionResponseMessage.fromJson(Map<String, Object?> json) {
+    if (json['type'] != type) {
+      throw const FormatException('Expected agent_permission_response');
+    }
+    final response = json['response'];
+    if (response is! Map) {
+      throw const FormatException('response must be an object');
+    }
+    return AgentPermissionResponseMessage(
+      agentId: _requiredString(json, 'agentId'),
+      requestId: _requiredString(json, 'requestId'),
+      response: AgentPermissionResponse.fromJson(
+        Map<String, Object?>.from(response),
+      ),
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'type': type,
+    'agentId': agentId,
+    'requestId': requestId,
+    'response': response.toJson(),
+  };
+}
+
 final class SendAgentMessageRequest {
   const SendAgentMessageRequest({
     required this.requestId,
@@ -226,4 +327,43 @@ Map<String, Object?> _requiredMap(Map<String, Object?> json, String key) {
   final value = json[key];
   if (value is! Map) throw FormatException('$key must be an object');
   return Map<String, Object?>.from(value);
+}
+
+String? _optionalString(Map<String, Object?> json, String key) {
+  final value = json[key];
+  if (value == null) return null;
+  if (value is! String) throw FormatException('$key must be a string');
+  return value;
+}
+
+bool? _optionalBool(Map<String, Object?> json, String key) {
+  final value = json[key];
+  if (value == null) return null;
+  if (value is! bool) throw FormatException('$key must be a boolean');
+  return value;
+}
+
+Map<String, Object?>? _optionalObject(Map<String, Object?> json, String key) {
+  final value = json[key];
+  if (value == null) return null;
+  if (value is! Map || value.keys.any((entry) => entry is! String)) {
+    throw FormatException('$key must be an object');
+  }
+  return Map<String, Object?>.unmodifiable(Map<String, Object?>.from(value));
+}
+
+List<Map<String, Object?>>? _optionalObjectList(
+  Map<String, Object?> json,
+  String key,
+) {
+  final value = json[key];
+  if (value == null) return null;
+  if (value is! List) throw FormatException('$key must be an array');
+  return List<Map<String, Object?>>.unmodifiable([
+    for (final entry in value)
+      if (entry is Map && entry.keys.every((key) => key is String))
+        Map<String, Object?>.unmodifiable(Map<String, Object?>.from(entry))
+      else
+        throw FormatException('$key entries must be objects'),
+  ]);
 }

@@ -246,21 +246,36 @@ final class FetchAgentRequest {
 }
 
 final class AgentDirectoryEntry {
-  const AgentDirectoryEntry({required this.agent, required this.project});
+  const AgentDirectoryEntry({
+    required this.agent,
+    required this.project,
+    this.pendingPermissions = const [],
+  });
 
   final AgentSummary agent;
   final Map<String, Object?> project;
+  final List<Map<String, Object?>> pendingPermissions;
 
-  factory AgentDirectoryEntry.fromJson(Map<String, Object?> json) =>
-      AgentDirectoryEntry(
-        agent: PaseoAgentSnapshotCodec.decode(_requiredMap(json, 'agent')),
-        project: Map.unmodifiable(_requiredMap(json, 'project')),
-      );
+  factory AgentDirectoryEntry.fromJson(Map<String, Object?> json) {
+    final agent = _requiredMap(json, 'agent');
+    return AgentDirectoryEntry(
+      agent: PaseoAgentSnapshotCodec.decode(agent),
+      project: Map.unmodifiable(_requiredMap(json, 'project')),
+      pendingPermissions: List.unmodifiable(
+        _mapList(
+          agent,
+          'pendingPermissions',
+          (value) => Map<String, Object?>.unmodifiable(value),
+        ),
+      ),
+    );
+  }
 
-  Map<String, Object?> toJson() => {
-    'agent': PaseoAgentSnapshotCodec.encode(agent),
-    'project': project,
-  };
+  Map<String, Object?> toJson() {
+    final snapshot = PaseoAgentSnapshotCodec.encode(agent);
+    snapshot['pendingPermissions'] = pendingPermissions;
+    return {'agent': snapshot, 'project': project};
+  }
 }
 
 final class AgentDirectoryPageInfo {

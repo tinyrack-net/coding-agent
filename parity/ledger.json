@@ -585,24 +585,33 @@
     },
     {
       "id": "cli-command:permit-allow",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/permit_command_test.dart",
+        "packages/daemon/test/daemon_permit_cli_e2e_test.dart"
+      ],
+      "notes": "Frozen agent and request prefix resolution, default-all and explicit-all behavior, modified input, errors, output modes, and live WebSocket permission resolution verified."
     },
     {
       "id": "cli-command:permit-deny",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/permit_command_test.dart",
+        "packages/daemon/test/daemon_permit_cli_e2e_test.dart"
+      ],
+      "notes": "Frozen request and all-selection behavior, denial message, interrupt flag, errors, output modes, and live WebSocket permission resolution verified."
     },
     {
       "id": "cli-command:permit-ls",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/permit_command_test.dart",
+        "packages/daemon/test/daemon_permit_cli_e2e_test.dart"
+      ],
+      "notes": "Frozen all-agent pending permission projection, short identifiers, table and structured output, and resolved-request removal verified."
     },
     {
       "id": "cli-command:provider-ls",
@@ -9697,31 +9706,42 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/permit/allow.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/permit_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/permit_command_test.dart",
+        "packages/daemon/test/daemon_permit_cli_e2e_test.dart"
+      ],
+      "notes": "Paseo permit allow command ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/permit/deny.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/permit_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/permit_command_test.dart",
+        "packages/daemon/test/daemon_permit_cli_e2e_test.dart"
+      ],
+      "notes": "Paseo permit deny command ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/permit/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/permit_command_test.dart"
+      ],
+      "notes": "Paseo permit dispatcher, help, and command option surface ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/permit/ls.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/permit_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/permit_command_test.dart",
+        "packages/daemon/test/daemon_permit_cli_e2e_test.dart"
+      ],
+      "notes": "Paseo pending permission list projection and output schema ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/provider/index.ts",
@@ -14658,10 +14678,13 @@
     },
     {
       "id": "wire-message:agent_permission_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/agent_interaction.dart; packages/daemon/lib/src/daemon_server.dart",
+      "evidence": [
+        "packages/protocol/test/agent_interaction_test.dart",
+        "packages/daemon/test/daemon_permit_cli_e2e_test.dart"
+      ],
+      "notes": "Exact fire-and-forget type, agent and request ownership, allow and deny discriminated union fields, boundary validation, and live daemon routing verified."
     },
     {
       "id": "wire-message:agent_update",

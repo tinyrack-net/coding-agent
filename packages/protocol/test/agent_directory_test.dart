@@ -197,6 +197,15 @@ void main() {
       entries: [
         AgentDirectoryEntry(
           agent: _agent,
+          pendingPermissions: [
+            {
+              'id': 'permission-1',
+              'provider': 'codex',
+              'name': 'Bash',
+              'kind': 'tool',
+              'description': 'Run tests',
+            },
+          ],
           project: {
             'projectKey': 'project-1',
             'projectName': 'Repo',
@@ -224,6 +233,15 @@ void main() {
     expect(decoded.subscriptionId, 'subscription-1');
     expect(decoded.entries.single.agent.agentId, 'agent-1');
     expect(decoded.entries.single.project['projectKey'], 'project-1');
+    expect(decoded.entries.single.pendingPermissions, [
+      {
+        'id': 'permission-1',
+        'provider': 'codex',
+        'name': 'Bash',
+        'kind': 'tool',
+        'description': 'Run tests',
+      },
+    ]);
     expect(decoded.pageInfo.nextCursor, '200');
     expect(decoded.pageInfo.hasMore, isTrue);
     expect(decoded.toJson(), response.toJson());

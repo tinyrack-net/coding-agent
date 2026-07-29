@@ -158,17 +158,10 @@ abstract final class PaseoAgentSnapshotCodec {
       'currentModeId': effectiveModeId,
       'availableModes': effectiveModes.toList(growable: false),
       if (features.isNotEmpty) 'features': features.toList(growable: false),
-      'pendingPermissions': [
-        for (final permission in latestPermissions.values)
-          if (permission.status == PermissionStatus.pending)
-            {
-              'id': permission.permissionId,
-              'provider': agent.provider,
-              'name': permission.toolName,
-              'kind': 'tool',
-              'detail': permission.detail.toPaseoJson(),
-            },
-      ],
+      'pendingPermissions': encodePendingPermissions(
+        agent,
+        latestPermissions.values,
+      ),
       'persistence': agent.sessionId == null
           ? null
           : {'provider': agent.provider, 'sessionId': agent.sessionId},
@@ -189,6 +182,26 @@ abstract final class PaseoAgentSnapshotCodec {
       'archivedAt': agent.archivedAt,
       'providerUnavailable': providerUnavailable || agent.providerUnavailable,
     };
+  }
+
+  static List<Map<String, Object?>> encodePendingPermissions(
+    AgentSummary agent,
+    Iterable<PermissionItem> permissions,
+  ) {
+    final latest = <String, PermissionItem>{
+      for (final permission in permissions) permission.permissionId: permission,
+    };
+    return [
+      for (final permission in latest.values)
+        if (permission.status == PermissionStatus.pending)
+          {
+            'id': permission.permissionId,
+            'provider': agent.provider,
+            'name': permission.toolName,
+            'kind': 'tool',
+            'detail': permission.detail.toPaseoJson(),
+          },
+    ];
   }
 }
 

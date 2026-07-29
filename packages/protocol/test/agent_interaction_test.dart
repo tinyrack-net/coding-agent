@@ -2,6 +2,36 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('permission response message preserves both frozen union branches', () {
+    for (final message in const [
+      AgentPermissionResponseMessage(
+        agentId: 'agent',
+        requestId: 'permission-allow',
+        response: AgentPermissionResponse.allow(
+          selectedActionId: 'approve',
+          updatedInput: {'command': 'dart test'},
+          updatedPermissions: [
+            {'tool': 'Bash', 'scope': 'session'},
+          ],
+        ),
+      ),
+      AgentPermissionResponseMessage(
+        agentId: 'agent',
+        requestId: 'permission-deny',
+        response: AgentPermissionResponse.deny(
+          selectedActionId: 'reject',
+          message: 'Not now',
+          interrupt: true,
+        ),
+      ),
+    ]) {
+      expect(
+        AgentPermissionResponseMessage.fromJson(message.toJson()).toJson(),
+        message.toJson(),
+      );
+    }
+  });
+
   test('send message request round trips prompt content', () {
     const request = SendAgentMessageRequest(
       requestId: 'request',
@@ -128,6 +158,27 @@ void main() {
           'lastMessage': null,
         },
       },
+      {
+        'type': AgentPermissionResponseMessage.type,
+        'agentId': 'agent',
+        'requestId': 'permission',
+        'response': {'behavior': 'later'},
+      },
+      {
+        'type': AgentPermissionResponseMessage.type,
+        'agentId': 'agent',
+        'requestId': 'permission',
+        'response': {
+          'behavior': 'allow',
+          'updatedPermissions': [1],
+        },
+      },
+      {
+        'type': AgentPermissionResponseMessage.type,
+        'agentId': 'agent',
+        'requestId': 'permission',
+        'response': {'behavior': 'deny', 'interrupt': 'yes'},
+      },
     ]) {
       expect(
         () => switch (json['type']) {
@@ -135,6 +186,8 @@ void main() {
             json,
           ),
           WaitForFinishRequest.type => WaitForFinishRequest.fromJson(json),
+          AgentPermissionResponseMessage.type =>
+            AgentPermissionResponseMessage.fromJson(json),
           _ => WaitForFinishResponse.fromJson(json),
         },
         throwsFormatException,
