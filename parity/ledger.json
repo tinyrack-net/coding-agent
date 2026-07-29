@@ -332,52 +332,73 @@
     },
     {
       "id": "cli-command:chat-create",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Frozen room creation validation, JSON and human output, and real WebSocket persistence verified."
     },
     {
       "id": "cli-command:chat-delete",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Frozen room deletion behavior and output modes verified."
     },
     {
       "id": "cli-command:chat-inspect",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Frozen room inspection schema and output modes verified."
     },
     {
       "id": "cli-command:chat-ls",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Frozen room listing table and JSON behavior verified."
     },
     {
       "id": "cli-command:chat-post",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Frozen post, reply, author, mention, transcript, and JSON behavior verified."
     },
     {
       "id": "cli-command:chat-read",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Frozen limit, since-duration, agent-name enrichment, transcript, and JSON behavior verified."
     },
     {
       "id": "cli-command:chat-wait",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Frozen cursor preflight, timeout, long-poll, agent filtering, transcript, and JSON behavior verified."
     },
     {
       "id": "cli-command:clone",
@@ -9355,73 +9376,99 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/chat/create.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Paseo chat create command ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/chat/delete.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Paseo chat delete command ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/chat/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart"
+      ],
+      "notes": "Paseo chat dispatcher and command surface ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/chat/inspect.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Paseo chat inspect command ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/chat/ls.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart"
+      ],
+      "notes": "Paseo chat list command ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/chat/post.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Paseo chat post and transcript behavior ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/chat/read.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Paseo chat read filtering and output behavior ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/chat/schema.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart"
+      ],
+      "notes": "Paseo chat CLI argument and duration schemas ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/chat/shared.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart"
+      ],
+      "notes": "Paseo room resolution, transcript formatting, and agent-name enrichment ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/chat/wait.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Paseo long-poll wait and cursor validation ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/clone.ts",
@@ -10931,17 +10978,22 @@
     },
     {
       "id": "source-unit:packages/protocol/src/chat/rpc-schemas.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/chat.dart",
+      "evidence": [
+        "packages/protocol/test/chat_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Frozen chat RPC request and response wire schemas ported with boundary validation."
     },
     {
       "id": "source-unit:packages/protocol/src/chat/types.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/chat.dart",
+      "evidence": [
+        "packages/protocol/test/chat_test.dart"
+      ],
+      "notes": "Frozen chat room, detail, and message wire models ported."
     },
     {
       "id": "source-unit:packages/protocol/src/client-capabilities.ts",
@@ -12546,17 +12598,23 @@
     },
     {
       "id": "source-unit:packages/server/src/server/chat/chat-mentions.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/chat/chat_service.dart; packages/daemon/lib/src/daemon_server.dart",
+      "evidence": [
+        "packages/daemon/test/chat/chat_service_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Frozen mention parsing, @everyone expansion, eligible-agent resolution, 25-target preflight, and notification delivery ported."
     },
     {
       "id": "source-unit:packages/server/src/server/chat/chat-service.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/chat/chat_service.dart; packages/daemon/lib/src/daemon_server.dart",
+      "evidence": [
+        "packages/daemon/test/chat/chat_service_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Frozen room persistence, validation, message ordering, cursor waits, timeout, deletion rejection, and RPC routing ported."
     },
     {
       "id": "source-unit:packages/server/src/server/checkout-diff-manager.ts",

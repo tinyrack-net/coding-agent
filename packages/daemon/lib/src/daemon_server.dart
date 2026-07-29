@@ -15,6 +15,7 @@ import 'agent/agent_store.dart';
 import 'agent/timeline_projection.dart';
 import 'agent/timeline_store.dart';
 import 'agent/runtime_mcp_config.dart';
+import 'chat/chat_service.dart';
 import 'forge/forge_action_service.dart';
 import 'forge/checkout_refresh_service.dart';
 import 'forge/checkout_pr_status_service.dart';
@@ -254,6 +255,7 @@ Future<DaemonServerHandle> startDaemonServer({
   late final WorkspaceRegistries workspaceRegistries;
   late final LoopService loops;
   late final ScheduleService schedules;
+  late final FileBackedChatService chat;
   final voiceBridge = VoiceBridgeRegistry();
   final agentDirectorySubscriptions = <String, AgentDirectorySubscription>{};
   final manager = AgentManager(
@@ -1036,6 +1038,75 @@ Future<DaemonServerHandle> startDaemonServer({
     targetAgentExists: (agentId) =>
         manager.list().any((agent) => agent.agentId == agentId),
   );
+  chat = FileBackedChatService(
+    home: paths.dataDir,
+    prepareMentions:
+        ({
+          required room,
+          required authorAgentId,
+          required body,
+          required mentionAgentIds,
+          required roomPosterAgentIds,
+        }) async {
+          final candidates = <String>{
+            for (final mention in mentionAgentIds)
+              if (mention != 'everyone') mention,
+            if (mentionAgentIds.contains('everyone')) ...roomPosterAgentIds,
+          }..remove(authorAgentId);
+          final active = {
+            for (final agent in manager.list())
+              if (agent.runState != AgentRunState.error) agent.agentId: agent,
+          };
+          final targets = <String>{};
+          for (final candidate in candidates) {
+            try {
+              final resolved = manager.resolveIdentifier(candidate);
+              if (active.containsKey(resolved.agentId)) {
+                targets.add(resolved.agentId);
+              }
+            } on Object catch (error) {
+              log!('failed to resolve chat mention $candidate: $error');
+            }
+          }
+          if (mentionAgentIds.contains('everyone') &&
+              targets.length > chatMentionFanoutLimit) {
+            throw ChatServiceException(
+              'chat_mention_fanout_limit_exceeded',
+              '@everyone would notify ${targets.length} agents, which exceeds '
+                  'the limit of $chatMentionFanoutLimit. Narrow the room or '
+                  'mention specific agents.',
+            );
+          }
+          return targets.toList(growable: false);
+        },
+    notifyMentions:
+        ({
+          required room,
+          required authorAgentId,
+          required body,
+          required mentionAgentIds,
+          required roomPosterAgentIds,
+        }) async {
+          if (mentionAgentIds.isEmpty) return;
+          final notification = buildChatMentionNotification(
+            room: room,
+            authorAgentId: authorAgentId,
+            body: body,
+            mentionAgentIds: mentionAgentIds,
+          );
+          await Future.wait([
+            for (final target in mentionAgentIds)
+              manager
+                  .prompt(target, notification)
+                  .catchError(
+                    (Object error) =>
+                        log!('failed to notify chat mention $target: $error'),
+                  ),
+          ]);
+        },
+    onError: (error, stack) => log!('chat service error: $error\n$stack'),
+  );
+  await chat.initialize();
   final agentCommands = AgentCommandsService(manager);
   final providerCatalogV2 = ProviderCatalogV2Service(
     registry: paseoProviderCatalog,
@@ -1465,6 +1536,11 @@ Future<DaemonServerHandle> startDaemonServer({
     if (agentConfigResponse != null) return agentConfigResponse;
     final agentCommandsResponse = await agentCommands.handle(message);
     if (agentCommandsResponse != null) return agentCommandsResponse;
+    final chatResponse = await chat.handle(
+      message,
+      defaultAuthorAgentId: connection.clientName,
+    );
+    if (chatResponse != null) return chatResponse;
     final scheduleResponse = await schedules.handle(message);
     if (scheduleResponse != null) return scheduleResponse;
     final loopResponse = await loops.handle(message);
@@ -1637,6 +1713,7 @@ Future<DaemonServerHandle> startDaemonServer({
     stopConfigBroadcast();
     scriptHealth.stop();
     schedules.stop();
+    chat.dispose();
     await loops.prepareForDaemonShutdown();
     stopSpeechReadiness();
     await voiceSessions.dispose();
