@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_daemon/src/daemon_server.dart';
+import 'package:agent_daemon/src/cli/heartbeat_command.dart';
 import 'package:agent_daemon/src/cli/schedule_command.dart';
 import 'package:agent_daemon/src/providers/agent_client.dart';
 import 'package:agent_daemon/src/providers/agent_session.dart';
@@ -189,6 +190,69 @@ void main() {
     expect((logs.single as Map)['status'], 'succeeded');
     expect(await command(['delete', id]), {'id': id, 'status': 'deleted'});
     expect(await command(['ls']), isEmpty);
+  });
+
+  test('heartbeat CLI lifecycle crosses the real daemon socket', () async {
+    final home = Directory.systemTemp.createTempSync(
+      'daemon-heartbeat-cli-home-',
+    );
+    addTearDown(() async {
+      if (home.existsSync()) await home.delete(recursive: true);
+    });
+    final handle = await startDaemonServer(
+      paths: DaemonPaths(dataDir: home.path),
+      dataDir: home.path,
+      host: '127.0.0.1',
+      port: 0,
+      log: (_) {},
+    );
+    addTearDown(handle.stop);
+    final host = '127.0.0.1:${handle.server.port}';
+    const agentId = '11111111-1111-4111-8111-111111111111';
+
+    Future<Object?> command(List<String> arguments) async {
+      var output = '';
+      var error = '';
+      final code = await runHeartbeatCommand(
+        arguments: [...arguments, '--host', host, '--json'],
+        environment: const {'TINYRACK_AGENT_ID': agentId},
+        writeOutput: (value) => output += value,
+        writeError: (value) => error += value,
+      );
+      expect(code, 0, reason: error);
+      return jsonDecode(output);
+    }
+
+    final created =
+        await command([
+              'create',
+              'Check the build',
+              '--cron',
+              '0 9 * * *',
+              '--name',
+              'Build check',
+            ])
+            as Map<String, Object?>;
+    final id = created['id']! as String;
+    expect(created['target'], 'agent:1111111');
+    expect((await handle.schedules.inspect(id)).summary.target.toJson(), {
+      'type': 'agent',
+      'agentId': agentId,
+    });
+
+    final updated =
+        await command([
+              'update',
+              id,
+              '--cron',
+              '*/15 * * * *',
+              '--timezone',
+              'UTC',
+            ])
+            as Map<String, Object?>;
+    expect(updated['cadence'], 'cron:*/15 * * * * (UTC)');
+    expect(await command(['delete', id]), {'id': id, 'status': 'deleted'});
+    await expectLater(handle.schedules.inspect(id), throwsStateError);
   });
 }
 

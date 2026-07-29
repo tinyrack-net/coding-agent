@@ -12,6 +12,21 @@ const scheduleDaemonRpcTimeout = Duration(seconds: 30);
 typedef ScheduleRpcRequester =
     Future<Map<String, Object?>> Function(Map<String, Object?> request);
 
+abstract interface class ScheduleRpcClient {
+  Future<Map<String, Object?>> request(Map<String, Object?> request);
+  Future<void> close();
+}
+
+Future<ScheduleRpcClient> connectScheduleRpcClient(
+  DaemonRuntimeConfig config, {
+  required String? hostOverride,
+  required Map<String, String> environment,
+}) => _ScheduleSocketClient.connect(
+  config,
+  hostOverride: hostOverride,
+  environment: environment,
+);
+
 Future<int> runScheduleCommand({
   required List<String> arguments,
   Map<String, String>? environment,
@@ -32,11 +47,11 @@ Future<int> runScheduleCommand({
     final env = environment ?? Platform.environment;
     final cwd = currentDirectory ?? Directory.current.path;
     _prevalidate(parsed, cwd, env);
-    _ScheduleSocketClient? client;
+    ScheduleRpcClient? client;
     if (request == null) {
       final config = loadDaemonRuntimeConfig(environment: env);
       try {
-        client = await _ScheduleSocketClient.connect(
+        client = await connectScheduleRpcClient(
           config,
           hostOverride: parsed.host,
           environment: env,
@@ -691,6 +706,12 @@ Map<String, Object?> _scheduleRow(Map<String, Object?> schedule) => {
   'lastRunAt': schedule['lastRunAt'],
 };
 
+Map<String, Object?> scheduleCliRow(Map<String, Object?> schedule) =>
+    _scheduleRow(schedule);
+
+String scheduleCliTable(List<Map<String, Object?>> schedules) =>
+    _scheduleTable(schedules);
+
 Map<String, Object?> _scheduleLogRow(Map<String, Object?> run) => {
   'id': run['id'],
   'status': run['status'],
@@ -922,7 +943,7 @@ bool _hasOptionBeforeTerminator(List<String> arguments, Set<String> options) {
   return (argument.substring(0, separator), argument.substring(separator + 1));
 }
 
-final class _ScheduleSocketClient {
+final class _ScheduleSocketClient implements ScheduleRpcClient {
   _ScheduleSocketClient(this._socket, this._frames);
 
   final WebSocket _socket;
@@ -963,6 +984,7 @@ final class _ScheduleSocketClient {
     return _ScheduleSocketClient(socket, frames);
   }
 
+  @override
   Future<Map<String, Object?>> request(Map<String, Object?> request) async {
     _socket.add(jsonEncode({'type': 'session', 'message': request}));
     final requestId = request['requestId'];
@@ -983,6 +1005,7 @@ final class _ScheduleSocketClient {
     return Map<String, Object?>.from(payload);
   }
 
+  @override
   Future<void> close() async {
     await _frames.cancel();
     await _socket.close();
