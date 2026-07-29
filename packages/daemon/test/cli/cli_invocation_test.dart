@@ -187,6 +187,17 @@ void main() {
       normalizeRootCliArguments(const [
         '--format',
         'yaml',
+        '--quiet',
+        '--no-headers',
+        'hub',
+        'status',
+      ]).forward(),
+      const ['hub', 'status', '--format', 'yaml', '--quiet', '--no-headers'],
+    );
+    expect(
+      normalizeRootCliArguments(const [
+        '--format',
+        'yaml',
         '--no-headers',
         'heartbeat',
         'delete',

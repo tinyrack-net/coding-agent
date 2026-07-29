@@ -253,6 +253,80 @@ void main() {
     );
   });
 
+  test('supports frozen shared output options on every Hub action', () async {
+    final home = Directory.systemTemp.createTempSync('hub-cli-output-');
+    addTearDown(() => home.deleteSync(recursive: true));
+    Future<HubCommandResult> request(_, __) async =>
+        const HubCommandResult(status: _connectedStatus);
+
+    var output = '';
+    expect(
+      await runHubCliCommand(
+        arguments: ['status', '--format=yaml'],
+        environment: {'TINYRACK_HOME': home.path},
+        request: request,
+        writeOutput: (value) => output += value,
+      ),
+      0,
+    );
+    expect(output, contains('state: connected'));
+    expect(output, contains('hub: "https://hub.example.test"'));
+
+    output = '';
+    expect(
+      await runHubCliCommand(
+        arguments: ['status', '--quiet'],
+        environment: {'TINYRACK_HOME': home.path},
+        request: request,
+        writeOutput: (value) => output += value,
+      ),
+      0,
+    );
+    expect(output, 'connected\n');
+
+    output = '';
+    expect(
+      await runHubCliCommand(
+        arguments: ['status', '--no-headers', '--no-color'],
+        environment: {'TINYRACK_HOME': home.path},
+        request: request,
+        writeOutput: (value) => output += value,
+      ),
+      0,
+    );
+    expect(output, isNot(startsWith('STATE')));
+    expect(output, startsWith('connected'));
+
+    output = '';
+    expect(
+      await runHubCliCommand(
+        arguments: ['status', '-oyaml', '--json'],
+        environment: {'TINYRACK_HOME': home.path},
+        request: request,
+        writeOutput: (value) => output += value,
+      ),
+      0,
+    );
+    expect(jsonDecode(output), isA<List<Object?>>());
+  });
+
+  test('renders Hub failures in the selected shared output format', () async {
+    final home = Directory.systemTemp.createTempSync('hub-cli-error-output-');
+    addTearDown(() => home.deleteSync(recursive: true));
+    var error = '';
+    expect(
+      await runHubCliCommand(
+        arguments: ['status', '--format', 'yaml'],
+        environment: {'TINYRACK_HOME': home.path},
+        request: (_, __) => Future.error(StateError('offline')),
+        writeError: (value) => error += value,
+      ),
+      1,
+    );
+    expect(error, contains('code: UNKNOWN_ERROR'));
+    expect(error, contains('message: offline'));
+  });
+
   test('Hub parser enforces frozen action-specific boundaries', () async {
     final home = Directory.systemTemp.createTempSync('hub-cli-syntax-');
     addTearDown(() => home.deleteSync(recursive: true));

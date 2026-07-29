@@ -190,7 +190,7 @@ RootOutputForwarding rootOutputForwarding(List<String> arguments) {
         : RootOutputForwarding.none;
   }
   if (first == 'hub') {
-    return RootOutputForwarding.jsonOnly;
+    return RootOutputForwarding.full;
   }
   if (first == 'terminal') {
     final action = arguments.length > 1 ? arguments[1] : null;

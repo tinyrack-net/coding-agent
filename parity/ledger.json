@@ -9678,7 +9678,7 @@
         "packages/daemon/test/cli/hub_device_authorization_test.dart",
         "packages/daemon/test/daemon_hub_management_e2e_test.dart"
       ],
-      "notes": "Ports the frozen Hub CLI end to end with Tinyrack identity: positional connect URL, optional enrollment token, browser authorization after an explicit not-connected/revoked status guard, bounded host display name, status and force-disconnect flows, --host including tcp TLS and password semantics, exact seven-column row projection and single-row JSON list, structured errors and action help, binary dispatch, and real daemon connect/status/disconnect coverage."
+      "notes": "Ports the frozen Hub CLI end to end with Tinyrack identity: positional connect URL, optional enrollment token, browser authorization after an explicit not-connected/revoked status guard, bounded host display name, status and force-disconnect flows, --host including tcp TLS and password semantics, exact seven-column row projection, table/JSON/YAML/quiet/header output contracts, structured errors and action help, binary dispatch, and real daemon connect/status/disconnect coverage."
     },
     {
       "id": "source-unit:packages/cli/src/commands/loop/index.ts",
@@ -10232,11 +10232,12 @@
         "packages/daemon/test/cli/chat_command_test.dart",
         "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/hub_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "The shared Dart output entrypoint exports typed result, schema, custom serialization, JSON, YAML, quiet, table, and error rendering used by chat, heartbeat, schedule, non-streaming loop actions, and daemon result actions; remaining CLI families still need migration."
+      "notes": "The shared Dart output entrypoint exports typed result, schema, custom serialization, JSON, YAML, quiet, table, and error rendering used by chat, heartbeat, Hub, schedule, non-streaming loop actions, and daemon result actions; remaining CLI families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/json.ts",
@@ -10323,7 +10324,7 @@
     {
       "id": "source-unit:packages/cli/src/output/with-output.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/hub_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_invocation_test.dart",
         "packages/daemon/test/cli/cli_root_output_process_test.dart",
@@ -10331,13 +10332,14 @@
         "packages/daemon/test/cli/chat_command_test.dart",
         "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/hub_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/daemon_chat_e2e_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart",
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": "Global and local options feed shared result and error rendering for chat, heartbeat, schedule, non-streaming loop actions, and daemon result actions while direct/streaming actions retain their frozen boundaries; remaining JSON-only command families still need migration."
+      "notes": "Global and local options feed shared result and error rendering for chat, heartbeat, Hub, schedule, non-streaming loop actions, and daemon result actions while direct/streaming actions retain their frozen boundaries; remaining JSON-only command families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/yaml.ts",

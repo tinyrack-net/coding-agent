@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_output.dart';
 import 'hub_device_authorization.dart';
 import 'schedule_command.dart';
 
@@ -62,8 +63,11 @@ Future<int> runHubCommand({
           environment: env,
         );
     final result = await requester(config, options);
-    final output = _formatHubResult(result, json: options.json);
-    (writeOutput ?? stdout.write)(output);
+    final rendered = renderCliOutput(
+      _hubOutputResult(result),
+      CliOutputOptions(format: options.json ? 'json' : 'table'),
+    );
+    if (rendered.isNotEmpty) (writeOutput ?? stdout.write)('$rendered\n');
     return 0;
   } catch (error) {
     (writeError ?? stderr.write)('Hub command failed: $error\n');
@@ -89,9 +93,9 @@ Future<int> runHubCliCommand({
     output(hubHelp(arguments.isEmpty ? null : arguments.first));
     return 0;
   }
-  final jsonOutput = _hasOptionBeforeTerminator(arguments, const {'--json'});
+  HubCliInvocation? invocation;
   try {
-    final invocation = HubCliInvocation.parse(arguments);
+    invocation = HubCliInvocation.parse(arguments);
     final env = environment ?? Platform.environment;
     final config = loadDaemonRuntimeConfig(environment: env);
     final requester =
@@ -108,22 +112,19 @@ Future<int> runHubCliCommand({
       authorize: authorize ?? (url, name) => authorizeHubDevice(url, name),
       displayName: displayName ?? () => Platform.localHostname,
     );
-    output(_formatHubResult(result, json: invocation.json));
+    final rendered = renderCliOutput(
+      _hubOutputResult(result),
+      invocation.output,
+    );
+    if (rendered.isNotEmpty) output('$rendered\n');
     return 0;
   } on FormatException catch (error) {
     errorOutput('${error.message}\n$_hubUsage\n');
     return 64;
-  } on Object catch (error, stackTrace) {
-    final message = _errorText(error);
-    if (jsonOutput) {
-      errorOutput(
-        '${const JsonEncoder.withIndent('  ').convert({
-          'error': {'code': 'UNKNOWN_ERROR', 'message': message, 'details': stackTrace.toString()},
-        })}\n',
-      );
-    } else {
-      errorOutput('Error: $message\n$stackTrace');
-    }
+  } on Object catch (error) {
+    errorOutput(
+      '${renderCliError(code: 'UNKNOWN_ERROR', message: _errorText(error), options: invocation?.output ?? const CliOutputOptions())}\n',
+    );
     return 1;
   }
 }
@@ -134,7 +135,7 @@ final class HubCliInvocation {
     required this.positionals,
     required this.values,
     required this.flags,
-    required this.json,
+    required this.output,
     required this.host,
   });
 
@@ -142,7 +143,7 @@ final class HubCliInvocation {
   final List<String> positionals;
   final Map<String, String> values;
   final Set<String> flags;
-  final bool json;
+  final CliOutputOptions output;
   final String? host;
 
   static HubCliInvocation parse(List<String> arguments) {
@@ -158,12 +159,16 @@ final class HubCliInvocation {
       if (action == HubCommandAction.connect) '--token',
     };
     final booleanOptions = {
-      '--json',
       if (action == HubCommandAction.disconnect) '--force',
     };
     final positionals = <String>[];
     final values = <String, String>{};
     final flags = <String>{};
+    var format = 'table';
+    var json = false;
+    var quiet = false;
+    var headers = true;
+    var color = true;
     var positionalOnly = false;
     for (var index = 1; index < arguments.length; index++) {
       final argument = arguments[index];
@@ -171,6 +176,19 @@ final class HubCliInvocation {
         positionalOnly = true;
       } else if (positionalOnly) {
         positionals.add(argument);
+      } else if (argument == '--json') {
+        json = true;
+      } else if (argument == '-q' || argument == '--quiet') {
+        quiet = true;
+      } else if (argument == '--no-headers') {
+        headers = false;
+      } else if (argument == '--no-color') {
+        color = false;
+      } else if (argument == '-o' || argument == '--format') {
+        if (index + 1 >= arguments.length) {
+          throw FormatException('$argument requires a value');
+        }
+        format = normalizeCliOutputFormat(arguments[++index]);
       } else if (booleanOptions.contains(argument)) {
         flags.add(argument);
       } else if (valueOptions.contains(argument)) {
@@ -183,6 +201,12 @@ final class HubCliInvocation {
         final value,
       ) when valueOptions.contains(option)) {
         values[option] = value;
+      } else if (argument.startsWith('--format=')) {
+        format = normalizeCliOutputFormat(
+          argument.substring('--format='.length),
+        );
+      } else if (argument.startsWith('-o') && argument.length > 2) {
+        format = normalizeCliOutputFormat(argument.substring(2));
       } else if (argument.startsWith('-')) {
         throw FormatException('Unknown option: $argument');
       } else {
@@ -202,7 +226,12 @@ final class HubCliInvocation {
       positionals: List.unmodifiable(positionals),
       values: Map.unmodifiable(values),
       flags: Set.unmodifiable(flags),
-      json: flags.contains('--json'),
+      output: CliOutputOptions(
+        format: json ? 'json' : format,
+        quiet: quiet,
+        noHeaders: !headers,
+        noColor: !color,
+      ),
       host: values['--host'],
     );
   }
@@ -374,7 +403,7 @@ Future<Map<String, Object?>> _nextSessionMessage(
   throw TimeoutException('Daemon Hub request timed out');
 }
 
-String _formatHubResult(HubCommandResult result, {required bool json}) {
+CliOutputResult _hubOutputResult(HubCommandResult result) {
   final status = result.status;
   final row = <String, Object?>{
     'state': status.state.wireValue,
@@ -385,39 +414,24 @@ String _formatHubResult(HubCommandResult result, {required bool json}) {
     'error': status.lastError,
     if (result.warning != null) 'warning': result.warning,
   };
-  if (json) {
-    return '${const JsonEncoder.withIndent('  ').convert([row])}\n';
-  }
-  return _table(
-    const ['STATE', 'HUB', 'DAEMON', 'SCOPES', 'CONNECTED', 'ERROR', 'WARNING'],
-    [
-      [
-        '${row['state'] ?? ''}',
-        '${row['hub'] ?? ''}',
-        '${row['daemonId'] ?? ''}',
-        '${row['scopes'] ?? ''}',
-        '${row['connectedAt'] ?? ''}',
-        '${row['error'] ?? ''}',
-        '${row['warning'] ?? ''}',
-      ],
-    ],
-  );
+  return CliOutputResult.list(rows: [row], schema: _hubOutputSchema);
 }
 
-String _table(List<String> headers, List<List<String>> rows) {
-  final widths = [
-    for (var column = 0; column < headers.length; column++)
-      [
-        headers[column].length,
-        for (final row in rows) row[column].length,
-      ].reduce((left, right) => left > right ? left : right),
-  ];
-  String line(List<String> cells) => [
-    for (var index = 0; index < cells.length; index++)
-      cells[index].padRight(widths[index]),
-  ].join('  ');
-  return '${[line(headers), for (final row in rows) line(row)].join('\n')}\n';
-}
+final _hubOutputSchema = CliOutputSchema(
+  idField: (row) => '${row['state']}',
+  columns: [
+    for (final entry in const [
+      ('STATE', 'state'),
+      ('HUB', 'hub'),
+      ('DAEMON', 'daemonId'),
+      ('SCOPES', 'scopes'),
+      ('CONNECTED', 'connectedAt'),
+      ('ERROR', 'error'),
+      ('WARNING', 'warning'),
+    ])
+      CliOutputColumn(header: entry.$1, field: (row) => row[entry.$2]),
+  ],
+);
 
 String _errorText(Object error) => switch (error) {
   StateError(message: final message) => message,
