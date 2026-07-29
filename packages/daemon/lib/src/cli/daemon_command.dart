@@ -7,7 +7,9 @@ import 'package:path/path.dart' as p;
 
 import '../server/daemon_auth.dart';
 import '../server/daemon_config.dart';
+import 'cli_errors.dart';
 import 'cli_output.dart';
+import 'cli_version.dart';
 import 'pair_command.dart';
 
 const daemonStopTimeout = Duration(seconds: 15);
@@ -226,12 +228,8 @@ Future<int> runDaemonCommand({
   }
 }
 
-bool _isDaemonResultCommand(String command) => const {
-  'status',
-  'stop',
-  'restart',
-  'set-password',
-}.contains(command);
+bool _isDaemonResultCommand(String command) =>
+    const {'status', 'stop', 'restart', 'set-password'}.contains(command);
 
 DaemonCommandException _daemonUnhandledFailure(String command, Object error) {
   final message = _message(error);
@@ -372,7 +370,7 @@ Future<CliOutputResult> _status(
     'logPath': paths.logFile,
     'daemonNode': daemonExecutable ?? (hello == null ? '-' : 'unknown'),
     'cliNode': Platform.resolvedExecutable,
-    'cliVersion': '0.1.0',
+    'cliVersion': resolveCliVersion(),
     'daemonVersion': hello?.daemonVersion,
     'desktopManaged': lock?.desktopManaged ?? false,
     'providers': providers,
@@ -756,7 +754,7 @@ Duration _parseDaemonTimeout(
 String _message(Object error) => switch (error) {
   DaemonSpawnException(:final message) => message,
   StopRefusedException(:final reason) => reason,
-  _ => error.toString().replaceFirst(RegExp(r'^[^:]+: '), ''),
+  _ => getErrorMessage(error),
 };
 
 Map<String, Object?> _object(Object? value) =>

@@ -153,6 +153,7 @@ void main() {
       expect(result['localDaemon'], 'stopped');
       expect(result['connectedDaemon'], 'unreachable');
       expect(result['home'], p.normalize(p.absolute(home.path)));
+      expect(result['cliVersion'], '0.2.0');
       expect(result['providers'], hasLength(3));
     },
   );
@@ -517,12 +518,26 @@ void main() {
       await runDaemonCommand(
         arguments: [
           'restart',
+          '--home',
+          home.path,
           '--listen',
           '127.0.0.1:1',
           '--port',
           '2',
           '-oyaml',
         ],
+        runtime: DaemonCommandRuntime(
+          stop:
+              ({
+                required paths,
+                required host,
+                required port,
+                required token,
+                required force,
+                required exitWait,
+              }) async {},
+          environment: const {},
+        ),
         writeError: error.write,
       ),
       1,
