@@ -3272,12 +3272,16 @@
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/cadence-editor.tsx",
-      "status": "partial",
-      "implementation": "packages/app/lib/screens/schedules_screen.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/screens/schedules_screen.dart; packages/app/lib/state/schedule_form_model.dart",
       "evidence": [
-        "packages/app/test/schedules_screen_test.dart"
+        "packages/app/test/schedule_form_model_test.dart",
+        "packages/app/test/schedules_screen_test.dart",
+        "packages/app/test/goldens/schedule_form_desktop_900x900.png",
+        "packages/app/test/goldens/schedule_form_compact_390x844.png",
+        "parity/oracle/paseo_schedule_form_geometry.json"
       ],
-      "notes": "The Flutter editor now uses the shared SelectField with the frozen preset-only option catalog and test identities, represents custom cron as a null selection with a Custom cron display, updates the controlled monospace expression on preset selection, and preserves local validation and preview behavior. Pixel-golden proof for the complete compact and desktop field composition remains."
+      "notes": "Verified against the frozen source: the shared SelectField exposes the exact preset catalog and option identities, custom cron remains a null selection with the Custom cron display, preset and controlled text changes preserve timezone semantics, interval cadence normalization and cron validation/description copy match, and error precedence suppresses previews. The monospace expression, 12px control/feedback stack, desktop/compact geometry, and visual composition are locked by model tests, widget tests, Flutter goldens, and captured oracle geometry."
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/schedule-form-sheet.tsx",
