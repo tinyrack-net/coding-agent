@@ -19,6 +19,7 @@ import '../state/schedule_project_targets_provider.dart';
 import '../state/schedules_provider.dart';
 import '../widgets/adaptive_modal_sheet.dart';
 import '../widgets/combined_model_selector.dart';
+import '../widgets/fluent/form_text_input.dart';
 import '../widgets/fluent/select_field.dart';
 import '../widgets/fluent/toast.dart';
 import '../widgets/provider_icon.dart';
@@ -781,7 +782,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: _withFieldSpacing([
           if (agentTarget) ...[
-            _agentTargetField(agentDirectories),
+            _agentTargetField(agentDirectories, controlSize),
             _cadenceEditor(controlSize),
           ] else ...[
             if (editing || hosts.length > 1)
@@ -831,10 +832,20 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                   disabled: editing,
                 ),
               ),
-            _field('Name', _name, placeholder: 'Optional'),
+            _field(
+              'Name',
+              _name,
+              controlSize: controlSize,
+              inputKey: const ValueKey('schedule-name-input'),
+              semanticsLabel: 'Schedule name',
+              placeholder: 'Optional',
+            ),
             _field(
               'Prompt',
               _prompt,
+              controlSize: controlSize,
+              inputKey: const ValueKey('schedule-prompt-input'),
+              semanticsLabel: 'Prompt',
               placeholder: 'What should the agent do each run?',
               maxLines: 4,
               onChanged: (_) => setState(() {}),
@@ -866,7 +877,15 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                 ),
               ),
             _cadenceEditor(controlSize),
-            _field('Max runs', _maxRuns, placeholder: 'Unlimited'),
+            _field(
+              'Max runs',
+              _maxRuns,
+              controlSize: controlSize,
+              inputKey: const ValueKey('schedule-max-runs-input'),
+              semanticsLabel: 'Max runs',
+              placeholder: 'Unlimited',
+              keyboardType: TextInputType.number,
+            ),
           ],
           if (_error != null)
             Text(_error!, style: TextStyle(color: context.statusColors.danger)),
@@ -888,6 +907,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
 
   Widget _agentTargetField(
     Map<String, Map<String, AgentSummary>> agentDirectories,
+    PaseoFieldControlSize controlSize,
   ) {
     final target = widget.schedule?.target;
     final agentId = target is AgentScheduleTarget ? target.agentId : null;
@@ -901,13 +921,10 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
         : agent.title;
     return _labeledControl(
       'Target',
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          border: Border.all(color: context.tokens.outlineVariant),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+      PaseoReadOnlyField(
+        key: const ValueKey('schedule-agent-target'),
+        value: label,
+        size: controlSize,
       ),
     );
   }
@@ -952,20 +969,26 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
   Widget _field(
     String label,
     TextEditingController controller, {
+    required PaseoFieldControlSize controlSize,
+    Key? inputKey,
+    String? semanticsLabel,
     String? placeholder,
     String? helper,
     int maxLines = 1,
+    TextInputType? keyboardType,
     ValueChanged<String>? onChanged,
   }) => _labeledControl(
     label,
-    ConstrainedBox(
-      constraints: BoxConstraints(minHeight: maxLines > 1 ? 96 : 0),
-      child: TextBox(
-        controller: controller,
-        placeholder: placeholder,
-        maxLines: maxLines,
-        onChanged: onChanged,
-      ),
+    PaseoFormTextInput(
+      key: inputKey,
+      controller: controller,
+      semanticsLabel: semanticsLabel,
+      placeholder: placeholder,
+      size: controlSize,
+      maxLines: maxLines,
+      multilineHeight: maxLines > 1 ? 96 : null,
+      keyboardType: keyboardType,
+      onChanged: onChanged,
     ),
     helper: helper,
   );
@@ -1019,10 +1042,12 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
             size: controlSize,
           ),
           const SizedBox(height: 12),
-          TextBox(
+          PaseoFormTextInput(
             key: const ValueKey('cadence-cron-expression'),
             controller: _cron,
             placeholder: '0 9 * * *',
+            semanticsLabel: 'Cron expression',
+            size: controlSize,
             style: const TextStyle(fontFamily: 'monospace'),
             onChanged: (_) => setState(() {}),
           ),

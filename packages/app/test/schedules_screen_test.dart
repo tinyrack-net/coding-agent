@@ -76,6 +76,22 @@ void main() {
     expect(card.height, 800 * adaptiveModalCompactInitialHeightFactor);
     expect(card.bottom, 800);
     expect(
+      tester.getSize(find.byKey(const ValueKey('schedule-name-input'))).height,
+      44,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('schedule-prompt-input')))
+          .height,
+      96,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('cadence-cron-expression')))
+          .height,
+      44,
+    );
+    expect(
       tester.getRect(find.byKey(const ValueKey('schedule-form-submit'))).bottom,
       lessThanOrEqualTo(card.bottom - adaptiveModalFooterVerticalPadding),
     );
@@ -193,7 +209,22 @@ void main() {
     );
 
     final fields = find.byType(TextBox);
-    expect(tester.getSize(fields.at(1)).height, greaterThanOrEqualTo(96));
+    expect(
+      tester.getSize(find.byKey(const ValueKey('schedule-name-input'))).height,
+      32,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('schedule-prompt-input')))
+          .height,
+      96,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('cadence-cron-expression')))
+          .height,
+      32,
+    );
     await tester.enterText(fields.at(1), 'Run tests');
     await tester.enterText(fields.at(2), '*/5 * * * *');
     await _selectScheduleProject(tester, 'Local project');
@@ -571,6 +602,12 @@ void main() {
     expect(find.text('Max runs'), findsNothing);
     expect(find.text('Project'), findsNothing);
     expect(find.text('Model'), findsNothing);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('schedule-agent-target')))
+          .height,
+      32,
+    );
 
     await tester.enterText(find.byType(TextBox), '30 * * * *');
     await tester.tap(find.text('Save changes'));

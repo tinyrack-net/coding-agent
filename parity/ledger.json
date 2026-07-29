@@ -3282,7 +3282,7 @@
       "evidence": [
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, shows the owning Host as read-only while editing a new-agent schedule, exposes provider and model through the single combined model trigger, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. It runs in the shared adaptive desktop/compact sheet with frozen card and snap geometry, sticky footer, 16px field stack, 8px label gaps, 96px prompt, Thinking-before-Mode order, and a stacked archive switch. Host, Project, Thinking, Mode, Isolation, and Cadence use the adaptive SelectField; Model uses the exported custom SelectField trigger with the frozen provider icon, and project/thinking/isolation options use the frozen Lucide glyph paths. Remaining form parity is exact compact FormTextInput and read-only target control geometry plus screenshot-golden visual proof."
+      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, shows the owning Host as read-only while editing a new-agent schedule, exposes provider and model through the single combined model trigger, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. It runs in the shared adaptive desktop/compact sheet with frozen card and snap geometry, sticky footer, 16px field stack, 8px label gaps, 96px prompt, Thinking-before-Mode order, and a stacked archive switch. Host, Project, Thinking, Mode, Isolation, and Cadence use the adaptive SelectField; Model uses the exported custom SelectField trigger with the frozen provider icon, project/thinking/isolation options use the frozen Lucide glyph paths, and every text/read-only control now follows the frozen 32/44px adaptive field geometry. Screenshot-golden visual proof remains."
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/schedule-row.tsx",
@@ -3742,10 +3742,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/ui/form-field.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/widgets/fluent/form_text_input.dart; packages/app/lib/screens/schedules_screen.dart",
+      "evidence": [
+        "packages/app/test/form_text_input_test.dart",
+        "packages/app/test/schedules_screen_test.dart"
+      ],
+      "notes": "Flutter now has reusable FormTextInput chrome with frozen 32/44px adaptive geometry, 12/16px padding, 6/8px radii, 1.4 line height, surface, hover/focus/disabled states, multiline sizing, semantics, and matching read-only field geometry. The schedule form consumes it for every text input and Target value. A reusable Field label/hint/error wrapper and cross-screen adoption remain."
     },
     {
       "id": "source-unit:packages/app/src/components/ui/isolated-bottom-sheet-modal/index.tsx",
