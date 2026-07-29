@@ -36,6 +36,12 @@ Future<void> main(List<String> arguments) async {
     return;
   }
   arguments = defaultEmptyCliArguments(arguments);
+  final normalizedRoot = normalizeRootCliArguments(arguments);
+  arguments = normalizedRoot.forward();
+  if (arguments.isEmpty) {
+    exitCode = 0;
+    return;
+  }
   if (arguments.first == 'help') {
     if (arguments.length == 1) {
       stdout.write(_rootHelp);

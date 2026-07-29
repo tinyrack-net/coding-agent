@@ -36,6 +36,95 @@ void main() {
     expect(defaultEmptyCliArguments(arguments), same(arguments));
   });
 
+  test('normalizes root output options before full-output commands', () {
+    expect(
+      normalizeRootCliArguments(const [
+        '--format',
+        'yaml',
+        '--json',
+        '--quiet',
+        '--no-headers',
+        '--no-color',
+        'provider',
+        'ls',
+      ]).forward(),
+      const [
+        'provider',
+        'ls',
+        '--format',
+        'yaml',
+        '--json',
+        '--quiet',
+        '--no-headers',
+        '--no-color',
+      ],
+    );
+    expect(
+      normalizeRootCliArguments(const [
+        '--format=json',
+        'workspace',
+        'ls',
+      ]).forward(),
+      const ['workspace', 'ls', '--format', 'json'],
+    );
+    expect(normalizeRootCliArguments(const ['-oyaml', 'ls']).forward(), const [
+      'ls',
+      '--format',
+      'yaml',
+    ]);
+  });
+
+  test('preserves command-local options and action output boundaries', () {
+    expect(
+      normalizeRootCliArguments(const [
+        '--json',
+        'terminal',
+        'capture',
+        'term',
+        '--json',
+      ]).forward(),
+      const ['terminal', 'capture', 'term', '--json'],
+    );
+    expect(
+      normalizeRootCliArguments(const [
+        '--format',
+        'json',
+        'schedule',
+        'ls',
+      ]).forward(),
+      const ['schedule', 'ls', '--json'],
+    );
+    expect(
+      normalizeRootCliArguments(const [
+        '--json',
+        'speech',
+        'future-command',
+      ]).forward(),
+      const ['speech', 'future-command'],
+    );
+    expect(
+      normalizeRootCliArguments(const [
+        'provider',
+        'ls',
+        '--format',
+        'yaml',
+      ]).forward(),
+      const ['provider', 'ls', '--format', 'yaml'],
+    );
+  });
+
+  test('keeps malformed or root-only output invocations deterministic', () {
+    final missingFormat = normalizeRootCliArguments(const ['--format']);
+    expect(missingFormat.arguments, const ['--format']);
+    expect(missingFormat.output.isEmpty, isTrue);
+
+    final rootOnly = normalizeRootCliArguments(const ['--json', '--quiet']);
+    expect(rootOnly.arguments, isEmpty);
+    expect(rootOnly.output.json, isTrue);
+    expect(rootOnly.output.quiet, isTrue);
+    expect(rootOnly.forward(), isEmpty);
+  });
+
   test('classifies every frozen directory shape and resolves paths', () {
     final root = Directory.systemTemp.createTempSync('cli-invocation-');
     addTearDown(() => root.deleteSync(recursive: true));
