@@ -7,6 +7,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import '../server/daemon_config.dart';
 import '../server/pairing_offer.dart';
 import 'cli_client_id.dart';
+import 'cli_version.dart';
 
 const pairingDaemonRpcTimeout = Duration(milliseconds: 1500);
 final _ansiPattern = RegExp('${String.fromCharCode(0x1b)}\\[[0-9;]*m');
@@ -101,6 +102,7 @@ Future<DaemonGetPairingOfferResponse?> fetchRunningDaemonPairingOffer(
           clientId: clientId,
           clientType: WebSocketClientType.cli,
           protocolVersion: paseoWebSocketProtocolVersion,
+          appVersion: resolveCliVersion(),
         ).toJson(),
       ),
     );

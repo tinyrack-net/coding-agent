@@ -1,6 +1,6 @@
 name: agent_daemon
 description: Headless daemon that runs coding agent sessions and serves the WebSocket API.
-version: 0.1.0
+version: 0.2.0
 publish_to: none
 resolution: workspace
 

@@ -8,6 +8,7 @@ import '../server/daemon_config.dart';
 import 'cli_client_id.dart';
 import 'cli_duration.dart';
 import 'cli_output.dart';
+import 'cli_version.dart';
 import 'provider_model.dart';
 
 const scheduleDaemonRpcTimeout = Duration(seconds: 30);
@@ -966,6 +967,7 @@ final class _ScheduleSocketClient implements ScheduleRpcClient {
           clientId: clientId,
           clientType: WebSocketClientType.cli,
           protocolVersion: paseoWebSocketProtocolVersion,
+          appVersion: resolveCliVersion(),
         ).toJson(),
       ),
     );

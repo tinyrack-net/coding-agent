@@ -4,6 +4,7 @@ import 'package:agent_daemon/src/cli/daemon_command.dart';
 import 'package:agent_daemon/src/cli/chat_command.dart';
 import 'package:agent_daemon/src/cli/clone_command.dart';
 import 'package:agent_daemon/src/cli/cli_invocation.dart';
+import 'package:agent_daemon/src/cli/cli_version.dart';
 import 'package:agent_daemon/src/cli/hooks_command.dart';
 import 'package:agent_daemon/src/cli/open_command.dart';
 import 'package:agent_daemon/src/cli/onboard_command.dart';
@@ -23,7 +24,6 @@ import 'package:agent_daemon/src/cli/speech_command.dart';
 import 'package:agent_daemon/src/cli/terminal_command.dart';
 import 'package:agent_daemon/src/cli/workspace_command.dart';
 import 'package:agent_daemon/src/cli/worktree_command.dart';
-import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 
 Future<void> main(List<String> arguments) async {
   final invocation = classifyCliInvocation(
@@ -56,7 +56,7 @@ Future<void> main(List<String> arguments) async {
     return;
   }
   if (arguments.first == '--version' || arguments.first == '-v') {
-    stdout.writeln(daemonVersion);
+    stdout.writeln(resolveCliVersion());
     exitCode = 0;
     return;
   }

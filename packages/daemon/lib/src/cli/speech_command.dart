@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:daemon_lifecycle/daemon_lifecycle.dart';
+import 'cli_version.dart';
 
 /// Runs Paseo 0.2.0's intentionally empty speech command namespace.
 ///
@@ -13,7 +13,7 @@ Future<int> runSpeechCommand({
 }) async {
   final output = writeOutput ?? stdout.write;
   if (arguments.contains('--version') || arguments.contains('-v')) {
-    output('$daemonVersion\n');
+    output('${resolveCliVersion()}\n');
     return 0;
   }
   if (arguments.contains('--help') || arguments.contains('-h')) {

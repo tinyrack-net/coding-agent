@@ -6,12 +6,15 @@ import 'package:agent_daemon/src/agent/agent_store.dart';
 import 'package:agent_daemon/src/agent/timeline_store.dart';
 import 'package:agent_daemon/src/cli/agent_command.dart';
 import 'package:agent_daemon/src/cli/cli_client_id.dart';
+import 'package:agent_daemon/src/cli/cli_version.dart';
 import 'package:agent_daemon/src/cli/agent_logs_command.dart';
+import 'package:agent_daemon/src/cli/terminal_command.dart';
 import 'package:agent_daemon/src/daemon_server.dart';
 import 'package:agent_daemon/src/providers/agent_client.dart';
 import 'package:agent_daemon/src/providers/agent_session.dart';
 import 'package:agent_daemon/src/providers/provider_event.dart';
 import 'package:agent_daemon/src/workspace/workspace_registry.dart';
+import 'package:agent_daemon/src/server/daemon_config.dart';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 import 'package:test/test.dart';
@@ -170,6 +173,17 @@ void main() {
       '${home.path}${Platform.pathSeparator}$cliClientIdFileName',
     ).readAsString();
     expect(persistedClientId, matches(RegExp(r'^cid_[0-9a-f]{32}$')));
+
+    final versionClient = await DaemonCliSocketClient.connect(
+      loadDaemonRuntimeConfig(home: home.path, environment: environment),
+      hostOverride: host,
+      environment: environment,
+    );
+    expect(
+      handle.server.authenticatedV2Connections.single.appVersion,
+      resolveCliVersion(),
+    );
+    await versionClient.close();
 
     final all = StringBuffer();
     expect(

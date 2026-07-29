@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:agent_daemon/src/cli/chat_command.dart';
 import 'package:test/test.dart';
@@ -220,16 +221,21 @@ void main() {
     expect(errors.toString(), contains('code: CHAT_LIST_FAILED'));
     expect(errors.toString(), contains('message: "Failed to list chat rooms:'));
 
-    errors.clear();
-    expect(
-      await runChatCommand(
-        arguments: ['ls', '--host', '127.0.0.1:1'],
-        environment: const {},
-        writeError: errors.write,
-      ),
-      1,
-    );
-    expect(errors.toString(), contains('Cannot connect to daemon'));
+    final home = await Directory.systemTemp.createTemp('chat-command-test-');
+    try {
+      errors.clear();
+      expect(
+        await runChatCommand(
+          arguments: ['ls', '--host', '127.0.0.1:1'],
+          environment: {'TINYRACK_HOME': home.path},
+          writeError: errors.write,
+        ),
+        1,
+      );
+      expect(errors.toString(), contains('Cannot connect to daemon'));
+    } finally {
+      await home.delete(recursive: true);
+    }
 
     errors.clear();
     expect(

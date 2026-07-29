@@ -7,6 +7,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import '../server/daemon_config.dart';
 import 'cli_client_id.dart';
 import 'cli_output.dart';
+import 'cli_version.dart';
 import 'hub_device_authorization.dart';
 import 'schedule_command.dart';
 
@@ -327,6 +328,7 @@ Future<HubCommandResult> requestRunningDaemonHubManagement(
           clientId: clientId,
           clientType: WebSocketClientType.cli,
           protocolVersion: paseoWebSocketProtocolVersion,
+          appVersion: resolveCliVersion(),
         ).toJson(),
       ),
     );
