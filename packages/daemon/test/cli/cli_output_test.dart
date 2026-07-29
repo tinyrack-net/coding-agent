@@ -62,6 +62,28 @@ void main() {
     );
   });
 
+  test('renders one serializer-aware YAML document for streaming', () {
+    expect(
+      renderCliYamlDocument({
+        'id': 'agent-1',
+        'status': 'running',
+        'labels': ['core'],
+      }),
+      'id: agent-1\nstatus: running\nlabels:\n  - core',
+    );
+    expect(
+      renderCliYamlDocument<Map<String, Object?>>(
+        {'id': 'agent-2', 'status': 'idle'},
+        serialize: (item) => {
+          'agent': item['id'],
+          'ready': item['status'] == 'idle',
+          'numericText': '001',
+        },
+      ),
+      'agent: agent-2\nready: true\nnumericText: "001"',
+    );
+  });
+
   test('applies frozen schema serialization and collapses identical lists', () {
     final serializedSchema = CliOutputSchema(
       idField: (row) => '${row['key']}',

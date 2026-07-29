@@ -10391,7 +10391,7 @@
     },
     {
       "id": "source-unit:packages/cli/src/output/yaml.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
@@ -10407,7 +10407,7 @@
         "packages/daemon/test/cli/workspace_command_test.dart",
         "packages/daemon/test/cli/worktree_command_test.dart"
       ],
-      "notes": "Recursive maps/lists, empty collections, YAML-ambiguous numeric/date string quoting, single/list results, schema custom serializers with identical-list collapse, and structured errors are ported; document streaming remains."
+      "notes": "Recursive maps/lists, empty collections, YAML-ambiguous numeric/date and leading-zero string quoting, single/list results, schema custom serializers with identical-list collapse, structured errors, and serializer-aware single-document streaming are ported."
     },
     {
       "id": "source-unit:packages/cli/src/run.ts",

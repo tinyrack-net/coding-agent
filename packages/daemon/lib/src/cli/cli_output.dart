@@ -236,6 +236,16 @@ String encodeCliYaml(Object? value) {
   return lines.join('\n');
 }
 
+/// Renders one independently writable YAML item for streaming commands.
+///
+/// The caller owns framing between streamed items, matching Paseo's
+/// `renderYamlDoc`: this function serializes exactly one item and does not add
+/// a document separator or terminal newline.
+String renderCliYamlDocument<T>(
+  T item, {
+  Object? Function(T item)? serialize,
+}) => encodeCliYaml(serialize == null ? item : serialize(item));
+
 void _writeCliYaml(Object? value, List<String> lines, {required int indent}) {
   final prefix = ' ' * indent;
   if (value is List) {
@@ -317,7 +327,7 @@ String _cliYamlScalar(Object? value) {
   final text = '$value';
   if (text.isNotEmpty &&
       !RegExp(
-        r'''[:#\[\]{},&*!|>'"%@`]|^\s|\s$|^(null|true|false|~|[-+]?\.inf|\.nan)$|^[-+]?(?:0|[1-9][0-9_]*)(?:\.[0-9_]*)?(?:e[-+]?[0-9]+)?$|^[-+]?\.[0-9_]+(?:e[-+]?[0-9]+)?$|^0(?:x[0-9a-f_]+|o[0-7_]+|b[01_]+)$|^\d{4}-\d{2}-\d{2}(?:$|[tT ])''',
+        r'''[:#\[\]{},&*!|>'"%@`]|^\s|\s$|^(null|true|false|~|[-+]?\.inf|\.nan)$|^[-+]?[0-9][0-9_]*(?:\.[0-9_]*)?(?:e[-+]?[0-9]+)?$|^[-+]?\.[0-9_]+(?:e[-+]?[0-9]+)?$|^0(?:x[0-9a-f_]+|o[0-7_]+|b[01_]+)$|^\d{4}-\d{2}-\d{2}(?:$|[tT ])''',
         caseSensitive: false,
       ).hasMatch(text)) {
     return text;
