@@ -8684,10 +8684,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/project-config-form.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/projects/project_config_form.dart",
+      "evidence": [
+        "packages/app/test/project_config_form_test.dart"
+      ],
+      "notes": "Losslessly ports the frozen project settings draft projection and writeback contract: lifecycle string/array kind preservation, script rows and port normalization, visible metadata prompts, removal semantics, and preservation of unknown top-level, worktree, script, metadata, and prompt-entry fields."
     },
     {
       "id": "source-unit:packages/app/src/utils/project-display-name.ts",
