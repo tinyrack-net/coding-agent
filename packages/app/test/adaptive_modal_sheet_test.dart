@@ -118,6 +118,52 @@ void main() {
     expect(closed, isTrue);
   });
 
+  testWidgets('custom header and footer occupy the adaptive card chrome', (
+    tester,
+  ) async {
+    await _setViewport(tester, const Size(1000, 800));
+    await tester.pumpWidget(
+      FluentApp(
+        theme: buildAppTheme(),
+        home: AdaptiveModalSheet(
+          title: 'Provider',
+          onClose: () {},
+          headerActions: const [
+            IconButton(
+              key: ValueKey('header-action'),
+              onPressed: null,
+              icon: Icon(FluentIcons.refresh),
+            ),
+          ],
+          headerContent: const Text('Search header', key: ValueKey('header')),
+          content: const Text('Models'),
+          footer: const Text('Provider footer', key: ValueKey('footer')),
+          contentScrollable: false,
+        ),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('header-action')), findsOneWidget);
+    expect(find.byKey(const ValueKey('header')), findsOneWidget);
+    expect(find.byKey(const ValueKey('footer')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('adaptive-modal-sheet-content')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('adaptive-modal-sheet-scroll')),
+      findsNothing,
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('header'))).dy,
+      lessThan(tester.getTopLeft(find.text('Models')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('footer'))).dy,
+      greaterThan(tester.getTopLeft(find.text('Models')).dy),
+    );
+  });
+
   testWidgets('compact sheet supports pan-down dismissal', (tester) async {
     await _setViewport(tester, const Size(500, 800));
     var closed = false;

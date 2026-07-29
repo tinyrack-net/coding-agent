@@ -65,4 +65,72 @@ void main() {
       expect(identical(result.cache, cache), isTrue);
     }
   });
+
+  test(
+    'model ranking matches exact, prefix, word, substring, and fuzzy tiers',
+    () {
+      const values = [
+        ('substring', 'TheSonnetModel', 'anthropic/model'),
+        ('fuzzy', 'Claude SNT', 'claude-snt'),
+        ('exact', 'sonnet', 'other'),
+        ('prefix', 'Sonnet 4', 'sonnet-4'),
+        ('word', 'Claude Sonnet', 'claude-sonnet'),
+      ];
+
+      final ranked = rankProviderModels(
+        values,
+        'sonnet',
+        (value) => [value.$2, value.$3],
+      );
+
+      expect(ranked.map((value) => value.$1), [
+        'exact',
+        'prefix',
+        'word',
+        'substring',
+      ]);
+      expect(
+        rankProviderModels(
+          values,
+          'snt',
+          (value) => [value.$2, value.$3],
+        ).map((value) => value.$1),
+        contains('fuzzy'),
+      );
+    },
+  );
+
+  test('formats provider fetch ages with frozen boundaries', () {
+    final now = DateTime(2026, 7, 30, 12);
+    expect(
+      formatProviderFetchedAt(
+        now.subtract(const Duration(seconds: 9)),
+        now: now,
+      ),
+      'just now',
+    );
+    expect(
+      formatProviderFetchedAt(
+        now.subtract(const Duration(seconds: 30)),
+        now: now,
+      ),
+      '30s ago',
+    );
+    expect(
+      formatProviderFetchedAt(
+        now.subtract(const Duration(minutes: 5)),
+        now: now,
+      ),
+      '5m ago',
+    );
+    expect(
+      formatProviderFetchedAt(now.subtract(const Duration(hours: 2)), now: now),
+      '2h ago',
+    );
+    expect(
+      formatProviderFetchedAt(now.subtract(const Duration(days: 3)), now: now),
+      '3d ago',
+    );
+    expect(formatProviderFetchedAt(DateTime(2026, 7, 15), now: now), 'Jul 15');
+  });
 }

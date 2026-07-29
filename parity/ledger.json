@@ -2442,10 +2442,12 @@
       "evidence": [
         "packages/app/test/adaptive_modal_sheet_test.dart",
         "packages/app/test/schedules_screen_test.dart",
+        "packages/app/test/provider_settings_sheet_test.dart",
+        "packages/app/test/provider_diagnostic_dialog_test.dart",
         "parity/oracle/paseo_schedule_form_compact_390x844.png",
         "parity/oracle/paseo_schedule_form_geometry.json"
       ],
-      "notes": "Desktop 520px/85% card geometry, 24px header/content/footer insets, sticky equal-width 44px actions, 160ms fade, close and barrier dismissal, compact 65%/90% draggable presentation, max-snap content sizing, pan-down dismissal, keyboard inset, and compact safe-area behavior are implemented. The compact schedule journey is locked to the frozen runtime geometry within one logical pixel. Remaining shared primitive parity includes inline/search headers, nested modal isolation, push/replace presentation, non-scrollable content, web portal stacking, and adaptive native text-input ownership."
+      "notes": "Desktop and compact geometry, sticky standard/custom footers, inline/search header content and actions, scrollable/non-scrollable bodies, nested sheets, max-snap sizing, pan dismissal, keyboard inset, and safe areas are implemented. Remaining shared primitive parity includes push/replace presentation, web portal stacking, and adaptive native text-input ownership."
     },
     {
       "id": "source-unit:packages/app/src/components/add-host-method-modal.tsx",
@@ -3273,16 +3275,19 @@
       "evidence": [
         "packages/app/test/provider_diagnostic_models_test.dart"
       ],
-      "notes": "Stable discovered-model cache replacement, same-scope refresh retention, and stale-scope hiding match the frozen helper."
+      "notes": "Stable discovered-model caching, exact frozen score-match ranking, and fetched-at relative time formatting are ported."
     },
     {
       "id": "source-unit:packages/app/src/components/provider-diagnostic-sheet.tsx",
-      "status": "partial",
-      "implementation": "packages/app/lib/widgets/provider_diagnostic_dialog.dart;packages/app/lib/screens/host_providers_settings_section.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/provider_settings_sheet.dart;packages/app/lib/widgets/provider_diagnostic_dialog.dart;packages/app/lib/screens/host_providers_settings_section.dart;packages/app/lib/widgets/adaptive_modal_sheet.dart",
       "evidence": [
-        "packages/app/test/provider_diagnostic_dialog_test.dart"
+        "packages/app/test/provider_settings_sheet_test.dart",
+        "packages/app/test/provider_diagnostic_dialog_test.dart",
+        "packages/app/test/provider_diagnostic_models_test.dart",
+        "packages/app/test/adaptive_modal_sheet_test.dart"
       ],
-      "notes": "Provider diagnostics load, inline failures, copy, refresh, and settings entry point are ported. The frozen adaptive model-management sheet, model search, custom-model add/remove, localization, and golden geometry remain."
+      "notes": "Provider-row entry, adaptive 65/92 main sheet, search-ranked discovered/custom sections, stable refresh models, exact empty/error states, additional-model add/remove config patches, fetched-at footer, 40 percent add sheet, and nested 50/85 diagnostic sheet with header copy/refresh match the frozen surface."
     },
     {
       "id": "source-unit:packages/app/src/components/provider-icon-name.ts",

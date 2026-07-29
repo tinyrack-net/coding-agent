@@ -5,9 +5,11 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 final class _DiagnosticClient extends DaemonClient {
-  _DiagnosticClient({this.error}) : super(uri: Uri.parse('ws://fake'));
+  _DiagnosticClient({this.error, this.diagnostic})
+    : super(uri: Uri.parse('ws://fake'));
 
   final Object? error;
+  final String? diagnostic;
   int calls = 0;
 
   @override
@@ -21,21 +23,35 @@ final class _DiagnosticClient extends DaemonClient {
     if (failure != null) throw failure;
     return ProviderDiagnosticResponse(
       provider: provider,
-      diagnostic: 'Claude Code\n  Models: $calls\n  Status: Ready',
+      diagnostic:
+          diagnostic ?? 'Claude Code\n  Models: $calls\n  Status: Ready',
       requestId: requestId ?? 'diagnostic-$calls',
     );
   }
 }
 
 Widget _app(DaemonClient client) => FluentApp(
-  home: ProviderDiagnosticDialog(
-    client: client,
-    provider: 'claude',
-    label: 'Claude Code',
-  ),
+  home: ProviderDiagnosticDialog(client: client, provider: 'claude'),
 );
 
 void main() {
+  testWidgets('uses the frozen compact 50 percent diagnostic snap', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(500, 800);
+    addTearDown(tester.view.reset);
+    final client = _DiagnosticClient();
+
+    await tester.pumpWidget(_app(client));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getRect(find.byKey(const ValueKey('adaptive-modal-sheet-card'))),
+      const Rect.fromLTWH(0, 400, 500, 400),
+    );
+  });
+
   testWidgets('loads and refreshes a provider diagnostic', (tester) async {
     final client = _DiagnosticClient();
 
@@ -46,9 +62,7 @@ void main() {
     expect(find.byKey(const Key('provider-diagnostic-dialog')), findsOneWidget);
     expect(find.textContaining('Models: 1'), findsOneWidget);
 
-    await tester.tap(
-      find.byKey(const Key('refresh-provider-diagnostic')),
-    );
+    await tester.tap(find.byKey(const Key('refresh-provider-diagnostic')));
     await tester.pumpAndSettle();
 
     expect(client.calls, 2);
@@ -65,11 +79,26 @@ void main() {
     expect(find.textContaining('provider unavailable'), findsOneWidget);
     expect(
       tester
-          .widget<Button>(
+          .widget<IconButton>(
             find.byKey(const Key('refresh-provider-diagnostic')),
           )
           .onPressed,
       isNotNull,
+    );
+  });
+
+  testWidgets('shows the frozen empty diagnostic state', (tester) async {
+    final client = _DiagnosticClient(diagnostic: '');
+
+    await tester.pumpWidget(_app(client));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No diagnostic available'), findsOneWidget);
+    expect(
+      tester
+          .widget<IconButton>(find.byKey(const Key('copy-provider-diagnostic')))
+          .onPressed,
+      isNull,
     );
   });
 }

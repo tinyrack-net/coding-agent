@@ -10,8 +10,8 @@ import '../state/daemon_config_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/providers_snapshot_provider.dart';
 import '../widgets/provider_catalog_list.dart';
-import '../widgets/provider_diagnostic_dialog.dart';
 import '../widgets/provider_icon.dart';
+import '../widgets/provider_settings_sheet.dart';
 
 class HostProvidersSettingsSection extends ConsumerStatefulWidget {
   const HostProvidersSettingsSection({super.key, required this.serverId});
@@ -136,12 +136,11 @@ class _HostProvidersSettingsSectionState
     }
   }
 
-  Future<void> _openDiagnostic(ProviderSnapshotEntry entry) =>
-      showProviderDiagnosticDialog(
+  Future<void> _openProviderSettings(ProviderSnapshotEntry entry) =>
+      showProviderSettingsSheet(
         context: context,
-        client: ref.read(daemonClientProvider),
+        serverId: widget.serverId,
         provider: entry.provider,
-        label: entry.label ?? entry.provider,
       );
 
   @override
@@ -205,7 +204,7 @@ class _HostProvidersSettingsSectionState
                               _removingProviderId == entries[index].provider,
                           onToggle: (enabled) =>
                               _toggle(entries[index], enabled),
-                          onDiagnostic: () => _openDiagnostic(entries[index]),
+                          onOpen: () => _openProviderSettings(entries[index]),
                           onRemove: entries[index].source == 'custom'
                               ? () => _remove(entries[index])
                               : null,
@@ -241,7 +240,7 @@ class _InstalledProviderRow extends StatelessWidget {
     required this.pending,
     required this.removing,
     required this.onToggle,
-    required this.onDiagnostic,
+    required this.onOpen,
     required this.onRemove,
   });
 
@@ -249,90 +248,97 @@ class _InstalledProviderRow extends StatelessWidget {
   final bool pending;
   final bool removing;
   final ValueChanged<bool> onToggle;
-  final VoidCallback onDiagnostic;
+  final VoidCallback onOpen;
   final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
     final status = _providerStatus(entry);
-    return Padding(
-      key: ValueKey('installed-provider-${entry.provider}'),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Row(
-        children: [
-          ProviderIcon(
-            provider: entry.provider,
-            size: 20,
-            color:
-                FluentTheme.of(context).typography.body?.color ?? Colors.white,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(entry.label ?? entry.provider),
-                const SizedBox(height: 2),
-                Row(
+    return Semantics(
+      button: true,
+      label: '${entry.label ?? entry.provider} provider details',
+      child: HoverButton(
+        key: ValueKey('installed-provider-${entry.provider}'),
+        onPressed: onOpen,
+        builder: (context, states) => Container(
+          color: states.contains(WidgetState.pressed)
+              ? FluentTheme.of(context).resources.subtleFillColorSecondary
+              : states.contains(WidgetState.hovered)
+              ? FluentTheme.of(context).resources.subtleFillColorTertiary
+              : Colors.transparent,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              const Icon(FluentIcons.chevron_right, size: 12),
+              const SizedBox(width: 8),
+              ProviderIcon(
+                provider: entry.provider,
+                size: 20,
+                color:
+                    FluentTheme.of(context).typography.body?.color ??
+                    Colors.white,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: status.$2,
-                        shape: BoxShape.circle,
-                      ),
+                    Text(entry.label ?? entry.provider),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: status.$2,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          status.$1,
+                          style: FluentTheme.of(context).typography.caption,
+                        ),
+                        if (entry.models?.isNotEmpty == true) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            '· ${entry.models!.length} models',
+                            style: FluentTheme.of(context).typography.caption,
+                          ),
+                        ],
+                      ],
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      status.$1,
-                      style: FluentTheme.of(context).typography.caption,
-                    ),
-                    if (entry.models?.isNotEmpty == true) ...[
-                      const SizedBox(width: 6),
+                    if (entry.error != null)
                       Text(
-                        '· ${entry.models!.length} models',
+                        entry.error!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: FluentTheme.of(context).typography.caption,
                       ),
-                    ],
                   ],
                 ),
-                if (entry.error != null)
-                  Text(
-                    entry.error!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: FluentTheme.of(context).typography.caption,
-                  ),
-              ],
-            ),
+              ),
+              if (onRemove != null)
+                IconButton(
+                  key: ValueKey('remove-provider-${entry.provider}'),
+                  icon: removing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: ProgressRing(strokeWidth: 2),
+                        )
+                      : const Icon(FluentIcons.delete, size: 16),
+                  onPressed: removing ? null : onRemove,
+                ),
+              ToggleSwitch(
+                key: ValueKey('toggle-provider-${entry.provider}'),
+                checked: entry.enabled,
+                onChanged: pending ? null : onToggle,
+              ),
+            ],
           ),
-          Tooltip(
-            message: 'Provider diagnostic',
-            child: IconButton(
-              key: ValueKey('diagnose-provider-${entry.provider}'),
-              icon: const Icon(FluentIcons.diagnostic, size: 16),
-              onPressed: onDiagnostic,
-            ),
-          ),
-          if (onRemove != null)
-            IconButton(
-              key: ValueKey('remove-provider-${entry.provider}'),
-              icon: removing
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: ProgressRing(strokeWidth: 2),
-                    )
-                  : const Icon(FluentIcons.delete, size: 16),
-              onPressed: removing ? null : onRemove,
-            ),
-          ToggleSwitch(
-            key: ValueKey('toggle-provider-${entry.provider}'),
-            checked: entry.enabled,
-            onChanged: pending ? null : onToggle,
-          ),
-        ],
+        ),
       ),
     );
   }

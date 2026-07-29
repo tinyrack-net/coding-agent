@@ -65,6 +65,10 @@ class AdaptiveModalSheet extends StatelessWidget {
     required this.content,
     required this.onClose,
     this.actions = const [],
+    this.headerActions = const [],
+    this.headerContent,
+    this.footer,
+    this.contentScrollable = true,
     this.desktopMaxWidth = adaptiveModalDesktopMaxWidth,
     this.compactInitialHeightFactor = adaptiveModalCompactInitialHeightFactor,
     this.compactMaxHeightFactor = adaptiveModalCompactMaxHeightFactor,
@@ -77,6 +81,10 @@ class AdaptiveModalSheet extends StatelessWidget {
   final Widget content;
   final VoidCallback onClose;
   final List<Widget> actions;
+  final List<Widget> headerActions;
+  final Widget? headerContent;
+  final Widget? footer;
+  final bool contentScrollable;
   final double desktopMaxWidth;
   final double compactInitialHeightFactor;
   final double compactMaxHeightFactor;
@@ -84,11 +92,12 @@ class AdaptiveModalSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    assert(actions.isEmpty || footer == null);
     final media = MediaQuery.of(context);
     final compact = media.size.width < adaptiveModalCompactBreakpoint;
     final safeArea = resolveCompactSheetSafeAreaPadding(
       isCompact: compact,
-      hasFooter: actions.isNotEmpty,
+      hasFooter: actions.isNotEmpty || footer != null,
       safeAreaBottom: media.viewPadding.bottom,
     );
     return AnimatedPadding(
@@ -101,6 +110,10 @@ class AdaptiveModalSheet extends StatelessWidget {
               content: content,
               onClose: onClose,
               actions: actions,
+              headerActions: headerActions,
+              headerContent: headerContent,
+              footer: footer,
+              contentScrollable: contentScrollable,
               safeArea: safeArea,
               initialHeightFactor: compactInitialHeightFactor,
               maxHeightFactor: compactMaxHeightFactor,
@@ -111,6 +124,10 @@ class AdaptiveModalSheet extends StatelessWidget {
               content: content,
               onClose: onClose,
               actions: actions,
+              headerActions: headerActions,
+              headerContent: headerContent,
+              footer: footer,
+              contentScrollable: contentScrollable,
               maxWidth: desktopMaxWidth,
             ),
     );
@@ -123,6 +140,10 @@ class _DesktopAdaptiveModalSheet extends StatelessWidget {
     required this.content,
     required this.onClose,
     required this.actions,
+    required this.headerActions,
+    required this.headerContent,
+    required this.footer,
+    required this.contentScrollable,
     required this.maxWidth,
   });
 
@@ -130,6 +151,10 @@ class _DesktopAdaptiveModalSheet extends StatelessWidget {
   final Widget content;
   final VoidCallback onClose;
   final List<Widget> actions;
+  final List<Widget> headerActions;
+  final Widget? headerContent;
+  final Widget? footer;
+  final bool contentScrollable;
   final double maxWidth;
 
   @override
@@ -148,6 +173,10 @@ class _DesktopAdaptiveModalSheet extends StatelessWidget {
             content: content,
             onClose: onClose,
             actions: actions,
+            headerActions: headerActions,
+            headerContent: headerContent,
+            footer: footer,
+            contentScrollable: contentScrollable,
           ),
         ),
       ),
@@ -161,6 +190,10 @@ class _CompactAdaptiveModalSheet extends StatefulWidget {
     required this.content,
     required this.onClose,
     required this.actions,
+    required this.headerActions,
+    required this.headerContent,
+    required this.footer,
+    required this.contentScrollable,
     required this.safeArea,
     required this.initialHeightFactor,
     required this.maxHeightFactor,
@@ -171,6 +204,10 @@ class _CompactAdaptiveModalSheet extends StatefulWidget {
   final Widget content;
   final VoidCallback onClose;
   final List<Widget> actions;
+  final List<Widget> headerActions;
+  final Widget? headerContent;
+  final Widget? footer;
+  final bool contentScrollable;
   final CompactSheetSafeAreaPadding safeArea;
   final double initialHeightFactor;
   final double maxHeightFactor;
@@ -233,6 +270,10 @@ class _CompactAdaptiveModalSheetState
                 content: widget.content,
                 onClose: widget.onClose,
                 actions: widget.actions,
+                headerActions: widget.headerActions,
+                headerContent: widget.headerContent,
+                footer: widget.footer,
+                contentScrollable: widget.contentScrollable,
                 scrollController: scrollController,
                 contentPaddingBottom:
                     widget.safeArea.contentPaddingBottom ??
@@ -288,6 +329,10 @@ class _AdaptiveModalCard extends StatelessWidget {
     required this.content,
     required this.onClose,
     required this.actions,
+    required this.headerActions,
+    required this.headerContent,
+    required this.footer,
+    required this.contentScrollable,
     this.scrollController,
     this.contentPaddingBottom = adaptiveModalContentPadding,
     this.footerPaddingBottom = adaptiveModalFooterVerticalPadding,
@@ -301,6 +346,10 @@ class _AdaptiveModalCard extends StatelessWidget {
   final Widget content;
   final VoidCallback onClose;
   final List<Widget> actions;
+  final List<Widget> headerActions;
+  final Widget? headerContent;
+  final Widget? footer;
+  final bool contentScrollable;
   final ScrollController? scrollController;
   final double contentPaddingBottom;
   final double footerPaddingBottom;
@@ -342,38 +391,57 @@ class _AdaptiveModalCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
               ),
             ),
-          _AdaptiveModalHeader(title: title, onClose: onClose),
+          _AdaptiveModalHeader(
+            title: title,
+            actions: headerActions,
+            onClose: onClose,
+          ),
+          ?headerContent,
           if (height != null)
-            Expanded(child: _scrollableContent())
+            Expanded(child: _contentFrame())
           else
-            Flexible(child: _scrollableContent()),
+            Flexible(child: _contentFrame()),
           if (actions.isNotEmpty)
             _AdaptiveModalFooter(
               actions: actions,
               paddingBottom: footerPaddingBottom,
             ),
+          ?footer,
         ],
       ),
     );
   }
 
-  Widget _scrollableContent() => SingleChildScrollView(
-    key: const ValueKey('adaptive-modal-sheet-scroll'),
-    controller: scrollController,
-    padding: EdgeInsets.fromLTRB(
-      compact ? 0 : adaptiveModalContentPadding,
-      compact ? 0 : adaptiveModalContentPadding,
-      compact ? 0 : adaptiveModalContentPadding,
-      contentPaddingBottom,
-    ),
-    child: content,
+  EdgeInsets get _contentPadding => EdgeInsets.fromLTRB(
+    compact ? 0 : adaptiveModalContentPadding,
+    compact ? 0 : adaptiveModalContentPadding,
+    compact ? 0 : adaptiveModalContentPadding,
+    contentPaddingBottom,
   );
+
+  Widget _contentFrame() => contentScrollable
+      ? SingleChildScrollView(
+          key: const ValueKey('adaptive-modal-sheet-scroll'),
+          controller: scrollController,
+          padding: _contentPadding,
+          child: content,
+        )
+      : Padding(
+          key: const ValueKey('adaptive-modal-sheet-content'),
+          padding: _contentPadding,
+          child: content,
+        );
 }
 
 class _AdaptiveModalHeader extends StatelessWidget {
-  const _AdaptiveModalHeader({required this.title, required this.onClose});
+  const _AdaptiveModalHeader({
+    required this.title,
+    required this.actions,
+    required this.onClose,
+  });
 
   final String title;
+  final List<Widget> actions;
   final VoidCallback onClose;
 
   @override
@@ -401,6 +469,7 @@ class _AdaptiveModalHeader extends StatelessWidget {
               ),
             ),
           ),
+          for (final action in actions) ...[action, const SizedBox(width: 4)],
           IconButton(
             key: const ValueKey('adaptive-modal-sheet-close'),
             onPressed: onClose,
