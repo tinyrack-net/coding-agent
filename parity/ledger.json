@@ -5788,19 +5788,21 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-schedule-mutations.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/state/schedules_provider.dart",
       "evidence": [
-        "packages/app/test/schedules_provider_test.dart"
+        "packages/app/test/schedules_provider_test.dart",
+        "packages/app/test/aggregated_schedules_provider_test.dart"
       ],
       "notes": null
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-schedules.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/state/schedules_provider.dart",
       "evidence": [
-        "packages/app/test/schedules_provider_test.dart"
+        "packages/app/test/schedules_provider_test.dart",
+        "packages/app/test/aggregated_schedules_provider_test.dart"
       ],
       "notes": null
     },
