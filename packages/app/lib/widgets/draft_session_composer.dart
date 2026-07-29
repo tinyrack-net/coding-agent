@@ -22,6 +22,7 @@ import '../composer/workspace_draft_submission.dart';
 import '../core/daemon_client.dart';
 import '../core/theme.dart';
 import '../import_sessions/import_session_dialog.dart';
+import '../keyboard/keyboard_ime.dart';
 import '../providers/agent_commands.dart';
 import '../providers/draft_provider_features.dart';
 import '../providers/providers_snapshot.dart';
@@ -776,6 +777,9 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
 
   KeyEventResult _onPromptKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (isImeComposingTextEditingValue(_promptController.value)) {
+      return KeyEventResult.ignored;
+    }
     final client = ref.read(daemonClientProvider);
     final serverId = client.serverInfo?.serverId ?? 'local';
     final mention = findActiveFileMention(

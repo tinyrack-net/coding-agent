@@ -327,6 +327,45 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
   });
 
+  testWidgets('global shortcuts are ignored during IME composition', (
+    tester,
+  ) async {
+    final controller = TextEditingController.fromValue(
+      const TextEditingValue(
+        text: '작성',
+        selection: TextSelection.collapsed(offset: 2),
+        composing: TextRange(start: 0, end: 2),
+      ),
+    );
+    addTearDown(controller.dispose);
+    final (container, _) = await _pumpHost(
+      tester,
+      child: Center(child: TextBox(controller: controller, autofocus: true)),
+    );
+    await tester.tap(find.byType(TextBox));
+    await tester.pump();
+
+    expect(container.read(appearanceProvider), AppThemeName.dark);
+    await _sendShortcut(
+      tester,
+      LogicalKeyboardKey.keyT,
+      physicalKey: PhysicalKeyboardKey.keyT,
+      control: true,
+      alt: true,
+    );
+    expect(container.read(appearanceProvider), AppThemeName.dark);
+
+    controller.value = controller.value.copyWith(composing: TextRange.empty);
+    await _sendShortcut(
+      tester,
+      LogicalKeyboardKey.keyT,
+      physicalKey: PhysicalKeyboardKey.keyT,
+      control: true,
+      alt: true,
+    );
+    expect(container.read(appearanceProvider), AppThemeName.zinc);
+  });
+
   testWidgets('modal barrier dismisses the active overlay', (tester) async {
     await _pumpHost(tester);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);

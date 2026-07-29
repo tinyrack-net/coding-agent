@@ -4179,7 +4179,7 @@
         "packages/app/test/composer_image_attachment_service_test.dart",
         "packages/app/test/composer_test.dart"
       ],
-      "notes": "Keyboard and context-menu paste share one guarded path. Native clipboard images are normalized to PNG and persisted; a missing or unreadable image falls back to selection-aware text insertion. Agent-scoped text and image metadata hydrate and finalize through the persistent draft store. Remaining parity includes the source input module's complete keyboard, IME, dictation, heterogeneous draft attachments, mentions, and web multi-item clipboard behavior."
+      "notes": "Keyboard and context-menu paste share one guarded path. Native clipboard images are normalized to PNG and persisted; a missing or unreadable image falls back to selection-aware text insertion. Agent-scoped text and image metadata hydrate and finalize through the persistent draft store. IME composition suppresses send and autocomplete handling. Remaining parity includes the source input module's complete keyboard, dictation, heterogeneous draft attachments, mentions, and web multi-item clipboard behavior."
     },
     {
       "id": "source-unit:packages/app/src/composer/input/labels.ts",
@@ -5791,11 +5791,12 @@
     {
       "id": "source-unit:packages/app/src/hooks/use-keyboard-shortcuts.ts",
       "status": "partial",
-      "implementation": "packages/app/lib/widgets/app_command_center_host.dart; packages/app/lib/keyboard/shortcut_flutter_adapter.dart; packages/app/lib/keyboard/shortcut_focus_scope.dart",
+      "implementation": "packages/app/lib/widgets/app_command_center_host.dart; packages/app/lib/keyboard/keyboard_ime.dart; packages/app/lib/keyboard/shortcut_flutter_adapter.dart; packages/app/lib/keyboard/shortcut_focus_scope.dart",
       "evidence": [
+        "packages/app/test/keyboard_ime_test.dart",
         "packages/app/test/app_command_center_host_test.dart"
       ],
-      "notes": "Global key capture, focus scopes, chords, overrides, typed routing, workspace/sidebar/message-input dispatch, and overlays are live. Browser resident policy, IME guard, modifier badges, pane/focus/theme, and voice actions remain."
+      "notes": "Global key capture, focus scopes, chords, overrides, typed routing, workspace/sidebar/message-input dispatch, overlays, and active-composition suppression are live. Browser resident policy, modifier badges, pane/focus/theme, and voice actions remain."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-latched-boolean.ts",
@@ -8298,10 +8299,15 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/keyboard-ime.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/keyboard/keyboard_ime.dart; packages/app/lib/widgets/composer.dart; packages/app/lib/widgets/draft_session_composer.dart; packages/app/lib/widgets/app_command_center_host.dart",
+      "evidence": [
+        "packages/app/test/keyboard_ime_test.dart",
+        "packages/app/test/composer_test.dart",
+        "packages/app/test/draft_session_composer_test.dart",
+        "packages/app/test/app_command_center_host_test.dart"
+      ],
+      "notes": "Matches Paseo's explicit composition and Chromium keyCode 229 guards. Flutter maps active TextEditingValue composing ranges to the same contract so candidate-confirmation keys cannot submit prompts, accept autocomplete entries, or trigger global shortcuts."
     },
     {
       "id": "source-unit:packages/app/src/utils/latency.ts",

@@ -1055,6 +1055,43 @@ void main() {
     );
   });
 
+  testWidgets('draft autocomplete ignores Enter during IME composition', (
+    tester,
+  ) async {
+    final client = FakeDaemonClient()
+      ..commands = const [
+        AgentSlashCommand(
+          name: 'review',
+          description: 'Review',
+          argumentHint: '',
+        ),
+      ];
+    await pumpComposer(tester, client);
+
+    await tester.tap(find.byType(TextBox));
+    final textBox = tester.widget<TextBox>(find.byType(TextBox));
+    textBox.controller!.value = const TextEditingValue(
+      text: '/rev',
+      selection: TextSelection.collapsed(offset: 4),
+      composing: TextRange(start: 1, end: 4),
+    );
+    await tester.pump(const Duration(milliseconds: 181));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('draft-command-autocomplete')), findsOne);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(textBox.controller!.text, '/rev');
+
+    textBox.controller!.value = textBox.controller!.value.copyWith(
+      composing: TextRange.empty,
+    );
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(textBox.controller!.text, '/review ');
+  });
+
   testWidgets('draft file autocomplete takes precedence and quotes paths', (
     tester,
   ) async {

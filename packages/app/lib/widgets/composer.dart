@@ -15,6 +15,7 @@ import '../composer/agent_command_autocomplete.dart';
 import '../composer/file_mention_autocomplete.dart';
 import '../attachments/attachment_store.dart';
 import '../keyboard/keyboard_action_dispatcher.dart';
+import '../keyboard/keyboard_ime.dart';
 import '../keyboard/shortcut_engine.dart';
 import '../keyboard/shortcut_focus_scope.dart';
 import '../core/provider_notice_toast.dart';
@@ -649,6 +650,9 @@ class _ComposerState extends ConsumerState<Composer> {
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (isImeComposingTextEditingValue(_controller.value)) {
+      return KeyEventResult.ignored;
+    }
     if (event.logicalKey == LogicalKeyboardKey.keyV &&
         (HardwareKeyboard.instance.isControlPressed ||
             HardwareKeyboard.instance.isMetaPressed) &&

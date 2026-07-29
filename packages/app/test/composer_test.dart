@@ -1340,6 +1340,34 @@ void main() {
     expect(client.requests.single.$1, MessageTypes.agentPromptRequest);
   });
 
+  testWidgets('IME composition Enter confirms text without sending', (
+    tester,
+  ) async {
+    final client = FakeDaemonClient();
+    await pumpComposer(tester, client);
+
+    await tester.tap(find.byType(TextBox));
+    final textBox = tester.widget<TextBox>(find.byType(TextBox));
+    textBox.controller!.value = const TextEditingValue(
+      text: '작성',
+      selection: TextSelection.collapsed(offset: 2),
+      composing: TextRange(start: 0, end: 2),
+    );
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(client.requests, isEmpty);
+    expect(textBox.controller!.text, '작성');
+
+    textBox.controller!.value = textBox.controller!.value.copyWith(
+      composing: TextRange.empty,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(client.requests.single.$1, MessageTypes.agentPromptRequest);
+  });
+
   testWidgets('a failed interrupt shows a snackbar', (tester) async {
     final client = FakeDaemonClient()..requestError = StateError('offline');
     await pumpComposer(

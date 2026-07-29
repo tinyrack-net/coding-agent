@@ -11,6 +11,7 @@ import '../command_center/command_center.dart';
 import '../composer/provider_model_selection.dart';
 import '../core/host_routes.dart';
 import '../keyboard/keyboard_action_dispatcher.dart';
+import '../keyboard/keyboard_ime.dart';
 import '../keyboard/shortcut_engine.dart';
 import '../keyboard/shortcut_focus_scope.dart';
 import '../keyboard/shortcut_flutter_adapter.dart';
@@ -107,6 +108,12 @@ class _AppCommandCenterHostState extends ConsumerState<AppCommandCenterHost> {
 
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
     if (event is KeyUpEvent) return KeyEventResult.ignored;
+    final focusContext = FocusManager.instance.primaryFocus?.context;
+    final editable = focusContext?.findAncestorStateOfType<EditableTextState>();
+    if (editable != null &&
+        isImeComposingTextEditingValue(editable.currentTextEditingValue)) {
+      return KeyEventResult.ignored;
+    }
     if (event.logicalKey == LogicalKeyboardKey.escape &&
         (_commandCenterOpen || _shortcutsOpen)) {
       setState(() {
