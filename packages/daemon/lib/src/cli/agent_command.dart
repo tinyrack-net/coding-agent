@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../server/daemon_config.dart';
 import 'agent_logs_command.dart';
+import 'desktop_launch.dart';
 import 'terminal_command.dart';
 
 typedef AgentRpcRequester =
@@ -15,6 +16,8 @@ Future<int> runAgentCommand({
   required List<String> arguments,
   Map<String, String>? environment,
   AgentRpcRequester? request,
+  String? daemonServerId,
+  AgentDesktopLauncher? openAgentDesktop,
   DateTime Function()? now,
   void Function(String value)? writeOutput,
   void Function(String value)? writeError,
@@ -32,6 +35,7 @@ Future<int> runAgentCommand({
     ({int timeoutMs, String? timeoutLabel})? resolvedWaitTimeout;
     String? resolvedUpdateName;
     Map<String, String>? resolvedUpdateLabels;
+    String? resolvedOpenServerId;
     if (invocation.action == 'mode' &&
         !invocation.listModes &&
         (invocation.modeId == null || invocation.modeId!.isEmpty)) {
@@ -128,9 +132,22 @@ Future<int> runAgentCommand({
         );
       }
     }
+    if (invocation.action == 'open') {
+      if (invocation.agentId == null || invocation.agentId!.trim().isEmpty) {
+        throw const AgentCommandException(
+          'MISSING_AGENT_ID',
+          'Agent ID is required.',
+        );
+      }
+      resolvedOpenServerId = invocation.server?.trim();
+      if (resolvedOpenServerId?.isEmpty == true) resolvedOpenServerId = null;
+      resolvedOpenServerId ??= daemonServerId?.trim();
+      if (resolvedOpenServerId?.isEmpty == true) resolvedOpenServerId = null;
+    }
     final env = environment ?? Platform.environment;
     var send = request;
-    if (send == null) {
+    if (send == null &&
+        (invocation.action != 'open' || resolvedOpenServerId == null)) {
       final config = loadDaemonRuntimeConfig(environment: env);
       try {
         client = await DaemonCliSocketClient.connect(
@@ -150,6 +167,9 @@ Future<int> runAgentCommand({
                 : null,
           );
         };
+        if (invocation.action == 'open') {
+          resolvedOpenServerId = client.serverInfo.serverId.trim();
+        }
       } on Object catch (error) {
         final host = invocation.host ?? '${config.host}:${config.port}';
         throw AgentCommandException(
@@ -163,6 +183,13 @@ Future<int> runAgentCommand({
         );
       }
     }
+    if (invocation.action == 'open' && resolvedOpenServerId == null) {
+      throw const AgentCommandException(
+        'SERVER_ID_UNAVAILABLE',
+        'The daemon did not report a server ID.',
+      );
+    }
+    send ??= (_) async => const {};
     final result = await _execute(
       invocation,
       send,
@@ -173,6 +200,8 @@ Future<int> runAgentCommand({
       resolvedWaitTimeout,
       resolvedUpdateName,
       resolvedUpdateLabels,
+      resolvedOpenServerId,
+      openAgentDesktop ?? launchDesktopWithAgent,
     );
     output(_render(result, invocation));
     return 0;
@@ -213,6 +242,7 @@ final class AgentCliInvocation {
     required this.global,
     required this.labels,
     required this.name,
+    required this.server,
     required this.thinking,
     required this.host,
     required this.format,
@@ -237,6 +267,7 @@ final class AgentCliInvocation {
   final bool global;
   final List<String> labels;
   final String? name;
+  final String? server;
   final String? thinking;
   final String? host;
   final String format;
@@ -260,6 +291,7 @@ final class AgentCliInvocation {
       'detach',
       'reload',
       'update',
+      'open',
     }.contains(action)) {
       throw FormatException('Unknown agent action: $action');
     }
@@ -277,6 +309,7 @@ final class AgentCliInvocation {
     String? timeout;
     var force = false;
     String? name;
+    String? server;
     String? thinking;
     String? host;
     var format = 'table';
@@ -348,6 +381,11 @@ final class AgentCliInvocation {
             throw FormatException('$argument is only valid for agent update');
           }
           name = _requiredValue(arguments, ++index, argument);
+        case '--server':
+          if (action != 'open') {
+            throw FormatException('$argument is only valid for agent open');
+          }
+          server = _requiredValue(arguments, ++index, argument);
         case '--thinking':
           _onlyList(action, argument);
           thinking = _requiredValue(arguments, ++index, argument);
@@ -417,6 +455,9 @@ final class AgentCliInvocation {
     if (action == 'update' && positionals.length > 1) {
       throw const FormatException('agent update accepts exactly one Agent ID');
     }
+    if (action == 'open' && positionals.length > 1) {
+      throw const FormatException('agent open accepts exactly one Agent ID');
+    }
     final normalizedThinking = thinking?.trim();
     return AgentCliInvocation(
       action: action,
@@ -427,7 +468,8 @@ final class AgentCliInvocation {
               action == 'delete' ||
               action == 'detach' ||
               action == 'reload' ||
-              action == 'update'
+              action == 'update' ||
+              action == 'open'
           ? positionals.firstOrNull
           : positionals.firstOrNull?.trim(),
       modeId: action == 'mode' && positionals.length == 2
@@ -449,6 +491,7 @@ final class AgentCliInvocation {
       global: global,
       labels: List.unmodifiable(labels),
       name: name,
+      server: server,
       thinking: normalizedThinking,
       host: host,
       format: json ? 'json' : format,
@@ -468,6 +511,8 @@ Future<_AgentCommandResult> _execute(
   ({int timeoutMs, String? timeoutLabel})? resolvedWaitTimeout,
   String? resolvedUpdateName,
   Map<String, String>? resolvedUpdateLabels,
+  String? resolvedOpenServerId,
+  AgentDesktopLauncher openAgentDesktop,
 ) async {
   return switch (invocation.action) {
     'ls' => _listAgents(invocation, request, environment, now),
@@ -486,6 +531,7 @@ Future<_AgentCommandResult> _execute(
       resolvedUpdateName,
       resolvedUpdateLabels!,
     ),
+    'open' => _openAgent(invocation, resolvedOpenServerId!, openAgentDesktop),
     _ => throw StateError('Unhandled agent action'),
   };
 }
@@ -1241,6 +1287,26 @@ Future<_AgentCommandResult> _updateAgent(
   }
 }
 
+Future<_AgentCommandResult> _openAgent(
+  AgentCliInvocation invocation,
+  String serverId,
+  AgentDesktopLauncher openAgentDesktop,
+) async {
+  final agentId = invocation.agentId!.trim();
+  try {
+    await openAgentDesktop(
+      AgentDeepLinkTarget(serverId: serverId, agentId: agentId),
+    );
+  } on Object catch (error) {
+    throw AgentCommandException('UNKNOWN_ERROR', _errorText(error));
+  }
+  return _AgentCommandResult.open({
+    'agentId': agentId,
+    'serverId': serverId,
+    'status': 'opened',
+  });
+}
+
 String? _resolveArchiveAgentId(
   String identifier,
   List<Map<String, Object?>> agents,
@@ -1806,6 +1872,13 @@ final class _AgentCommandResult {
         structured: Map.unmodifiable(data),
       );
 
+  factory _AgentCommandResult.open(Map<String, Object?> data) =>
+      _AgentCommandResult._(
+        rows: [Map.unmodifiable(data)],
+        kind: _AgentResultKind.open,
+        structured: Map.unmodifiable(data),
+      );
+
   final List<Map<String, Object?>> rows;
   final _AgentResultKind kind;
   final Object? structured;
@@ -1824,6 +1897,7 @@ enum _AgentResultKind {
   detach,
   reload,
   update,
+  open,
 }
 
 String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
@@ -1841,6 +1915,7 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       _AgentResultKind.detach => 'agentId',
       _AgentResultKind.reload => 'agentId',
       _AgentResultKind.update => 'agentId',
+      _AgentResultKind.open => 'agentId',
     };
     if (result.kind == _AgentResultKind.stop ||
         result.kind == _AgentResultKind.delete) {
@@ -1900,6 +1975,11 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       ('AGENT ID', 'agentId', 12),
       ('NAME', 'name', 20),
       ('LABELS', 'labels', 24),
+    ],
+    _AgentResultKind.open => const [
+      ('AGENT ID', 'agentId', 12),
+      ('SERVER ID', 'serverId', 12),
+      ('STATUS', 'status', 12),
     ],
     _AgentResultKind.agents => const [
       ('AGENT ID', 'shortId', 12),
@@ -2190,6 +2270,7 @@ const agentUsage =
     '       coding-agent agent detach <id-or-name> [options]\n'
     '       coding-agent agent reload <id-or-name> [options]\n'
     '       coding-agent agent update <id> [options]\n'
+    '       coding-agent agent open <agent-id> [options]\n'
     '       coding-agent ls [options]\n'
     '       coding-agent inspect <id> [options]';
 
@@ -2234,6 +2315,10 @@ String _agentHelp(String? action) => switch (action) {
         'Update an agent\'s metadata\n\n'
         '  --name <name>   Update the agent display name\n'
         '  --label <k=v>   Add or set labels (repeatable or comma-separated)\n',
+  'open' =>
+    'Usage: coding-agent agent open [options] <agent-id>\n'
+        'Open an existing agent in Tinyrack Desktop\n\n'
+        '  --server <server-id>  Server ID (defaults to the local daemon)\n',
   _ =>
     'Usage: coding-agent agent [command]\n'
         'Manage agents (advanced operations)\n\n'
@@ -2249,5 +2334,6 @@ String _agentHelp(String? action) => switch (action) {
         '  delete   Permanently delete one or more agents\n'
         '  detach   Make a subagent independent\n'
         '  reload   Reload an agent process\n'
-        '  update   Update agent metadata\n',
+        '  update   Update agent metadata\n'
+        '  open     Open an existing agent in Tinyrack Desktop\n',
 };

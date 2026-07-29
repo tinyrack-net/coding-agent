@@ -241,10 +241,17 @@
     },
     {
       "id": "cli-command:agent-open",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/agent_deep_link.dart; packages/daemon/lib/src/cli/desktop_launch.dart; packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/bin/coding_agent.dart; packages/app/lib/core/host_routes.dart; packages/app/lib/core/app_router.dart; packages/app/lib/screens/host_agent_route_screen.dart",
+      "evidence": [
+        "packages/protocol/test/agent_deep_link_test.dart",
+        "packages/daemon/test/cli/desktop_launch_test.dart",
+        "packages/daemon/test/cli/agent_command_test.dart",
+        "packages/daemon/test/daemon_agent_open_e2e_test.dart",
+        "packages/app/test/host_routes_test.dart",
+        "packages/app/test/app_router_test.dart"
+      ],
+      "notes": "Frozen explicit or handshake-derived server ID selection, Tinyrack deep link launch, output modes, structured errors, desktop process environment cleanup, real WebSocket handshake, and Flutter cold-agent route resolution are verified."
     },
     {
       "id": "cli-command:agent-reload",
@@ -8873,9 +8880,10 @@
         "packages/daemon/test/daemon_agent_delete_e2e_test.dart",
         "packages/daemon/test/daemon_agent_detach_e2e_test.dart",
         "packages/daemon/test/daemon_agent_reload_e2e_test.dart",
-        "packages/daemon/test/daemon_agent_update_e2e_test.dart"
+        "packages/daemon/test/daemon_agent_update_e2e_test.dart",
+        "packages/daemon/test/daemon_agent_open_e2e_test.dart"
       ],
-      "notes": "Agent ls, inspect, logs, mode, stop, send, wait, archive, delete, detach, reload, and update dispatch are ported; remaining run, attach, and open commands remain."
+      "notes": "Agent ls, inspect, logs, mode, stop, send, wait, archive, delete, detach, reload, update, and open dispatch are ported; remaining run and attach commands remain."
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/inspect.ts",
@@ -8920,10 +8928,16 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/open.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/agent_deep_link.dart; packages/daemon/lib/src/cli/desktop_launch.dart; packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/bin/coding_agent.dart; packages/app/lib/core/app_router.dart; packages/app/lib/screens/host_agent_route_screen.dart",
+      "evidence": [
+        "packages/protocol/test/agent_deep_link_test.dart",
+        "packages/daemon/test/cli/desktop_launch_test.dart",
+        "packages/daemon/test/cli/agent_command_test.dart",
+        "packages/daemon/test/daemon_agent_open_e2e_test.dart",
+        "packages/app/test/app_router_test.dart"
+      ],
+      "notes": "Frozen agent-id validation, explicit/default server resolution, native desktop launch, result schema, and cold route navigation are ported with Tinyrack branding."
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/reload.ts",
@@ -10385,10 +10399,13 @@
     },
     {
       "id": "source-unit:packages/protocol/src/agent-deep-link.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/agent_deep_link.dart; packages/app/lib/core/host_routes.dart",
+      "evidence": [
+        "packages/protocol/test/agent_deep_link_test.dart",
+        "packages/app/test/host_routes_test.dart"
+      ],
+      "notes": "Frozen exact /h/:serverId/agent/:agentId route encoding, validation, parsing, and round-trip semantics are preserved under the coding-agent scheme."
     },
     {
       "id": "source-unit:packages/protocol/src/agent-labels.ts",

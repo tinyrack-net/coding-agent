@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:agent_protocol/agent_protocol.dart';
+
 const _base64WorkspaceIdPrefix = 'b64_';
 
 sealed class WorkspaceOpenIntent {
@@ -36,6 +38,13 @@ final class HostWorkspaceRoute {
 
   final String serverId;
   final String workspaceId;
+}
+
+final class HostAgentRoute {
+  const HostAgentRoute({required this.serverId, required this.agentId});
+
+  final String serverId;
+  final String agentId;
 }
 
 String? _trimNonEmpty(String? value) {
@@ -172,6 +181,17 @@ HostWorkspaceRoute? parseHostWorkspaceRouteFromUri(Uri uri) {
   return HostWorkspaceRoute(serverId: serverId, workspaceId: workspaceId);
 }
 
+HostAgentRoute? parseHostAgentRouteFromUri(Uri uri) {
+  final segments = uri.pathSegments;
+  if (segments.length != 4 || segments[0] != 'h' || segments[2] != 'agent') {
+    return null;
+  }
+  final serverId = _trimNonEmpty(segments[1]);
+  final agentId = _trimNonEmpty(segments[3]);
+  if (serverId == null || agentId == null) return null;
+  return HostAgentRoute(serverId: serverId, agentId: agentId);
+}
+
 WorkspaceOpenIntent? parseHostWorkspaceOpenIntentFromUri(Uri uri) =>
     parseWorkspaceOpenIntent(uri.queryParameters['open']);
 
@@ -182,6 +202,16 @@ String buildHostWorkspaceRoute(String serverId, String workspaceId) {
   final encodedWorkspace = encodeWorkspaceIdForPathSegment(workspace);
   return '/h/${Uri.encodeComponent(host)}/workspace/'
       '${Uri.encodeComponent(encodedWorkspace)}';
+}
+
+String buildHostAgentRoute(String serverId, String agentId) {
+  try {
+    return buildAgentDeepLinkRoute(
+      AgentDeepLinkTarget(serverId: serverId, agentId: agentId),
+    );
+  } on ArgumentError {
+    return '/';
+  }
 }
 
 String buildHostWorkspaceOpenRoute(

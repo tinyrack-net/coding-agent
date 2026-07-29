@@ -82,6 +82,40 @@ void main() {
       hasLength(2),
     );
   });
+
+  testWidgets('cold agent route resolves to its workspace open intent', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final client = _RouterDaemonClient();
+    addTearDown(client.dispose);
+    final router = buildAppRouter(initialLocation: '/h/server-a/agent/agent-1');
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          hostRegistryProvider.overrideWith(_ActiveRegistry.new),
+          daemonClientProvider.overrideWithValue(client),
+          connectionStateProvider.overrideWith(
+            (ref) => Stream.value(DaemonConnectionState.connected),
+          ),
+          desktopShellProvider.overrideWithValue(false),
+          worktreeTabLayoutsHydratedProvider.overrideWith(_HydratedLayouts.new),
+          workspaceCatalogProvider.overrideWithValue(AsyncData([_workspace()])),
+        ],
+        child: FluentApp.router(routerConfig: router),
+      ),
+    );
+    for (var index = 0; index < 12; index++) {
+      await tester.pump(const Duration(milliseconds: 5));
+    }
+
+    expect(
+      router.routeInformationProvider.value.uri.toString(),
+      '/h/server-a/workspace/workspace-1',
+    );
+  });
 }
 
 final class _RouterDaemonClient extends DaemonClient
@@ -97,6 +131,25 @@ final class _RouterDaemonClient extends DaemonClient
 
   @override
   Stream<RpcEvent> get events => const Stream.empty();
+
+  @override
+  Future<AgentFetchResult?> fetchAgent(
+    String agentId, {
+    Duration timeout = const Duration(seconds: 60),
+  }) async => AgentFetchResult(
+    agent: AgentSummary(
+      agentId: agentId,
+      title: 'Agent',
+      cwd: r'C:\repo\worktree',
+      provider: 'codex',
+      model: 'gpt-5.4',
+      mode: AgentMode.normal,
+      runState: AgentRunState.idle,
+      createdAtMs: 1,
+      workspaceId: 'workspace-1',
+    ),
+    project: null,
+  );
 
   @override
   Future<Map<String, Object?>> request(

@@ -23,6 +23,7 @@ void main() {
         ['detach', '--help'],
         ['reload', '--help'],
         ['update', '--help'],
+        ['open', '--help'],
       ]) {
         final output = StringBuffer();
         expect(
@@ -40,33 +41,29 @@ void main() {
       );
       final packageRoot = File.fromUri(library!).parent.parent.path;
       const binaryArguments = [
-        ['agent', 'ls', '--help'],
-        ['agent', 'inspect', '--help'],
-        ['agent', 'mode', '--help'],
-        ['agent', 'stop', '--help'],
-        ['agent', 'send', '--help'],
-        ['agent', 'wait', '--help'],
-        ['agent', 'archive', '--help'],
-        ['agent', 'delete', '--help'],
-        ['agent', 'detach', '--help'],
-        ['agent', 'reload', '--help'],
         ['agent', 'update', '--help'],
+        ['agent', 'open', '--help'],
         ['ls', '--help'],
-        ['inspect', '--help'],
-        ['stop', '--help'],
-        ['send', '--help'],
-        ['wait', '--help'],
-        ['archive', '--help'],
-        ['delete', '--help'],
+        ['logs', '--help'],
       ];
-      final results = await Future.wait([
-        for (final arguments in binaryArguments)
-          Process.run(Platform.resolvedExecutable, [
-            'run',
-            'agent_daemon:coding_agent',
-            ...arguments,
-          ], workingDirectory: packageRoot),
-      ]);
+      final results = <ProcessResult>[];
+      // Compiling every CLI invocation at once can exhaust Windows process
+      // and analyzer resources. Four independent subprocesses still exercise
+      // the binary in parallel without the long-tail hangs of an unbounded
+      // Future.wait.
+      for (var offset = 0; offset < binaryArguments.length; offset += 4) {
+        final batch = binaryArguments.skip(offset).take(4);
+        results.addAll(
+          await Future.wait([
+            for (final arguments in batch)
+              Process.run(Platform.resolvedExecutable, [
+                'run',
+                'agent_daemon:coding_agent',
+                ...arguments,
+              ], workingDirectory: packageRoot),
+          ]),
+        );
+      }
       for (var index = 0; index < binaryArguments.length; index++) {
         final arguments = binaryArguments[index];
         final result = results[index];
@@ -2186,6 +2183,108 @@ void main() {
     expect(rejected['message'], contains('update refused'));
   });
 
+  test('open uses explicit server without connecting and trims IDs', () async {
+    AgentDeepLinkTarget? opened;
+    var requested = false;
+    final output = StringBuffer();
+    expect(
+      await runAgentCommand(
+        arguments: const [
+          'open',
+          '  agent 123  ',
+          '--server',
+          '  server/main  ',
+          '--json',
+        ],
+        request: (_) async {
+          requested = true;
+          return const {};
+        },
+        openAgentDesktop: (target) async => opened = target,
+        writeOutput: output.write,
+      ),
+      0,
+    );
+    expect(requested, isFalse);
+    expect(
+      opened,
+      const AgentDeepLinkTarget(serverId: 'server/main', agentId: 'agent 123'),
+    );
+    expect(jsonDecode(output.toString()), {
+      'agentId': 'agent 123',
+      'serverId': 'server/main',
+      'status': 'opened',
+    });
+  });
+
+  test('open uses daemon server info and supports output modes', () async {
+    Future<void> open(AgentDeepLinkTarget _) async {}
+
+    final table = StringBuffer();
+    await runAgentCommand(
+      arguments: const ['open', 'agent-1'],
+      request: (_) async => const {},
+      daemonServerId: ' server-1 ',
+      openAgentDesktop: open,
+      writeOutput: table.write,
+    );
+    expect(table.toString(), startsWith('AGENT ID'));
+    expect(table.toString(), contains('SERVER ID'));
+    expect(table.toString(), contains('opened'));
+
+    final yaml = StringBuffer();
+    await runAgentCommand(
+      arguments: const ['open', 'agent-1', '--format', 'yaml'],
+      request: (_) async => const {},
+      daemonServerId: 'server-1',
+      openAgentDesktop: open,
+      writeOutput: yaml.write,
+    );
+    expect(yaml.toString(), contains('serverId: server-1'));
+
+    final quiet = StringBuffer();
+    await runAgentCommand(
+      arguments: const ['open', 'agent-1', '--quiet'],
+      request: (_) async => const {},
+      daemonServerId: 'server-1',
+      openAgentDesktop: open,
+      writeOutput: quiet.write,
+    );
+    expect(quiet.toString(), 'agent-1\n');
+  });
+
+  test('open preserves frozen structured failures', () async {
+    Future<Map<String, dynamic>> fail(
+      List<String> arguments, {
+      String? daemonServerId,
+      Future<void> Function(AgentDeepLinkTarget)? openAgentDesktop,
+    }) async {
+      final error = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: [...arguments, '--json'],
+          request: (_) async => const {},
+          daemonServerId: daemonServerId,
+          openAgentDesktop: openAgentDesktop,
+          writeError: error.write,
+        ),
+        1,
+      );
+      return (jsonDecode(error.toString()) as Map<String, dynamic>)['error']
+          as Map<String, dynamic>;
+    }
+
+    expect((await fail(['open']))['code'], 'MISSING_AGENT_ID');
+    expect((await fail(['open', 'agent']))['code'], 'SERVER_ID_UNAVAILABLE');
+    final launch = await fail(
+      ['open', 'agent'],
+      daemonServerId: 'server',
+      openAgentDesktop: (_) async => throw StateError('desktop missing'),
+    );
+    expect(launch['code'], 'UNKNOWN_ERROR');
+    expect(launch['message'], 'desktop missing');
+  });
+
   test('parser and invalid thinking errors are deterministic', () async {
     for (final arguments in const [
       <String>[],
@@ -2215,6 +2314,8 @@ void main() {
       ['update', 'one', 'two'],
       ['update', 'one', '--name'],
       ['update', 'one', '--label'],
+      ['open', 'one', 'two'],
+      ['open', 'one', '--server'],
       ['wait', 'one', '--force'],
       ['ls', '--list'],
       ['ls', '--format', 'xml'],

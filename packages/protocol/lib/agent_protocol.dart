@@ -3,6 +3,7 @@ library;
 
 export 'src/agent_state_bucket.dart';
 export 'src/agent_labels.dart';
+export 'src/agent_deep_link.dart';
 export 'src/agent_title_limits.dart';
 export 'src/branch_slug.dart';
 export 'src/binary/terminal_frames.dart';

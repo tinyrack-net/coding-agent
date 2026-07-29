@@ -155,4 +155,22 @@ void main() {
     expect(routeFromCodingAgentDeepLink('coding-agent://settings'), isNull);
     expect(() => buildCodingAgentDeepLink('settings'), throwsArgumentError);
   });
+
+  test('agent routes preserve frozen encoded server and agent IDs', () {
+    final route = buildHostAgentRoute('server/main', 'agent 123');
+    expect(route, '/h/server%2Fmain/agent/agent%20123');
+    final parsed = parseHostAgentRouteFromUri(Uri.parse(route));
+    expect(parsed?.serverId, 'server/main');
+    expect(parsed?.agentId, 'agent 123');
+    expect(
+      routeFromCodingAgentDeepLink(
+        'coding-agent://h/server%2Fmain/agent/agent%20123',
+      ),
+      route,
+    );
+    expect(
+      parseHostAgentRouteFromUri(Uri.parse('/h/server/agent/agent/extra')),
+      isNull,
+    );
+  });
 }

@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 
 import 'host_routes.dart';
 import '../screens/home_shell.dart';
+import '../screens/host_agent_route_screen.dart';
 import '../screens/host_workspace_route_screen.dart';
 import '../screens/host_settings_route_screen.dart';
 import '../screens/new_workspace_screen.dart';
@@ -20,6 +21,13 @@ GoRouter buildAppRouter({String initialLocation = '/'}) {
         builder: (context, state, child) => HomeShell(child: child),
         routes: [
           GoRoute(path: '/', builder: (context, state) => const HomeChatPane()),
+          GoRoute(
+            path: '/h/:serverId/agent/:agentId',
+            builder: (context, state) => HostAgentRouteScreen(
+              serverId: state.pathParameters['serverId']!,
+              agentId: state.pathParameters['agentId']!,
+            ),
+          ),
           GoRoute(
             path: '/h/:serverId/workspace/:workspaceId',
             builder: (context, state) {
