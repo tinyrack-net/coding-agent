@@ -320,12 +320,35 @@ class _FakeDaemonClient extends DaemonClient {
         prNumber: 42,
         items: timelineMode == 'empty' || timelineMode == 'error'
             ? const []
+            : timelineMode == 'thread-menu'
+            ? const [
+                PullRequestTimelineComment(
+                  id: 'comment-2',
+                  author: 'reviewer',
+                  authorUrl: null,
+                  avatarUrl: null,
+                  body: 'Range comment.',
+                  createdAt: 1760000200,
+                  url: 'https://example.test/comment/2',
+                  threadId: 'PRRT_1',
+                  location: PullRequestTimelineCommentLocation(
+                    path: 'lib/range.dart',
+                    startLine: 4,
+                    line: 8,
+                    threadId: 'PRRT_1',
+                    isResolved: false,
+                    isOutdated: false,
+                  ),
+                ),
+              ]
             : [
                 PullRequestTimelineReview(
                   id: 'review-1',
                   author: 'octocat',
                   authorUrl: null,
-                  avatarUrl: null,
+                  avatarUrl: timelineMode == 'avatar'
+                      ? 'https://example.test/avatar.png'
+                      : null,
                   body: timelineMode == 'links'
                       ? '[Review link](https://example.test/review-link)'
                       : 'Looks good to me.',
@@ -1001,6 +1024,35 @@ void main() {
     ]);
   });
 
+  testWidgets('activity uses remote avatars with deterministic fallback', (
+    tester,
+  ) async {
+    await _pumpExplorer(tester, _FakeDaemonClient(timelineMode: 'avatar'));
+    await _tapPullRequestTab(tester);
+    await tester.pump(const Duration(milliseconds: 150));
+
+    final image = tester.widget<Image>(
+      find.byKey(const ValueKey('activity-avatar-image-review-1')),
+    );
+    expect(image.width, 20);
+    expect(image.height, 20);
+    expect(image.fit, BoxFit.cover);
+    expect(image.excludeFromSemantics, isTrue);
+    expect(image.image, isA<NetworkImage>());
+    expect(
+      (image.image as NetworkImage).url,
+      'https://example.test/avatar.png',
+    );
+
+    final fallback = tester.widget<Container>(
+      find.byKey(const ValueKey('activity-avatar-fallback-comment-1')),
+    );
+    final decoration = fallback.decoration! as BoxDecoration;
+    expect(decoration.shape, BoxShape.circle);
+    expect(decoration.color, const Color(0xffeab308));
+    expect(find.text('R'), findsOneWidget);
+  });
+
   testWidgets('PR Markdown links open through the platform', (tester) async {
     final launcher = _FakeExternalUrlLauncher();
     await _pumpExplorer(
@@ -1086,19 +1138,13 @@ void main() {
     final launcher = _FakeExternalUrlLauncher();
     await _pumpExplorer(
       tester,
-      _FakeDaemonClient(timelineMode: 'edge', forge: 'gitlab'),
+      _FakeDaemonClient(timelineMode: 'thread-menu', forge: 'gitlab'),
       launcher: launcher,
     );
     await _tapPullRequestTab(tester);
     await tester.pump(const Duration(milliseconds: 150));
     const threadId = 'thread:PRRT_1';
     final trigger = find.byKey(const ValueKey('thread-actions-$threadId'));
-    await tester.scrollUntilVisible(
-      trigger,
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
 
     await tester.tap(trigger);
     await tester.pumpAndSettle();
@@ -1324,7 +1370,8 @@ void main() {
       expect(find.text('Lint'), findsOneWidget);
       expect(find.text('Please revise this.'), findsOneWidget);
       expect(find.text('requested changes'), findsOneWidget);
-      expect(find.text('reviewed'), findsOneWidget);
+      expect(find.text('reviewed'), findsNothing);
+      expect(find.text('observer'), findsNothing);
       expect(find.text('lib/range.dart:4-8'), findsOneWidget);
       expect(find.text('Outdated'), findsOneWidget);
       expect(find.text('Range comment.'), findsNothing);

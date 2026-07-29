@@ -1037,6 +1037,45 @@ class _TimelineEntryCard extends StatelessWidget {
   };
 }
 
+class _ActivityAvatar extends StatelessWidget {
+  const _ActivityAvatar({required this.item, required this.size});
+
+  final PullRequestTimelineItem item;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorHex = derivePullRequestAvatarColor(item.author);
+    final fallback = Container(
+      key: ValueKey('activity-avatar-fallback-${item.id}'),
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Color(0xff000000 | int.parse(colorHex.substring(1), radix: 16)),
+        shape: BoxShape.circle,
+      ),
+      child: Text(
+        item.author.isEmpty ? '' : item.author.characters.first.toUpperCase(),
+        style: const TextStyle(fontSize: 10, color: Colors.white),
+      ),
+    );
+    final avatarUrl = item.avatarUrl?.trim();
+    if (avatarUrl == null || avatarUrl.isEmpty) return fallback;
+    return ClipOval(
+      child: Image.network(
+        avatarUrl,
+        key: ValueKey('activity-avatar-image-${item.id}'),
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        excludeFromSemantics: true,
+        errorBuilder: (_, _, _) => fallback,
+      ),
+    );
+  }
+}
+
 class _ActivityCard extends StatelessWidget {
   const _ActivityCard({
     required this.item,
@@ -1064,9 +1103,6 @@ class _ActivityCard extends StatelessWidget {
     final location = item is PullRequestTimelineComment
         ? (item as PullRequestTimelineComment).location
         : null;
-    final initial = item.author.trim().isEmpty
-        ? '?'
-        : item.author.trim().characters.first.toUpperCase();
     return Container(
       margin: embedded
           ? EdgeInsets.zero
@@ -1091,19 +1127,7 @@ class _ActivityCard extends StatelessWidget {
                   : Colors.transparent,
               child: Row(
                 children: [
-                  Container(
-                    width: 20,
-                    height: 20,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: context.tokens.primary,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      initial,
-                      style: const TextStyle(fontSize: 10, color: Colors.white),
-                    ),
-                  ),
+                  _ActivityAvatar(item: item, size: 20),
                   const SizedBox(width: 8),
                   Flexible(
                     child: Text(
@@ -1384,6 +1408,8 @@ class _ThreadComment extends StatelessWidget {
         children: [
           Row(
             children: [
+              _ActivityAvatar(item: comment, size: 16),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   comment.author,

@@ -3,6 +3,40 @@ import 'package:agent_protocol/agent_protocol.dart';
 import '../state/workspace_attachments_provider.dart';
 import 'forge.dart';
 
+const pullRequestAvatarColors = <String>[
+  '#8b5cf6',
+  '#f97316',
+  '#0ea5e9',
+  '#10b981',
+  '#ef4444',
+  '#eab308',
+  '#ec4899',
+  '#6366f1',
+];
+
+String derivePullRequestAvatarColor(String login) {
+  var hash = 0;
+  for (final rune in login.toLowerCase().runes) {
+    final firstUtf16CodeUnit = rune <= 0xffff
+        ? rune
+        : 0xd800 + ((rune - 0x10000) >> 10);
+    hash = (hash * 31 + firstUtf16CodeUnit) & 0xffffffff;
+  }
+  return pullRequestAvatarColors[hash % pullRequestAvatarColors.length];
+}
+
+bool isVisiblePullRequestActivity(PullRequestTimelineItem activity) {
+  return switch (activity) {
+    PullRequestTimelineComment(body: final body) => body.trim().isNotEmpty,
+    PullRequestTimelineReview(
+      body: final body,
+      reviewState: PullRequestTimelineReviewState.commented,
+    ) =>
+      body.trim().isNotEmpty,
+    PullRequestTimelineReview() => true,
+  };
+}
+
 sealed class PullRequestTimelineEntry {
   const PullRequestTimelineEntry(this.id);
 
@@ -49,6 +83,7 @@ List<PullRequestTimelineEntry> buildPullRequestTimeline(
   final threadsById = <String, PullRequestThreadEntry>{};
 
   for (final activity in activities) {
+    if (!isVisiblePullRequestActivity(activity)) continue;
     if (activity is! PullRequestTimelineComment) {
       entries.add(PullRequestSingleEntry(activity.id, activity));
       continue;

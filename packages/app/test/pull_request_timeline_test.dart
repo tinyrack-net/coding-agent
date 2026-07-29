@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 PullRequestTimelineComment _comment(
   String id, {
   String author = 'alice',
+  String body = 'body',
   String? threadId,
   bool? threadIsResolved,
   String? reviewId,
@@ -14,7 +15,7 @@ PullRequestTimelineComment _comment(
   author: author,
   authorUrl: null,
   avatarUrl: null,
-  body: 'body',
+  body: body,
   createdAt: 1760000000,
   url: 'https://example.test/$id',
   reviewId: reviewId,
@@ -27,18 +28,53 @@ PullRequestTimelineReview _review(
   String id, {
   PullRequestTimelineReviewState state =
       PullRequestTimelineReviewState.approved,
+  String body = 'Review body.',
 }) => PullRequestTimelineReview(
   id: id,
   author: 'alice',
   authorUrl: null,
   avatarUrl: null,
-  body: 'Review body.',
+  body: body,
   createdAt: 1760000000,
   url: 'https://example.test/$id',
   reviewState: state,
 );
 
 void main() {
+  test('derives the frozen deterministic avatar palette color', () {
+    expect(derivePullRequestAvatarColor('alice'), '#8b5cf6');
+    expect(derivePullRequestAvatarColor('Alice'), '#8b5cf6');
+    expect(derivePullRequestAvatarColor('octocat'), '#6366f1');
+    expect(derivePullRequestAvatarColor('reviewer'), '#eab308');
+    expect(derivePullRequestAvatarColor('😀'), '#eab308');
+  });
+
+  test('filters empty comments and bodyless commented reviews', () {
+    final emptyComment = _comment('empty-comment', body: '  ');
+    final emptyCommentedReview = _review(
+      'empty-commented-review',
+      state: PullRequestTimelineReviewState.commented,
+      body: '',
+    );
+    final emptyChangesReview = _review(
+      'empty-changes-review',
+      state: PullRequestTimelineReviewState.changesRequested,
+      body: '',
+    );
+
+    expect(isVisiblePullRequestActivity(emptyComment), isFalse);
+    expect(isVisiblePullRequestActivity(emptyCommentedReview), isFalse);
+    expect(isVisiblePullRequestActivity(emptyChangesReview), isTrue);
+    expect(
+      buildPullRequestTimeline([
+        emptyComment,
+        emptyCommentedReview,
+        emptyChangesReview,
+      ]).map((entry) => entry.id),
+      ['empty-changes-review'],
+    );
+  });
+
   test('keeps standalone comments and reviews in source order', () {
     final comment = _comment('c1');
     final review = _review('r1');

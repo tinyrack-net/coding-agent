@@ -5207,11 +5207,12 @@
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/data.ts",
       "status": "partial",
-      "implementation": "packages/app/lib/state/pull_request_provider.dart",
+      "implementation": "packages/app/lib/core/pull_request_context.dart; packages/app/lib/state/pull_request_provider.dart; packages/app/lib/widgets/pull_request_pane.dart",
       "evidence": [
+        "packages/app/test/pull_request_timeline_test.dart",
         "packages/app/test/pull_request_pane_test.dart"
       ],
-      "notes": "Core Windows explorer and PR checks/activity flow implemented; advanced attachment, entry grouping, and forge-specific polish remain."
+      "notes": "Core Windows explorer and PR checks/activity flow is implemented. Activity normalization now exactly removes empty comments and bodyless commented reviews while retaining bodyless changes-requested reviews; author fallback colors use the frozen eight-color palette and JS-compatible lowercase unsigned hash, including UTF-16 astral handling; 20px activity and 16px thread-comment avatars consume avatarUrl with deterministic initial fallback. Remaining full data mapping and forge-specific polish keep this partial."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/index.ts",
@@ -5262,7 +5263,7 @@
         "packages/app/test/pull_request_pane_test.dart",
         "packages/app/test/goldens/workspace_pr_explorer.png"
       ],
-      "notes": "PR checks fetch details with loading and metadata fallback; activity supports Add all while skipping resolved threads and uses the frozen PR-scoped collapse/expand state machine including nested defaults and restoration across PR switches. Activity, review, and comment kebabs expose the frozen Add to chat, Copy, and brand-specific Open actions in exact 200px menus, while thread kebabs expose only brand-specific Open; native-visible triggers, accessibility labels, clipboard output, attachment deduplication, external launch, and compact geometry are test- and golden-covered. Markdown links in review, standalone activity, and thread-comment bodies now use the same platform external-URL path as the frozen pane. The full pane remains partial pending remaining forge/platform states."
+      "notes": "PR checks fetch details with loading and metadata fallback; activity supports Add all while skipping resolved threads and uses the frozen PR-scoped collapse/expand state machine including nested defaults and restoration across PR switches. Activity, review, and comment kebabs expose the frozen Add to chat, Copy, and brand-specific Open actions in exact 200px menus, while thread kebabs expose only brand-specific Open; native-visible triggers, accessibility labels, clipboard output, attachment deduplication, external launch, and compact geometry are test- and golden-covered. Markdown links use the platform external-URL path, and activity plus thread-comment headers render frozen-size remote avatars with deterministic initial fallback. The full pane remains partial pending remaining forge/platform states."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/query-keys.ts",
