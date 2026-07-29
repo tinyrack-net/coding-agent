@@ -22,6 +22,7 @@ void main() {
         ['delete', '--help'],
         ['detach', '--help'],
         ['reload', '--help'],
+        ['update', '--help'],
       ]) {
         final output = StringBuffer();
         expect(
@@ -49,6 +50,7 @@ void main() {
         ['agent', 'delete', '--help'],
         ['agent', 'detach', '--help'],
         ['agent', 'reload', '--help'],
+        ['agent', 'update', '--help'],
         ['ls', '--help'],
         ['inspect', '--help'],
         ['stop', '--help'],
@@ -2031,6 +2033,159 @@ void main() {
     expect(failed['message'], contains('provider unavailable'));
   });
 
+  test('update validates frozen options before connecting', () async {
+    Future<Map<String, dynamic>> fail(List<String> arguments) async {
+      var requested = false;
+      final error = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: [...arguments, '--json'],
+          request: (_) async {
+            requested = true;
+            return const {};
+          },
+          writeError: error.write,
+        ),
+        1,
+      );
+      expect(requested, isFalse);
+      return (jsonDecode(error.toString()) as Map<String, dynamic>)['error']
+          as Map<String, dynamic>;
+    }
+
+    expect((await fail(['update']))['code'], 'MISSING_AGENT_ID');
+    expect(
+      (await fail(['update', 'agent', '--name', '   ']))['code'],
+      'INVALID_NAME',
+    );
+    expect(
+      (await fail(['update', 'agent', '--label', 'broken']))['code'],
+      'INVALID_LABEL',
+    );
+    expect(
+      (await fail(['update', 'agent', '--label', '=value']))['code'],
+      'INVALID_LABEL',
+    );
+    expect(
+      (await fail(['update', 'agent', '--label', ' , ']))['code'],
+      'NO_CHANGES_PROVIDED',
+    );
+  });
+
+  test(
+    'update resolves, patches, refetches, and renders frozen output',
+    () async {
+      final sent = <Map<String, Object?>>[];
+      var fetchCount = 0;
+      final output = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: const [
+            'update',
+            'agent-prefix',
+            '--name',
+            '  Renamed Agent  ',
+            '--label',
+            'owner=first,empty=',
+            '--label',
+            'owner=last,note=a=b',
+            '--json',
+          ],
+          request: (message) async {
+            sent.add(message);
+            if (message['type'] == 'fetch_agent_request') {
+              fetchCount++;
+              return {
+                'requestId': message['requestId'],
+                'agent': _snapshot(
+                  id: 'agent-full-id',
+                  title: fetchCount == 1 ? 'Before' : 'Renamed Agent',
+                  labels: fetchCount == 1
+                      ? const {}
+                      : const {'owner': 'last', 'empty': '', 'note': 'a=b'},
+                ),
+                'project': null,
+                'error': null,
+              };
+            }
+            return {
+              'requestId': message['requestId'],
+              'agentId': message['agentId'],
+              'accepted': true,
+              'error': null,
+            };
+          },
+          writeOutput: output.write,
+        ),
+        0,
+      );
+      expect(sent[0]['agentId'], 'agent-prefix');
+      expect(sent[1], {
+        'type': 'update_agent_request',
+        'agentId': 'agent-full-id',
+        'name': 'Renamed Agent',
+        'labels': {'owner': 'last', 'empty': '', 'note': 'a=b'},
+        'requestId': isA<String>(),
+      });
+      expect(sent[2]['agentId'], 'agent-full-id');
+      expect(jsonDecode(output.toString()), {
+        'agentId': 'agent-full-id',
+        'name': 'Renamed Agent',
+        'labels': 'owner=last,empty=,note=a=b',
+      });
+    },
+  );
+
+  test('update preserves frozen not-found and failure errors', () async {
+    Future<Map<String, dynamic>> fail(
+      List<String> arguments,
+      AgentRpcRequester request,
+    ) async {
+      final error = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: [...arguments, '--json'],
+          request: request,
+          writeError: error.write,
+        ),
+        1,
+      );
+      return (jsonDecode(error.toString()) as Map<String, dynamic>)['error']
+          as Map<String, dynamic>;
+    }
+
+    final notFound = await fail(
+      ['update', 'missing', '--name', 'Name'],
+      (message) async => {
+        'requestId': message['requestId'],
+        'agent': null,
+        'project': null,
+        'error': null,
+      },
+    );
+    expect(notFound['code'], 'AGENT_NOT_FOUND');
+    expect(notFound['details'], contains('coding-agent ls'));
+
+    final rejected = await fail(
+      ['update', 'agent', '--label', 'key=value'],
+      (message) async => message['type'] == 'fetch_agent_request'
+          ? {
+              'requestId': message['requestId'],
+              'agent': _snapshot(id: 'agent-full'),
+              'project': null,
+              'error': null,
+            }
+          : {
+              'requestId': message['requestId'],
+              'agentId': message['agentId'],
+              'accepted': false,
+              'error': 'update refused',
+            },
+    );
+    expect(rejected['code'], 'UPDATE_FAILED');
+    expect(rejected['message'], contains('update refused'));
+  });
+
   test('parser and invalid thinking errors are deterministic', () async {
     for (final arguments in const [
       <String>[],
@@ -2057,6 +2212,9 @@ void main() {
       ['delete', '--cwd'],
       ['detach', 'one', 'two'],
       ['reload', 'one', 'two'],
+      ['update', 'one', 'two'],
+      ['update', 'one', '--name'],
+      ['update', 'one', '--label'],
       ['wait', 'one', '--force'],
       ['ls', '--list'],
       ['ls', '--format', 'xml'],

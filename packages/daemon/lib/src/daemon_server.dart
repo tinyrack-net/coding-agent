@@ -1136,6 +1136,39 @@ Future<DaemonServerHandle> startDaemonServer({
         };
       }
     }
+    if (message['type'] == UpdateAgentRequest.type) {
+      final request = UpdateAgentRequest.fromJson(message);
+      final title = request.name?.trim();
+      final labels = request.labels?.isNotEmpty == true ? request.labels : null;
+      if ((title == null || title.isEmpty) && labels == null) {
+        return UpdateAgentResponse(
+          requestId: request.requestId,
+          agentId: request.agentId,
+          accepted: false,
+          error: 'Nothing to update (provide name and/or labels)',
+        ).toJson();
+      }
+      try {
+        await manager.updateMetadata(
+          request.agentId,
+          name: title,
+          labels: labels,
+        );
+        return UpdateAgentResponse(
+          requestId: request.requestId,
+          agentId: request.agentId,
+          accepted: true,
+          error: null,
+        ).toJson();
+      } on Object catch (error) {
+        return UpdateAgentResponse(
+          requestId: request.requestId,
+          agentId: request.agentId,
+          accepted: false,
+          error: '$error'.replaceFirst(RegExp(r'^[^:]+Exception: '), ''),
+        ).toJson();
+      }
+    }
     if (message['type'] == SendAgentMessageRequest.type) {
       return _handlePaseoSendAgentMessage(
         manager,

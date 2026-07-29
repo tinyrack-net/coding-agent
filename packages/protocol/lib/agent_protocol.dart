@@ -25,6 +25,7 @@ export 'src/messages/agent_cancel.dart';
 export 'src/messages/agent_delete.dart';
 export 'src/messages/agent_detach.dart';
 export 'src/messages/agent_reload.dart';
+export 'src/messages/agent_update.dart';
 export 'src/messages/agent_interaction.dart';
 export 'src/messages/agent_commands.dart';
 export 'src/messages/create_agent.dart';

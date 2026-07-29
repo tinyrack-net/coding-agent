@@ -120,7 +120,7 @@ Future<void> main(List<String> arguments) async {
     '       coding-agent import --provider <provider> <id> [options]\n'
     '       coding-agent agent import --provider <provider> <id> [options]\n'
     '       coding-agent agent '
-    '<ls|inspect|mode|stop|send|wait|archive|delete|detach|reload> ...\n'
+    '<ls|inspect|mode|stop|send|wait|archive|delete|detach|reload|update> ...\n'
     '       coding-agent agent logs <id> [options]\n'
     '       coding-agent <ls|inspect|logs|stop|send|wait|archive|delete> ...\n'
     '       coding-agent hub connect --url <url> --token <token> '

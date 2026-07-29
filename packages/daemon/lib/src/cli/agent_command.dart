@@ -30,6 +30,8 @@ Future<int> runAgentCommand({
     final invocation = AgentCliInvocation.parse(arguments);
     String? resolvedSendPrompt;
     ({int timeoutMs, String? timeoutLabel})? resolvedWaitTimeout;
+    String? resolvedUpdateName;
+    Map<String, String>? resolvedUpdateLabels;
     if (invocation.action == 'mode' &&
         !invocation.listModes &&
         (invocation.modeId == null || invocation.modeId!.isEmpty)) {
@@ -97,6 +99,35 @@ Future<int> runAgentCommand({
         details: 'Usage: coding-agent agent reload <id-or-name>',
       );
     }
+    if (invocation.action == 'update') {
+      if (invocation.agentId == null || invocation.agentId!.trim().isEmpty) {
+        throw const AgentCommandException(
+          'MISSING_AGENT_ID',
+          'Agent ID is required',
+          details:
+              'Usage: coding-agent agent update <id> '
+              '[--name <name>] [--label <key=value>]',
+        );
+      }
+      resolvedUpdateName = invocation.name?.trim();
+      if (invocation.name != null && resolvedUpdateName!.isEmpty) {
+        throw const AgentCommandException(
+          'INVALID_NAME',
+          'Name cannot be empty',
+          details: 'Use --name <name> with a non-empty value',
+        );
+      }
+      resolvedUpdateLabels = _parseUpdateLabelOptions(invocation.labels);
+      if (resolvedUpdateName == null && resolvedUpdateLabels.isEmpty) {
+        throw const AgentCommandException(
+          'NO_CHANGES_PROVIDED',
+          'Nothing to update',
+          details:
+              'Provide at least one of: '
+              '--name <name>, --label <key=value>',
+        );
+      }
+    }
     final env = environment ?? Platform.environment;
     var send = request;
     if (send == null) {
@@ -140,6 +171,8 @@ Future<int> runAgentCommand({
       errorOutput,
       resolvedSendPrompt,
       resolvedWaitTimeout,
+      resolvedUpdateName,
+      resolvedUpdateLabels,
     );
     output(_render(result, invocation));
     return 0;
@@ -179,6 +212,7 @@ final class AgentCliInvocation {
     required this.includeArchived,
     required this.global,
     required this.labels,
+    required this.name,
     required this.thinking,
     required this.host,
     required this.format,
@@ -202,6 +236,7 @@ final class AgentCliInvocation {
   final bool includeArchived;
   final bool global;
   final List<String> labels;
+  final String? name;
   final String? thinking;
   final String? host;
   final String format;
@@ -224,6 +259,7 @@ final class AgentCliInvocation {
       'delete',
       'detach',
       'reload',
+      'update',
     }.contains(action)) {
       throw FormatException('Unknown agent action: $action');
     }
@@ -240,6 +276,7 @@ final class AgentCliInvocation {
     var wait = true;
     String? timeout;
     var force = false;
+    String? name;
     String? thinking;
     String? host;
     var format = 'table';
@@ -300,8 +337,17 @@ final class AgentCliInvocation {
           _onlyArchive(action, argument);
           force = true;
         case '--label':
-          _onlyList(action, argument);
+          if (action != 'ls' && action != 'update') {
+            throw FormatException(
+              '$argument is only valid for agent ls/update',
+            );
+          }
           labels.add(_requiredValue(arguments, ++index, argument));
+        case '--name':
+          if (action != 'update') {
+            throw FormatException('$argument is only valid for agent update');
+          }
+          name = _requiredValue(arguments, ++index, argument);
         case '--thinking':
           _onlyList(action, argument);
           thinking = _requiredValue(arguments, ++index, argument);
@@ -368,6 +414,9 @@ final class AgentCliInvocation {
     if (action == 'reload' && positionals.length > 1) {
       throw const FormatException('agent reload accepts exactly one Agent ID');
     }
+    if (action == 'update' && positionals.length > 1) {
+      throw const FormatException('agent update accepts exactly one Agent ID');
+    }
     final normalizedThinking = thinking?.trim();
     return AgentCliInvocation(
       action: action,
@@ -377,7 +426,8 @@ final class AgentCliInvocation {
               action == 'archive' ||
               action == 'delete' ||
               action == 'detach' ||
-              action == 'reload'
+              action == 'reload' ||
+              action == 'update'
           ? positionals.firstOrNull
           : positionals.firstOrNull?.trim(),
       modeId: action == 'mode' && positionals.length == 2
@@ -398,6 +448,7 @@ final class AgentCliInvocation {
       includeArchived: includeArchived,
       global: global,
       labels: List.unmodifiable(labels),
+      name: name,
       thinking: normalizedThinking,
       host: host,
       format: json ? 'json' : format,
@@ -415,6 +466,8 @@ Future<_AgentCommandResult> _execute(
   void Function(String value) writeWarning,
   String? resolvedSendPrompt,
   ({int timeoutMs, String? timeoutLabel})? resolvedWaitTimeout,
+  String? resolvedUpdateName,
+  Map<String, String>? resolvedUpdateLabels,
 ) async {
   return switch (invocation.action) {
     'ls' => _listAgents(invocation, request, environment, now),
@@ -427,6 +480,12 @@ Future<_AgentCommandResult> _execute(
     'delete' => _deleteAgents(invocation, request, writeWarning),
     'detach' => _detachAgent(invocation, request),
     'reload' => _reloadAgent(invocation, request),
+    'update' => _updateAgent(
+      invocation,
+      request,
+      resolvedUpdateName,
+      resolvedUpdateLabels!,
+    ),
     _ => throw StateError('Unhandled agent action'),
   };
 }
@@ -1108,6 +1167,80 @@ Future<_AgentCommandResult> _reloadAgent(
   }
 }
 
+Future<_AgentCommandResult> _updateAgent(
+  AgentCliInvocation invocation,
+  AgentRpcRequester request,
+  String? name,
+  Map<String, String> labels,
+) async {
+  try {
+    Future<Map<String, Object?>?> fetch(String identifier) async {
+      final payload = await request(
+        FetchAgentRequest(
+          requestId: _requestId('agent_update_fetch'),
+          agentId: identifier,
+        ).toJson(),
+      );
+      final responseError = payload['error'];
+      if (responseError is String && responseError.isNotEmpty) {
+        throw StateError(responseError);
+      }
+      final rawAgent = payload['agent'];
+      if (rawAgent == null) return null;
+      if (rawAgent is! Map) {
+        throw const FormatException(
+          'fetch_agent_response contains an invalid agent',
+        );
+      }
+      final agent = Map<String, Object?>.from(rawAgent);
+      PaseoAgentSnapshotCodec.decode(agent);
+      return agent;
+    }
+
+    final resolved = await fetch(invocation.agentId!);
+    if (resolved == null) {
+      throw AgentCommandException(
+        'AGENT_NOT_FOUND',
+        'Agent not found: ${invocation.agentId}',
+        details: 'Use "coding-agent ls" to list available agents',
+      );
+    }
+    final agentId = _string(resolved, 'id');
+    final payload = await request(
+      UpdateAgentRequest(
+        requestId: _requestId('agent_update'),
+        agentId: agentId,
+        name: name,
+        labels: labels.isEmpty ? null : labels,
+      ).toJson(),
+    );
+    final response = UpdateAgentResponse.fromJson({
+      'type': UpdateAgentResponse.type,
+      'payload': payload,
+    });
+    if (!response.accepted) {
+      throw StateError(response.error ?? 'updateAgent rejected');
+    }
+    final updated = await fetch(agentId);
+    if (updated == null) {
+      throw StateError('Agent not found after update: $agentId');
+    }
+    final updatedLabels = _mapOrNull(updated['labels']) ?? const {};
+    return _AgentCommandResult.update({
+      'agentId': agentId,
+      'name': _nullableString(updated['title']),
+      'labels': _formatUpdateLabels(updatedLabels),
+    });
+  } on AgentCommandException {
+    rethrow;
+  } on Object catch (error) {
+    throw AgentCommandException(
+      'UPDATE_FAILED',
+      'Failed to update agent: ${_errorText(error)}',
+    );
+  }
+}
+
 String? _resolveArchiveAgentId(
   String identifier,
   List<Map<String, Object?>> agents,
@@ -1666,6 +1799,13 @@ final class _AgentCommandResult {
         structured: Map.unmodifiable(data),
       );
 
+  factory _AgentCommandResult.update(Map<String, Object?> data) =>
+      _AgentCommandResult._(
+        rows: [Map.unmodifiable(data)],
+        kind: _AgentResultKind.update,
+        structured: Map.unmodifiable(data),
+      );
+
   final List<Map<String, Object?>> rows;
   final _AgentResultKind kind;
   final Object? structured;
@@ -1683,6 +1823,7 @@ enum _AgentResultKind {
   delete,
   detach,
   reload,
+  update,
 }
 
 String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
@@ -1699,6 +1840,7 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       _AgentResultKind.delete => 'agentIds',
       _AgentResultKind.detach => 'agentId',
       _AgentResultKind.reload => 'agentId',
+      _AgentResultKind.update => 'agentId',
     };
     if (result.kind == _AgentResultKind.stop ||
         result.kind == _AgentResultKind.delete) {
@@ -1754,6 +1896,11 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       ('STATUS', 'status', 12),
       ('TIMELINE', 'timelineSize', 8),
     ],
+    _AgentResultKind.update => const [
+      ('AGENT ID', 'agentId', 12),
+      ('NAME', 'name', 20),
+      ('LABELS', 'labels', 24),
+    ],
     _AgentResultKind.agents => const [
       ('AGENT ID', 'shortId', 12),
       ('NAME', 'name', 20),
@@ -1793,6 +1940,39 @@ Map<String, String> _parseLabelFilters(List<String> labels) {
     }
   }
   return result;
+}
+
+Map<String, String> _parseUpdateLabelOptions(List<String> labels) {
+  final result = <String, String>{};
+  for (final rawLabel in labels) {
+    for (final segment in rawLabel.split(',')) {
+      final label = segment.trim();
+      if (label.isEmpty) continue;
+      final separator = label.indexOf('=');
+      if (separator < 0) {
+        throw AgentCommandException(
+          'INVALID_LABEL',
+          'Invalid label format: $label',
+          details: 'Labels must be in key=value format',
+        );
+      }
+      final key = label.substring(0, separator).trim();
+      if (key.isEmpty) {
+        throw AgentCommandException(
+          'INVALID_LABEL',
+          'Invalid label format: $label',
+          details: 'Labels must include a non-empty key in key=value format',
+        );
+      }
+      result[key] = label.substring(separator + 1);
+    }
+  }
+  return result;
+}
+
+String _formatUpdateLabels(Map<String, Object?> labels) {
+  if (labels.isEmpty) return '-';
+  return labels.entries.map((entry) => '${entry.key}=${entry.value}').join(',');
 }
 
 int _statusOrder(String status) => switch (status) {
@@ -2009,6 +2189,7 @@ const agentUsage =
     '       coding-agent agent delete [<id>|--all|--cwd <path>] [options]\n'
     '       coding-agent agent detach <id-or-name> [options]\n'
     '       coding-agent agent reload <id-or-name> [options]\n'
+    '       coding-agent agent update <id> [options]\n'
     '       coding-agent ls [options]\n'
     '       coding-agent inspect <id> [options]';
 
@@ -2048,6 +2229,11 @@ String _agentHelp(String? action) => switch (action) {
   'reload' =>
     'Usage: coding-agent agent reload [options] <id>\n'
         'Reload an agent (restarts the underlying process)\n',
+  'update' =>
+    'Usage: coding-agent agent update [options] <id>\n'
+        'Update an agent\'s metadata\n\n'
+        '  --name <name>   Update the agent display name\n'
+        '  --label <k=v>   Add or set labels (repeatable or comma-separated)\n',
   _ =>
     'Usage: coding-agent agent [command]\n'
         'Manage agents (advanced operations)\n\n'
@@ -2062,5 +2248,6 @@ String _agentHelp(String? action) => switch (action) {
         '  archive  Archive an agent (soft-delete)\n'
         '  delete   Permanently delete one or more agents\n'
         '  detach   Make a subagent independent\n'
-        '  reload   Reload an agent process\n',
+        '  reload   Reload an agent process\n'
+        '  update   Update agent metadata\n',
 };

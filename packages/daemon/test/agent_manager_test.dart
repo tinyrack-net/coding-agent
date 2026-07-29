@@ -1762,6 +1762,58 @@ void main() {
     expect(listed.title, 'Renamed agent');
   });
 
+  test(
+    'updateMetadata patches live and archived records and parent labels',
+    () async {
+      final parent = await createAgent();
+      final child = await manager.createAgent(
+        cwd: tempDir.path,
+        provider: 'claude',
+        model: 'claude-sonnet-5',
+        mode: AgentMode.normal,
+        title: 'Child',
+        parentAgentId: parent.agentId,
+        labels: const {'role': 'reviewer'},
+      );
+      states.clear();
+
+      final updated = await manager.updateMetadata(
+        child.agentId,
+        name: '  Renamed child  ',
+        labels: const {'team': 'infra', paseoParentAgentIdLabel: ''},
+      );
+
+      expect(updated.title, 'Renamed child');
+      expect(updated.parentAgentId, isNull);
+      expect(updated.labels, {
+        'role': 'reviewer',
+        paseoParentAgentIdLabel: '',
+        'team': 'infra',
+      });
+      expect(
+        states.where((state) => state.agent.agentId == child.agentId),
+        hasLength(2),
+      );
+
+      await manager.archive(child.agentId);
+      final archived = await manager.updateMetadata(
+        child.agentId,
+        name: 'Archived child',
+        labels: const {'phase': 'done'},
+      );
+      expect(archived.archivedAt, isNotNull);
+      expect(archived.title, 'Archived child');
+      expect(archived.labels['phase'], 'done');
+
+      final persisted = (await AgentStore(dataDir: tempDir.path).loadAll())
+          .singleWhere((record) => record.summary.agentId == child.agentId);
+      expect(persisted.archived, isTrue);
+      expect(persisted.summary.title, 'Archived child');
+      expect(persisted.summary.parentAgentId, isNull);
+      expect(persisted.summary.labels['phase'], 'done');
+    },
+  );
+
   test('persists and reloads agents across manager restarts', () async {
     final agent = await createAgent();
     final session = client.sessions.single;

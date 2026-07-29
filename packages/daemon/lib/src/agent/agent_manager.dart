@@ -1363,6 +1363,48 @@ class AgentManager {
     return runtime.summary;
   }
 
+  Future<AgentSummary> updateMetadata(
+    String agentId, {
+    String? name,
+    Map<String, String>? labels,
+  }) async {
+    final runtime = _runtimes[agentId];
+    if (runtime == null) {
+      throw RpcException(RpcErrorCodes.notFound, 'no agent $agentId');
+    }
+    final title = name?.trim();
+    if (title != null && title.isNotEmpty) {
+      runtime.summary = runtime.summary.copyWith(
+        title: title,
+        updatedAt: DateTime.now().toUtc().toIso8601String(),
+      );
+      _persist(runtime);
+      await _store.flush();
+      _broadcastState(runtime);
+    }
+    if (labels != null && labels.isNotEmpty) {
+      final mergedLabels = <String, String>{
+        ...runtime.summary.labels,
+        ...labels,
+      };
+      final parentAgentId = labels.containsKey(paseoParentAgentIdLabel)
+          ? parentAgentIdFromLabels(mergedLabels)
+          : runtime.summary.parentAgentId;
+      runtime.summary = runtime.summary.copyWith(
+        labels: Map.unmodifiable(mergedLabels),
+        parentAgentId: parentAgentId,
+        clearParentAgentId:
+            labels.containsKey(paseoParentAgentIdLabel) &&
+            parentAgentId == null,
+        updatedAt: DateTime.now().toUtc().toIso8601String(),
+      );
+      _persist(runtime);
+      await _store.flush();
+      _broadcastState(runtime);
+    }
+    return runtime.summary;
+  }
+
   Future<AgentSummary> archive(String agentId) async {
     final runtime = _runtime(agentId);
     await _archiveTree(runtime);
@@ -1561,7 +1603,10 @@ class AgentManager {
 
   ({AgentSummary agent, int epoch, int lastSeq, List<TimelineRow> rows})
   fetchCanonicalTimeline(String agentId) {
-    final runtime = _runtime(agentId);
+    final runtime = _runtimes[agentId];
+    if (runtime == null) {
+      throw RpcException(RpcErrorCodes.notFound, 'no agent $agentId');
+    }
     return (
       agent: runtime.summary,
       epoch: runtime.timeline.epoch,
