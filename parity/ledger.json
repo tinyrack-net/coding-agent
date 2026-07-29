@@ -10218,10 +10218,13 @@
     },
     {
       "id": "source-unit:packages/cli/src/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/cli_entrypoint_process_test.dart",
+        "packages/daemon/test/cli/cli_shell_process_test.dart"
+      ],
+      "notes": "The Dart executable receives user argv, delegates to the CLI dispatcher, and publishes its successful or usage-error result through the process exit code, matching the frozen entrypoint contract."
     },
     {
       "id": "source-unit:packages/cli/src/output/index.ts",
