@@ -9290,10 +9290,12 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/index.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/lib/src/cli/agent_logs_command.dart; packages/daemon/bin/coding_agent.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/lib/src/cli/agent_run_command.dart; packages/daemon/lib/src/cli/agent_import_command.dart; packages/daemon/lib/src/cli/agent_logs_command.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/agent_command_test.dart",
+        "packages/daemon/test/cli/agent_run_command_test.dart",
+        "packages/daemon/test/cli/agent_import_command_test.dart",
         "packages/daemon/test/cli/agent_logs_command_test.dart",
         "packages/daemon/test/daemon_agent_cli_e2e_test.dart",
         "packages/daemon/test/daemon_agent_send_e2e_test.dart",
@@ -9305,7 +9307,7 @@
         "packages/daemon/test/daemon_agent_open_e2e_test.dart",
         "packages/daemon/test/daemon_agent_attach_e2e_test.dart"
       ],
-      "notes": "Agent ls, inspect, logs, mode, stop, send, wait, archive, delete, detach, reload, update, open, and attach dispatch are ported; only run remains."
+      "notes": "The frozen agent command tree is ported, including nested run/import aliases, attach/log streaming boundaries, shared output registration, and ls, inspect, mode, stop, send, wait, archive, delete, detach, reload, update, open, and attach dispatch."
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/inspect.ts",
