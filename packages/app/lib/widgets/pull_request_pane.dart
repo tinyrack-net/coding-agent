@@ -38,6 +38,27 @@ class PullRequestPane extends ConsumerStatefulWidget {
 class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
   bool _checksOpen = true;
   bool _activityOpen = true;
+  bool _refreshing = false;
+
+  Future<void> _refreshCheckout() async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
+    try {
+      await ref
+          .read(pullRequestPaneProvider(widget.cwd).notifier)
+          .refreshCheckout();
+    } on Object catch (error) {
+      if (mounted) {
+        AppToast.show(
+          context,
+          _refreshErrorMessage(error),
+          severity: InfoBarSeverity.error,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,6 +69,7 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
     final forgeProvidersEnabled = daemonFeatures['forgeProviders'] == true;
     final canFetchForgeCheckDetails =
         daemonFeatures['forgeCheckDetails'] == true;
+    final refreshSupported = daemonFeatures['checkoutRefresh'] == true;
     return ColoredBox(
       color: FluentTheme.of(context).scaffoldBackgroundColor,
       child: async.when(
@@ -75,9 +97,9 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
                 url: status.url,
                 forge: status.forge,
                 onOpen: () => _openExternalUrl(context, ref, status.url),
-                onRefresh: () => ref
-                    .read(pullRequestPaneProvider(widget.cwd).notifier)
-                    .refresh(),
+                refreshSupported: refreshSupported,
+                refreshing: _refreshing,
+                onRefresh: _refreshCheckout,
               ),
               Expanded(
                 child: ListView(
@@ -158,12 +180,16 @@ class _Toolbar extends StatelessWidget {
     required this.url,
     required this.forge,
     required this.onOpen,
+    required this.refreshSupported,
+    required this.refreshing,
     required this.onRefresh,
   });
 
   final String url;
   final String forge;
   final VoidCallback onOpen;
+  final bool refreshSupported;
+  final bool refreshing;
   final VoidCallback onRefresh;
 
   @override
@@ -203,13 +229,22 @@ class _Toolbar extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          Tooltip(
-            message: 'Refresh pull request',
-            child: IconButton(
-              icon: const Icon(FluentIcons.refresh, size: 14),
-              onPressed: onRefresh,
+          if (refreshSupported)
+            Tooltip(
+              message: refreshing
+                  ? 'Refreshing'
+                  : 'Refresh ${getForgeDefinitionOrNeutral(forge.toLowerCase()).displayName} state',
+              child: IconButton(
+                key: const ValueKey('pr-pane-refresh'),
+                icon: refreshing
+                    ? const SizedBox.square(
+                        dimension: 14,
+                        child: ProgressRing(strokeWidth: 2),
+                      )
+                    : const Icon(FluentIcons.refresh, size: 14),
+                onPressed: refreshing ? null : onRefresh,
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -2066,3 +2101,8 @@ Future<void> _openExternalUrl(
     );
   }
 }
+
+String _refreshErrorMessage(Object error) => switch (error) {
+  StateError() => error.message,
+  _ => '$error',
+};

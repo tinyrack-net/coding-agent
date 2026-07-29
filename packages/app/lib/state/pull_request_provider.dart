@@ -105,6 +105,19 @@ class PullRequestPaneNotifier extends AsyncNotifier<PullRequestPaneData> {
     state = await AsyncValue.guard(() => _load(client));
   }
 
+  Future<void> refreshCheckout() async {
+    final client = ref.read(daemonClientProvider);
+    final response = CheckoutRefreshResponse.fromJson(
+      await client.requestSessionMessage(
+        CheckoutRefreshRequest(cwd: cwd, requestId: _uuid.v4()).toJson(),
+      ),
+    );
+    if (!response.success) {
+      throw StateError(response.error?.message ?? 'Could not refresh checkout');
+    }
+    await refresh();
+  }
+
   Future<CheckoutCheckDetails?> loadCheckDetails(
     CheckoutPrStatus status,
     CheckoutPrCheck check,

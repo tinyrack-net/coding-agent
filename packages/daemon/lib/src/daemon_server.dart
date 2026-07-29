@@ -16,6 +16,7 @@ import 'agent/timeline_projection.dart';
 import 'agent/timeline_store.dart';
 import 'agent/runtime_mcp_config.dart';
 import 'forge/forge_action_service.dart';
+import 'forge/checkout_refresh_service.dart';
 import 'forge/checkout_pr_status_service.dart';
 import 'forge/forge_check_details_service.dart';
 import 'forge/workspace_forge_status_service.dart';
@@ -812,6 +813,10 @@ Future<DaemonServerHandle> startDaemonServer({
     statusService: forgeStatus,
   );
   final checkoutPrStatus = CheckoutPrStatusService(statusService: forgeStatus);
+  final checkoutRefresh = CheckoutRefreshService(
+    statusService: forgeStatus,
+    refreshObserver: workspaceGitObserverBackend.refreshNow,
+  );
   final forgeCheckDetails = ForgeCheckDetailsService(resolver: forgeResolver);
 
   late final WorkspaceScriptsService workspaceScripts;
@@ -1575,6 +1580,8 @@ Future<DaemonServerHandle> startDaemonServer({
     if (forgeActionResponse != null) return forgeActionResponse;
     final prStatusResponse = await checkoutPrStatus.handle(message);
     if (prStatusResponse != null) return prStatusResponse;
+    final checkoutRefreshResponse = await checkoutRefresh.handle(message);
+    if (checkoutRefreshResponse != null) return checkoutRefreshResponse;
     final checkDetailsResponse = await forgeCheckDetails.handle(message);
     if (checkDetailsResponse != null) return checkDetailsResponse;
     final forgeResponse = await forgeSearch.handle(message);

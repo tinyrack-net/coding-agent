@@ -486,6 +486,7 @@ class WsServer {
       'workspaceScriptManagement': true,
       'forgeProviders': true,
       'forgeCheckDetails': true,
+      'checkoutRefresh': true,
     },
   ).toJson();
 

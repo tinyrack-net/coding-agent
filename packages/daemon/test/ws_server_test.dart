@@ -152,6 +152,7 @@ void main() {
       );
       expect(serverInfo['features'], containsPair('forgeProviders', true));
       expect(serverInfo['features'], containsPair('forgeCheckDetails', true));
+      expect(serverInfo['features'], containsPair('checkoutRefresh', true));
 
       final eventFuture = frames.firstWhere(
         (frame) =>

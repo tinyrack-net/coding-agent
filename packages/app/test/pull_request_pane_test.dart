@@ -43,8 +43,11 @@ class _FakeDaemonClient extends DaemonClient {
     this.includeSkippedCheck = false,
     this.forgeProvidersEnabled = true,
     this.forgeCheckDetailsEnabled = true,
+    this.checkoutRefreshEnabled = true,
+    this.checkoutRefreshSuccess = true,
     this.checkDetailsSuccess = true,
     this.checkDetailsGate,
+    this.checkoutRefreshGate,
     this.statusGate,
     this.statusFailuresRemaining = 0,
   }) : super(uri: Uri.parse('ws://fake')) {
@@ -56,6 +59,7 @@ class _FakeDaemonClient extends DaemonClient {
       features: {
         'forgeProviders': forgeProvidersEnabled,
         'forgeCheckDetails': forgeCheckDetailsEnabled,
+        'checkoutRefresh': checkoutRefreshEnabled,
       },
     );
   }
@@ -74,12 +78,16 @@ class _FakeDaemonClient extends DaemonClient {
   int pipelineId = 306;
   final bool forgeProvidersEnabled;
   final bool forgeCheckDetailsEnabled;
+  final bool checkoutRefreshEnabled;
+  final bool checkoutRefreshSuccess;
   final bool checkDetailsSuccess;
   final Completer<void>? checkDetailsGate;
+  final Completer<void>? checkoutRefreshGate;
   final Completer<void>? statusGate;
   int statusFailuresRemaining;
   Completer<void>? pipelineDetailsGate;
   final nativeRequests = <Map<String, Object?>>[];
+  var checkoutRefreshRequests = 0;
 
   @override
   DaemonConnectionState get currentState => DaemonConnectionState.connected;
@@ -105,6 +113,21 @@ class _FakeDaemonClient extends DaemonClient {
     Duration timeout = const Duration(seconds: 30),
   }) async {
     nativeRequests.add(message);
+    if (message['type'] == CheckoutRefreshRequest.type) {
+      checkoutRefreshRequests += 1;
+      await checkoutRefreshGate?.future;
+      return CheckoutRefreshResponse(
+        cwd: _cwd,
+        success: checkoutRefreshSuccess,
+        error: checkoutRefreshSuccess
+            ? null
+            : const CheckoutError(
+                code: CheckoutErrorCode.unknown,
+                message: 'refresh unavailable',
+              ),
+        requestId: message['requestId']! as String,
+      ).toJson();
+    }
     if (message['type'] == CheckoutPrStatusRequest.type) {
       await statusGate?.future;
       if (statusFailuresRemaining > 0) {
@@ -1124,7 +1147,70 @@ void main() {
     final after = client.nativeRequests
         .where((request) => request['type'] == CheckoutPrStatusRequest.type)
         .length;
+    expect(client.checkoutRefreshRequests, 1);
     expect(after, before + 1);
+  });
+
+  testWidgets('refresh is hidden without the frozen checkout capability', (
+    tester,
+  ) async {
+    await _pumpPane(tester, _FakeDaemonClient(checkoutRefreshEnabled: false));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('pr-pane-refresh')), findsNothing);
+  });
+
+  testWidgets('refresh disables duplicate actions while checkout is pending', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    final client = _FakeDaemonClient(checkoutRefreshGate: gate);
+    await _pumpPane(tester, client);
+    await tester.pumpAndSettle();
+    final refresh = find.byKey(const ValueKey('pr-pane-refresh'));
+    final statusRequestsBefore = client.nativeRequests
+        .where((request) => request['type'] == CheckoutPrStatusRequest.type)
+        .length;
+
+    final startRefresh = tester.widget<IconButton>(refresh).onPressed!;
+    startRefresh();
+    startRefresh();
+    await tester.pump();
+
+    expect(client.checkoutRefreshRequests, 1);
+    expect(find.byType(ProgressRing), findsOneWidget);
+    expect(tester.widget<IconButton>(refresh).onPressed, isNull);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ProgressRing), findsNothing);
+    expect(tester.widget<IconButton>(refresh).onPressed, isNotNull);
+    expect(client.checkoutRefreshRequests, 1);
+    expect(
+      client.nativeRequests
+          .where((request) => request['type'] == CheckoutPrStatusRequest.type)
+          .length,
+      statusRequestsBefore + 1,
+    );
+  });
+
+  testWidgets('failed checkout refresh reports the daemon error and recovers', (
+    tester,
+  ) async {
+    final client = _FakeDaemonClient(checkoutRefreshSuccess: false);
+    await _pumpPane(tester, client);
+    await tester.pumpAndSettle();
+    final refresh = find.byKey(const ValueKey('pr-pane-refresh'));
+
+    await tester.tap(refresh);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('refresh unavailable'), findsOneWidget);
+    expect(tester.widget<IconButton>(refresh).onPressed, isNotNull);
+    expect(client.checkoutRefreshRequests, 1);
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('View, check, and activity links open through the platform', (
