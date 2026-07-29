@@ -121,6 +121,22 @@ final class PaseoProviderCatalogRegistry {
     );
   }
 
+  Future<String> diagnostic(String provider) async {
+    final providerDefinition = definition(provider);
+    if (providerDefinition == null) {
+      return _formatProviderDiagnostic(provider, [
+        ('Error', 'Provider $provider is not configured'),
+      ]);
+    }
+    final entry = (await snapshot(providers: [provider], force: true)).single;
+    final modelCount = entry.status == ProviderCatalogStatus.ready
+        ? '${entry.models?.length ?? 0}'
+        : '—';
+    return '${_formatProviderDiagnostic(providerDefinition.label, const [('Diagnostic', 'No diagnostic available')])}\n'
+        '  Models: $modelCount\n'
+        '  Status: ${_formatProviderStatus(entry)}';
+  }
+
   Future<String?> resolveCreateAgentMode(AgentCreateModeRequest request) async {
     final resolved = await resolveCreateAgentConfig(
       AgentCreateConfigRequest(
@@ -371,6 +387,22 @@ String _definitionFingerprint(PaseoProviderDefinition definition) =>
       'params': definition.providerParams,
       'modes': [for (final mode in definition.modes) mode.mode.toJson()],
     });
+
+String _formatProviderDiagnostic(
+  String providerName,
+  List<(String, String)> entries,
+) => [
+  providerName,
+  for (final entry in entries) '  ${entry.$1}: ${entry.$2}',
+].join('\n');
+
+String _formatProviderStatus(ProviderSnapshotEntry entry) =>
+    switch (entry.status) {
+      ProviderCatalogStatus.ready => 'Ready',
+      ProviderCatalogStatus.error => 'Error: ${entry.error ?? 'Unknown error'}',
+      ProviderCatalogStatus.unavailable => 'Unavailable',
+      ProviderCatalogStatus.loading => 'Loading',
+    };
 
 PaseoProviderDefinition _applyOverride(
   PaseoProviderDefinition definition,

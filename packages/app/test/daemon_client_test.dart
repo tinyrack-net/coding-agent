@@ -398,6 +398,42 @@ void main() {
     expect(response.icon?.mimeType, 'image/svg+xml');
   });
 
+  test('requests provider diagnostics via typed correlated RPC', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    unawaited(
+      conn.nextRequest(ProviderDiagnosticRequest.type).then((frame) {
+        expect(frame, {
+          'type': 'provider_diagnostic_request',
+          'provider': 'codex',
+          'requestId': 'provider-diagnostic-1',
+        });
+        conn.respondNative(
+          ProviderDiagnosticResponse.type,
+          frame['requestId'] as String,
+          const {
+            'provider': 'codex',
+            'diagnostic': 'Codex\n  Models: 1\n  Status: Ready',
+          },
+        );
+      }),
+    );
+
+    final response = await client.getProviderDiagnostic(
+      'codex',
+      requestId: 'provider-diagnostic-1',
+    );
+    expect(response.provider, 'codex');
+    expect(response.diagnostic, contains('Status: Ready'));
+  });
+
   test('renames a project via typed correlated RPC', () async {
     client = DaemonClient(uri: server.uri);
     final connFuture = nextConnection(server);

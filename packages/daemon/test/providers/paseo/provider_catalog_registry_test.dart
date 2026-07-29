@@ -111,6 +111,38 @@ void main() {
   );
 
   test(
+    'diagnostics force a catalog probe and append models and status',
+    () async {
+      final catalog = registry();
+
+      final readyDiagnostic = await catalog.diagnostic('ready');
+      expect(readyDiagnostic, contains('Ready'));
+      expect(readyDiagnostic, contains('Diagnostic: No diagnostic available'));
+      expect(readyDiagnostic, contains('Models: 0'));
+      expect(readyDiagnostic, contains('Status: Ready'));
+
+      final missingDiagnostic = await catalog.diagnostic('missing');
+      expect(missingDiagnostic, contains('Models: —'));
+      expect(missingDiagnostic, contains('Status: Unavailable'));
+
+      final brokenDiagnostic = await catalog.diagnostic('broken');
+      expect(brokenDiagnostic, contains('Models: —'));
+      expect(brokenDiagnostic, contains('Status: Error:'));
+      expect(brokenDiagnostic, contains('probe failed'));
+    },
+  );
+
+  test(
+    'unknown provider diagnostics return an inline configured error',
+    () async {
+      expect(
+        await registry().diagnostic('unknown'),
+        'unknown\n  Error: Provider unknown is not configured',
+      );
+    },
+  );
+
+  test(
     'resolves create modes from the ready catalog and unattended metadata',
     () async {
       const worker = PaseoProviderDefinition(

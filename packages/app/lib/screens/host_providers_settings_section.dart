@@ -10,6 +10,7 @@ import '../state/daemon_config_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/providers_snapshot_provider.dart';
 import '../widgets/provider_catalog_list.dart';
+import '../widgets/provider_diagnostic_dialog.dart';
 import '../widgets/provider_icon.dart';
 
 class HostProvidersSettingsSection extends ConsumerStatefulWidget {
@@ -135,6 +136,14 @@ class _HostProvidersSettingsSectionState
     }
   }
 
+  Future<void> _openDiagnostic(ProviderSnapshotEntry entry) =>
+      showProviderDiagnosticDialog(
+        context: context,
+        client: ref.read(daemonClientProvider),
+        provider: entry.provider,
+        label: entry.label ?? entry.provider,
+      );
+
   @override
   Widget build(BuildContext context) {
     final scope = ProvidersSnapshotScope(
@@ -196,6 +205,7 @@ class _HostProvidersSettingsSectionState
                               _removingProviderId == entries[index].provider,
                           onToggle: (enabled) =>
                               _toggle(entries[index], enabled),
+                          onDiagnostic: () => _openDiagnostic(entries[index]),
                           onRemove: entries[index].source == 'custom'
                               ? () => _remove(entries[index])
                               : null,
@@ -231,6 +241,7 @@ class _InstalledProviderRow extends StatelessWidget {
     required this.pending,
     required this.removing,
     required this.onToggle,
+    required this.onDiagnostic,
     required this.onRemove,
   });
 
@@ -238,6 +249,7 @@ class _InstalledProviderRow extends StatelessWidget {
   final bool pending;
   final bool removing;
   final ValueChanged<bool> onToggle;
+  final VoidCallback onDiagnostic;
   final VoidCallback? onRemove;
 
   @override
@@ -293,6 +305,14 @@ class _InstalledProviderRow extends StatelessWidget {
                     style: FluentTheme.of(context).typography.caption,
                   ),
               ],
+            ),
+          ),
+          Tooltip(
+            message: 'Provider diagnostic',
+            child: IconButton(
+              key: ValueKey('diagnose-provider-${entry.provider}'),
+              icon: const Icon(FluentIcons.diagnostic, size: 16),
+              onPressed: onDiagnostic,
             ),
           ),
           if (onRemove != null)

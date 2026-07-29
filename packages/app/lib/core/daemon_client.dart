@@ -335,6 +335,27 @@ class DaemonClient {
     return response;
   }
 
+  Future<ProviderDiagnosticResponse> getProviderDiagnostic(
+    String provider, {
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = ProviderDiagnosticResponse.fromJson(
+      await requestSessionMessage(
+        ProviderDiagnosticRequest(
+          provider: provider,
+          requestId: correlatedId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != correlatedId || response.provider != provider) {
+      throw const FormatException('Provider diagnostic response mismatch');
+    }
+    return response;
+  }
+
   Future<ProjectRenameResponse> renameProject(
     String projectId,
     String? customName, {

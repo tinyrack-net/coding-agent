@@ -117,6 +117,36 @@ void main() {
   });
 
   test(
+    'returns correlated provider diagnostics for ready and unknown providers',
+    () async {
+      final readyResponse = ProviderDiagnosticResponse.fromJson(
+        (await service.handle(
+          const ProviderDiagnosticRequest(
+            provider: 'ready',
+            requestId: 'diagnostic-ready',
+          ).toJson(),
+        ))!,
+      );
+      final unknownResponse = ProviderDiagnosticResponse.fromJson(
+        (await service.handle(
+          const ProviderDiagnosticRequest(
+            provider: 'unknown',
+            requestId: 'diagnostic-unknown',
+          ).toJson(),
+        ))!,
+      );
+
+      expect(readyResponse.requestId, 'diagnostic-ready');
+      expect(readyResponse.diagnostic, contains('Models: 0'));
+      expect(readyResponse.diagnostic, contains('Status: Ready'));
+      expect(
+        unknownResponse.diagnostic,
+        contains('Provider unknown is not configured'),
+      );
+    },
+  );
+
+  test(
     'lists draft provider features and preserves request correlation',
     () async {
       service = ProviderCatalogV2Service(

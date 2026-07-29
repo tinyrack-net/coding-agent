@@ -239,6 +239,26 @@ void main() {
       ).toJson()['payload'],
       isNot(contains('cwd')),
     );
+
+    const diagnosticRequest = ProviderDiagnosticRequest(
+      provider: 'codex',
+      requestId: 'diagnostic',
+    );
+    const diagnosticResponse = ProviderDiagnosticResponse(
+      provider: 'codex',
+      diagnostic: 'Codex\n  Models: 1\n  Status: Ready',
+      requestId: 'diagnostic',
+    );
+    expect(
+      ProviderDiagnosticRequest.fromJson(diagnosticRequest.toJson()).toJson(),
+      diagnosticRequest.toJson(),
+    );
+    expect(
+      ProviderDiagnosticResponse.fromJson(
+        wire(diagnosticResponse.toJson()),
+      ).toJson(),
+      diagnosticResponse.toJson(),
+    );
   });
 
   test('requests omit optional cwd and provider filters', () {
@@ -295,6 +315,25 @@ void main() {
         () => ProviderAvailabilityV2.fromJson({
           'provider': 'x',
           'available': 'yes',
+        }),
+        throwsFormatException,
+      );
+      expect(
+        () => ProviderDiagnosticRequest.fromJson({
+          'type': 'wrong',
+          'provider': 'codex',
+          'requestId': 'diagnostic',
+        }),
+        throwsFormatException,
+      );
+      expect(
+        () => ProviderDiagnosticResponse.fromJson({
+          'type': ProviderDiagnosticResponse.type,
+          'payload': {
+            'provider': 'codex',
+            'diagnostic': 1,
+            'requestId': 'diagnostic',
+          },
         }),
         throwsFormatException,
       );

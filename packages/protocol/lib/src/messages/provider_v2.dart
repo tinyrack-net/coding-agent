@@ -568,6 +568,65 @@ final class RefreshProvidersSnapshotResponse {
   };
 }
 
+final class ProviderDiagnosticRequest {
+  const ProviderDiagnosticRequest({
+    required this.provider,
+    required this.requestId,
+  });
+
+  static const type = 'provider_diagnostic_request';
+
+  final String provider;
+  final String requestId;
+
+  factory ProviderDiagnosticRequest.fromJson(Map<String, Object?> json) {
+    _expectType(json, type);
+    return ProviderDiagnosticRequest(
+      provider: _requiredString(json, 'provider'),
+      requestId: _requiredString(json, 'requestId'),
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'type': type,
+    'provider': provider,
+    'requestId': requestId,
+  };
+}
+
+final class ProviderDiagnosticResponse {
+  const ProviderDiagnosticResponse({
+    required this.provider,
+    required this.diagnostic,
+    required this.requestId,
+  });
+
+  static const type = 'provider_diagnostic_response';
+
+  final String provider;
+  final String diagnostic;
+  final String requestId;
+
+  factory ProviderDiagnosticResponse.fromJson(Map<String, Object?> json) {
+    _expectType(json, type);
+    final payload = _requiredMap(json, 'payload');
+    return ProviderDiagnosticResponse(
+      provider: _requiredString(payload, 'provider'),
+      diagnostic: _requiredString(payload, 'diagnostic'),
+      requestId: _requiredString(payload, 'requestId'),
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'type': type,
+    'payload': {
+      'provider': provider,
+      'diagnostic': diagnostic,
+      'requestId': requestId,
+    },
+  };
+}
+
 void _expectType(Map<String, Object?> json, String expected) {
   if (json['type'] != expected) {
     throw FormatException('expected type "$expected"');

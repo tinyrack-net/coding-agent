@@ -43,6 +43,9 @@ final class ProviderCatalogV2Service {
       'refresh_providers_snapshot_request' => _refresh(
         RefreshProvidersSnapshotRequest.fromJson(message),
       ),
+      'provider_diagnostic_request' => _diagnostic(
+        ProviderDiagnosticRequest.fromJson(message),
+      ),
       _ => null,
     };
   }
@@ -222,6 +225,28 @@ final class ProviderCatalogV2Service {
       requestId: request.requestId,
       acknowledged: true,
     ).toJson();
+  }
+
+  Future<Map<String, Object?>> _diagnostic(
+    ProviderDiagnosticRequest request,
+  ) async {
+    try {
+      return ProviderDiagnosticResponse(
+        provider: request.provider,
+        diagnostic: await registry.diagnostic(request.provider),
+        requestId: request.requestId,
+      ).toJson();
+    } catch (error) {
+      return {
+        'type': 'rpc_error',
+        'payload': {
+          'requestId': request.requestId,
+          'requestType': ProviderDiagnosticRequest.type,
+          'error': 'Failed to get provider diagnostic: $error',
+          'code': 'provider_diagnostic_failed',
+        },
+      };
+    }
   }
 
   String _timestamp() => _now().toUtc().toIso8601String();

@@ -3268,17 +3268,21 @@
     },
     {
       "id": "source-unit:packages/app/src/components/provider-diagnostic-models.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/providers/provider_diagnostic_models.dart",
+      "evidence": [
+        "packages/app/test/provider_diagnostic_models_test.dart"
+      ],
+      "notes": "Stable discovered-model cache replacement, same-scope refresh retention, and stale-scope hiding match the frozen helper."
     },
     {
       "id": "source-unit:packages/app/src/components/provider-diagnostic-sheet.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/widgets/provider_diagnostic_dialog.dart;packages/app/lib/screens/host_providers_settings_section.dart",
+      "evidence": [
+        "packages/app/test/provider_diagnostic_dialog_test.dart"
+      ],
+      "notes": "Provider diagnostics load, inline failures, copy, refresh, and settings entry point are ported. The frozen adaptive model-management sheet, model search, custom-model add/remove, localization, and golden geometry remain."
     },
     {
       "id": "source-unit:packages/app/src/components/provider-icon-name.ts",
@@ -15932,17 +15936,26 @@
     },
     {
       "id": "wire-message:provider_diagnostic_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/provider_v2.dart;packages/daemon/lib/src/providers/paseo/provider_catalog_v2_service.dart;packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/protocol/test/provider_v2_test.dart",
+        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
+      ],
+      "notes": "Exact request type, provider and request correlation cross typed protocol, daemon dispatch, and Flutter WebSocket transport."
     },
     {
       "id": "wire-message:provider_diagnostic_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/provider_v2.dart;packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart;packages/daemon/lib/src/providers/paseo/provider_catalog_v2_service.dart;packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/protocol/test/provider_v2_test.dart",
+        "packages/daemon/test/providers/paseo/provider_catalog_registry_test.dart",
+        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
+      ],
+      "notes": "Correlated diagnostic payloads preserve provider identity and frozen Models/Status formatting, including unknown providers and probe errors."
     },
     {
       "id": "wire-message:providers_snapshot_update",
