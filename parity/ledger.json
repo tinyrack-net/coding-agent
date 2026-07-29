@@ -5270,12 +5270,16 @@
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/section-kit.tsx",
-      "status": "partial",
-      "implementation": "packages/app/lib/widgets/pull_request_pane.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/core/theme.dart; packages/app/lib/widgets/pull_request_section_kit.dart; packages/app/lib/widgets/pull_request_pane.dart",
       "evidence": [
-        "packages/app/test/pull_request_pane_test.dart"
+        "packages/app/test/pull_request_section_kit_test.dart",
+        "packages/app/test/pull_request_pane_test.dart",
+        "packages/app/test/goldens/pull_request_section_kit_380x220.png",
+        "packages/app/test/goldens/workspace_pr_explorer.png",
+        "packages/app/test/goldens/workspace_gitlab_pipeline_explorer.png"
       ],
-      "notes": "Core Windows explorer and PR checks/activity flow implemented; advanced attachment, entry grouping, and forge-specific polish remain."
+      "notes": "Ports the frozen collapsible section header/body geometry, 14px vector chevrons and four check-status glyphs, transparent 12px summary indicators with zero suppression and 8px gaps, exact semantic colors, empty copy, 14/12px check-row typography, 32px minimum rows, trailing layout, and surface1 hover. Checks, Activity, and GitLab Pipeline all consume the shared kit, including skipped-status exclusion from pending counts."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/tab-icon.tsx",
@@ -7611,7 +7615,7 @@
         "packages/app/test/appearance_provider_test.dart",
         "packages/app/test/to_xterm_theme_test.dart"
       ],
-      "notes": "Flutter now carries the frozen named semantic surface palette and the complete 22-color terminal palette, including theme interpolation and Auto brightness resolution. The remaining upstream semantic, diff/status, typography, and component token surface is tracked as incomplete."
+      "notes": "Flutter now carries the frozen named semantic surface palette, sidebar and sidebar-hover surfaces, success/danger/warning/merged status colors, and the complete 22-color terminal palette, including theme interpolation and Auto brightness resolution. The remaining upstream diff, typography, and component token surface is tracked as incomplete."
     },
     {
       "id": "source-unit:packages/app/src/styles/unistyles-inline-style.native.ts",

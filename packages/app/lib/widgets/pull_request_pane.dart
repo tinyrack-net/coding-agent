@@ -16,6 +16,7 @@ import '../state/pull_request_provider.dart';
 import '../state/workspace_attachments_provider.dart';
 import 'fluent/toast.dart';
 import 'pull_request_pane_states.dart';
+import 'pull_request_section_kit.dart';
 
 class PullRequestPane extends ConsumerStatefulWidget {
   const PullRequestPane({super.key, required this.cwd});
@@ -86,37 +87,34 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
                         onToggle: () =>
                             setState(() => _checksOpen = !_checksOpen),
                       )
-                    else ...[
-                      _SectionHeader(
+                    else
+                      PullRequestSection(
                         title: 'Checks',
                         open: _checksOpen,
                         summary: _CheckSummary(checks: checks),
-                        onPressed: () =>
+                        onToggle: () =>
                             setState(() => _checksOpen = !_checksOpen),
-                      ),
-                      if (_checksOpen)
-                        _ChecksSection(
+                        child: _ChecksSection(
                           cwd: widget.cwd,
                           status: status,
                           checks: checks,
                         ),
-                    ],
+                      ),
                     const Divider(),
-                    _SectionHeader(
+                    PullRequestSection(
                       title: 'Activity',
                       open: _activityOpen,
                       summary: _ActivitySummary(items: data.timeline),
-                      onPressed: () =>
+                      onToggle: () =>
                           setState(() => _activityOpen = !_activityOpen),
-                    ),
-                    if (_activityOpen)
-                      _ActivitySection(
+                      child: _ActivitySection(
                         cwd: widget.cwd,
                         status: status,
                         items: data.timeline,
                         error: data.timelineError,
                         truncated: data.timelineTruncated,
                       ),
+                    ),
                   ],
                 ),
               ),
@@ -276,54 +274,6 @@ class _PullRequestHeader extends StatelessWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.title,
-    required this.open,
-    required this.summary,
-    required this.onPressed,
-  });
-
-  final String title;
-  final bool open;
-  final Widget summary;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return HoverButton(
-      onPressed: onPressed,
-      builder: (context, states) => Container(
-        constraints: const BoxConstraints(minHeight: 36),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        color: states.contains(WidgetState.hovered)
-            ? context.tokens.surfaceContainerHighest
-            : Colors.transparent,
-        child: Row(
-          children: [
-            Icon(
-              open ? FluentIcons.chevron_down : FluentIcons.chevron_right,
-              size: 10,
-              color: context.tokens.onSurfaceVariant,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: context.tokens.onSurfaceVariant,
-              ),
-            ),
-            const Spacer(),
-            summary,
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _CheckSummary extends StatelessWidget {
   const _CheckSummary({required this.checks});
 
@@ -332,66 +282,44 @@ class _CheckSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final passed = checks
-        .where((check) => _checkKind(check.status) == 0)
+        .where(
+          (check) =>
+              mapForgeCheckStatus(check.status) == ForgeCheckStatus.success,
+        )
         .length;
     final failed = checks
-        .where((check) => _checkKind(check.status) == 2)
+        .where(
+          (check) =>
+              mapForgeCheckStatus(check.status) == ForgeCheckStatus.failure,
+        )
         .length;
-    final pending = checks.length - passed - failed;
-    return Wrap(
-      spacing: 4,
+    final pending = checks
+        .where(
+          (check) =>
+              mapForgeCheckStatus(check.status) == ForgeCheckStatus.pending,
+        )
+        .length;
+    return PullRequestSectionSummary(
       children: [
-        if (passed > 0)
-          _SummaryPill(
-            icon: FluentIcons.completed_solid,
-            count: passed,
-            color: context.statusColors.success,
-          ),
-        if (failed > 0)
-          _SummaryPill(
-            icon: FluentIcons.error_badge,
-            count: failed,
-            color: context.statusColors.danger,
-          ),
-        if (pending > 0)
-          _SummaryPill(
-            icon: FluentIcons.clock,
-            count: pending,
-            color: context.statusColors.warning,
-          ),
+        PullRequestSummaryPill(
+          key: const ValueKey('pr-pane-check-passed'),
+          count: passed,
+          variant: PullRequestSummaryVariant.success,
+          icon: PullRequestSummaryIcon.check,
+        ),
+        PullRequestSummaryPill(
+          key: const ValueKey('pr-pane-check-failed'),
+          count: failed,
+          variant: PullRequestSummaryVariant.danger,
+          icon: PullRequestSummaryIcon.x,
+        ),
+        PullRequestSummaryPill(
+          key: const ValueKey('pr-pane-check-pending'),
+          count: pending,
+          variant: PullRequestSummaryVariant.warning,
+          icon: PullRequestSummaryIcon.dot,
+        ),
       ],
-    );
-  }
-}
-
-class _SummaryPill extends StatelessWidget {
-  const _SummaryPill({
-    super.key,
-    required this.icon,
-    required this.count,
-    required this.color,
-  });
-
-  final IconData icon;
-  final int count;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .12),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 10, color: color),
-          const SizedBox(width: 3),
-          Text('$count', style: TextStyle(fontSize: 10, color: color)),
-        ],
-      ),
     );
   }
 }
@@ -564,43 +492,38 @@ class _GitLabPipelineSectionState
     );
     final showBreakdown =
         !_isPlaceholderData && pipeline != null && counts.total > 0;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _SectionHeader(
-          title: 'Pipeline',
-          open: widget.open,
-          summary: showBreakdown
-              ? Wrap(
-                  spacing: 8,
-                  children: [
-                    if (counts.passed > 0)
-                      _SummaryPill(
-                        key: const ValueKey('pr-pane-pipeline-passed'),
-                        icon: FluentIcons.completed_solid,
-                        count: counts.passed,
-                        color: context.statusColors.success,
-                      ),
-                    if (counts.failed > 0)
-                      _SummaryPill(
-                        key: const ValueKey('pr-pane-pipeline-failed'),
-                        icon: FluentIcons.error_badge,
-                        count: counts.failed,
-                        color: context.statusColors.danger,
-                      ),
-                    if (counts.pending > 0)
-                      _SummaryPill(
-                        key: const ValueKey('pr-pane-pipeline-pending'),
-                        icon: FluentIcons.clock,
-                        count: counts.pending,
-                        color: context.statusColors.warning,
-                      ),
-                  ],
-                )
-              : _PipelineStatusIcon(status: widget.summary.status),
-          onPressed: widget.onToggle,
-        ),
-        if (widget.open) ...[
+    return PullRequestSection(
+      title: 'Pipeline',
+      open: widget.open,
+      summary: PullRequestSectionSummary(
+        children: [
+          if (showBreakdown) ...[
+            PullRequestSummaryPill(
+              key: const ValueKey('pr-pane-pipeline-passed'),
+              count: counts.passed,
+              variant: PullRequestSummaryVariant.success,
+              icon: PullRequestSummaryIcon.check,
+            ),
+            PullRequestSummaryPill(
+              key: const ValueKey('pr-pane-pipeline-failed'),
+              count: counts.failed,
+              variant: PullRequestSummaryVariant.danger,
+              icon: PullRequestSummaryIcon.x,
+            ),
+            PullRequestSummaryPill(
+              key: const ValueKey('pr-pane-pipeline-pending'),
+              count: counts.pending,
+              variant: PullRequestSummaryVariant.warning,
+              icon: PullRequestSummaryIcon.dot,
+            ),
+          ] else
+            PullRequestCheckStatusIcon(status: widget.summary.status),
+        ],
+      ),
+      onToggle: widget.onToggle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           _PipelineLinkRow(
             summary: widget.summary,
             onOpen: widget.summary.url == null
@@ -608,47 +531,17 @@ class _GitLabPipelineSectionState
                 : () => _openExternalUrl(context, ref, widget.summary.url!),
           ),
           if (_loading && !_hasResolvedData)
-            const _PipelineMessage('Loading pipeline…')
+            const PullRequestEmptyText('Loading pipeline…')
           else if (pipeline != null && pipeline.stages.isEmpty)
-            const _PipelineMessage('No jobs')
+            const PullRequestEmptyText('No jobs')
           else if (pipeline != null)
             for (final stage in pipeline.stages)
               _PipelineStageGroup(stage: stage)
           else if (_error != null)
-            const _PipelineMessage('Could not load pipeline jobs'),
-          const SizedBox(height: 12),
+            const PullRequestEmptyText('Could not load pipeline jobs'),
         ],
-      ],
+      ),
     );
-  }
-}
-
-class _PipelineStatusIcon extends StatelessWidget {
-  const _PipelineStatusIcon({required this.status});
-
-  final ForgeCheckStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final (icon, color) = switch (status) {
-      ForgeCheckStatus.success => (
-        FluentIcons.completed_solid,
-        context.statusColors.success,
-      ),
-      ForgeCheckStatus.failure => (
-        FluentIcons.error_badge,
-        context.statusColors.danger,
-      ),
-      ForgeCheckStatus.pending => (
-        FluentIcons.clock,
-        context.statusColors.warning,
-      ),
-      ForgeCheckStatus.skipped => (
-        FluentIcons.blocked2,
-        context.tokens.onSurfaceVariant,
-      ),
-    };
-    return Icon(icon, size: 14, color: color);
   }
 }
 
@@ -660,52 +553,20 @@ class _PipelineLinkRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return HoverButton(
+    return PullRequestCheckRowLayout(
       key: const ValueKey('pr-pane-pipeline-link'),
+      status: summary.status,
+      name: 'Pipeline #${summary.id}',
+      workflow: summary.rawStatus,
       onPressed: onOpen,
-      builder: (context, states) => Container(
-        constraints: const BoxConstraints(minHeight: 32),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        color: states.contains(WidgetState.hovered)
-            ? context.tokens.surfaceContainerHighest
-            : Colors.transparent,
-        child: Row(
-          children: [
-            _PipelineStatusIcon(status: summary.status),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                'Pipeline #${summary.id}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12),
-              ),
+      enabled: onOpen != null,
+      trailing: summary.url == null
+          ? null
+          : Icon(
+              FluentIcons.open_in_new_window,
+              size: 12,
+              color: context.paseoPalette.foregroundMuted,
             ),
-            if (summary.rawStatus.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  summary.rawStatus,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: context.tokens.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
-            if (summary.url != null) ...[
-              const Spacer(),
-              Icon(
-                FluentIcons.open_in_new_window,
-                size: 12,
-                color: context.tokens.onSurfaceVariant,
-              ),
-            ],
-          ],
-        ),
-      ),
     );
   }
 }
@@ -723,7 +584,7 @@ class _PipelineStageGroup extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           child: Row(
             children: [
-              _PipelineStatusIcon(
+              PullRequestCheckStatusIcon(
                 status: mapGitlabPipelineStatus(stage.status),
               ),
               const SizedBox(width: 8),
@@ -758,72 +619,16 @@ class _PipelineJobRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final duration = formatGitlabPipelineDuration(job.durationSeconds);
-    return HoverButton(
+    return PullRequestCheckRowLayout(
+      status: mapGitlabPipelineStatus(job.status),
+      name: job.name,
+      workflow: job.allowFailure ? 'allowed to fail' : null,
       onPressed: job.url == null
           ? null
           : () => _openExternalUrl(context, ref, job.url!),
-      builder: (context, states) => Container(
-        constraints: const BoxConstraints(minHeight: 32),
-        padding: const EdgeInsets.fromLTRB(24, 6, 12, 6),
-        color: states.contains(WidgetState.hovered)
-            ? context.tokens.surfaceContainerHighest
-            : Colors.transparent,
-        child: Row(
-          children: [
-            _PipelineStatusIcon(status: mapGitlabPipelineStatus(job.status)),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                job.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-            if (job.allowFailure) ...[
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  'allowed to fail',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: context.tokens.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
-            if (duration.isNotEmpty) ...[
-              const Spacer(),
-              Text(
-                duration,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: context.tokens.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PipelineMessage extends StatelessWidget {
-  const _PipelineMessage(this.message);
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Text(
-        message,
-        style: TextStyle(fontSize: 10, color: context.tokens.onSurfaceVariant),
-      ),
+      enabled: job.url != null,
+      padding: const EdgeInsets.fromLTRB(24, 8, 12, 8),
+      trailing: duration.isEmpty ? null : PullRequestCheckDuration(duration),
     );
   }
 }
@@ -842,26 +647,20 @@ class _ChecksSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (checks.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: Text('No checks reported', style: TextStyle(fontSize: 12)),
-      );
+      return const PullRequestEmptyText('No checks');
     }
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        children: [
-          for (final check in checks)
-            _CheckRow(
-              key: ValueKey(
-                'check-${check.checkRunId ?? check.workflowRunId ?? check.name}',
-              ),
-              cwd: cwd,
-              status: status,
-              check: check,
+    return Column(
+      children: [
+        for (final check in checks)
+          _CheckRow(
+            key: ValueKey(
+              'check-${check.checkRunId ?? check.workflowRunId ?? check.name}',
             ),
-        ],
-      ),
+            cwd: cwd,
+            status: status,
+            check: check,
+          ),
+      ],
     );
   }
 }
@@ -911,71 +710,29 @@ class _CheckRowState extends ConsumerState<_CheckRow> {
   @override
   Widget build(BuildContext context) {
     final check = widget.check;
-    final kind = _checkKind(check.status);
-    final (icon, color) = switch (kind) {
-      0 => (FluentIcons.completed_solid, context.statusColors.success),
-      2 => (FluentIcons.error_badge, context.statusColors.danger),
-      _ => (FluentIcons.clock, context.statusColors.warning),
-    };
-    return HoverButton(
+    final trailing = <Widget>[
+      if (canAddPullRequestCheckLogsToChat(check))
+        _GhostChatButton(
+          key: ValueKey(
+            'add-check-${check.checkRunId ?? check.workflowRunId ?? check.name}',
+          ),
+          onPressed: _adding ? null : _addToChat,
+          loading: _adding,
+          label: _adding ? 'Adding...' : 'Add to chat',
+        ),
+      if (check.duration case final duration?)
+        PullRequestCheckDuration(duration),
+    ];
+    return PullRequestCheckRowLayout(
+      status: mapForgeCheckStatus(check.status),
+      name: check.name,
+      workflow: check.workflow,
       onPressed: check.url == null
           ? null
           : () => _openExternalUrl(context, ref, check.url!),
-      builder: (context, states) => Container(
-        constraints: const BoxConstraints(minHeight: 32),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        color: states.contains(WidgetState.hovered)
-            ? context.tokens.surfaceContainerHighest
-            : Colors.transparent,
-        child: Row(
-          children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    check.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  if (check.workflow case final workflow?)
-                    Text(
-                      workflow,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: context.tokens.onSurfaceVariant,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            if (canAddPullRequestCheckLogsToChat(check))
-              _GhostChatButton(
-                key: ValueKey(
-                  'add-check-${check.checkRunId ?? check.workflowRunId ?? check.name}',
-                ),
-                onPressed: _adding ? null : _addToChat,
-                loading: _adding,
-                label: _adding ? 'Adding...' : 'Add to chat',
-              ),
-            if (canAddPullRequestCheckLogsToChat(check))
-              const SizedBox(width: 6),
-            if (check.duration case final duration?)
-              Text(
-                duration,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: context.tokens.onSurfaceVariant,
-                ),
-              ),
-          ],
-        ),
-      ),
+      trailing: trailing.isEmpty
+          ? null
+          : PullRequestCheckTrailing(children: trailing),
     );
   }
 }
@@ -1062,27 +819,23 @@ class _ActivitySummary extends StatelessWidget {
         )
         .length;
     final comments = items.length - approved - changes;
-    return Wrap(
-      spacing: 4,
+    return PullRequestSectionSummary(
       children: [
-        if (approved > 0)
-          _SummaryPill(
-            icon: FluentIcons.completed_solid,
-            count: approved,
-            color: context.statusColors.success,
-          ),
-        if (changes > 0)
-          _SummaryPill(
-            icon: FluentIcons.error_badge,
-            count: changes,
-            color: context.statusColors.danger,
-          ),
-        if (comments > 0)
-          _SummaryPill(
-            icon: FluentIcons.chat,
-            count: comments,
-            color: context.tokens.onSurfaceVariant,
-          ),
+        PullRequestSummaryPill(
+          count: approved,
+          variant: PullRequestSummaryVariant.success,
+          icon: PullRequestSummaryIcon.check,
+        ),
+        PullRequestSummaryPill(
+          count: changes,
+          variant: PullRequestSummaryVariant.danger,
+          icon: PullRequestSummaryIcon.x,
+        ),
+        PullRequestSummaryPill(
+          count: comments,
+          variant: PullRequestSummaryVariant.muted,
+          icon: PullRequestSummaryIcon.message,
+        ),
       ],
     );
   }
@@ -1183,58 +936,52 @@ class _ActivitySectionState extends ConsumerState<_ActivitySection> {
   Widget build(BuildContext context) {
     if (widget.error != null && widget.items.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Text(
           widget.error!,
-          style: TextStyle(fontSize: 11, color: context.tokens.error),
+          style: TextStyle(fontSize: 12, color: context.tokens.error),
         ),
       );
     }
     if (widget.items.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.fromLTRB(12, 0, 12, 16),
-        child: Text('No activity yet', style: TextStyle(fontSize: 12)),
-      );
+      return const PullRequestEmptyText('No activity yet');
     }
     final entries = buildPullRequestTimeline(widget.items);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Padding(
-              padding: const EdgeInsets.only(right: 12, bottom: 8),
-              child: _GhostChatButton(
-                onPressed: () => _addAll(entries),
-                label: 'Add all to chat',
+    return Column(
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 12, bottom: 8),
+            child: _GhostChatButton(
+              onPressed: () => _addAll(entries),
+              label: 'Add all to chat',
+            ),
+          ),
+        ),
+        for (final entry in entries)
+          _TimelineEntryCard(
+            key: ValueKey(entry.id),
+            entry: entry,
+            collapsed: _isCollapsed(entry),
+            isNestedCollapsed: _isCollapsed,
+            onToggle: _toggle,
+            onAddActivity: _addActivity,
+            onAddThread: _addThread,
+            onOpen: (url) => _openExternalUrl(context, ref, url),
+          ),
+        if (widget.truncated)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              'Older activity is not shown',
+              style: TextStyle(
+                fontSize: 10,
+                color: context.tokens.onSurfaceVariant,
               ),
             ),
           ),
-          for (final entry in entries)
-            _TimelineEntryCard(
-              key: ValueKey(entry.id),
-              entry: entry,
-              collapsed: _isCollapsed(entry),
-              isNestedCollapsed: _isCollapsed,
-              onToggle: _toggle,
-              onAddActivity: _addActivity,
-              onAddThread: _addThread,
-              onOpen: (url) => _openExternalUrl(context, ref, url),
-            ),
-          if (widget.truncated)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text(
-                'Older activity is not shown',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: context.tokens.onSurfaceVariant,
-                ),
-              ),
-            ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -1788,9 +1535,3 @@ Future<void> _openExternalUrl(
     );
   }
 }
-
-int _checkKind(String status) => switch (status.toLowerCase()) {
-  'success' || 'passed' || 'completed' => 0,
-  'failure' || 'failed' || 'error' || 'cancelled' || 'timed_out' => 2,
-  _ => 1,
-};

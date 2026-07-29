@@ -17,6 +17,10 @@ class PaseoPalette {
     required this.borderAccent,
     required this.accent,
     required this.accentBright,
+    required this.statusSuccess,
+    required this.statusDanger,
+    required this.statusWarning,
+    required this.statusMerged,
   });
 
   final Color surface0;
@@ -31,6 +35,10 @@ class PaseoPalette {
   final Color borderAccent;
   final Color accent;
   final Color accentBright;
+  final Color statusSuccess;
+  final Color statusDanger;
+  final Color statusWarning;
+  final Color statusMerged;
 }
 
 /// Paseo's frozen xterm palette. This retains cursor-accent and selection
@@ -171,6 +179,10 @@ class PaseoThemeTokens extends ThemeExtension<PaseoThemeTokens> {
         borderAccent: mix(palette.borderAccent, other.palette.borderAccent),
         accent: mix(palette.accent, other.palette.accent),
         accentBright: mix(palette.accentBright, other.palette.accentBright),
+        statusSuccess: mix(palette.statusSuccess, other.palette.statusSuccess),
+        statusDanger: mix(palette.statusDanger, other.palette.statusDanger),
+        statusWarning: mix(palette.statusWarning, other.palette.statusWarning),
+        statusMerged: mix(palette.statusMerged, other.palette.statusMerged),
       ),
       PaseoTerminalPalette.lerp(terminalPalette, other.terminalPalette, t),
     );
@@ -289,6 +301,10 @@ PaseoPalette paseoPaletteFor(
       borderAccent: Color(0xFFECECF1),
       accent: Color(0xFF20744A),
       accentBright: Color(0xFF239956),
+      statusSuccess: Color(0xFF15803D),
+      statusDanger: Color(0xFFB91C1C),
+      statusWarning: Color(0xFFD97706),
+      statusMerged: Color(0xFF7C3AED),
     ),
     AppThemeName.zinc => const PaseoPalette(
       surface0: Color(0xFF18181B),
@@ -303,6 +319,10 @@ PaseoPalette paseoPaletteFor(
       borderAccent: Color(0xFF303036),
       accent: Color(0xFFE4E4E7),
       accentBright: Color(0xFFFAFAFA),
+      statusSuccess: Color(0xFF16A34A),
+      statusDanger: Color(0xFFDC2626),
+      statusWarning: Color(0xFFF59E0B),
+      statusMerged: Color(0xFF9333EA),
     ),
     AppThemeName.midnight => const PaseoPalette(
       surface0: Color(0xFF161820),
@@ -317,6 +337,10 @@ PaseoPalette paseoPaletteFor(
       borderAccent: Color(0xFF2E3040),
       accent: Color(0xFF3B6FCF),
       accentBright: Color(0xFF7EAAEB),
+      statusSuccess: Color(0xFF16A34A),
+      statusDanger: Color(0xFFDC2626),
+      statusWarning: Color(0xFFF59E0B),
+      statusMerged: Color(0xFF9333EA),
     ),
     AppThemeName.claude => const PaseoPalette(
       surface0: Color(0xFF1F1F1E),
@@ -331,6 +355,10 @@ PaseoPalette paseoPaletteFor(
       borderAccent: Color(0xFF36332F),
       accent: Color(0xFFD97757),
       accentBright: Color(0xFFE89A7F),
+      statusSuccess: Color(0xFF16A34A),
+      statusDanger: Color(0xFFDC2626),
+      statusWarning: Color(0xFFF59E0B),
+      statusMerged: Color(0xFF9333EA),
     ),
     AppThemeName.ghostty => const PaseoPalette(
       surface0: Color(0xFF282C34),
@@ -345,6 +373,10 @@ PaseoPalette paseoPaletteFor(
       borderAccent: Color(0xFF3F4454),
       accent: Color(0xFF89B4FA),
       accentBright: Color(0xFFB4D0FC),
+      statusSuccess: Color(0xFF16A34A),
+      statusDanger: Color(0xFFDC2626),
+      statusWarning: Color(0xFFF59E0B),
+      statusMerged: Color(0xFF9333EA),
     ),
     AppThemeName.dark || AppThemeName.auto => const PaseoPalette(
       surface0: Color(0xFF181B1A),
@@ -359,6 +391,10 @@ PaseoPalette paseoPaletteFor(
       borderAccent: Color(0xFF2F3534),
       accent: Color(0xFF20744A),
       accentBright: Color(0xFF7CCBA0),
+      statusSuccess: Color(0xFF16A34A),
+      statusDanger: Color(0xFFDC2626),
+      statusWarning: Color(0xFFF59E0B),
+      statusMerged: Color(0xFF9333EA),
     ),
   };
 }
@@ -437,14 +473,16 @@ class AppColors {
 /// centralizing what used to be ad-hoc `Colors.green/amber/red/...` scattered
 /// across the codebase.
 class StatusColors {
-  const StatusColors._(this._theme);
+  const StatusColors._(this._theme, this._palette);
 
   final FluentThemeData _theme;
+  final PaseoPalette _palette;
 
-  Color get success => _theme.resources.systemFillColorSuccess;
-  Color get running => _theme.resources.systemFillColorCaution;
-  Color get warning => _theme.resources.systemFillColorCaution;
-  Color get danger => _theme.resources.systemFillColorCritical;
+  Color get success => _palette.statusSuccess;
+  Color get running => _palette.statusWarning;
+  Color get warning => _palette.statusWarning;
+  Color get danger => _palette.statusDanger;
+  Color get merged => _palette.statusMerged;
   Color get neutral => _theme.resources.textFillColorSecondary;
   Color get diffAddition => _theme.brightness == Brightness.light
       ? const Color(0xFF15803D)
@@ -486,7 +524,8 @@ extension AppThemeContext on BuildContext {
             : AppThemeName.dark,
       );
   AppColors get tokens => AppColors._(FluentTheme.of(this));
-  StatusColors get statusColors => StatusColors._(FluentTheme.of(this));
+  StatusColors get statusColors =>
+      StatusColors._(FluentTheme.of(this), paseoPalette);
   AppTextStyles get textStyles =>
       AppTextStyles._(FluentTheme.of(this).typography);
 }

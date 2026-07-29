@@ -86,6 +86,26 @@ void main() {
             const Color(0xFF1C1F1E),
           )
           .having(
+            (palette) => palette.statusSuccess,
+            'statusSuccess',
+            const Color(0xFF16A34A),
+          )
+          .having(
+            (palette) => palette.statusDanger,
+            'statusDanger',
+            const Color(0xFFDC2626),
+          )
+          .having(
+            (palette) => palette.statusWarning,
+            'statusWarning',
+            const Color(0xFFF59E0B),
+          )
+          .having(
+            (palette) => palette.statusMerged,
+            'statusMerged',
+            const Color(0xFF9333EA),
+          )
+          .having(
             (palette) => palette.foreground,
             'foreground',
             const Color(0xFFFAFAFA),
@@ -124,5 +144,10 @@ void main() {
       buildAppTheme(AppThemeName.auto, Brightness.dark).brightness,
       Brightness.dark,
     );
+    final light = paseoPaletteFor(AppThemeName.light);
+    expect(light.statusSuccess, const Color(0xFF15803D));
+    expect(light.statusDanger, const Color(0xFFB91C1C));
+    expect(light.statusWarning, const Color(0xFFD97706));
+    expect(light.statusMerged, const Color(0xFF7C3AED));
   });
 }

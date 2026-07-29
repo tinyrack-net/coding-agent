@@ -7,6 +7,7 @@ import 'package:coding_agent_app/core/theme.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/workspace_attachments_provider.dart';
 import 'package:coding_agent_app/widgets/pull_request_pane.dart';
+import 'package:coding_agent_app/widgets/pull_request_section_kit.dart';
 import 'package:coding_agent_app/widgets/workspace_explorer.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,6 +36,7 @@ class _FakeDaemonClient extends DaemonClient {
     this.fileMode = 'default',
     this.pipelineMode = 'populated',
     this.pipelineStatus = 'running',
+    this.includeSkippedCheck = false,
     this.forgeProvidersEnabled = true,
     this.forgeCheckDetailsEnabled = true,
     this.checkDetailsSuccess = true,
@@ -63,6 +65,7 @@ class _FakeDaemonClient extends DaemonClient {
   final String fileMode;
   final String pipelineMode;
   final String pipelineStatus;
+  final bool includeSkippedCheck;
   int changeRequestNumber = 42;
   int pipelineId = 306;
   final bool forgeProvidersEnabled;
@@ -260,8 +263,16 @@ class _FakeDaemonClient extends DaemonClient {
                         CheckoutPrCheck(
                           name: 'Package',
                           status: 'pending',
-                          url: null,
+                          url: includeSkippedCheck
+                              ? 'https://example.test/check/package'
+                              : null,
                         ),
+                        if (includeSkippedCheck)
+                          const CheckoutPrCheck(
+                            name: 'Web',
+                            status: 'skipped',
+                            url: 'https://example.test/check/web',
+                          ),
                         if (timelineMode == 'edge')
                           const CheckoutPrCheck(
                             name: 'Lint',
@@ -560,9 +571,40 @@ void main() {
 
       expect(find.text('CI'), findsOneWidget);
       expect(find.text('No checks reported'), findsNothing);
-      expect(find.byIcon(FluentIcons.error_badge), findsWidgets);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is PullRequestGlyph &&
+              widget.kind == PullRequestGlyphKind.circleX,
+        ),
+        findsWidgets,
+      );
     },
   );
+
+  testWidgets('does not count skipped checks as pending', (tester) async {
+    await _pumpExplorer(tester, _FakeDaemonClient(includeSkippedCheck: true));
+    await tester.tap(find.text('#42'));
+    await tester.pumpAndSettle();
+
+    final pending = find.byKey(const ValueKey('pr-pane-check-pending'));
+    expect(
+      find.descendant(of: pending, matching: find.text('1')),
+      findsOneWidget,
+    );
+    expect(find.text('Web'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('check-Web')),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is PullRequestGlyph &&
+              widget.kind == PullRequestGlyphKind.circleSlash,
+        ),
+      ),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('renders GitLab approval progress in the PR header', (
     tester,
