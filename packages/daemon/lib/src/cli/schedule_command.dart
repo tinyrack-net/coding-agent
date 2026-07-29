@@ -42,7 +42,10 @@ Future<int> runScheduleCommand({
           environment: env,
         );
       } on Object catch (error) {
-        final host = parsed.host ?? '${config.host}:${config.port}';
+        final host =
+            parsed.host ??
+            env['TINYRACK_HOST'] ??
+            '${config.host}:${config.port}';
         throw ScheduleCommandException(
           'DAEMON_NOT_RUNNING',
           'Cannot connect to daemon at $host: ${_errorText(error)}',
@@ -930,24 +933,16 @@ final class _ScheduleSocketClient {
     required String? hostOverride,
     required Map<String, String> environment,
   }) async {
-    var host = switch (config.host) {
-      '0.0.0.0' || '::' => '127.0.0.1',
-      final value => value,
-    };
-    var port = config.port;
-    if (hostOverride != null) {
-      final uri = Uri.parse(
-        hostOverride.contains('://') ? hostOverride : 'ws://$hostOverride',
-      );
-      host = uri.host;
-      port = uri.hasPort ? uri.port : config.port;
-    }
-    final password = environment['TINYRACK_PASSWORD']?.trim();
+    final endpoint = resolveScheduleDaemonEndpoint(
+      config,
+      hostOverride: hostOverride,
+      environment: environment,
+    );
     final socket = await WebSocket.connect(
-      Uri(scheme: 'ws', host: host, port: port, path: '/ws').toString(),
-      protocols: password == null || password.isEmpty
+      endpoint.webSocketUri.toString(),
+      protocols: endpoint.password == null
           ? null
-          : ['tinyrack.bearer.$password'],
+          : ['tinyrack.bearer.${endpoint.password}'],
       compression: CompressionOptions.compressionOff,
     ).timeout(scheduleDaemonRpcTimeout);
     final frames = StreamIterator<dynamic>(socket);
@@ -992,6 +987,69 @@ final class _ScheduleSocketClient {
     await _frames.cancel();
     await _socket.close();
   }
+}
+
+final class ScheduleDaemonEndpoint {
+  const ScheduleDaemonEndpoint({
+    required this.webSocketUri,
+    required this.password,
+  });
+
+  final Uri webSocketUri;
+  final String? password;
+}
+
+ScheduleDaemonEndpoint resolveScheduleDaemonEndpoint(
+  DaemonRuntimeConfig config, {
+  required String? hostOverride,
+  required Map<String, String> environment,
+}) {
+  final explicitHost = hostOverride ?? environment['TINYRACK_HOST'];
+  late final Uri webSocketUri;
+  String? uriPassword;
+
+  if (explicitHost == null) {
+    final host = switch (config.host) {
+      '0.0.0.0' || '::' => '127.0.0.1',
+      final value => value,
+    };
+    webSocketUri = Uri(
+      scheme: 'ws',
+      host: host,
+      port: config.port,
+      path: '/ws',
+    );
+  } else {
+    final trimmed = explicitHost.trim();
+    if (trimmed.startsWith('tcp://')) {
+      final connection = parseConnectionUri(trimmed);
+      final endpoint = connection.isIpv6
+          ? '[${connection.host}]:${connection.port}'
+          : '${connection.host}:${connection.port}';
+      webSocketUri = Uri.parse(
+        buildDaemonWebSocketUrl(endpoint, useTls: connection.useTls),
+      );
+      uriPassword = connection.password;
+    } else {
+      final endpoint = parseHostPort(trimmed);
+      webSocketUri = Uri(
+        scheme: 'ws',
+        host: endpoint.host,
+        port: endpoint.port,
+        path: '/ws',
+      );
+    }
+  }
+
+  final environmentPassword = environment['TINYRACK_PASSWORD']?.trim();
+  return ScheduleDaemonEndpoint(
+    webSocketUri: webSocketUri,
+    password:
+        uriPassword ??
+        (environmentPassword == null || environmentPassword.isEmpty
+            ? null
+            : environmentPassword),
+  );
 }
 
 Future<Map<String, Object?>> _nextMessage(

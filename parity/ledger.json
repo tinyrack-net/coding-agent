@@ -9702,12 +9702,12 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/shared.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
       "evidence": [
         "packages/daemon/test/cli/schedule_command_test.dart"
       ],
-      "notes": null
+      "notes": "Ports the frozen shared schedule command behavior: Tinyrack-branded host resolution and structured connection errors, host option precedence over TINYRACK_HOST, strict host:port and tcp:// URI parsing, ssl=true WebSocket TLS, URI password precedence over TINYRACK_PASSWORD, IPv6 targets, new-agent guards, cadence/target/duration formatting, create/update validation and projection, and stable schedule row serialization."
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/types.ts",

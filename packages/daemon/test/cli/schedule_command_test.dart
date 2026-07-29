@@ -3,9 +3,98 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:agent_daemon/src/cli/schedule_command.dart';
+import 'package:agent_daemon/src/server/daemon_config.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('schedule daemon endpoint matches Paseo host and auth precedence', () {
+    final home = Directory.systemTemp.createTempSync(
+      'tinyrack-schedule-endpoint-',
+    );
+    addTearDown(() => home.deleteSync(recursive: true));
+    final config = loadDaemonRuntimeConfig(
+      home: home.path,
+      environment: const {},
+      cliListen: '0.0.0.0:6868',
+    );
+
+    final defaultEndpoint = resolveScheduleDaemonEndpoint(
+      config,
+      hostOverride: null,
+      environment: const {'TINYRACK_PASSWORD': ' environment-secret '},
+    );
+    expect(defaultEndpoint.webSocketUri.toString(), 'ws://127.0.0.1:6868/ws');
+    expect(defaultEndpoint.password, 'environment-secret');
+
+    final environmentHost = resolveScheduleDaemonEndpoint(
+      config,
+      hostOverride: null,
+      environment: const {
+        'TINYRACK_HOST': 'remote.example:6767',
+        'TINYRACK_PASSWORD': 'environment-secret',
+      },
+    );
+    expect(
+      environmentHost.webSocketUri.toString(),
+      'ws://remote.example:6767/ws',
+    );
+    expect(environmentHost.password, 'environment-secret');
+
+    final tlsEndpoint = resolveScheduleDaemonEndpoint(
+      config,
+      hostOverride: 'tcp://secure.example:7443?ssl=true&password=uri%20secret',
+      environment: const {
+        'TINYRACK_HOST': 'ignored.example:6767',
+        'TINYRACK_PASSWORD': 'ignored-secret',
+      },
+    );
+    expect(tlsEndpoint.webSocketUri.toString(), 'wss://secure.example:7443/ws');
+    expect(tlsEndpoint.password, 'uri secret');
+  });
+
+  test('schedule daemon endpoint enforces frozen tcp URI boundaries', () {
+    final home = Directory.systemTemp.createTempSync(
+      'tinyrack-schedule-endpoint-errors-',
+    );
+    addTearDown(() => home.deleteSync(recursive: true));
+    final config = loadDaemonRuntimeConfig(
+      home: home.path,
+      environment: const {},
+      cliListen: '[::]:6868',
+    );
+
+    final ipv6 = resolveScheduleDaemonEndpoint(
+      config,
+      hostOverride: 'tcp://[::1]:6767?ssl=true',
+      environment: const {},
+    );
+    expect(ipv6.webSocketUri.toString(), 'wss://[::1]:6767/ws');
+    expect(ipv6.password, isNull);
+
+    expect(
+      () => resolveScheduleDaemonEndpoint(
+        config,
+        hostOverride: 'tcp://remote.example',
+        environment: const {},
+      ),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          'Connection URI port is required',
+        ),
+      ),
+    );
+    expect(
+      () => resolveScheduleDaemonEndpoint(
+        config,
+        hostOverride: 'https://remote.example:6767',
+        environment: const {},
+      ),
+      throwsFormatException,
+    );
+  });
+
   test(
     'binary exposes schedule and action help',
     () async {
