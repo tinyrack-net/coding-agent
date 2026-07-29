@@ -2,40 +2,14 @@ import 'package:agent_protocol/agent_protocol.dart';
 
 import '../state/workspace_attachments_provider.dart';
 import 'forge.dart';
+import 'pull_request_data.dart';
 
-const pullRequestAvatarColors = <String>[
-  '#8b5cf6',
-  '#f97316',
-  '#0ea5e9',
-  '#10b981',
-  '#ef4444',
-  '#eab308',
-  '#ec4899',
-  '#6366f1',
-];
-
-String derivePullRequestAvatarColor(String login) {
-  var hash = 0;
-  for (final rune in login.toLowerCase().runes) {
-    final firstUtf16CodeUnit = rune <= 0xffff
-        ? rune
-        : 0xd800 + ((rune - 0x10000) >> 10);
-    hash = (hash * 31 + firstUtf16CodeUnit) & 0xffffffff;
-  }
-  return pullRequestAvatarColors[hash % pullRequestAvatarColors.length];
-}
-
-bool isVisiblePullRequestActivity(PullRequestTimelineItem activity) {
-  return switch (activity) {
-    PullRequestTimelineComment(body: final body) => body.trim().isNotEmpty,
-    PullRequestTimelineReview(
-      body: final body,
-      reviewState: PullRequestTimelineReviewState.commented,
-    ) =>
-      body.trim().isNotEmpty,
-    PullRequestTimelineReview() => true,
-  };
-}
+export 'pull_request_data.dart'
+    show
+        derivePullRequestAvatarColor,
+        formatPullRequestAge,
+        isVisiblePullRequestActivity,
+        pullRequestAvatarColors;
 
 sealed class PullRequestTimelineEntry {
   const PullRequestTimelineEntry(this.id);
@@ -367,23 +341,6 @@ String formatPullRequestThreadPath(
   if (line != null && start != null) return '${location.path}:$start-$line';
   if (line != null) return '${location.path}:$line';
   return location.path;
-}
-
-String formatPullRequestAge(num createdAt) {
-  final milliseconds = createdAt < 100000000000 ? createdAt * 1000 : createdAt;
-  final then = DateTime.fromMillisecondsSinceEpoch(
-    milliseconds.round(),
-    isUtc: true,
-  );
-  final difference = DateTime.now().toUtc().difference(then);
-  if (difference.isNegative || difference.inMinutes < 1) return 'just now';
-  if (difference.inHours < 1) return '${difference.inMinutes}m ago';
-  if (difference.inDays < 1) return '${difference.inHours}h ago';
-  if (difference.inDays < 30) return '${difference.inDays}d ago';
-  if (difference.inDays < 365) {
-    return '${(difference.inDays / 30).floor()}mo ago';
-  }
-  return '${(difference.inDays / 365).floor()}y ago';
 }
 
 String _capitalize(String value) =>

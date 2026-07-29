@@ -12,6 +12,7 @@ import '../core/forge.dart';
 import '../core/forge_logic.dart';
 import '../core/pull_request_activity_state.dart';
 import '../core/pull_request_context.dart';
+import '../core/pull_request_data.dart';
 import '../core/theme.dart';
 import '../state/daemon_providers.dart';
 import '../state/gitlab_pipeline_query.dart';
@@ -2158,52 +2159,47 @@ class _PaneMessage extends StatelessWidget {
   BuildContext context,
   CheckoutPrStatus status,
 ) {
-  if (status.isMerged) {
-    return (
+  return switch (derivePullRequestState(status)) {
+    PullRequestChangeState.merged => (
       glyph: PullRequestGlyphKind.gitMerge,
       color: context.paseoPalette.statusMerged,
       label: 'Merged',
-    );
-  }
-  if (status.isDraft) {
-    return (
+    ),
+    PullRequestChangeState.draft => (
       glyph: PullRequestGlyphKind.gitPullRequestDraft,
       color: context.paseoPalette.foregroundMuted,
       label: 'Draft',
-    );
-  }
-  if (status.state.toUpperCase() == 'OPEN') {
-    return (
+    ),
+    PullRequestChangeState.open => (
       glyph: PullRequestGlyphKind.gitPullRequest,
       color: context.paseoPalette.statusSuccess,
       label: 'Open',
-    );
-  }
-  return (
-    glyph: PullRequestGlyphKind.gitPullRequestClosed,
-    color: context.paseoPalette.statusDanger,
-    label: 'Closed',
-  );
+    ),
+    PullRequestChangeState.closed => (
+      glyph: PullRequestGlyphKind.gitPullRequestClosed,
+      color: context.paseoPalette.statusDanger,
+      label: 'Closed',
+    ),
+  };
 }
 
 ({Color color, String label}) _activityPresentation(
   BuildContext context,
   PullRequestTimelineItem item,
 ) {
-  if (item case PullRequestTimelineReview(
-    reviewState: PullRequestTimelineReviewState.approved,
-  )) {
-    return (color: context.statusColors.success, label: 'approved');
-  }
-  if (item case PullRequestTimelineReview(
-    reviewState: PullRequestTimelineReviewState.changesRequested,
-  )) {
-    return (color: context.statusColors.danger, label: 'requested changes');
-  }
-  if (item is PullRequestTimelineReview) {
-    return (color: context.tokens.onSurfaceVariant, label: 'reviewed');
-  }
-  return (color: context.tokens.onSurfaceVariant, label: 'commented');
+  final label = pullRequestActivityVerb(item).toLowerCase();
+  final color = switch (item) {
+    PullRequestTimelineReview(
+      reviewState: PullRequestTimelineReviewState.approved,
+    ) =>
+      context.statusColors.success,
+    PullRequestTimelineReview(
+      reviewState: PullRequestTimelineReviewState.changesRequested,
+    ) =>
+      context.statusColors.danger,
+    _ => context.tokens.onSurfaceVariant,
+  };
+  return (color: color, label: label);
 }
 
 Future<void> _openExternalUrl(

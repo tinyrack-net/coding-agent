@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/daemon_client.dart';
+import '../core/pull_request_data.dart';
 import 'daemon_providers.dart';
 import 'gitlab_pipeline_query.dart';
 
@@ -53,12 +54,16 @@ class PullRequestPaneNotifier extends AsyncNotifier<PullRequestPaneData> {
     final statusResponse = CheckoutPrStatusResponse.fromJson(
       await client.requestSessionMessage(statusRequest.toJson()),
     );
-    final status = statusResponse.status;
-    if (status == null) {
+    final rawStatus = statusResponse.status;
+    if (rawStatus == null) {
       return PullRequestPaneData(
         pipelineCacheRevision: _pipelineCacheRevision,
         statusError: statusResponse.error?.message,
       );
+    }
+    final status = normalizePullRequestStatus(rawStatus);
+    if (status == null) {
+      return PullRequestPaneData(pipelineCacheRevision: _pipelineCacheRevision);
     }
     final number = status.number;
     final owner = status.repoOwner;
@@ -81,12 +86,19 @@ class PullRequestPaneNotifier extends AsyncNotifier<PullRequestPaneData> {
       final timelineResponse = PullRequestTimelineResponse.fromJson(
         await client.requestSessionMessage(timelineRequest.toJson()),
       );
+      final timelineMatchesStatus = timelineResponse.prNumber == number;
       return PullRequestPaneData(
         status: status,
-        timeline: timelineResponse.items,
-        timelineTruncated: timelineResponse.truncated,
+        timeline: normalizePullRequestTimeline(
+          statusNumber: number,
+          timelineNumber: timelineResponse.prNumber,
+          items: timelineResponse.items,
+        ),
+        timelineTruncated: timelineMatchesStatus && timelineResponse.truncated,
         pipelineCacheRevision: _pipelineCacheRevision,
-        timelineError: timelineResponse.error?.message,
+        timelineError: timelineMatchesStatus
+            ? timelineResponse.error?.message
+            : null,
       );
     } catch (error) {
       return PullRequestPaneData(

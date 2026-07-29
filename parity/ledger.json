@@ -5208,13 +5208,16 @@
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/data.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/core/pull_request_context.dart; packages/app/lib/state/pull_request_provider.dart; packages/app/lib/widgets/pull_request_pane.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/core/pull_request_data.dart; packages/app/lib/core/pull_request_context.dart; packages/app/lib/core/forge_logic.dart; packages/app/lib/state/pull_request_provider.dart; packages/app/lib/widgets/pull_request_pane.dart",
       "evidence": [
+        "packages/app/test/pull_request_data_test.dart",
         "packages/app/test/pull_request_timeline_test.dart",
-        "packages/app/test/pull_request_pane_test.dart"
+        "packages/app/test/pull_request_pane_test.dart",
+        "packages/app/test/forge_logic_test.dart",
+        "packages/app/test/gitlab_forge_logic_test.dart"
       ],
-      "notes": "Core Windows explorer and PR checks/activity flow is implemented. Activity normalization now exactly removes empty comments and bodyless commented reviews while retaining bodyless changes-requested reviews; author fallback colors use the frozen eight-color palette and JS-compatible lowercase unsigned hash, including UTF-16 astral handling; 20px activity and 16px thread-comment avatars consume avatarUrl with deterministic initial fallback. Remaining full data mapping and forge-specific polish keep this partial."
+      "notes": "Ports the frozen PR pane data projection across focused Dart layers. Status normalization recovers a missing GitHub number only from an absolute /pull/:number URL, rejects unidentifiable changes, and derives merged/closed/draft/open with exact precedence. Timeline projection rejects mismatched PR responses, clears their truncation/error state, preserves order, removes empty comments and bodyless commented reviews before summary consumption, and retains bodyless blocking reviews plus all thread/location metadata. Check mapping drops null URLs, normalizes statuses, retains both detail identifiers, and falls back to registered Gitea-family native CI facts; GitLab native pipeline facts stay forge-specific. Review-decision fallback, forge branding/project identity, deterministic UTF-16 avatar hashing, age labels, state labels, and activity verbs match frozen behavior and are covered through pure oracle, Riverpod provider, forge, and rendered pane tests."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/index.ts",
