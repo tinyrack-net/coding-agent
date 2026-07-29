@@ -9476,17 +9476,21 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/hub/cloud-device-authorization.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/hub_cloud_device_authorization.dart",
+      "evidence": [
+        "packages/daemon/test/cli/hub_device_authorization_test.dart"
+      ],
+      "notes": "Ports the frozen Cloud boundary: canonical device authorization endpoints, HTTP/HTTPS origin validation, JSON request bodies, 15-second start timeout including stalled bodies, strict authorization and all seven poll schemas, activation URL/date/interval/token constraints, retry_later mapping for transport failures and 408/425/429/5xx responses, and hard failures for completed malformed or non-retryable responses."
     },
     {
       "id": "source-unit:packages/cli/src/commands/hub/device-authorization.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/hub_device_authorization.dart; packages/daemon/lib/src/cli/hub_cloud_device_authorization.dart",
+      "evidence": [
+        "packages/daemon/test/cli/hub_device_authorization_test.dart"
+      ],
+      "notes": "Ports the frozen device authorization workflow: activation instructions, best-effort browser opening with shell-free Windows rundll32 and native macOS/Linux commands, Cloud-provided pending and slow-down cadence, fixed authorization expiry, remaining-lifetime poll timeouts, retry-after-response-loss behavior, approved token return, denied/expired/already-used failures, and non-interactive browser suppression support."
     },
     {
       "id": "source-unit:packages/cli/src/commands/hub/index.ts",
