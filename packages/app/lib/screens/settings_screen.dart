@@ -21,6 +21,7 @@ import '../tool_calls/detail_level/tool_call_projection.dart';
 import '../widgets/fluent/toast.dart';
 import 'host_settings_sections.dart';
 import 'keyboard_shortcuts_settings_section.dart';
+import 'projects_settings_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key, required this.section});
@@ -41,6 +42,7 @@ class SettingsScreen extends ConsumerWidget {
       'providers' => _ProviderCredentialsSection(
         key: const ValueKey('providers'),
       ),
+      'projects' => const ProjectsSettingsScreen(key: ValueKey('projects')),
       'keyboard' => const KeyboardShortcutsSettingsSection(
         key: ValueKey('keyboard'),
       ),

@@ -361,6 +361,35 @@ void main() {
     });
   });
 
+  test('renames a project via typed correlated RPC', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    unawaited(
+      conn.nextRequest('project.rename.request').then((frame) {
+        expect(frame['projectId'], 'project-app');
+        expect(frame['customName'], 'Web');
+        final requestId = frame['requestId'] as String;
+        conn.respondNative('project.rename.response', requestId, const {
+          'projectId': 'project-app',
+          'accepted': true,
+          'customName': 'Web',
+          'error': null,
+        });
+      }),
+    );
+
+    final response = await client.renameProject('project-app', 'Web');
+    expect(response.accepted, isTrue);
+    expect(response.customName, 'Web');
+  });
+
   test('typed agent config surfaces notices and rejected changes', () async {
     client = DaemonClient(uri: server.uri);
     final connFuture = nextConnection(server);

@@ -7,6 +7,7 @@ import '../screens/host_workspace_route_screen.dart';
 import '../screens/host_settings_route_screen.dart';
 import '../screens/new_workspace_screen.dart';
 import '../screens/projects_screen.dart';
+import '../screens/project_settings_screen.dart';
 import '../screens/schedules_screen.dart';
 import '../screens/sessions_screen.dart';
 import '../screens/settings_screen.dart';
@@ -95,6 +96,12 @@ GoRouter buildAppRouter({String initialLocation = '/'}) {
           GoRoute(
             path: '/settings',
             redirect: (context, state) => '/settings/general',
+          ),
+          GoRoute(
+            path: '/settings/projects/:projectKey',
+            builder: (context, state) => ProjectSettingsScreen(
+              projectKey: state.pathParameters['projectKey']!,
+            ),
           ),
           GoRoute(
             path: '/settings/:section',

@@ -317,6 +317,36 @@ class DaemonClient {
     return response;
   }
 
+  Future<ProjectRenameResponse> renameProject(
+    String projectId,
+    String? customName, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final requestId = _uuid.v4();
+    final response = ProjectRenameResponse.fromJson(
+      await requestSessionMessage(
+        ProjectRenameRequest(
+          projectId: projectId,
+          customName: customName,
+          requestId: requestId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != requestId || response.projectId != projectId) {
+      throw const FormatException('Project rename response mismatch');
+    }
+    if (!response.accepted) {
+      throw DaemonRpcException(
+        RpcError(
+          code: 'project_rename_failed',
+          message: response.error ?? 'Failed to rename project',
+        ),
+      );
+    }
+    return response;
+  }
+
   /// Removes a registered project and archives its active workspaces.
   Future<ProjectRemoveResponse> removeProject(
     String projectId, {

@@ -36,7 +36,9 @@ class _SettingsSidebar extends StatelessWidget {
       return _HostSettingsSidebar(serverId: serverId);
     }
     final currentSection =
-        GoRouterState.of(context).pathParameters['section'] ?? 'general';
+        GoRouterState.of(context).pathParameters.containsKey('projectKey')
+        ? 'projects'
+        : GoRouterState.of(context).pathParameters['section'] ?? 'general';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -82,6 +84,12 @@ class _SettingsSidebar extends StatelessWidget {
                 label: 'Providers',
                 section: 'providers',
                 active: currentSection == 'providers',
+              ),
+              _SettingsNavItem(
+                icon: FluentIcons.fabric_folder,
+                label: 'Projects',
+                section: 'projects',
+                active: currentSection == 'projects',
               ),
               _SettingsNavItem(
                 icon: FluentIcons.keyboard_classic,

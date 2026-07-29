@@ -7005,17 +7005,23 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/project-settings-screen.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/screens/project_settings_screen.dart",
+      "evidence": [
+        "packages/app/test/project_settings_screen_test.dart",
+        "packages/app/test/daemon_client_test.dart"
+      ],
+      "notes": "Flutter now restores project settings routes, selects an editable multi-host target, renames projects, round-trips worktree/scripts/metadata config with revision checks, and exposes invalid/stale/transport recovery. Frozen icon rendering, host-gone transitions, exact responsive visuals, localization, accessibility, and golden evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/screens/projects-screen.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/screens/projects_settings_screen.dart",
+      "evidence": [
+        "packages/app/test/project_settings_screen_test.dart",
+        "packages/app/test/settings_shell_test.dart"
+      ],
+      "notes": "Flutter now exposes the Projects settings route, multi-host loading/error/empty/list states, selected rows, and navigation to a restorable project settings route. Exact frozen project icons, responsive visual tokens, localization, accessibility, and golden evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/screens/schedules-screen-state.ts",

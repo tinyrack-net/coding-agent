@@ -205,8 +205,7 @@ final projectSummariesProvider =
       ProjectSummariesNotifier.new,
     );
 
-final class ProjectSummariesNotifier
-    extends AsyncNotifier<DerivedProjectsResult> {
+class ProjectSummariesNotifier extends AsyncNotifier<DerivedProjectsResult> {
   final Map<String, ProjectHostReplica> _replicas = {};
   final Map<String, String> _errors = {};
   final Map<String, DaemonClient> _hydratedClients = {};

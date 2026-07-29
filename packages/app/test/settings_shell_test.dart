@@ -31,6 +31,7 @@ void main() {
       expect(find.text('Agents'), findsOneWidget);
       expect(find.text('Workspaces'), findsOneWidget);
       expect(find.text('Terminals'), findsOneWidget);
+      expect(find.text('Projects'), findsOneWidget);
       expect(find.text('Keyboard shortcuts'), findsOneWidget);
       expect(find.text('Diagnostics'), findsOneWidget);
       expect(find.text('general page'), findsOneWidget);
@@ -46,6 +47,10 @@ void main() {
       await tester.tap(find.text('Terminals'));
       await tester.pumpAndSettle();
       expect(find.text('terminals page'), findsOneWidget);
+
+      await tester.tap(find.text('Projects'));
+      await tester.pumpAndSettle();
+      expect(find.text('projects page'), findsOneWidget);
 
       await tester.tap(find.text('Keyboard shortcuts'));
       await tester.pumpAndSettle();
