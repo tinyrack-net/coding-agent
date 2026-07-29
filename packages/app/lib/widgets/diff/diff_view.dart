@@ -1,6 +1,7 @@
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 
+import '../../core/diff_rendering.dart';
 import '../../core/theme.dart';
 import 'diff_scroll.dart';
 import 'diff_stat.dart';
@@ -272,7 +273,7 @@ class _DiffLineRow extends StatelessWidget {
           SizedBox(
             width: 40,
             child: Text(
-              line.oldLineNo?.toString() ?? '',
+              formatDiffGutterText(line.oldLineNo),
               textAlign: TextAlign.right,
               style: numberStyle,
             ),
@@ -280,7 +281,7 @@ class _DiffLineRow extends StatelessWidget {
           SizedBox(
             width: 40,
             child: Text(
-              line.newLineNo?.toString() ?? '',
+              formatDiffGutterText(line.newLineNo),
               textAlign: TextAlign.right,
               style: numberStyle,
             ),
@@ -291,7 +292,7 @@ class _DiffLineRow extends StatelessWidget {
             child: Text(marker, style: _monoStyle.copyWith(color: textColor)),
           ),
           Text(
-            line.text,
+            formatDiffContentText(line.text),
             softWrap: false,
             style: _monoStyle.copyWith(color: textColor),
           ),

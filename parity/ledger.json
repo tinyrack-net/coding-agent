@@ -4940,10 +4940,14 @@
     },
     {
       "id": "source-unit:packages/app/src/git/diff-pane.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/widgets/diff/diff_view.dart; packages/app/lib/core/diff_layout.dart; packages/app/lib/core/diff_rendering.dart",
+      "evidence": [
+        "packages/app/test/diff_view_test.dart",
+        "packages/app/test/diff_layout_test.dart",
+        "packages/app/test/diff_rendering_test.dart"
+      ],
+      "notes": "The Flutter diff pane has responsive file selection, unified hunks, binary and empty states, horizontal scrolling, stable blank-row geometry, and the frozen split/unified review-target layout model. Paseo's split-view renderer, inline review comments, selection toolbar, tree integration, controls, metrics, and full diff-pane orchestration remain unported."
     },
     {
       "id": "source-unit:packages/app/src/git/diff-scroll.ts",
@@ -8207,17 +8211,23 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/diff-layout.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/diff_layout.dart; packages/app/lib/core/diff_highlighter.dart",
+      "evidence": [
+        "packages/app/test/diff_layout_test.dart",
+        "packages/app/test/diff_highlighter_test.dart"
+      ],
+      "notes": "Ports the frozen layout contract: canonical file-side-line review keys, per-hunk old/new numbering, header fallback, side-valid review cells, unified targets, replacement-run index pairing, unmatched-side blanks, duplicated context rows, token preservation, and hunk-boundary resets."
     },
     {
       "id": "source-unit:packages/app/src/utils/diff-rendering.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/diff_rendering.dart; packages/app/lib/widgets/diff/diff_view.dart",
+      "evidence": [
+        "packages/app/test/diff_rendering_test.dart",
+        "packages/app/test/diff_view_test.dart"
+      ],
+      "notes": "Ports all frozen rendering invariants and applies them to Flutter diff rows: non-breaking blank gutters, visible-space empty cells, and visible-token detection that ignores empty token rows."
     },
     {
       "id": "source-unit:packages/app/src/utils/encode-images.ts",
