@@ -55,6 +55,7 @@ final class AgentRuntime {
     this.archived = false,
     this.internal = false,
     this.mcpServers = const {},
+    this.environment = const {},
   });
 
   AgentSummary summary;
@@ -62,6 +63,7 @@ final class AgentRuntime {
   bool archived;
   final bool internal;
   final Map<String, Object?> mcpServers;
+  final Map<String, String> environment;
 
   AgentSession? session;
   StreamSubscription<ProviderEvent>? sessionSub;
@@ -223,6 +225,7 @@ class AgentManager {
         archived: record.archived,
         internal: record.internal,
         mcpServers: stripInternalAgentMcpServers(record.mcpServers),
+        environment: record.environment,
       );
       runtime.timeline.onItem = _onTimelineItem;
       _runtimes[record.summary.agentId] = runtime;
@@ -640,6 +643,7 @@ class AgentManager {
     Map<String, Object?> featureValues = const {},
     String? systemPrompt,
     Map<String, Object?> mcpServers = const {},
+    Map<String, String> environment = const {},
     String? title,
     String? workspaceId,
     String? projectPath,
@@ -705,6 +709,7 @@ class AgentManager {
       timeline: TimelineStore(agentId: agentId),
       internal: internal,
       mcpServers: Map.unmodifiable(stripInternalAgentMcpServers(mcpServers)),
+      environment: Map.unmodifiable(environment),
     );
     runtime.timeline.onItem = _onTimelineItem;
     _runtimes[agentId] = runtime;
@@ -762,7 +767,21 @@ class AgentManager {
       systemPrompt,
       _appendSystemPrompt,
     ]);
-    final session = client is McpAgentClient
+    final session = client is EnvironmentMcpAgentClient
+        ? await client.createSessionWithMcpAndEnvironment(
+            cwd: runtime.summary.cwd,
+            model: runtime.summary.model,
+            mode: runtime.summary.mode,
+            modeId: runtime.summary.currentModeId,
+            thinkingOptionId: runtime.summary.thinkingOptionId,
+            featureValues: runtime.summary.featureValues,
+            systemPrompt: launchSystemPrompt,
+            sessionId: runtime.summary.sessionId,
+            initialHistory: runtime.timeline.snapshot(),
+            mcpServers: launchMcpServers,
+            environment: runtime.environment,
+          )
+        : client is McpAgentClient
         ? await client.createSessionWithMcp(
             cwd: runtime.summary.cwd,
             model: runtime.summary.model,
@@ -774,6 +793,19 @@ class AgentManager {
             sessionId: runtime.summary.sessionId,
             initialHistory: runtime.timeline.snapshot(),
             mcpServers: launchMcpServers,
+          )
+        : client is EnvironmentAgentClient
+        ? await client.createSessionWithEnvironment(
+            cwd: runtime.summary.cwd,
+            model: runtime.summary.model,
+            mode: runtime.summary.mode,
+            modeId: runtime.summary.currentModeId,
+            thinkingOptionId: runtime.summary.thinkingOptionId,
+            featureValues: runtime.summary.featureValues,
+            systemPrompt: launchSystemPrompt,
+            sessionId: runtime.summary.sessionId,
+            initialHistory: runtime.timeline.snapshot(),
+            environment: runtime.environment,
           )
         : await client.createSession(
             cwd: runtime.summary.cwd,
@@ -2057,6 +2089,7 @@ class AgentManager {
         items: runtime.timeline.snapshot(),
         rows: runtime.timeline.snapshotRows(),
         mcpServers: runtime.mcpServers,
+        environment: runtime.environment,
       ),
     );
   }

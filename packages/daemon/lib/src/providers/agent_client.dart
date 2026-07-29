@@ -57,6 +57,26 @@ abstract interface class AgentClient {
   });
 }
 
+/// Optional provider boundary for a session-specific environment overlay.
+///
+/// Paseo's `create_agent_request.env` is per agent, not a daemon-global
+/// provider setting. Keeping this as a capability avoids breaking lightweight
+/// test/provider implementations that do not launch subprocesses.
+abstract interface class EnvironmentAgentClient implements AgentClient {
+  Future<AgentSession> createSessionWithEnvironment({
+    required String cwd,
+    required String model,
+    required AgentMode mode,
+    String? modeId,
+    String? thinkingOptionId,
+    Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
+    String? sessionId,
+    List<TimelineItem> initialHistory = const [],
+    Map<String, String> environment = const {},
+  });
+}
+
 /// Provider client that accepts the persisted MCP server portion of an agent
 /// session configuration.
 abstract interface class McpAgentClient implements AgentClient {
@@ -71,6 +91,23 @@ abstract interface class McpAgentClient implements AgentClient {
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
     Map<String, Object?> mcpServers = const {},
+  });
+}
+
+abstract interface class EnvironmentMcpAgentClient
+    implements McpAgentClient, EnvironmentAgentClient {
+  Future<AgentSession> createSessionWithMcpAndEnvironment({
+    required String cwd,
+    required String model,
+    required AgentMode mode,
+    String? modeId,
+    String? thinkingOptionId,
+    Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
+    String? sessionId,
+    List<TimelineItem> initialHistory = const [],
+    Map<String, Object?> mcpServers = const {},
+    Map<String, String> environment = const {},
   });
 }
 

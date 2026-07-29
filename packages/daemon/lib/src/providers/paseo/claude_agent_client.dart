@@ -22,6 +22,7 @@ typedef ClaudeConnectionFactory =
 final class ClaudeAgentClient
     implements
         AgentClient,
+        EnvironmentAgentClient,
         ImportableAgentClient,
         DraftFeatureListingAgentClient {
   ClaudeAgentClient({
@@ -93,6 +94,30 @@ final class ClaudeAgentClient
     String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
+  }) => createSessionWithEnvironment(
+    cwd: cwd,
+    model: model,
+    mode: mode,
+    modeId: modeId,
+    thinkingOptionId: thinkingOptionId,
+    featureValues: featureValues,
+    systemPrompt: systemPrompt,
+    sessionId: sessionId,
+    initialHistory: initialHistory,
+  );
+
+  @override
+  Future<AgentSession> createSessionWithEnvironment({
+    required String cwd,
+    required String model,
+    required AgentMode mode,
+    String? modeId,
+    String? thinkingOptionId,
+    Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
+    String? sessionId,
+    List<TimelineItem> initialHistory = const [],
+    Map<String, String> environment = const {},
   }) async {
     final resolvedLaunch = await _resolveLaunch();
     final launch = resolvedLaunch.launch;
@@ -111,14 +136,19 @@ final class ClaudeAgentClient
         : await loadClaudeHistorySnapshot(
             cwd: cwd,
             sessionId: config.sessionId!,
-            environment: _providerEnvironment(runtimeSettings),
+            environment: _providerEnvironment(runtimeSettings, environment),
           );
-    final connection = await _launch(launch, config, runtimeSettings);
+    final connection = await _launch(
+      launch,
+      config,
+      runtimeSettings,
+      environment,
+    );
     final session = ClaudeAgentSession(
       connection,
       config: config,
       restartConnection: (nextConfig) =>
-          _launch(launch, nextConfig, runtimeSettings),
+          _launch(launch, nextConfig, runtimeSettings, environment),
       restoredHistory: history?.timeline,
       restoredProviderSubagents: history?.providerSubagents ?? const [],
     );
@@ -130,6 +160,7 @@ final class ClaudeAgentClient
     ResolvedProviderLaunch launch,
     ClaudeProcessConfig config,
     ProviderRuntimeSettings? runtimeSettings,
+    Map<String, String> sessionEnvironment,
   ) {
     final args = <String>[
       ...launch.args,
@@ -181,6 +212,7 @@ final class ClaudeAgentClient
               'MCP_TOOL_TIMEOUT': '600000',
             },
             _environment,
+            sessionEnvironment,
           ],
         ),
         includeParentEnvironment: false,

@@ -217,7 +217,10 @@ void main() {
     'advertises client overrides and projects configured MCP servers',
     () async {
       final configured = client(
-        environment: const {'ACP_FIXTURE_EXPECT_CLIENT_RUNTIME': 'true'},
+        environment: const {
+          'ACP_FIXTURE_EXPECT_CLIENT_RUNTIME': 'true',
+          'ACP_FIXTURE_REQUIRE_SESSION_ENV': 'true',
+        },
       );
       final runtimeClient = GenericAcpAgentClient(
         provider: configured.provider,
@@ -233,7 +236,7 @@ void main() {
         },
         resolveCommand: () async => Platform.resolvedExecutable,
       );
-      final session = await runtimeClient.createSessionWithMcp(
+      final session = await runtimeClient.createSessionWithMcpAndEnvironment(
         cwd: Directory.current.path,
         model: '',
         mode: AgentMode.normal,
@@ -250,6 +253,7 @@ void main() {
             'headers': {'Authorization': 'Bearer test'},
           },
         },
+        environment: const {'RUN_TOKEN': 'session-value'},
       );
       addTearDown(session.dispose);
       expect(

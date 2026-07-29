@@ -145,7 +145,13 @@ Never hand-edit `upstream_inventory.json`. `ledger.json` is merge-preserved by
   observable reasons for prompt, provider, model loading, missing model,
   workspace directory, and host connection failures; attachment-only and
   prepared empty auto-submit attempts retain their upstream behavior.
-- Ledger status: 260 verified, 238 partial, and 1422 not-started out of 1920.
+- `coding-agent run` and `coding-agent agent run` now match the frozen
+  foreground/background command, workspace precedence and creation policy,
+  provider/model/thinking/mode selection, images, labels, per-agent environment
+  overlays, structured-output validation/retry, errors, and output formats.
+  The typed create-agent status and real WebSocket lifecycle are covered
+  end-to-end, including caller-owned child placement.
+- Ledger status: 406 verified, 252 partial, and 1262 not-started out of 1920.
 - Validation: protocol 332 tests, daemon 898 tests, Flutter 802 tests, root
   analysis, frozen
   inventory validation, and package coverage of protocol 95.24%, relay 95.17%,

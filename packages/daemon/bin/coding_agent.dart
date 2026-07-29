@@ -7,6 +7,7 @@ import 'package:agent_daemon/src/cli/agent_attach_command.dart';
 import 'package:agent_daemon/src/cli/agent_import_command.dart';
 import 'package:agent_daemon/src/cli/agent_command.dart';
 import 'package:agent_daemon/src/cli/agent_logs_command.dart';
+import 'package:agent_daemon/src/cli/agent_run_command.dart';
 import 'package:agent_daemon/src/cli/hub_command.dart';
 import 'package:agent_daemon/src/cli/provider_command.dart';
 import 'package:agent_daemon/src/cli/schedule_command.dart';
@@ -17,6 +18,16 @@ import 'package:agent_daemon/src/cli/worktree_command.dart';
 import 'package:agent_daemon/src/terminal/terminal_activity_hook.dart';
 
 Future<void> main(List<String> arguments) async {
+  if (arguments.isNotEmpty && arguments[0] == 'run') {
+    exitCode = await runAgentRunCommand(arguments: arguments.sublist(1));
+    return;
+  }
+  if (arguments.length >= 2 &&
+      arguments[0] == 'agent' &&
+      arguments[1] == 'run') {
+    exitCode = await runAgentRunCommand(arguments: arguments.sublist(2));
+    return;
+  }
   if (arguments.isNotEmpty && arguments[0] == 'import') {
     exitCode = await runAgentImportCommand(arguments: arguments.sublist(1));
     return;
@@ -129,10 +140,12 @@ Future<void> main(List<String> arguments) async {
 
   stderr.writeln(
     'Usage: coding-agent daemon pair [--home <path>] [--json]\n'
+    '       coding-agent run [options] <prompt>\n'
+    '       coding-agent agent run [options] <prompt>\n'
     '       coding-agent import --provider <provider> <id> [options]\n'
     '       coding-agent agent import --provider <provider> <id> [options]\n'
     '       coding-agent agent '
-    '<ls|inspect|mode|stop|send|wait|archive|delete|detach|reload|update|open|'
+    '<run|ls|inspect|mode|stop|send|wait|archive|delete|detach|reload|update|open|'
     'attach> '
     '...\n'
     '       coding-agent agent logs <id> [options]\n'

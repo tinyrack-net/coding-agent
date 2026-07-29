@@ -105,7 +105,7 @@ void main() {
       },
     );
 
-    final session = await client.createSession(
+    final session = await client.createSessionWithEnvironment(
       cwd: 'C:/workspace',
       model: 'claude-opus-4-1',
       mode: AgentMode.normal,
@@ -114,6 +114,7 @@ void main() {
       featureValues: const {'fast_mode': true},
       systemPrompt: 'Voice instructions',
       sessionId: 'resume-id',
+      environment: const {'RUN_TOKEN': 'session-value'},
     );
     addTearDown(session.dispose);
 
@@ -152,6 +153,7 @@ void main() {
     expect(launch?.environment, containsPair('MCP_TIMEOUT', '600000'));
     expect(launch?.environment, containsPair('MCP_TOOL_TIMEOUT', '600000'));
     expect(launch?.environment, containsPair('CLAUDE_CONFIG_DIR', 'C:/claude'));
+    expect(launch?.environment, containsPair('RUN_TOKEN', 'session-value'));
     expect(launch?.environment, isNot(contains('CLAUDE_CODE_ENTRYPOINT')));
     expect(launch?.includeParentEnvironment, isFalse);
     expect(connection.sent.single['type'], 'control_request');

@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import 'agent/agent_manager.dart';
 import 'agent/create_agent_lifecycle_dispatch.dart';
+import 'agent/create_agent_intent.dart';
 import 'agent/create_agent_mode.dart';
 import 'agent/create_agent_title.dart';
 import 'agent/agent_store.dart';
@@ -435,12 +436,64 @@ Future<DaemonServerHandle> startDaemonServer({
               hasLegacyGitOptions: payload['git'] != null,
             );
         createdWorkspaceId = createdWorkspace?.workspaceId;
-        final resolvedCwd = createdWorkspace?.cwd ?? cwd;
-        final resolvedWorkspaceId =
-            createdWorkspace?.workspaceId ?? workspaceId;
+        final rawLabels = payload['labels'];
+        if (rawLabels != null &&
+            (rawLabels is! Map ||
+                rawLabels.keys.any((key) => key is! String) ||
+                rawLabels.values.any((value) => value is! String))) {
+          throw const FormatException('labels must contain string values');
+        }
+        final labels = rawLabels == null
+            ? const <String, String>{}
+            : Map<String, String>.from(rawLabels as Map);
+        final callerAgentId = payload['callerAgentId'] as String?;
+        final caller = callerAgentId == null
+            ? null
+            : manager.get(callerAgentId);
+        if (callerAgentId != null && caller == null) {
+          throw StateError('Caller agent $callerAgentId not found');
+        }
+        final intent = await resolveCreateAgentIntent(
+          explicitWorkspaceId: createdWorkspace?.workspaceId ?? workspaceId,
+          caller: caller == null
+              ? null
+              : CreateAgentCaller(
+                  id: caller.agentId,
+                  cwd: caller.cwd,
+                  workspaceId: caller.workspaceId,
+                ),
+          labels: labels,
+          resolveWorkspace: (workspaceId) async {
+            final workspace = await workspaceV2
+                .requireActiveAutomationWorkspace(workspaceId);
+            return CreateAgentPlacement(
+              workspaceId: workspace.workspaceId,
+              cwd: workspace.cwd,
+            );
+          },
+          createWorkspace: () async {
+            final workspace = await workspaceV2.createAutomationWorkspace(
+              DirectoryWorkspaceCreateSource(path: cwd),
+              firstAgentContext: initialPrompt?.trim().isNotEmpty == true
+                  ? {'prompt': initialPrompt!.trim()}
+                  : null,
+            );
+            createdWorkspaceId = workspace.workspaceId;
+            return CreateAgentPlacement(
+              workspaceId: workspace.workspaceId,
+              cwd: workspace.cwd,
+            );
+          },
+        );
+        final resolvedWorkspace =
+            createdWorkspace ??
+            await workspaceV2.requireActiveAutomationWorkspace(
+              intent.workspaceId,
+            );
         final provider =
             (payload['provider'] as String?) ?? ProviderId.openai.name;
-        final parentAgentId = payload['parentAgentId'] as String?;
+        final legacyParentAgentId = payload['parentAgentId'] as String?;
+        final parentAgentId = intent.parentAgentId ?? legacyParentAgentId;
         final parent = parentAgentId == null
             ? null
             : manager.get(parentAgentId);
@@ -450,7 +503,7 @@ Future<DaemonServerHandle> startDaemonServer({
         final resolvedConfig = await paseoProviderCatalog
             .resolveCreateAgentConfig(
               AgentCreateConfigRequest(
-                cwd: resolvedCwd,
+                cwd: intent.cwd,
                 targetProvider: provider,
                 requestedMode: payload['modeId'] as String?,
                 featureValues: requestedFeatures,
@@ -464,38 +517,40 @@ Future<DaemonServerHandle> startDaemonServer({
           configTitle: payload['title'] as String?,
           initialPrompt: initialPrompt,
         );
-        final rawLabels = payload['labels'];
-        if (rawLabels != null &&
-            (rawLabels is! Map ||
-                rawLabels.keys.any((key) => key is! String) ||
-                rawLabels.values.any((value) => value is! String))) {
-          throw const FormatException('labels must contain string values');
+        final rawEnvironment = payload['env'];
+        if (rawEnvironment != null &&
+            (rawEnvironment is! Map ||
+                rawEnvironment.keys.any((key) => key is! String) ||
+                rawEnvironment.values.any((value) => value is! String))) {
+          throw const FormatException('env must contain string values');
         }
-        final labels = rawLabels == null
+        final environment = rawEnvironment == null
             ? const <String, String>{}
-            : Map<String, String>.from(rawLabels as Map);
+            : Map<String, String>.from(rawEnvironment as Map);
         final agent = await manager.createAgent(
-          cwd: resolvedCwd,
+          cwd: intent.cwd,
           provider: provider,
           model: (payload['model'] as String?) ?? '',
           mode: _parseMode(payload['mode']),
           modeId: resolvedConfig.modeId,
           thinkingOptionId: payload['thinkingOptionId'] as String?,
           featureValues: resolvedConfig.featureValues,
+          systemPrompt: payload['systemPrompt'] as String?,
           mcpServers: payload['mcpServers'] is Map
               ? Map<String, Object?>.from(payload['mcpServers']! as Map)
               : const {},
+          environment: environment,
           title: titles.provisionalTitle,
-          workspaceId: resolvedWorkspaceId,
+          workspaceId: intent.workspaceId,
           projectPath:
-              createdWorkspace?.mainRepoRoot ??
+              resolvedWorkspace.mainRepoRoot ??
               payload['projectPath'] as String?,
-          branch: createdWorkspace?.branch ?? payload['branch'] as String?,
+          branch: resolvedWorkspace.branch ?? payload['branch'] as String?,
           isWorktree:
-              createdWorkspace?.isPaseoOwnedWorktree ??
+              resolvedWorkspace.isPaseoOwnedWorktree ||
               payload['isWorktree'] == true,
           parentAgentId: parentAgentId,
-          labels: labels,
+          labels: intent.labels,
         );
         createdAgentId = agent.agentId;
         createAgentLifecycle.registerAutoArchiveIfRequested(
@@ -1025,6 +1080,83 @@ Future<DaemonServerHandle> startDaemonServer({
         }
       }
       return null;
+    }
+    if (message['type'] == CreateAgentRequest.type) {
+      final requestId = message['requestId'] as String? ?? '';
+      try {
+        final request = CreateAgentRequest.fromJson(message);
+        final config = request.config;
+        final legacy = await router.dispatch(
+          connection,
+          RpcRequest(
+            type: MessageTypes.agentCreateRequest,
+            requestId: request.requestId,
+            payload: {
+              'cwd': config.cwd,
+              if (request.workspaceId != null)
+                'workspaceId': request.workspaceId,
+              if (request.callerAgentId != null)
+                'callerAgentId': request.callerAgentId,
+              'provider': config.provider,
+              if (config.model != null) 'model': config.model,
+              if (config.modeId != null) 'modeId': config.modeId,
+              if (config.thinkingOptionId != null)
+                'thinkingOptionId': config.thinkingOptionId,
+              if (config.featureValues != null)
+                'features': config.featureValues,
+              if (config.hasTitle) 'title': config.title,
+              if (config.systemPrompt != null)
+                'systemPrompt': config.systemPrompt,
+              if (config.mcpServers != null) 'mcpServers': config.mcpServers,
+              if (request.initialPrompt != null)
+                'initialPrompt': request.initialPrompt,
+              if (request.clientMessageId != null)
+                'clientMessageId': request.clientMessageId,
+              if (request.images.isNotEmpty)
+                'images': [for (final image in request.images) image.toJson()],
+              if (request.attachments.isNotEmpty)
+                'attachments': [
+                  for (final attachment in request.attachments)
+                    attachment.toJson(),
+                ],
+              if (request.env != null) 'env': request.env,
+              if (request.outputSchema != null)
+                'outputSchema': request.outputSchema,
+              if (request.git != null) 'git': request.git,
+              if (request.worktree != null)
+                'worktree': request.worktree!.toJson(),
+              if (request.autoArchive != null)
+                'autoArchive': request.autoArchive,
+              'labels': request.labels,
+            },
+          ),
+        );
+        if (legacy.error case final error?) {
+          return AgentCreateFailedStatus(
+            requestId: request.requestId,
+            error: error.message,
+            errorCode: error.code,
+          ).toJson();
+        }
+        final rawAgent = legacy.payload['agent'];
+        if (rawAgent is! Map) {
+          throw StateError('Agent creation returned no agent');
+        }
+        final agentId = rawAgent['agentId'];
+        if (agentId is! String || agentId.isEmpty) {
+          throw StateError('Agent creation returned no agent id');
+        }
+        return AgentCreatedStatus(
+          requestId: request.requestId,
+          agentId: agentId,
+          agent: _paseoAgentSnapshot(manager, paseoProviderCatalog, agentId),
+        ).toJson();
+      } on Object catch (error) {
+        return AgentCreateFailedStatus(
+          requestId: requestId,
+          error: _cancelAgentError(error),
+        ).toJson();
+      }
     }
     if (message['type'] == 'clear_agent_attention') {
       final rawAgentIds = message['agentId'];

@@ -165,11 +165,12 @@ void main() {
       },
     );
 
-    final session = await client.createSession(
+    final session = await client.createSessionWithEnvironment(
       cwd: 'C:/workspace',
       model: 'gpt-5.4',
       mode: AgentMode.normal,
       sessionId: 'resume-id',
+      environment: const {'RUN_TOKEN': 'session-value'},
     );
     addTearDown(session.dispose);
 
@@ -181,6 +182,10 @@ void main() {
       containsPair('CODEX_HOME', 'C:/codex-home'),
     );
     expect(capturedLaunch?.environment, containsPair('PATH', isNotEmpty));
+    expect(
+      capturedLaunch?.environment,
+      containsPair('RUN_TOKEN', 'session-value'),
+    );
     expect(capturedLaunch?.includeParentEnvironment, isFalse);
     expect(connection.requests.map((request) => request.$1), [
       'initialize',

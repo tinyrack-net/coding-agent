@@ -16,7 +16,12 @@ import 'provider_launch_config.dart';
 typedef AcpCommandResolver = Future<String?> Function();
 
 final class GenericAcpAgentClient
-    implements AgentClient, McpAgentClient, ImportableAgentClient {
+    implements
+        AgentClient,
+        McpAgentClient,
+        EnvironmentAgentClient,
+        EnvironmentMcpAgentClient,
+        ImportableAgentClient {
   const GenericAcpAgentClient({
     required this.provider,
     required this.command,
@@ -72,6 +77,57 @@ final class GenericAcpAgentClient
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
     Map<String, Object?> mcpServers = const {},
+  }) => createSessionWithMcpAndEnvironment(
+    cwd: cwd,
+    model: model,
+    mode: mode,
+    modeId: modeId,
+    thinkingOptionId: thinkingOptionId,
+    featureValues: featureValues,
+    systemPrompt: systemPrompt,
+    sessionId: sessionId,
+    initialHistory: initialHistory,
+    mcpServers: mcpServers,
+  );
+
+  @override
+  Future<AgentSession> createSessionWithEnvironment({
+    required String cwd,
+    required String model,
+    required AgentMode mode,
+    String? modeId,
+    String? thinkingOptionId,
+    Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
+    String? sessionId,
+    List<TimelineItem> initialHistory = const [],
+    Map<String, String> environment = const {},
+  }) => createSessionWithMcpAndEnvironment(
+    cwd: cwd,
+    model: model,
+    mode: mode,
+    modeId: modeId,
+    thinkingOptionId: thinkingOptionId,
+    featureValues: featureValues,
+    systemPrompt: systemPrompt,
+    sessionId: sessionId,
+    initialHistory: initialHistory,
+    environment: environment,
+  );
+
+  @override
+  Future<AgentSession> createSessionWithMcpAndEnvironment({
+    required String cwd,
+    required String model,
+    required AgentMode mode,
+    String? modeId,
+    String? thinkingOptionId,
+    Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
+    String? sessionId,
+    List<TimelineItem> initialHistory = const [],
+    Map<String, Object?> mcpServers = const {},
+    Map<String, String> environment = const {},
   }) async {
     if (systemPrompt?.trim().isNotEmpty == true) {
       throw UnsupportedError(
@@ -89,7 +145,7 @@ final class GenericAcpAgentClient
       executable: executable,
       commandArgs: commandArgs,
       cwd: cwd,
-      environment: _providerEnvironment(),
+      environment: _providerEnvironment(environment),
       model: model,
       modeId: modeId,
       thinkingOptionId: thinkingOptionId,

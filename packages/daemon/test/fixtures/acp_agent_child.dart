@@ -28,6 +28,8 @@ bool get expectRuntimeMcp =>
     Platform.environment['ACP_FIXTURE_EXPECT_RUNTIME_MCP'] == 'true';
 bool get exerciseClientRuntime =>
     Platform.environment['ACP_FIXTURE_EXERCISE_CLIENT_RUNTIME'] == 'true';
+bool get requireSessionEnvironment =>
+    Platform.environment['ACP_FIXTURE_REQUIRE_SESSION_ENV'] == 'true';
 
 List<Map<String, Object?>> configOnlyOptions() => [
   {
@@ -377,6 +379,15 @@ void main() {
         respond(id, {'sessionId': loadedSessionId});
       case 'session/new':
         final mcpServers = params['mcpServers'];
+        if (requireSessionEnvironment &&
+            Platform.environment['RUN_TOKEN'] != 'session-value') {
+          send({
+            'jsonrpc': '2.0',
+            'id': id,
+            'error': {'code': -32602, 'message': 'missing session environment'},
+          });
+          return;
+        }
         if (expectNoMcp && (mcpServers is! List || mcpServers.isNotEmpty)) {
           send({
             'jsonrpc': '2.0',

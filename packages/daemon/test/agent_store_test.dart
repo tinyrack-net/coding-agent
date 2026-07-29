@@ -23,6 +23,7 @@ void main() {
     String cwd = r'C:\proj',
     bool internal = false,
     Map<String, Object?> mcpServers = const {},
+    Map<String, String> environment = const {},
   }) => PersistedAgent(
     summary: AgentSummary(
       agentId: agentId,
@@ -57,6 +58,7 @@ void main() {
     ],
     internal: internal,
     mcpServers: mcpServers,
+    environment: environment,
   );
 
   group('AgentStore', () {
@@ -121,6 +123,16 @@ void main() {
       });
       expect(loaded.summary.toJson(), isNot(contains('mcpServers')));
       expect(PersistedAgent.fromJson(record().toJson()).mcpServers, isEmpty);
+    });
+
+    test('per-agent environment round-trips outside public summary', () async {
+      final store = AgentStore(dataDir: tempDir.path);
+      await store.save(record(environment: const {'RUN_TOKEN': 'value'}));
+
+      final loaded = (await store.loadAll()).single;
+      expect(loaded.environment, {'RUN_TOKEN': 'value'});
+      expect(loaded.summary.toJson(), isNot(contains('env')));
+      expect(PersistedAgent.fromJson(record().toJson()).environment, isEmpty);
     });
 
     test('scheduleSave debounces and flush() forces the write', () async {

@@ -21,6 +21,7 @@ typedef CodexConnectionFactory =
 final class CodexAgentClient
     implements
         AgentClient,
+        EnvironmentAgentClient,
         ImportableAgentClient,
         DraftFeatureListingAgentClient {
   CodexAgentClient({
@@ -112,6 +113,30 @@ final class CodexAgentClient
     String? systemPrompt,
     String? sessionId,
     List<TimelineItem> initialHistory = const [],
+  }) => createSessionWithEnvironment(
+    cwd: cwd,
+    model: model,
+    mode: mode,
+    modeId: modeId,
+    thinkingOptionId: thinkingOptionId,
+    featureValues: featureValues,
+    systemPrompt: systemPrompt,
+    sessionId: sessionId,
+    initialHistory: initialHistory,
+  );
+
+  @override
+  Future<AgentSession> createSessionWithEnvironment({
+    required String cwd,
+    required String model,
+    required AgentMode mode,
+    String? modeId,
+    String? thinkingOptionId,
+    Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
+    String? sessionId,
+    List<TimelineItem> initialHistory = const [],
+    Map<String, String> environment = const {},
   }) async {
     final resolvedLaunch = await _resolveLaunch();
     final launch = resolvedLaunch.launch;
@@ -123,7 +148,7 @@ final class CodexAgentClient
         environment: createProviderEnvironment(
           baseEnvironment: Platform.environment,
           runtimeSettings: resolvedLaunch.runtimeSettings,
-          overlays: [_environment],
+          overlays: [_environment, environment],
         ),
         includeParentEnvironment: false,
       ),

@@ -24,6 +24,7 @@ final class PersistedAgent {
     this.rows = const [],
     this.internal = false,
     this.mcpServers = const {},
+    this.environment = const {},
   });
 
   final AgentSummary summary;
@@ -34,6 +35,7 @@ final class PersistedAgent {
   final List<TimelineRow> rows;
   final bool internal;
   final Map<String, Object?> mcpServers;
+  final Map<String, String> environment;
 
   static PersistedAgent fromJson(Map<String, Object?> json) {
     final config = json['config'];
@@ -42,6 +44,11 @@ final class PersistedAgent {
             Map<String, Object?>.from(config['mcpServers']! as Map),
           )
         : const <String, Object?>{};
+    final environment = config is Map && config['env'] is Map
+        ? Map<String, String>.unmodifiable(
+            Map<String, String>.from(config['env']! as Map),
+          )
+        : const <String, String>{};
     return PersistedAgent(
       summary: AgentSummary.fromJson(json['summary'] as Map<String, Object?>),
       archived: (json['archived'] as bool?) ?? false,
@@ -57,6 +64,7 @@ final class PersistedAgent {
           .toList(),
       internal: (json['internal'] as bool?) ?? false,
       mcpServers: mcpServers,
+      environment: environment,
     );
   }
 
@@ -68,7 +76,11 @@ final class PersistedAgent {
     'items': items.map((i) => i.toJson()).toList(),
     if (rows.isNotEmpty) 'rows': rows.map((row) => row.toJson()).toList(),
     if (internal) 'internal': true,
-    if (mcpServers.isNotEmpty) 'config': {'mcpServers': mcpServers},
+    if (mcpServers.isNotEmpty || environment.isNotEmpty)
+      'config': {
+        if (mcpServers.isNotEmpty) 'mcpServers': mcpServers,
+        if (environment.isNotEmpty) 'env': environment,
+      },
   };
 }
 
