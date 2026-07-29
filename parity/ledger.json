@@ -8714,10 +8714,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/projects.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/projects/projects.dart",
+      "evidence": [
+        "packages/app/test/projects_test.dart"
+      ],
+      "notes": "Ports the frozen multi-host project projection: stable placement projectKey grouping with mixed-version fallback, empty projects, custom/display names, host and workspace counts, online replicas, canonical mainRepoRoot, branch/archive summaries, runtime selection, GitHub URL derivation, and deterministic project/host ordering."
     },
     {
       "id": "source-unit:packages/app/src/utils/provider-command-templates.ts",
