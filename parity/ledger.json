@@ -2375,10 +2375,14 @@
     },
     {
       "id": "source-unit:packages/app/src/components/agent-status-dot.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/agent_status_dot.dart;packages/app/lib/widgets/command_center_dialog.dart;packages/app/lib/command_center/command_center.dart",
+      "evidence": [
+        "packages/app/test/agent_status_dot_test.dart",
+        "packages/app/test/command_center_dialog_test.dart",
+        "packages/app/test/app_command_center_host_test.dart"
+      ],
+      "notes": "The command-center agent row renders the frozen 8px status dot, preserves lifecycle and attention inputs, shows inactive done state on request, and removes the conflicting robot icon."
     },
     {
       "id": "source-unit:packages/app/src/components/app-diagnostic-host.tsx",
@@ -8487,10 +8491,13 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/sidebar-agent-state.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/sidebar/sidebar_agent_state.dart;packages/protocol/lib/src/agent_state_bucket.dart",
+      "evidence": [
+        "packages/app/test/sidebar_agent_state_test.dart",
+        "packages/protocol/test/agent_state_bucket_test.dart"
+      ],
+      "notes": "The app adapter delegates to the shared protocol bucket contract and exposes the frozen active-agent predicate, including permission and initializing edge cases."
     },
     {
       "id": "source-unit:packages/app/src/utils/sidebar-gesture-arbitration.ts",
@@ -8545,10 +8552,13 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/status-dot-color.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/sidebar/status_dot_color.dart",
+      "evidence": [
+        "packages/app/test/status_dot_color_test.dart",
+        "packages/app/test/agent_status_dot_test.dart"
+      ],
+      "notes": "All five state buckets use the frozen amber/red/blue/green or theme-border mapping, including hidden done state and the exact emphasized-bucket predicate."
     },
     {
       "id": "source-unit:packages/app/src/utils/status-loader.ts",

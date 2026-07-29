@@ -1,3 +1,4 @@
+import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/command_center/command_center.dart';
 import 'package:coding_agent_app/widgets/command_center_dialog.dart';
 import 'package:coding_agent_app/widgets/keyboard_shortcuts_dialog.dart';
@@ -20,7 +21,16 @@ List<CommandCenterResultSection> sections(String query, void Function() run) {
       title: 'Agent One',
       subtitle: 'codex · main',
       searchText: 'agent one codex main',
-      agent: Object(),
+      agent: const AgentSummary(
+        agentId: 'one',
+        title: 'Agent One',
+        cwd: '/work/main',
+        provider: 'codex',
+        model: 'main',
+        mode: AgentMode.normal,
+        runState: AgentRunState.running,
+        createdAtMs: 1,
+      ),
       run: run,
     ),
     CommandCenterContributionResult(
@@ -105,6 +115,11 @@ void main() {
 
     expect(find.text('Workspace One'), findsOneWidget);
     expect(find.text('Agent One'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('agent-status-dot-running')),
+      findsOneWidget,
+    );
+    expect(find.byIcon(FluentIcons.robot), findsNothing);
     expect(find.text('Settings'), findsOneWidget);
     expect(find.text('GPT'), findsOneWidget);
     expect(

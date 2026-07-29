@@ -4,6 +4,7 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../command_center/command_center.dart';
+import 'agent_status_dot.dart';
 import 'provider_icon.dart';
 import 'shortcut_badge.dart';
 
@@ -215,7 +216,19 @@ class _CommandCenterRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            if (providerIcon != null)
+            if (result case CommandCenterAgentResult(:final agent))
+              SizedBox.square(
+                dimension: 16,
+                child: Center(
+                  child: AgentStatusDot(
+                    status: agent.runState,
+                    requiresAttention: agent.requiresAttention,
+                    attentionReason: agent.attentionReason,
+                    showInactive: true,
+                  ),
+                ),
+              )
+            else if (providerIcon != null)
               ProviderIcon(
                 key: ValueKey('command-center-provider-icon-$providerIcon'),
                 provider: providerIcon,
@@ -224,9 +237,7 @@ class _CommandCenterRow extends StatelessWidget {
               )
             else
               Icon(
-                result is CommandCenterAgentResult
-                    ? FluentIcons.robot
-                    : result is CommandCenterWorkspaceResult
+                result is CommandCenterWorkspaceResult
                     ? FluentIcons.folder_horizontal
                     : FluentIcons.command_prompt,
                 size: 16,

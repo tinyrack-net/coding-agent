@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:agent_protocol/agent_protocol.dart';
+
 import '../composer/provider_model_selection.dart';
 
 enum CommandCenterContributionVisibility { always, query }
@@ -280,7 +282,7 @@ final class CommandCenterAgentResult extends CommandCenterResult {
   });
 
   final String subtitle;
-  final Object agent;
+  final AgentSummary agent;
 }
 
 final class CommandCenterContributionResult extends CommandCenterResult {

@@ -646,6 +646,38 @@ void main() {
     expect(client.sessionMessages.single['modeId'], AgentMode.fullAccess.name);
   });
 
+  testWidgets('agent results retain their lifecycle status dot', (
+    tester,
+  ) async {
+    const agent = AgentSummary(
+      agentId: 'agent-1',
+      title: 'Running agent',
+      cwd: '/work/active',
+      provider: 'codex',
+      model: 'gpt',
+      mode: AgentMode.normal,
+      runState: AgentRunState.running,
+      createdAtMs: 1,
+    );
+    final client = _FakeDaemonClient(agents: const [agent]);
+    final (container, _) = await _pumpHost(tester, client: client);
+    await container.read(agentsProvider.notifier).refresh();
+
+    await _sendShortcut(
+      tester,
+      LogicalKeyboardKey.keyK,
+      physicalKey: PhysicalKeyboardKey.keyK,
+      control: true,
+    );
+
+    expect(find.text('Running agent'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('agent-status-dot-running')),
+      findsOneWidget,
+    );
+    expect(find.byIcon(FluentIcons.robot), findsNothing);
+  });
+
   testWidgets('workspace navigation, pin, interrupt, and routes are live', (
     tester,
   ) async {
