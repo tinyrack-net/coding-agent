@@ -9711,12 +9711,13 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/types.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/cli/schedule_command.dart",
       "evidence": [
+        "packages/protocol/test/schedule_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart"
       ],
-      "notes": null
+      "notes": "Frozen CLI type surface and its underlying schedule RPC schemas are covered by Dart sealed contracts: all status and cadence variants, self/agent/new-agent create targets, persisted target exclusion of self, full new-agent config, run/summary/stored records, create/update inputs, every lifecycle request and typed nullable response payload, strict optional-versus-nullable boundaries, GUID validation, unknown-field stripping, and CLI projections."
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/update.ts",
