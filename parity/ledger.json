@@ -87,7 +87,9 @@
       "status": "partial",
       "implementation": "packages/app/lib/screens/schedules_screen.dart",
       "evidence": [
-        "packages/app/test/schedules_screen_test.dart"
+        "packages/app/test/schedules_screen_test.dart",
+        "packages/app/test/goldens/schedule_form_desktop_900x900.png",
+        "packages/app/test/goldens/schedule_form_compact_390x844.png"
       ],
       "notes": "The Flutter form distinguishes new-agent schedules from agent-target heartbeats. Heartbeat editing uses the frozen Edit heartbeat title, read-only target label, cadence-only fields, and cadence-only mutation. New-agent workspace lifecycle controls follow workspaceMultiplicity and Git-project disclosure rules. Create mode loads provider/model/mode/thinking/isolation preferences, edit mode preserves stored schedule values, and successful new-agent submission persists the current selection. Remaining sheet parity includes exact disabled-submit behavior and adaptive modal geometry."
     },
@@ -3280,9 +3282,11 @@
       "status": "partial",
       "implementation": "packages/app/lib/screens/schedules_screen.dart",
       "evidence": [
-        "packages/app/test/schedules_screen_test.dart"
+        "packages/app/test/schedules_screen_test.dart",
+        "packages/app/test/goldens/schedule_form_desktop_900x900.png",
+        "packages/app/test/goldens/schedule_form_compact_390x844.png"
       ],
-      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, shows the owning Host as read-only while editing a new-agent schedule, exposes provider and model through the single combined model trigger, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. It runs in the shared adaptive desktop/compact sheet with frozen card and snap geometry, sticky footer, 16px field stack, 8px label gaps, 96px prompt, Thinking-before-Mode order, and a stacked archive switch. Host, Project, Thinking, Mode, Isolation, and Cadence use the adaptive SelectField; Model uses the exported custom SelectField trigger with the frozen provider icon, project/thinking/isolation options use the frozen Lucide glyph paths, and every text/read-only control now follows the frozen 32/44px adaptive field geometry. Screenshot-golden visual proof remains."
+      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, shows the owning Host as read-only while editing a new-agent schedule, exposes provider and model through the single combined model trigger, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. It runs in the shared adaptive desktop/compact sheet with frozen card and snap geometry, sticky footer, 16px field stack, 8px label gaps, 96px prompt, Thinking-before-Mode order, and a stacked archive switch. Host, Project, Thinking, Mode, Isolation, and Cadence use the adaptive SelectField; Model uses the exported custom SelectField trigger with the frozen provider icon, project/thinking/isolation options use the frozen Lucide glyph paths, and every text/read-only control now follows the frozen 32/44px adaptive field geometry. Deterministic Windows desktop and compact Flutter regression goldens cover the pristine create state; captured Paseo-oracle overlay comparison remains."
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/schedule-row.tsx",

@@ -97,6 +97,40 @@ void main() {
     );
   });
 
+  testWidgets('desktop create form matches its frozen Windows golden', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 900);
+    addTearDown(tester.view.reset);
+    await _pump(tester, const []);
+
+    await tester.tap(find.text('New schedule'));
+    await tester.pumpAndSettle();
+
+    await expectLater(
+      find.byKey(const ValueKey('adaptive-modal-sheet-card')),
+      matchesGoldenFile('goldens/schedule_form_desktop_900x900.png'),
+    );
+  });
+
+  testWidgets('compact create form matches its frozen Windows golden', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.reset);
+    await _pump(tester, const []);
+
+    await tester.tap(find.text('New schedule'));
+    await tester.pumpAndSettle();
+
+    await expectLater(
+      find.byKey(const ValueKey('adaptive-modal-sheet-card')),
+      matchesGoldenFile('goldens/schedule_form_compact_390x844.png'),
+    );
+  });
+
   testWidgets('active and ended filters partition schedule rows', (
     tester,
   ) async {
