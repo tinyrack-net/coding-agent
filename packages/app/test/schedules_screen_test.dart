@@ -108,11 +108,11 @@ void main() {
     expect(find.text('Save changes'), findsOneWidget);
     expect(find.text('Host'), findsOneWidget);
     expect(find.text('Local'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('schedule-host-trigger')));
+    await tester.pumpAndSettle();
     expect(
-      tester
-          .widget<ComboBox<String>>(find.byType(ComboBox<String>).first)
-          .onChanged,
-      isNull,
+      find.byKey(const ValueKey('schedule-host-trigger-option-server-a')),
+      findsNothing,
     );
     expect(find.widgetWithText(TextBox, 'Review the branch'), findsOneWidget);
   });
@@ -194,12 +194,7 @@ void main() {
     expect(tester.getSize(fields.at(1)).height, greaterThanOrEqualTo(96));
     await tester.enterText(fields.at(1), 'Run tests');
     await tester.enterText(fields.at(2), '*/5 * * * *');
-    final projectPicker = find.byType(ComboBox<String>).first;
-    await tester.ensureVisible(projectPicker);
-    await tester.tap(projectPicker);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Local project').last);
-    await tester.pumpAndSettle();
+    await _selectScheduleProject(tester, 'Local project');
     expect(find.text('Select model'), findsOneWidget);
     expect(
       tester
@@ -278,10 +273,7 @@ void main() {
     );
     await tester.tap(find.text('New schedule').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(ComboBox<String>).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Local project').last);
-    await tester.pumpAndSettle();
+    await _selectScheduleProject(tester, 'Local project');
 
     expect(find.text('GPT 5.4'), findsOneWidget);
     expect(
@@ -384,11 +376,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextBox).at(1), 'Run tests');
 
-    final projectPicker = find.byType(ComboBox<String>).first;
-    await tester.tap(projectPicker);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Local project').last);
-    await tester.pumpAndSettle();
+    await _selectScheduleProject(tester, 'Local project');
     await _selectCodexModel(tester);
 
     expect(find.text('Isolation'), findsNothing);
@@ -410,11 +398,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextBox).at(1), 'Run tests');
 
-    final projectPicker = find.byType(ComboBox<String>).first;
-    await tester.tap(projectPicker);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Local project').last);
-    await tester.pumpAndSettle();
+    await _selectScheduleProject(tester, 'Local project');
     await _selectCodexModel(tester);
 
     expect(find.text('Isolation'), findsNothing);
@@ -702,16 +686,19 @@ void main() {
     expect(find.text('Host'), findsOneWidget);
     expect(find.text('Project'), findsNothing);
     expect(find.text('Model'), findsNothing);
-    await tester.tap(find.byType(ComboBox<String>).first);
+    await tester.tap(find.byKey(const ValueKey('schedule-host-trigger')));
     await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('schedule-host-status-server-a')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('schedule-host-status-server-b')),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Remote').last);
     await tester.pumpAndSettle();
-    final projectPicker = find.byType(ComboBox<String>).at(1);
-    await tester.ensureVisible(projectPicker);
-    await tester.tap(projectPicker);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Remote project').last);
-    await tester.pumpAndSettle();
+    await _selectScheduleProject(tester, 'Remote project');
     await _selectCodexModel(tester);
 
     final fields = find.byType(TextBox);
@@ -730,6 +717,20 @@ Future<void> _selectCodexModel(WidgetTester tester) async {
   await tester.tap(selector);
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const ValueKey('model-row-codex-gpt-5.4')));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _selectScheduleProject(WidgetTester tester, String label) async {
+  final trigger = find.byKey(const ValueKey('schedule-project-trigger'));
+  await tester.ensureVisible(trigger);
+  await tester.tap(trigger);
+  await tester.pumpAndSettle();
+  final search = find.byKey(const ValueKey('schedule-project-trigger-search'));
+  expect(search, findsOneWidget);
+  expect(find.byIcon(FluentIcons.folder), findsWidgets);
+  await tester.enterText(search, label);
+  await tester.pump();
+  await tester.tap(find.text(label).last);
   await tester.pumpAndSettle();
 }
 

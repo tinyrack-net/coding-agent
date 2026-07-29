@@ -157,7 +157,11 @@ Never hand-edit `upstream_inventory.json`. `ledger.json` is merge-preserved by
 - Schedule CLI create/list/inspect/logs/pause/resume/run-once/update/delete now
   matches frozen action-specific options, validation order, stable table/JSON
   projections, structured errors, help, and the real daemon lifecycle.
-- Ledger status: 423 verified, 241 partial, and 1256 not-started out of 1920.
+- Schedule creation and editing now use the shared responsive modal sheet with
+  frozen desktop/compact geometry, sticky actions, field spacing, and gesture
+  dismissal. Host and Project use the reusable adaptive SelectField, including
+  host status, project search, loading preservation, and compact presentation.
+- Ledger status: 427 verified, 242 partial, and 1251 not-started out of 1920.
 - Validation: protocol 332 tests, daemon 898 tests, Flutter 802 tests, root
   analysis, frozen
   inventory validation, and package coverage of protocol 95.24%, relay 95.17%,

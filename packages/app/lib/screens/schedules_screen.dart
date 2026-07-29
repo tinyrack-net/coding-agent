@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../composer/create_agent_preferences.dart';
 import '../composer/provider_model_selection.dart';
+import '../core/daemon_client.dart';
 import '../core/theme.dart';
 import '../providers/providers_snapshot.dart';
 import '../state/agents_provider.dart';
@@ -17,6 +18,7 @@ import '../state/schedule_project_targets_provider.dart';
 import '../state/schedules_provider.dart';
 import '../widgets/adaptive_modal_sheet.dart';
 import '../widgets/combined_model_selector.dart';
+import '../widgets/fluent/select_field.dart';
 import '../widgets/fluent/toast.dart';
 
 enum _ScheduleFilter { active, ended }
@@ -658,9 +660,8 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     final projectTargets =
         ref.watch(scheduleProjectTargetsProvider).value?.targets ??
         const <ScheduleProjectTarget>[];
-    final client = _serverId == null
-        ? null
-        : ref.watch(hostRuntimeClientsProvider)[_serverId];
+    final hostClients = ref.watch(hostRuntimeClientsProvider);
+    final client = _serverId == null ? null : hostClients[_serverId];
     ScheduleProjectTarget? selectedProject;
     for (final target in projectTargets) {
       if (target.serverId == _serverId && target.cwd == _cwd.text.trim()) {
@@ -748,22 +749,47 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
             if (editing || hosts.length > 1)
               _labeledControl(
                 'Host',
-                ComboBox<String>(
+                PaseoSelectField<String>(
+                  field: false,
+                  triggerKey: const ValueKey('schedule-host-trigger'),
+                  label: 'Host',
                   value: _serverId,
-                  items: [
+                  selectedDisplay: _serverId == null
+                      ? null
+                      : SelectFieldDisplay(
+                          label:
+                              hosts
+                                  .where((host) => host.serverId == _serverId)
+                                  .firstOrNull
+                                  ?.label ??
+                              _serverId!,
+                        ),
+                  options: [
                     for (final host in hosts)
-                      ComboBoxItem(
+                      SelectFieldOption(
+                        id: host.serverId,
                         value: host.serverId,
-                        child: Text(host.label),
+                        label: host.label,
+                        leading: _hostStatusDot(
+                          host.serverId,
+                          hostClients[host.serverId]?.currentState ==
+                              DaemonConnectionState.connected,
+                        ),
                       ),
                   ],
-                  onChanged: editing
-                      ? null
-                      : (value) => setState(() {
-                          _serverId = value;
-                          _cwd.clear();
-                          _clearProviderSelection();
-                        }),
+                  onChanged: (value, _) {
+                    if (!editing) {
+                      setState(() {
+                        _serverId = value;
+                        _cwd.clear();
+                        _clearProviderSelection();
+                      });
+                    }
+                  },
+                  placeholder: 'Select host',
+                  emptyText: 'No hosts found',
+                  title: 'Host',
+                  disabled: editing,
                 ),
               ),
             _field('Name', _name, placeholder: 'Optional'),
@@ -984,37 +1010,38 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
         break;
       }
     }
-    final storedValue =
+    final storedDisplay =
         selected == null &&
             _cwd.text.trim().isNotEmpty &&
             widget.schedule != null
-        ? '__stored_project__'
+        ? SelectFieldDisplay(
+            label: describeScheduleCwd(
+              serverId: _serverId ?? '',
+              cwd: _cwd.text,
+              projectNameByCwd: const {},
+            ),
+          )
         : null;
     return _labeledControl(
       'Project',
-      ComboBox<String>(
-        value: selected?.optionId ?? storedValue,
-        placeholder: const Text('Select project'),
-        items: [
-          if (storedValue != null)
-            ComboBoxItem(
-              value: storedValue,
-              child: Text(
-                describeScheduleCwd(
-                  serverId: _serverId ?? '',
-                  cwd: _cwd.text,
-                  projectNameByCwd: const {},
-                ),
-              ),
-            ),
+      PaseoSelectField<String>(
+        field: false,
+        triggerKey: const ValueKey('schedule-project-trigger'),
+        label: 'Project',
+        value: selected?.optionId,
+        selectedDisplay: selected == null
+            ? storedDisplay
+            : SelectFieldDisplay(label: selected.projectName),
+        options: [
           for (final target in options)
-            ComboBoxItem(
+            SelectFieldOption(
+              id: target.optionId,
               value: target.optionId,
-              child: Text(target.projectName),
+              label: target.projectName,
+              leading: const Icon(FluentIcons.folder, size: 16),
             ),
         ],
-        onChanged: (value) {
-          if (value == null || value == storedValue) return;
+        onChanged: (value, _) {
           final target = options.firstWhere(
             (target) => target.optionId == value,
           );
@@ -1024,9 +1051,28 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
             _clearProviderSelection();
           });
         },
+        placeholder: 'Select project',
+        emptyText: 'No projects found',
+        searchable: true,
+        searchPlaceholder: 'Search projects...',
+        title: 'Select project',
       ),
     );
   }
+
+  Widget _hostStatusDot(String serverId, bool connected) => Center(
+    child: Container(
+      key: ValueKey('schedule-host-status-$serverId'),
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        color: connected
+            ? context.statusColors.success
+            : context.statusColors.neutral,
+        shape: BoxShape.circle,
+      ),
+    ),
+  );
 
   Widget _providerEditor({
     required ProvidersSnapshotState? snapshot,

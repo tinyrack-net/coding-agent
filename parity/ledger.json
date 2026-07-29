@@ -3282,7 +3282,7 @@
       "evidence": [
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, shows the owning Host as read-only while editing a new-agent schedule, exposes provider and model through the single combined model trigger, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. It now runs in the shared adaptive desktop/compact sheet with frozen card and snap geometry, sticky footer, 16px field stack, 8px label gaps, 96px prompt, Thinking-before-Mode order, and a stacked archive switch. Remaining form parity is exact SelectField control geometry, searchable host/project option presentation, provider/host/project glyphs, and screenshot-golden visual proof."
+      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, shows the owning Host as read-only while editing a new-agent schedule, exposes provider and model through the single combined model trigger, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. It now runs in the shared adaptive desktop/compact sheet with frozen card and snap geometry, sticky footer, 16px field stack, 8px label gaps, 96px prompt, Thinking-before-Mode order, and a stacked archive switch. Host and Project use the adaptive SelectField with host status and project folder glyphs plus searchable project labels. Remaining form parity is exact model/mode/thinking/isolation/cadence SelectField conversion, combined model custom-trigger geometry, and screenshot-golden visual proof."
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/schedule-row.tsx",
@@ -3791,10 +3791,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/ui/select-field.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/widgets/fluent/select_field.dart",
+      "evidence": [
+        "packages/app/test/select_field_test.dart",
+        "packages/app/test/schedules_screen_test.dart"
+      ],
+      "notes": "Implements the adaptive 32px desktop and 44px compact trigger, loading-option preservation, anchored desktop flyout, compact modal sheet, label and description search, empty state, disabled state, selection indicator, and leading status or folder glyphs. Remaining parity includes getValueKey and custom render contracts, keyboard active-option and focus-loop behavior, exact anchor-width sizing, compact inline search-header placement, and pixel-golden hover and focus proof."
     },
     {
       "id": "source-unit:packages/app/src/components/ui/shortcut.tsx",
