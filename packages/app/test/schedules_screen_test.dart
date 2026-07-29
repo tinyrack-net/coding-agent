@@ -28,8 +28,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Prompt'), findsOneWidget);
     expect(find.text('Cadence'), findsOneWidget);
-    expect(find.text('Isolation'), findsOneWidget);
-    expect(find.text('Archive on finish'), findsOneWidget);
+    expect(find.text('Isolation'), findsNothing);
+    expect(find.text('Archive on finish'), findsNothing);
   });
 
   testWidgets('active and ended filters partition schedule rows', (
@@ -165,6 +165,60 @@ void main() {
     expect(config.modeId, 'plan');
     expect(config.thinkingOptionId, 'medium');
     expect(find.text('Create schedule'), findsNothing);
+  });
+
+  testWidgets('legacy host omits workspace lifecycle controls and payload', (
+    tester,
+  ) async {
+    final notifier = _FakeSchedulesNotifier(const []);
+    await _pumpWithNotifier(
+      tester,
+      notifier,
+      supportsWorkspaceMultiplicity: false,
+    );
+    await tester.tap(find.text('New schedule').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextBox).at(1), 'Run tests');
+
+    final projectPicker = find.byType(ComboBox<String>).first;
+    await tester.tap(projectPicker);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local project').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Isolation'), findsNothing);
+    expect(find.text('Archive on finish'), findsNothing);
+    await tester.tap(find.text('Create schedule'));
+    await tester.pumpAndSettle();
+
+    final config = (notifier.createdTarget! as NewAgentScheduleTarget).config;
+    expect(config.isolation, isNull);
+    expect(config.archiveOnFinish, isNull);
+  });
+
+  testWidgets('non-git project forces local isolation but keeps archive', (
+    tester,
+  ) async {
+    final notifier = _FakeSchedulesNotifier(const []);
+    await _pumpWithNotifier(tester, notifier, projectsAreGit: false);
+    await tester.tap(find.text('New schedule').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextBox).at(1), 'Run tests');
+
+    final projectPicker = find.byType(ComboBox<String>).first;
+    await tester.tap(projectPicker);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local project').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Isolation'), findsNothing);
+    expect(find.text('Archive on finish'), findsOneWidget);
+    await tester.tap(find.text('Create schedule'));
+    await tester.pumpAndSettle();
+
+    final config = (notifier.createdTarget! as NewAgentScheduleTarget).config;
+    expect(config.isolation, 'local');
+    expect(config.archiveOnFinish, isTrue);
   });
 
   testWidgets('cadence editor applies presets and previews custom cron', (
@@ -471,6 +525,8 @@ Future<void> _pumpWithNotifier(
   List<HostProfile> hosts = _oneHost,
   Map<String, Map<String, AgentSummary>> agentDirectories = const {},
   bool settle = true,
+  bool supportsWorkspaceMultiplicity = true,
+  bool projectsAreGit = true,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -481,11 +537,16 @@ Future<void> _pumpWithNotifier(
           () => _ScheduleAgentStore(agentDirectories),
         ),
         scheduleProjectTargetsProvider.overrideWith(
-          () => _ScheduleProjectTargets(_targetsFor(hosts)),
+          () => _ScheduleProjectTargets(
+            _targetsFor(hosts, isGit: projectsAreGit),
+          ),
         ),
         hostRuntimeClientsProvider.overrideWithValue({
           for (final host in hosts)
-            host.serverId: _ScheduleSnapshotClient(host.serverId),
+            host.serverId: _ScheduleSnapshotClient(
+              host.serverId,
+              supportsWorkspaceMultiplicity: supportsWorkspaceMultiplicity,
+            ),
         }),
       ],
       child: FluentApp(theme: buildAppTheme(), home: const SchedulesScreen()),
@@ -585,14 +646,19 @@ class _FakeSchedulesNotifier extends AggregatedSchedulesNotifier {
 }
 
 final class _ScheduleSnapshotClient extends DaemonClient {
-  _ScheduleSnapshotClient(String serverId)
-    : super(uri: Uri.parse('ws://fake-$serverId')) {
+  _ScheduleSnapshotClient(
+    String serverId, {
+    required bool supportsWorkspaceMultiplicity,
+  }) : super(uri: Uri.parse('ws://fake-$serverId')) {
     serverInfo = ServerInfoStatus(
       serverId: serverId,
       hostname: serverId,
       version: '0.2.0',
       desktopManaged: false,
-      features: const {'providersSnapshot': true},
+      features: {
+        'providersSnapshot': true,
+        'workspaceMultiplicity': supportsWorkspaceMultiplicity,
+      },
     );
   }
 
@@ -688,7 +754,10 @@ final class _ScheduleProjectTargets extends ScheduleProjectTargetsNotifier {
       ScheduleProjectTargetsState(targets: targets);
 }
 
-List<ScheduleProjectTarget> _targetsFor(List<HostProfile> hosts) => [
+List<ScheduleProjectTarget> _targetsFor(
+  List<HostProfile> hosts, {
+  required bool isGit,
+}) => [
   for (final host in hosts)
     ScheduleProjectTarget(
       optionId: buildScheduleProjectOptionId(
@@ -700,7 +769,7 @@ List<ScheduleProjectTarget> _targetsFor(List<HostProfile> hosts) => [
       projectKey: 'project-${host.serverId}',
       projectName: '${host.label} project',
       cwd: 'C:/repo',
-      isGit: true,
+      isGit: isGit,
     ),
 ];
 

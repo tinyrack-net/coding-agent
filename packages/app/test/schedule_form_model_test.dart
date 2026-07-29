@@ -3,6 +3,47 @@ import 'package:coding_agent_app/state/schedule_form_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('workspace lifecycle follows host and project capabilities', () {
+    final git = resolveScheduleWorkspaceLifecycle(
+      supportsWorkspaceMultiplicity: true,
+      hasProject: true,
+      projectIsGit: true,
+      isolation: 'worktree',
+      archiveOnFinish: false,
+    );
+    expect(git.showIsolation, isTrue);
+    expect(git.showArchiveOnFinish, isTrue);
+    expect(git.effectiveIsolation, 'worktree');
+    expect(git.submitIsolation, 'worktree');
+    expect(git.submitArchiveOnFinish, isFalse);
+
+    final plain = resolveScheduleWorkspaceLifecycle(
+      supportsWorkspaceMultiplicity: true,
+      hasProject: true,
+      projectIsGit: false,
+      isolation: 'worktree',
+      archiveOnFinish: true,
+    );
+    expect(plain.showIsolation, isFalse);
+    expect(plain.showArchiveOnFinish, isTrue);
+    expect(plain.effectiveIsolation, 'local');
+    expect(plain.submitIsolation, 'local');
+    expect(plain.submitArchiveOnFinish, isTrue);
+
+    final legacy = resolveScheduleWorkspaceLifecycle(
+      supportsWorkspaceMultiplicity: false,
+      hasProject: true,
+      projectIsGit: true,
+      isolation: 'worktree',
+      archiveOnFinish: true,
+    );
+    expect(legacy.showIsolation, isFalse);
+    expect(legacy.showArchiveOnFinish, isFalse);
+    expect(legacy.effectiveIsolation, 'local');
+    expect(legacy.submitIsolation, isNull);
+    expect(legacy.submitArchiveOnFinish, isNull);
+  });
+
   test('provider selection resolves frozen defaults from ready entries', () {
     final selection = resolveScheduleProviderSelection(
       entries: const [

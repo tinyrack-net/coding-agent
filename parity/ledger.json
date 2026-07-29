@@ -89,7 +89,7 @@
       "evidence": [
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "The Flutter form now distinguishes new-agent schedules from agent-target heartbeats. Heartbeat editing uses the frozen Edit heartbeat title, read-only target label, cadence-only fields, and cadence-only mutation. New-agent provider/project/cadence fields and validation are covered; preference persistence and capability-driven lifecycle disclosure remain."
+      "notes": "The Flutter form distinguishes new-agent schedules from agent-target heartbeats. Heartbeat editing uses the frozen Edit heartbeat title, read-only target label, cadence-only fields, and cadence-only mutation. New-agent workspace lifecycle controls now follow the frozen host workspaceMultiplicity and Git-project disclosure rules, coerce unsupported worktree selection to local, and omit lifecycle fields for legacy hosts. Preference persistence remains."
     },
     {
       "id": "app-route:/sessions",
@@ -6578,7 +6578,7 @@
         "packages/app/test/schedule_form_model_test.dart",
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "Provider/model/mode/thinking selection resolves only ready enabled providers from the selected host and project snapshot, resets incompatible values on scope or model changes, and submits the resolved option ids. Agent-target edit state now exposes only the frozen read-only target and cadence and submits only cadence. Remaining form-model parity includes preferences and capability-driven workspace lifecycle disclosure."
+      "notes": "Provider/model/mode/thinking selection resolves only ready enabled providers from the selected host and project snapshot, resets incompatible values on scope or model changes, and submits the resolved option ids. Agent-target edit state exposes only the frozen read-only target and cadence. Workspace lifecycle disclosure and payload omission follow workspaceMultiplicity and Git-project capabilities. Remaining form-model parity is preference initialization and persistence."
     },
     {
       "id": "source-unit:packages/app/src/schedules/schedule-project-targets.ts",
@@ -6598,7 +6598,7 @@
         "packages/app/test/schedule_form_model_test.dart",
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "The stateful Flutter dialog owns one form model for its lifetime, applies host/project/provider changes, and resolves the frozen new-agent versus agent-target edit mode. Frozen preference synchronization and capability-driven workspace lifecycle state remain."
+      "notes": "The stateful Flutter dialog owns one form model for its lifetime, applies host/project/provider changes, resolves the frozen new-agent versus agent-target edit mode, and derives workspace lifecycle state from host/project capabilities. Frozen preference synchronization remains."
     },
     {
       "id": "source-unit:packages/app/src/schedules/use-schedule-form-provider-snapshot.ts",

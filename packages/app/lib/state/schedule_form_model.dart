@@ -2,6 +2,44 @@ import 'package:agent_protocol/agent_protocol.dart';
 
 const customCronPresetId = 'custom';
 
+final class ScheduleWorkspaceLifecycle {
+  const ScheduleWorkspaceLifecycle({
+    required this.showIsolation,
+    required this.showArchiveOnFinish,
+    required this.effectiveIsolation,
+    required this.submitIsolation,
+    required this.submitArchiveOnFinish,
+  });
+
+  final bool showIsolation;
+  final bool showArchiveOnFinish;
+  final String effectiveIsolation;
+  final String? submitIsolation;
+  final bool? submitArchiveOnFinish;
+}
+
+ScheduleWorkspaceLifecycle resolveScheduleWorkspaceLifecycle({
+  required bool supportsWorkspaceMultiplicity,
+  required bool hasProject,
+  required bool projectIsGit,
+  required String isolation,
+  required bool archiveOnFinish,
+}) {
+  final canUseWorktree =
+      supportsWorkspaceMultiplicity && hasProject && projectIsGit;
+  final effectiveIsolation = isolation == 'worktree' && canUseWorktree
+      ? 'worktree'
+      : 'local';
+  final canSubmitLifecycle = supportsWorkspaceMultiplicity && hasProject;
+  return ScheduleWorkspaceLifecycle(
+    showIsolation: canUseWorktree,
+    showArchiveOnFinish: canSubmitLifecycle,
+    effectiveIsolation: effectiveIsolation,
+    submitIsolation: canSubmitLifecycle ? effectiveIsolation : null,
+    submitArchiveOnFinish: canSubmitLifecycle ? archiveOnFinish : null,
+  );
+}
+
 final class ScheduleProviderSelection {
   const ScheduleProviderSelection({
     required this.providers,

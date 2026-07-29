@@ -622,6 +622,22 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     final client = _serverId == null
         ? null
         : ref.watch(hostRuntimeClientsProvider)[_serverId];
+    ScheduleProjectTarget? selectedProject;
+    for (final target in projectTargets) {
+      if (target.serverId == _serverId && target.cwd == _cwd.text.trim()) {
+        selectedProject = target;
+        break;
+      }
+    }
+    final supportsWorkspaceMultiplicity =
+        client?.serverInfo?.features['workspaceMultiplicity'] == true;
+    final workspaceLifecycle = resolveScheduleWorkspaceLifecycle(
+      supportsWorkspaceMultiplicity: supportsWorkspaceMultiplicity,
+      hasProject: _cwd.text.trim().isNotEmpty,
+      projectIsGit: selectedProject?.isGit == true,
+      isolation: _isolation,
+      archiveOnFinish: _archiveOnFinish,
+    );
     final snapshotScope =
         newAgent && client != null && _cwd.text.trim().isNotEmpty
         ? ProvidersSnapshotScope(
@@ -703,31 +719,35 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                   selection: providerSelection,
                   hasClient: client != null,
                 ),
+                if (workspaceLifecycle.showIsolation) ...[
+                  const SizedBox(height: 12),
+                  const Text('Isolation'),
+                  const SizedBox(height: 6),
+                  ComboBox<String>(
+                    value: workspaceLifecycle.effectiveIsolation,
+                    items: const [
+                      ComboBoxItem(value: 'local', child: Text('Local')),
+                      ComboBoxItem(value: 'worktree', child: Text('Worktree')),
+                    ],
+                    onChanged: (value) =>
+                        setState(() => _isolation = value ?? 'local'),
+                  ),
+                ],
+                if (workspaceLifecycle.showArchiveOnFinish) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Archive on finish'),
+                      ToggleSwitch(
+                        checked: _archiveOnFinish,
+                        onChanged: (value) =>
+                            setState(() => _archiveOnFinish = value),
+                      ),
+                    ],
+                  ),
+                ],
                 _cadenceEditor(),
-                const SizedBox(height: 12),
-                const Text('Isolation'),
-                const SizedBox(height: 6),
-                ComboBox<String>(
-                  value: _isolation,
-                  items: const [
-                    ComboBoxItem(value: 'local', child: Text('Local')),
-                    ComboBoxItem(value: 'worktree', child: Text('Worktree')),
-                  ],
-                  onChanged: (value) =>
-                      setState(() => _isolation = value ?? 'local'),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Archive on finish'),
-                    ToggleSwitch(
-                      checked: _archiveOnFinish,
-                      onChanged: (value) =>
-                          setState(() => _archiveOnFinish = value),
-                    ),
-                  ],
-                ),
                 _field('Max runs', _maxRuns, placeholder: 'Unlimited'),
               ],
               if (_error != null) ...[
@@ -1125,6 +1145,22 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
       setState(() => _error = 'A connected host is required.');
       return;
     }
+    final client = ref.read(hostRuntimeClientsProvider)[serverId];
+    final supportsWorkspaceMultiplicity =
+        client?.serverInfo?.features['workspaceMultiplicity'] == true;
+    final selectedProject = ref
+        .read(scheduleProjectTargetsProvider)
+        .value
+        ?.targets
+        .where((target) => target.serverId == serverId && target.cwd == cwd)
+        .firstOrNull;
+    final workspaceLifecycle = resolveScheduleWorkspaceLifecycle(
+      supportsWorkspaceMultiplicity: supportsWorkspaceMultiplicity,
+      hasProject: cwd.isNotEmpty,
+      projectIsGit: selectedProject?.isGit == true,
+      isolation: _isolation,
+      archiveOnFinish: _archiveOnFinish,
+    );
     setState(() {
       _submitting = true;
       _error = null;
@@ -1145,8 +1181,9 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
               model: _model,
               modeId: _modeId,
               thinkingOptionId: _thinkingOptionId,
-              isolation: _isolation,
-              archiveOnFinish: _archiveOnFinish,
+              isolation: workspaceLifecycle.submitIsolation,
+              archiveOnFinish: workspaceLifecycle.submitArchiveOnFinish,
+              title: _name.text.trim().isEmpty ? null : _name.text.trim(),
             ),
           ),
           maxRuns: maxRuns,
@@ -1165,8 +1202,10 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
             'model': _model,
             'modeId': _modeId,
             'thinkingOptionId': _thinkingOptionId,
-            'isolation': _isolation,
-            'archiveOnFinish': _archiveOnFinish,
+            if (workspaceLifecycle.submitIsolation != null)
+              'isolation': workspaceLifecycle.submitIsolation,
+            if (workspaceLifecycle.submitArchiveOnFinish != null)
+              'archiveOnFinish': workspaceLifecycle.submitArchiveOnFinish,
           };
         }
         await notifier.updateSchedule(serverId, widget.schedule!.id, changes);
