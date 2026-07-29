@@ -124,23 +124,105 @@ void main() {
     );
   });
 
-  test('uses only the frozen default for an unconfigured home', () {
+  test('uses Tinyrack local first and the frozen host as fallback', () {
     final home = Directory.systemTemp.createTempSync('cli-daemon-default-');
     addTearDown(() => home.deleteSync(recursive: true));
 
     expect(resolveDefaultDaemonHosts(home: home.path, environment: const {}), [
+      '127.0.0.1:6868',
       'localhost:6767',
     ]);
     expect(
       resolveDefaultDaemonHost(home: home.path, environment: const {}),
-      defaultCliDaemonHost,
+      '127.0.0.1:6868',
     );
     expect(
       getDaemonHost(home: home.path, environment: const {}),
-      defaultCliDaemonHost,
+      '127.0.0.1:6868',
     );
     expect(defaultCliDaemonConnectTimeout, const Duration(seconds: 15));
   });
+
+  test(
+    'tries direct candidates in order and returns the first success',
+    () async {
+      final home = Directory.systemTemp.createTempSync('cli-daemon-failover-');
+      addTearDown(() => home.deleteSync(recursive: true));
+      File(p.join(home.path, 'config.json')).writeAsStringSync(
+        jsonEncode({
+          'version': 1,
+          'daemon': {'listen': '127.0.0.1:7777'},
+        }),
+      );
+      final attempts = <String>[];
+
+      final result = await connectToDirectDaemon(
+        home: home.path,
+        environment: const {'TINYRACK_PASSWORD': 'secret'},
+        timeout: const Duration(milliseconds: 25),
+        connect:
+            ({
+              required host,
+              required target,
+              required password,
+              required timeout,
+            }) async {
+              attempts.add(host);
+              expect(password, 'secret');
+              expect(timeout, const Duration(milliseconds: 25));
+              if (host == '127.0.0.1:7777') {
+                throw StateError('configured unavailable');
+              }
+              expect(target.url, 'ws://localhost:6767/ws');
+              return 'connected';
+            },
+      );
+
+      expect(result, 'connected');
+      expect(attempts, ['127.0.0.1:7777', 'localhost:6767']);
+    },
+  );
+
+  test(
+    'rethrows the final direct error and nullable connect contains it',
+    () async {
+      var attempts = 0;
+      Future<String> fail({
+        required String host,
+        required CliDaemonTarget target,
+        required String? password,
+        required Duration timeout,
+      }) async {
+        attempts++;
+        throw StateError('offline $host');
+      }
+
+      await expectLater(
+        connectToDirectDaemon(
+          host: 'remote.test:7000',
+          environment: const {},
+          connect: fail,
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'offline remote.test:7000',
+          ),
+        ),
+      );
+      expect(attempts, 1);
+      expect(
+        await tryConnectToDirectDaemon(
+          host: 'remote.test:7000',
+          environment: const {},
+          connect: fail,
+        ),
+        isNull,
+      );
+      expect(attempts, 2);
+    },
+  );
 
   test('resolves agent IDs with frozen match precedence', () {
     const agents = [

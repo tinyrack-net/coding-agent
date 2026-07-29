@@ -45,6 +45,14 @@ final class CliAgentIdentity {
   final String? title;
 }
 
+typedef CliDirectDaemonConnector<T> =
+    Future<T> Function({
+      required String host,
+      required CliDaemonTarget target,
+      required String? password,
+      required Duration timeout,
+    });
+
 String getDaemonHost({
   String? host,
   Map<String, String>? environment,
@@ -138,9 +146,7 @@ List<String> resolveDefaultDaemonHosts({
   final configured = normalizeDaemonHost(config.listen);
   if (_isIpcDaemonHost(configured)) {
     candidates.add(configured!);
-  } else if (_isTcpDaemonHost(configured) &&
-      configured != defaultTinyrackListen &&
-      configured != '127.0.0.1:6767') {
+  } else if (_isTcpDaemonHost(configured) && configured != '127.0.0.1:6767') {
     candidates.add(configured!);
   }
   candidates.add(defaultCliDaemonHost);
@@ -156,6 +162,62 @@ List<String> resolveDaemonHostCandidates({
   final explicit = host ?? env['TINYRACK_HOST'];
   if (explicit != null && explicit.isNotEmpty) return [explicit];
   return resolveDefaultDaemonHosts(environment: env, home: home);
+}
+
+Future<T> connectToDirectDaemon<T>({
+  String? host,
+  Map<String, String>? environment,
+  String? home,
+  Duration timeout = defaultCliDaemonConnectTimeout,
+  required CliDirectDaemonConnector<T> connect,
+}) async {
+  final env = environment ?? Platform.environment;
+  final hosts = resolveDaemonHostCandidates(
+    host: host,
+    environment: env,
+    home: home,
+  );
+  Object? lastError;
+  StackTrace? lastStackTrace;
+  for (final candidate in hosts) {
+    try {
+      return await connect(
+        host: candidate,
+        target: resolveDaemonTarget(candidate),
+        password: resolveDaemonPassword(candidate, environment: env),
+        timeout: timeout,
+      );
+    } on Object catch (error, stackTrace) {
+      lastError = error;
+      lastStackTrace = stackTrace;
+    }
+  }
+  if (lastError != null) {
+    Error.throwWithStackTrace(lastError, lastStackTrace!);
+  }
+  throw StateError(
+    'Unable to connect to coding-agent daemon via ${hosts.join(', ')}',
+  );
+}
+
+Future<T?> tryConnectToDirectDaemon<T>({
+  String? host,
+  Map<String, String>? environment,
+  String? home,
+  Duration timeout = defaultCliDaemonConnectTimeout,
+  required CliDirectDaemonConnector<T> connect,
+}) async {
+  try {
+    return await connectToDirectDaemon(
+      host: host,
+      environment: environment,
+      home: home,
+      timeout: timeout,
+      connect: connect,
+    );
+  } on Object {
+    return null;
+  }
 }
 
 CliDaemonTarget resolveDaemonTarget(String host) {

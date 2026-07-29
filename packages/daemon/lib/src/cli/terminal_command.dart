@@ -7,6 +7,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
 import 'cli_client_id.dart';
+import 'cli_daemon_client.dart';
 import 'cli_output.dart';
 import 'cli_version.dart';
 
@@ -569,76 +570,80 @@ final class DaemonCliSocketClient {
     required String? hostOverride,
     required Map<String, String> environment,
     Duration timeout = terminalDaemonRpcTimeout,
-  }) async {
-    var host = switch (config.host) {
-      '0.0.0.0' || '::' => '127.0.0.1',
-      final value => value,
-    };
-    var port = config.port;
-    if (hostOverride != null) {
-      final uri = Uri.parse(
-        hostOverride.contains('://') ? hostOverride : 'ws://$hostOverride',
-      );
-      host = uri.host;
-      port = uri.hasPort ? uri.port : config.port;
-    }
-    final password = environment['TINYRACK_PASSWORD']?.trim();
-    final deadline = DateTime.now().add(timeout);
-    Duration remaining() {
-      final value = deadline.difference(DateTime.now());
-      return value.isNegative || value == Duration.zero
-          ? const Duration(microseconds: 1)
-          : value;
-    }
+  }) => connectToDirectDaemon(
+    host: hostOverride,
+    environment: environment,
+    home: config.home,
+    timeout: timeout,
+    connect:
+        ({
+          required host,
+          required target,
+          required password,
+          required timeout,
+        }) async {
+          if (target is! CliTcpDaemonTarget) {
+            throw UnsupportedError(
+              'IPC daemon transport is not available for $host',
+            );
+          }
+          final deadline = DateTime.now().add(timeout);
+          Duration remaining() {
+            final value = deadline.difference(DateTime.now());
+            return value.isNegative || value == Duration.zero
+                ? const Duration(microseconds: 1)
+                : value;
+          }
 
-    WebSocket? socket;
-    StreamIterator<dynamic>? frames;
-    try {
-      final connectedSocket = await WebSocket.connect(
-        Uri(scheme: 'ws', host: host, port: port, path: '/ws').toString(),
-        protocols: password == null || password.isEmpty
-            ? null
-            : ['tinyrack.bearer.$password'],
-        compression: CompressionOptions.compressionOff,
-      ).timeout(remaining());
-      socket = connectedSocket;
-      final connectedFrames = StreamIterator<dynamic>(connectedSocket);
-      frames = connectedFrames;
-      final clientId = await getOrCreateCliClientId(
-        home: config.home,
-        environment: environment,
-      );
-      connectedSocket.add(
-        jsonEncode(
-          WebSocketHello(
-            clientId: clientId,
-            clientType: WebSocketClientType.cli,
-            protocolVersion: paseoWebSocketProtocolVersion,
-            appVersion: resolveCliVersion(),
-          ).toJson(),
-        ),
-      );
-      final serverInfo = ServerInfoStatus.fromJson(
-        await _nextMessage(
-          connectedFrames,
-          (message) => message['status'] == 'server_info',
-          allowEnvelope: false,
-          timeout: remaining(),
-        ),
-      );
-      final client = DaemonCliSocketClient._(
-        connectedSocket,
-        connectedFrames,
-        serverInfo,
-      );
-      client._pump = client._pumpFrames();
-      return client;
-    } on Object {
-      await frames?.cancel();
-      await socket?.close();
-      rethrow;
-    }
-  }
+          WebSocket? socket;
+          StreamIterator<dynamic>? frames;
+          try {
+            final connectedSocket = await WebSocket.connect(
+              target.url,
+              protocols: password == null || password.isEmpty
+                  ? null
+                  : ['tinyrack.bearer.$password'],
+              compression: CompressionOptions.compressionOff,
+            ).timeout(remaining());
+            socket = connectedSocket;
+            final connectedFrames = StreamIterator<dynamic>(connectedSocket);
+            frames = connectedFrames;
+            final clientId = await getOrCreateCliClientId(
+              home: config.home,
+              environment: environment,
+            );
+            connectedSocket.add(
+              jsonEncode(
+                WebSocketHello(
+                  clientId: clientId,
+                  clientType: WebSocketClientType.cli,
+                  protocolVersion: paseoWebSocketProtocolVersion,
+                  appVersion: resolveCliVersion(),
+                ).toJson(),
+              ),
+            );
+            final serverInfo = ServerInfoStatus.fromJson(
+              await _nextMessage(
+                connectedFrames,
+                (message) => message['status'] == 'server_info',
+                allowEnvelope: false,
+                timeout: remaining(),
+              ),
+            );
+            final client = DaemonCliSocketClient._(
+              connectedSocket,
+              connectedFrames,
+              serverInfo,
+            );
+            client._pump = client._pumpFrames();
+            return client;
+          } on Object {
+            await frames?.cancel();
+            await socket?.close();
+            rethrow;
+          }
+        },
+  );
 
   Future<Map<String, Object?>> request(
     Map<String, Object?> request, {
