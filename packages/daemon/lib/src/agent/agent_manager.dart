@@ -1478,10 +1478,18 @@ class AgentManager {
 
   Future<AgentSummary> detach(String agentId) async {
     final runtime = _runtime(agentId);
-    if (runtime.summary.parentAgentId == null) {
+    final previousParentAgentId =
+        runtime.summary.parentAgentId ??
+        parentAgentIdFromLabels(runtime.summary.labels);
+    if (previousParentAgentId == null) {
       return runtime.summary;
     }
-    runtime.summary = runtime.summary.copyWith(clearParentAgentId: true);
+    final labels = {...runtime.summary.labels}..remove(paseoParentAgentIdLabel);
+    runtime.summary = runtime.summary.copyWith(
+      clearParentAgentId: true,
+      labels: Map.unmodifiable(labels),
+      updatedAt: DateTime.now().toUtc().toIso8601String(),
+    );
     _persist(runtime);
     await _store.flush();
     _broadcastState(runtime);

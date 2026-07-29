@@ -969,8 +969,21 @@ void main() {
 
       final detached = await restored.detach(child.agentId);
       expect(detached.parentAgentId, isNull);
+      expect(detached.labels, isNot(contains(paseoParentAgentIdLabel)));
       expect((await restored.detach(child.agentId)).parentAgentId, isNull);
       await restored.dispose();
+
+      final reloaded = AgentManager(
+        clients: {'claude': client},
+        store: AgentStore(dataDir: tempDir.path),
+      );
+      await reloaded.load();
+      final durableChild = reloaded.get(child.agentId)!;
+      expect(durableChild.parentAgentId, isNull);
+      expect(durableChild.labels, isNot(contains(paseoParentAgentIdLabel)));
+      await reloaded.archive(parent.agentId);
+      expect(reloaded.get(child.agentId)?.archivedAt, isNull);
+      await reloaded.dispose();
     },
   );
 

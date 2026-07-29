@@ -1077,6 +1077,35 @@ Future<DaemonServerHandle> startDaemonServer({
         agentId: request.agentId,
       ).toJson();
     }
+    if (message['type'] == AgentDetachRequest.type) {
+      final request = AgentDetachRequest.fromJson(message);
+      try {
+        final before = manager.get(request.agentId);
+        final previousParent =
+            before?.parentAgentId ?? parentAgentIdFromLabels(before?.labels);
+        final agent = await manager.detach(request.agentId);
+        final parentWorkspaceId = previousParent == null
+            ? null
+            : manager.get(previousParent)?.workspaceId;
+        if (parentWorkspaceId != null &&
+            parentWorkspaceId != agent.workspaceId) {
+          await workspaceV2.onAgentStateChanged(parentWorkspaceId);
+        }
+        return AgentDetachResponse(
+          requestId: request.requestId,
+          agentId: request.agentId,
+          accepted: true,
+          error: null,
+        ).toJson();
+      } on Object catch (error) {
+        return AgentDetachResponse(
+          requestId: request.requestId,
+          agentId: request.agentId,
+          accepted: false,
+          error: '$error'.replaceFirst(RegExp(r'^[^:]+Exception: '), ''),
+        ).toJson();
+      }
+    }
     if (message['type'] == SendAgentMessageRequest.type) {
       return _handlePaseoSendAgentMessage(
         manager,

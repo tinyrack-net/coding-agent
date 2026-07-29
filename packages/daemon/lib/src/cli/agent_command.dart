@@ -81,6 +81,14 @@ Future<int> runAgentCommand({
         details: 'Usage: coding-agent agent archive <id-or-name>',
       );
     }
+    if (invocation.action == 'detach' &&
+        (invocation.agentId == null || invocation.agentId!.trim().isEmpty)) {
+      throw const AgentCommandException(
+        'MISSING_AGENT_ID',
+        'Agent ID is required',
+        details: 'Usage: coding-agent agent detach <id-or-name>',
+      );
+    }
     final env = environment ?? Platform.environment;
     var send = request;
     if (send == null) {
@@ -206,6 +214,7 @@ final class AgentCliInvocation {
       'wait',
       'archive',
       'delete',
+      'detach',
     }.contains(action)) {
       throw FormatException('Unknown agent action: $action');
     }
@@ -344,6 +353,9 @@ final class AgentCliInvocation {
     if (action == 'delete' && positionals.length > 1) {
       throw const FormatException('agent delete accepts at most one Agent ID');
     }
+    if (action == 'detach' && positionals.length > 1) {
+      throw const FormatException('agent detach accepts exactly one Agent ID');
+    }
     final normalizedThinking = thinking?.trim();
     return AgentCliInvocation(
       action: action,
@@ -351,7 +363,8 @@ final class AgentCliInvocation {
           action == 'send' ||
               action == 'wait' ||
               action == 'archive' ||
-              action == 'delete'
+              action == 'delete' ||
+              action == 'detach'
           ? positionals.firstOrNull
           : positionals.firstOrNull?.trim(),
       modeId: action == 'mode' && positionals.length == 2
@@ -399,6 +412,7 @@ Future<_AgentCommandResult> _execute(
     'wait' => _waitAgent(invocation, resolvedWaitTimeout!, request),
     'archive' => _archiveAgent(invocation, request),
     'delete' => _deleteAgents(invocation, request, writeWarning),
+    'detach' => _detachAgent(invocation, request),
     _ => throw StateError('Unhandled agent action'),
   };
 }
@@ -988,6 +1002,53 @@ Future<_AgentCommandResult> _archiveAgent(
   }
 }
 
+Future<_AgentCommandResult> _detachAgent(
+  AgentCliInvocation invocation,
+  AgentRpcRequester request,
+) async {
+  try {
+    final directoryPayload = await request(
+      FetchAgentsRequest(
+        requestId: _requestId('agent_detach_list'),
+        filter: const AgentDirectoryFilter(includeArchived: true),
+      ).toJson(),
+    );
+    final agents = _stopDirectoryAgents(directoryPayload);
+    final agentId = _resolveArchiveAgentId(invocation.agentId!, agents);
+    if (agentId == null) {
+      throw AgentCommandException(
+        'AGENT_NOT_FOUND',
+        'Agent not found: ${invocation.agentId}',
+      );
+    }
+    final payload = await request(
+      AgentDetachRequest(
+        requestId: _requestId('agent_detach'),
+        agentId: agentId,
+      ).toJson(),
+    );
+    final response = AgentDetachResponse.fromJson({
+      'type': AgentDetachResponse.type,
+      'payload': payload,
+    });
+    if (!response.accepted) {
+      throw StateError(response.error ?? 'detachAgent rejected');
+    }
+    return _AgentCommandResult.detach({
+      'agentId': agentId,
+      'status': 'detached',
+    });
+  } on AgentCommandException {
+    rethrow;
+  } on Object catch (error, stackTrace) {
+    throw AgentCommandException(
+      'UNKNOWN_ERROR',
+      _errorText(error),
+      details: '$stackTrace',
+    );
+  }
+}
+
 String? _resolveArchiveAgentId(
   String identifier,
   List<Map<String, Object?>> agents,
@@ -1532,6 +1593,13 @@ final class _AgentCommandResult {
         structured: Map.unmodifiable(data),
       );
 
+  factory _AgentCommandResult.detach(Map<String, Object?> data) =>
+      _AgentCommandResult._(
+        rows: [Map.unmodifiable(data)],
+        kind: _AgentResultKind.detach,
+        structured: Map.unmodifiable(data),
+      );
+
   final List<Map<String, Object?>> rows;
   final _AgentResultKind kind;
   final Object? structured;
@@ -1547,6 +1615,7 @@ enum _AgentResultKind {
   wait,
   archive,
   delete,
+  detach,
 }
 
 String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
@@ -1561,6 +1630,7 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       _AgentResultKind.wait => 'agentId',
       _AgentResultKind.archive => 'agentId',
       _AgentResultKind.delete => 'agentIds',
+      _AgentResultKind.detach => 'agentId',
     };
     if (result.kind == _AgentResultKind.stop ||
         result.kind == _AgentResultKind.delete) {
@@ -1607,6 +1677,10 @@ String _render(_AgentCommandResult result, AgentCliInvocation invocation) {
       ('ARCHIVED AT', 'archivedAt', 24),
     ],
     _AgentResultKind.delete => const [('DELETED', 'deletedCount', 0)],
+    _AgentResultKind.detach => const [
+      ('AGENT ID', 'agentId', 12),
+      ('STATUS', 'status', 12),
+    ],
     _AgentResultKind.agents => const [
       ('AGENT ID', 'shortId', 12),
       ('NAME', 'name', 20),
@@ -1860,6 +1934,7 @@ const agentUsage =
     '       coding-agent agent wait <id> [options]\n'
     '       coding-agent agent archive <id-or-name> [options]\n'
     '       coding-agent agent delete [<id>|--all|--cwd <path>] [options]\n'
+    '       coding-agent agent detach <id-or-name> [options]\n'
     '       coding-agent ls [options]\n'
     '       coding-agent inspect <id> [options]';
 
@@ -1893,6 +1968,9 @@ String _agentHelp(String? action) => switch (action) {
         'Permanently delete one or more agents\n\n'
         '  --all         Delete all non-archived agents\n'
         '  --cwd <path>  Delete non-archived agents under a path\n',
+  'detach' =>
+    'Usage: coding-agent agent detach [options] <id>\n'
+        'Make a subagent independent without stopping or moving it\n',
   _ =>
     'Usage: coding-agent agent [command]\n'
         'Manage agents (advanced operations)\n\n'
@@ -1905,5 +1983,6 @@ String _agentHelp(String? action) => switch (action) {
         '  send     Send a message/task to an existing agent\n'
         '  wait     Wait for an agent to become idle\n'
         '  archive  Archive an agent (soft-delete)\n'
-        '  delete   Permanently delete one or more agents\n',
+        '  delete   Permanently delete one or more agents\n'
+        '  detach   Make a subagent independent\n',
 };

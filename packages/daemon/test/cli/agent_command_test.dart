@@ -20,6 +20,7 @@ void main() {
         ['wait', '--help'],
         ['archive', '--help'],
         ['delete', '--help'],
+        ['detach', '--help'],
       ]) {
         final output = StringBuffer();
         expect(
@@ -45,6 +46,7 @@ void main() {
         ['agent', 'wait', '--help'],
         ['agent', 'archive', '--help'],
         ['agent', 'delete', '--help'],
+        ['agent', 'detach', '--help'],
         ['ls', '--help'],
         ['inspect', '--help'],
         ['stop', '--help'],
@@ -1766,6 +1768,137 @@ void main() {
     },
   );
 
+  test('detach resolves frozen id, prefix, and title precedence', () async {
+    final agents = [
+      _entry(_snapshot(id: 'alpha-first', title: 'Workspace Builder')),
+      _entry(_snapshot(id: 'alpha-second', title: 'Other Agent')),
+      _entry(_snapshot(id: 'beta-agent', title: 'Unique Dashboard')),
+    ];
+    for (final entry in const [
+      (query: 'beta-agent', expected: 'beta-agent'),
+      (query: 'beta', expected: 'beta-agent'),
+      (query: 'workspace builder', expected: 'alpha-first'),
+      (query: 'dashboard', expected: 'beta-agent'),
+      (query: 'alpha', expected: 'alpha-first'),
+    ]) {
+      final sent = <Map<String, Object?>>[];
+      final output = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: ['detach', entry.query, '--json'],
+          request: (message) async {
+            sent.add(message);
+            if (message['type'] == 'fetch_agents_request') {
+              return _listPayload(agents);
+            }
+            return {
+              'requestId': message['requestId'],
+              'agentId': message['agentId'],
+              'accepted': true,
+              'error': null,
+            };
+          },
+          writeOutput: output.write,
+        ),
+        0,
+      );
+      expect(sent.first, {
+        'type': 'fetch_agents_request',
+        'requestId': isA<String>(),
+        'filter': {'includeArchived': true},
+      });
+      expect(sent.last, {
+        'type': 'agent.detach.request',
+        'requestId': isA<String>(),
+        'agentId': entry.expected,
+      });
+      expect(jsonDecode(output.toString()), {
+        'agentId': entry.expected,
+        'status': 'detached',
+      });
+    }
+  });
+
+  test('detach supports table, yaml, and quiet output', () async {
+    Future<Map<String, Object?>> request(Map<String, Object?> message) async =>
+        message['type'] == 'fetch_agents_request'
+        ? _listPayload([_entry(_snapshot(id: 'child-agent'))])
+        : {
+            'requestId': message['requestId'],
+            'agentId': message['agentId'],
+            'accepted': true,
+            'error': null,
+          };
+
+    final table = StringBuffer();
+    await runAgentCommand(
+      arguments: const ['detach', 'child'],
+      request: request,
+      writeOutput: table.write,
+    );
+    expect(table.toString(), startsWith('AGENT ID'));
+    expect(table.toString(), contains('detached'));
+
+    final yaml = StringBuffer();
+    await runAgentCommand(
+      arguments: const ['detach', 'child', '--format', 'yaml'],
+      request: request,
+      writeOutput: yaml.write,
+    );
+    expect(yaml.toString(), contains('status: detached'));
+
+    final quiet = StringBuffer();
+    await runAgentCommand(
+      arguments: const ['detach', 'child', '--quiet'],
+      request: request,
+      writeOutput: quiet.write,
+    );
+    expect(quiet.toString(), 'child-agent\n');
+  });
+
+  test('detach preserves frozen structured and unknown errors', () async {
+    Future<Map<String, dynamic>> fail(
+      List<String> arguments,
+      AgentRpcRequester request,
+    ) async {
+      final error = StringBuffer();
+      expect(
+        await runAgentCommand(
+          arguments: [...arguments, '--json'],
+          request: request,
+          writeError: error.write,
+        ),
+        1,
+      );
+      return (jsonDecode(error.toString()) as Map<String, dynamic>)['error']
+          as Map<String, dynamic>;
+    }
+
+    expect(
+      (await fail(['detach'], (_) async => const {}))['code'],
+      'MISSING_AGENT_ID',
+    );
+    final notFound = await fail([
+      'detach',
+      'missing',
+    ], (_) async => _listPayload([]));
+    expect(notFound['code'], 'AGENT_NOT_FOUND');
+
+    final rejected = await fail(
+      ['detach', 'child'],
+      (message) async => message['type'] == 'fetch_agents_request'
+          ? _listPayload([_entry(_snapshot(id: 'child-agent'))])
+          : {
+              'requestId': message['requestId'],
+              'agentId': message['agentId'],
+              'accepted': false,
+              'error': 'detach refused',
+            },
+    );
+    expect(rejected['code'], 'UNKNOWN_ERROR');
+    expect(rejected['message'], 'detach refused');
+  });
+
   test('parser and invalid thinking errors are deterministic', () async {
     for (final arguments in const [
       <String>[],
@@ -1790,6 +1923,7 @@ void main() {
       ['archive', 'one', '--force=false'],
       ['delete', 'one', 'two'],
       ['delete', '--cwd'],
+      ['detach', 'one', 'two'],
       ['wait', 'one', '--force'],
       ['ls', '--list'],
       ['ls', '--format', 'xml'],
