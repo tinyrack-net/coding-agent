@@ -282,6 +282,8 @@ void main() {
       <String>[],
       ['future'],
       ['create', 'prompt', '--cron', '* * * * *', '--unknown'],
+      ['create', 'prompt', '--cron', '* * * * *', '--format', 'xml'],
+      ['create', 'prompt', '--cron', '* * * * *', '--format'],
       ['update', 'id', '--name', 'not-supported'],
       ['delete', 'id', '--cron', '* * * * *'],
       ['delete'],
@@ -299,6 +301,112 @@ void main() {
       );
       expect(error, contains('Usage: coding-agent heartbeat'));
     }
+  });
+
+  test('heartbeat supports frozen yaml quiet and table options', () async {
+    Future<Map<String, Object?>> request(Map<String, Object?> message) async =>
+        switch (message['type']) {
+          'schedule/inspect' => {'schedule': _schedule(), 'error': null},
+          'schedule/delete' => {'scheduleId': 'heartbeat-1', 'error': null},
+          _ => {'schedule': _schedule(), 'error': null},
+        };
+
+    var output = '';
+    expect(
+      await runHeartbeatCommand(
+        arguments: ['create', 'prompt', '--cron', '* * * * *', '--format=yaml'],
+        environment: const {'TINYRACK_AGENT_ID': _agentId},
+        request: request,
+        writeOutput: (value) => output += value,
+      ),
+      0,
+    );
+    expect(output, startsWith('id: heartbeat-1\n'));
+    expect(output, contains('target: "agent:1111111"'));
+    expect(output, contains('lastRunAt: null'));
+
+    output = '';
+    expect(
+      await runHeartbeatCommand(
+        arguments: ['update', 'heartbeat-1', '--cron', '* * * * *', '-q'],
+        environment: const {'TINYRACK_AGENT_ID': _agentId},
+        request: request,
+        writeOutput: (value) => output += value,
+      ),
+      0,
+    );
+    expect(output, 'heartbeat-1\n');
+
+    output = '';
+    expect(
+      await runHeartbeatCommand(
+        arguments: ['delete', 'heartbeat-1', '--quiet'],
+        environment: const {'TINYRACK_AGENT_ID': _agentId},
+        request: request,
+        writeOutput: (value) => output += value,
+      ),
+      0,
+    );
+    expect(output, 'heartbeat-1\n');
+
+    output = '';
+    expect(
+      await runHeartbeatCommand(
+        arguments: [
+          'create',
+          'prompt',
+          '--cron',
+          '* * * * *',
+          '--no-headers',
+          '--no-color',
+        ],
+        environment: const {'TINYRACK_AGENT_ID': _agentId},
+        request: request,
+        writeOutput: (value) => output += value,
+      ),
+      0,
+    );
+    expect(output, isNot(contains('NEXT RUN')));
+    expect(output, contains('heartbeat-1'));
+
+    output = '';
+    expect(
+      await runHeartbeatCommand(
+        arguments: [
+          'create',
+          'prompt',
+          '--cron',
+          '* * * * *',
+          '--json',
+          '--format',
+          'yaml',
+        ],
+        environment: const {'TINYRACK_AGENT_ID': _agentId},
+        request: request,
+        writeOutput: (value) => output += value,
+      ),
+      0,
+    );
+    expect(jsonDecode(output), isA<Map<String, dynamic>>());
+  });
+
+  test('heartbeat renders runtime errors in YAML', () async {
+    var error = '';
+    expect(
+      await runHeartbeatCommand(
+        arguments: ['delete', 'heartbeat-1', '-oyaml'],
+        environment: const {'TINYRACK_AGENT_ID': _agentId},
+        request: (_) async => {
+          'schedule': _schedule(agentId: _otherAgentId),
+          'error': null,
+        },
+        writeError: (value) => error += value,
+      ),
+      1,
+    );
+    expect(error, startsWith('error:\n'));
+    expect(error, contains('code: HEARTBEAT_DELETE_FAILED'));
+    expect(error, contains('does not belong to agent'));
   });
 }
 

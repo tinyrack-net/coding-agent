@@ -160,6 +160,7 @@ RootOutputForwarding rootOutputForwarding(List<String> arguments) {
     'provider',
     'script',
     'chat',
+    'heartbeat',
     'workspace',
     'worktree',
   }.contains(first)) {
@@ -177,7 +178,6 @@ RootOutputForwarding rootOutputForwarding(List<String> arguments) {
     'daemon',
     'hub',
     'schedule',
-    'heartbeat',
     'loop',
   }.contains(first)) {
     return RootOutputForwarding.jsonOnly;

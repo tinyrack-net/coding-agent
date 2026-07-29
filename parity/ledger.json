@@ -9218,7 +9218,7 @@
         "packages/daemon/test/daemon_agent_cli_e2e_test.dart",
         "packages/daemon/test/daemon_agent_delete_e2e_test.dart"
       ],
-      "notes": "Frozen command registration, root help/version, hidden worktree compatibility alias, speech namespace, top-level/nested aliases, and Commander-style output options before full-output commands are ported. Chat now uses the shared renderer; the remaining JSON-only command families still require migration."
+      "notes": "Frozen command registration, root help/version, hidden worktree compatibility alias, speech namespace, top-level/nested aliases, and Commander-style output options before full-output commands are ported. Chat and heartbeat now use the shared renderer; the remaining JSON-only command families still require migration."
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/archive.ts",
@@ -9607,12 +9607,13 @@
     {
       "id": "source-unit:packages/cli/src/commands/heartbeat/index.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "Ports the frozen agent-scoped heartbeat CLI end to end: create/update/delete command and help surfaces, Tinyrack/Paseo caller identity compatibility, cron-only cadence and timezone handling, create metadata and expiry, JavaScript parseInt/safe-integer boundaries, exact agent-target ownership checks before mutation, shared schedule row and delete schemas, JSON/table/structured errors, daemon host/TLS/auth transport reuse, binary dispatch, and a real daemon WebSocket lifecycle."
+      "notes": "Ports the frozen agent-scoped heartbeat CLI end to end: create/update/delete command and help surfaces, Tinyrack/Paseo caller identity compatibility, cron-only cadence and timezone handling, create metadata and expiry, JavaScript parseInt/safe-integer boundaries, exact agent-target ownership checks before mutation, shared schedule/delete single-result schemas, table/JSON/YAML/quiet/header output, structured errors, daemon host/TLS/auth transport reuse, binary dispatch, and a real daemon WebSocket lifecycle."
     },
     {
       "id": "source-unit:packages/cli/src/commands/hooks.ts",
@@ -10179,9 +10180,11 @@
       "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
-        "packages/daemon/test/cli/chat_command_test.dart"
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/heartbeat_command_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "The shared Dart output entrypoint exports typed result, schema, JSON, YAML, quiet, table, and error rendering used by chat; remaining CLI families still need migration."
+      "notes": "The shared Dart output entrypoint exports typed result, schema, JSON, YAML, quiet, table, and error rendering used by chat and heartbeat; remaining CLI families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/json.ts",
@@ -10190,6 +10193,7 @@
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/daemon_chat_e2e_test.dart"
       ],
       "notes": "Pretty two-space single-object/list JSON and structured errors are ported; schema custom serializers and identical-list collapse remain."
@@ -10209,7 +10213,8 @@
       "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
-        "packages/daemon/test/cli/chat_command_test.dart"
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/heartbeat_command_test.dart"
       ],
       "notes": "Frozen single and list ID projection, empty-list behavior, and quiet precedence over structured formats are ported."
     },
@@ -10219,7 +10224,8 @@
       "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
-        "packages/daemon/test/cli/chat_command_test.dart"
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/heartbeat_command_test.dart"
       ],
       "notes": "Quiet precedence, JSON/YAML/table dispatch, custom human rendering, and structured errors are ported; ANSI color behavior and remaining consumers are pending."
     },
@@ -10229,7 +10235,8 @@
       "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
-        "packages/daemon/test/cli/chat_command_test.dart"
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/heartbeat_command_test.dart"
       ],
       "notes": "Frozen content-derived minimum widths, left/right/center alignment, header suppression, single/list rows, and no clipping are ported; ANSI-aware color measurement remains."
     },
@@ -10241,6 +10248,7 @@
         "packages/daemon/test/cli/cli_invocation_test.dart",
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
       "notes": "Root options, single/list results, schemas, columns, alignment, custom human renderers, and output options are typed; schema serializers and column color callbacks remain."
@@ -10248,16 +10256,18 @@
     {
       "id": "source-unit:packages/cli/src/output/with-output.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_invocation_test.dart",
         "packages/daemon/test/cli/cli_root_output_process_test.dart",
         "packages/daemon/test/cli/cli_output_test.dart",
         "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/daemon_chat_e2e_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart",
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": "Global and local options feed shared result and error rendering for chat and existing full-output commands; remaining JSON-only command families still need migration."
+      "notes": "Global and local options feed shared result and error rendering for chat, heartbeat, and existing full-output commands; remaining JSON-only command families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/yaml.ts",
@@ -10265,7 +10275,8 @@
       "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_output_test.dart",
-        "packages/daemon/test/cli/chat_command_test.dart"
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/heartbeat_command_test.dart"
       ],
       "notes": "Recursive maps/lists, empty collections, stable scalar quoting, single/list results, and structured errors are ported; schema custom serializers and document streaming remain."
     },

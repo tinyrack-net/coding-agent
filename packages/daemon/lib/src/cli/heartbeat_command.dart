@@ -1,9 +1,9 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_output.dart';
 import 'schedule_command.dart';
 
 typedef HeartbeatRpcRequester = ScheduleRpcRequester;
@@ -22,9 +22,9 @@ Future<int> runHeartbeatCommand({
     output(heartbeatHelp(arguments.isEmpty ? null : arguments.first));
     return 0;
   }
-  final jsonOutput = _hasOptionBeforeTerminator(arguments, const {'--json'});
+  HeartbeatCliInvocation? invocation;
   try {
-    final invocation = HeartbeatCliInvocation.parse(arguments);
+    invocation = HeartbeatCliInvocation.parse(arguments);
     final env = environment ?? Platform.environment;
     final agentId = _requireCallerAgentId(env);
     if (invocation.action != 'delete') _requireCron(invocation);
@@ -58,17 +58,18 @@ Future<int> runHeartbeatCommand({
         agentId,
         now ?? DateTime.now,
       );
-      output(
-        invocation.json
-            ? '${const JsonEncoder.withIndent('  ').convert(result.json)}\n'
-            : result.human,
-      );
+      final rendered = renderCliOutput(result, invocation.output);
+      if (rendered.isNotEmpty) output('$rendered\n');
       return 0;
     } finally {
       await client?.close();
     }
   } on ScheduleCommandException catch (error) {
-    _writeHeartbeatError(errorOutput, error, json: jsonOutput);
+    _writeHeartbeatError(
+      errorOutput,
+      error,
+      options: invocation?.output ?? const CliOutputOptions(),
+    );
     return 1;
   } on FormatException catch (error) {
     errorOutput('${error.message}\n$_heartbeatUsage\n');
@@ -77,7 +78,7 @@ Future<int> runHeartbeatCommand({
     _writeHeartbeatError(
       errorOutput,
       ScheduleCommandException('UNKNOWN_ERROR', _errorText(error)),
-      json: jsonOutput,
+      options: invocation?.output ?? const CliOutputOptions(),
     );
     return 1;
   }
@@ -88,16 +89,14 @@ final class HeartbeatCliInvocation {
     required this.action,
     required this.positionals,
     required this.values,
-    required this.flags,
-    required this.json,
+    required this.output,
     required this.host,
   });
 
   final String action;
   final List<String> positionals;
   final Map<String, String> values;
-  final Set<String> flags;
-  final bool json;
+  final CliOutputOptions output;
   final String? host;
 
   static HeartbeatCliInvocation parse(List<String> arguments) {
@@ -116,7 +115,11 @@ final class HeartbeatCliInvocation {
     };
     final positionals = <String>[];
     final values = <String, String>{};
-    final flags = <String>{};
+    var format = 'table';
+    var json = false;
+    var quiet = false;
+    var headers = true;
+    var color = true;
     var positionalOnly = false;
     for (var index = 1; index < arguments.length; index++) {
       final argument = arguments[index];
@@ -125,7 +128,18 @@ final class HeartbeatCliInvocation {
       } else if (positionalOnly) {
         positionals.add(argument);
       } else if (argument == '--json') {
-        flags.add(argument);
+        json = true;
+      } else if (argument == '-q' || argument == '--quiet') {
+        quiet = true;
+      } else if (argument == '--no-headers') {
+        headers = false;
+      } else if (argument == '--no-color') {
+        color = false;
+      } else if (argument == '-o' || argument == '--format') {
+        if (index + 1 >= arguments.length) {
+          throw FormatException('$argument requires a value');
+        }
+        format = normalizeCliOutputFormat(arguments[++index]);
       } else if (valueOptions.contains(argument)) {
         if (index + 1 >= arguments.length) {
           throw FormatException('$argument requires a value');
@@ -136,6 +150,12 @@ final class HeartbeatCliInvocation {
         final value,
       ) when valueOptions.contains(option)) {
         values[option] = value;
+      } else if (argument.startsWith('--format=')) {
+        format = normalizeCliOutputFormat(
+          argument.substring('--format='.length),
+        );
+      } else if (argument.startsWith('-o') && argument.length > 2) {
+        format = normalizeCliOutputFormat(argument.substring(2));
       } else if (argument.startsWith('-')) {
         throw FormatException('Unknown option: $argument');
       } else {
@@ -153,21 +173,18 @@ final class HeartbeatCliInvocation {
       action: action,
       positionals: List.unmodifiable(positionals),
       values: Map.unmodifiable(values),
-      flags: Set.unmodifiable(flags),
-      json: flags.contains('--json'),
+      output: CliOutputOptions(
+        format: json ? 'json' : format,
+        quiet: quiet,
+        noHeaders: !headers,
+        noColor: !color,
+      ),
       host: values['--host'],
     );
   }
 }
 
-final class _HeartbeatResult {
-  const _HeartbeatResult({required this.json, required this.human});
-
-  final Object? json;
-  final String human;
-}
-
-Future<_HeartbeatResult> _executeHeartbeat(
+Future<CliOutputResult> _executeHeartbeat(
   HeartbeatCliInvocation invocation,
   HeartbeatRpcRequester request,
   String agentId,
@@ -230,7 +247,7 @@ Future<_HeartbeatResult> _executeHeartbeat(
         });
         _throwPayloadError(payload);
         final row = {'id': payload['scheduleId'], 'status': 'deleted'};
-        return _HeartbeatResult(json: row, human: _deleteTable(row));
+        return CliOutputResult.single(row: row, schema: _heartbeatDeleteSchema);
     }
     throw StateError('Unhandled heartbeat action');
   } on ScheduleCommandException {
@@ -307,10 +324,10 @@ void _throwPayloadError(Map<String, Object?> payload) {
   }
 }
 
-_HeartbeatResult _heartbeatScheduleResult(Map<String, Object?> schedule) =>
-    _HeartbeatResult(
-      json: scheduleCliRow(schedule),
-      human: scheduleCliTable([schedule]),
+CliOutputResult _heartbeatScheduleResult(Map<String, Object?> schedule) =>
+    CliOutputResult.single(
+      row: scheduleCliRow(schedule),
+      schema: _heartbeatScheduleSchema,
     );
 
 int? _parseMaxRuns(String? value) {
@@ -352,33 +369,33 @@ String _isoMilliseconds(DateTime value) => DateTime.fromMillisecondsSinceEpoch(
   isUtc: true,
 ).toIso8601String();
 
-String _deleteTable(Map<String, Object?> row) => _table(
-  const ['ID', 'STATUS'],
-  [
-    ['${row['id'] ?? ''}', '${row['status'] ?? ''}'],
+final _heartbeatScheduleSchema = CliOutputSchema(
+  idField: (row) => '${row['id']}',
+  columns: [
+    CliOutputColumn(header: 'ID', field: (row) => row['id'], width: 10),
+    CliOutputColumn(header: 'NAME', field: (row) => row['name'], width: 20),
+    CliOutputColumn(
+      header: 'CADENCE',
+      field: (row) => row['cadence'],
+      width: 20,
+    ),
+    CliOutputColumn(header: 'TARGET', field: (row) => row['target'], width: 20),
+    CliOutputColumn(header: 'STATUS', field: (row) => row['status'], width: 12),
+    CliOutputColumn(
+      header: 'NEXT RUN',
+      field: (row) => row['nextRunAt'],
+      width: 24,
+    ),
   ],
-  minimumWidths: const [10, 12],
 );
 
-String _table(
-  List<String> headers,
-  List<List<String>> rows, {
-  required List<int> minimumWidths,
-}) {
-  final widths = [
-    for (var column = 0; column < headers.length; column++)
-      [
-        headers[column].length,
-        minimumWidths[column],
-        for (final row in rows) row[column].length,
-      ].reduce((left, right) => left > right ? left : right),
-  ];
-  String line(List<String> cells) => [
-    for (var index = 0; index < cells.length; index++)
-      cells[index].padRight(widths[index]),
-  ].join('  ');
-  return '${[line(headers), for (final row in rows) line(row)].join('\n')}\n';
-}
+final _heartbeatDeleteSchema = CliOutputSchema(
+  idField: (row) => '${row['id']}',
+  columns: [
+    CliOutputColumn(header: 'ID', field: (row) => row['id']),
+    CliOutputColumn(header: 'STATUS', field: (row) => row['status']),
+  ],
+);
 
 String _errorText(Object error) => switch (error) {
   StateError(message: final message) => message,
@@ -389,19 +406,10 @@ String _errorText(Object error) => switch (error) {
 void _writeHeartbeatError(
   void Function(String value) write,
   ScheduleCommandException error, {
-  required bool json,
+  required CliOutputOptions options,
 }) {
-  if (json) {
-    write(
-      '${const JsonEncoder.withIndent('  ').convert({
-        'error': {'code': error.code, 'message': error.message, if (error.details != null) 'details': error.details},
-      })}\n',
-    );
-    return;
-  }
   write(
-    'Error: ${error.message}'
-    '${error.details == null ? '' : '\n${error.details}'}\n',
+    '${renderCliError(code: error.code, message: error.message, details: error.details, options: options)}\n',
   );
 }
 

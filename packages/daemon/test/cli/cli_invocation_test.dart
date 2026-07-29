@@ -106,6 +106,24 @@ void main() {
     );
     expect(
       normalizeRootCliArguments(const [
+        '--format',
+        'yaml',
+        '--no-headers',
+        'heartbeat',
+        'delete',
+        'heartbeat-1',
+      ]).forward(),
+      const [
+        'heartbeat',
+        'delete',
+        'heartbeat-1',
+        '--format',
+        'yaml',
+        '--no-headers',
+      ],
+    );
+    expect(
+      normalizeRootCliArguments(const [
         '--json',
         'speech',
         'future-command',
