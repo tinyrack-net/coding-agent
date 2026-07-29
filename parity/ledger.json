@@ -555,93 +555,104 @@
     },
     {
       "id": "cli-command:schedule-create",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Frozen create parsing, validation, cadence compilation, target selection, stable output rows, structured errors, help, and real daemon socket lifecycle are covered."
     },
     {
       "id": "cli-command:schedule-delete",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Delete matches the frozen direct mutation path without an extra new-agent inspect gate and returns the exact stable row."
     },
     {
       "id": "cli-command:schedule-inspect",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Inspect filters legacy heartbeat targets, renders frozen key/value rows, and serializes the full schedule record in JSON."
     },
     {
       "id": "cli-command:schedule-logs",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Logs use the frozen new-agent guard and stable run-row projection, including safe seven-character agent ids."
     },
     {
       "id": "cli-command:schedule-ls",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "List hides legacy heartbeat schedules, emits no human header for an empty result, and returns frozen stable JSON rows."
     },
     {
       "id": "cli-command:schedule-pause",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Pause preserves the frozen new-agent inspect guard, action error code, and row output over the real daemon."
     },
     {
       "id": "cli-command:schedule-resume",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Resume preserves the frozen new-agent inspect guard, action error code, and row output over the real daemon."
     },
     {
       "id": "cli-command:schedule-run-once",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart; packages/daemon/lib/src/schedule/schedule_agent_runner.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart",
+        "packages/daemon/test/schedule/schedule_agent_runner_test.dart"
       ],
-      "notes": null
+      "notes": "Run-once crosses the CLI socket and real scheduler/agent runner, then appears in the frozen logs projection."
     },
     {
       "id": "cli-command:schedule-types",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/protocol/lib/src/messages/schedule.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Typed schedule records, targets, cadence, run records, create/update inputs, and daemon payloads are represented by the shared Dart protocol and exercised by every CLI action."
     },
     {
       "id": "cli-command:schedule-update",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/bin/coding_agent.dart; packages/protocol/lib/src/messages/schedule.dart; packages/daemon/lib/src/schedule/schedule_service.dart",
       "evidence": [
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": null
+      "notes": "Update validates before connecting, supports every frozen patch and clear operation, guards new-agent targets, serializes full records, and crosses the real daemon."
     },
     {
       "id": "cli-command:script-ls",

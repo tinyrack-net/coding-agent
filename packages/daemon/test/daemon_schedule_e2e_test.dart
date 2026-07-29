@@ -1,8 +1,12 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_daemon/src/daemon_server.dart';
 import 'package:agent_daemon/src/cli/schedule_command.dart';
+import 'package:agent_daemon/src/providers/agent_client.dart';
+import 'package:agent_daemon/src/providers/agent_session.dart';
+import 'package:agent_daemon/src/providers/provider_event.dart';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 import 'package:test/test.dart';
@@ -120,4 +124,112 @@ void main() {
     expect((deleted['payload'] as Map)['scheduleId'], id);
     expect((await handle.schedules.list()), isEmpty);
   });
+
+  test('schedule CLI lifecycle crosses the real daemon socket', () async {
+    final home = Directory.systemTemp.createTempSync(
+      'daemon-schedule-cli-home-',
+    );
+    final workspace = Directory.systemTemp.createTempSync(
+      'daemon-schedule-cli-workspace-',
+    );
+    addTearDown(() async {
+      if (home.existsSync()) await home.delete(recursive: true);
+      if (workspace.existsSync()) await workspace.delete(recursive: true);
+    });
+    final handle = await startDaemonServer(
+      paths: DaemonPaths(dataDir: home.path),
+      dataDir: home.path,
+      host: '127.0.0.1',
+      port: 0,
+      agentClients: {'codex': _ScheduleClient()},
+      log: (_) {},
+    );
+    addTearDown(handle.stop);
+    final host = '127.0.0.1:${handle.server.port}';
+
+    Future<Object?> command(List<String> arguments) async {
+      var output = '';
+      var error = '';
+      final code = await runScheduleCommand(
+        arguments: [...arguments, '--host', host, '--json'],
+        writeOutput: (value) => output += value,
+        writeError: (value) => error += value,
+      );
+      expect(code, 0, reason: error);
+      return jsonDecode(output);
+    }
+
+    final created =
+        await command([
+              'create',
+              'Review the branch',
+              '--cron',
+              '0 9 * * 1-5',
+              '--name',
+              'Review',
+              '--provider',
+              'codex',
+              '--cwd',
+              workspace.path,
+            ])
+            as Map<String, Object?>;
+    final id = created['id']! as String;
+    expect(id, matches(RegExp(r'^[0-9a-f]{8}$')));
+    expect((await command(['ls'])) as List, hasLength(1));
+    expect((await command(['inspect', id])) as Map, containsPair('id', id));
+    expect((await command(['pause', id]) as Map)['status'], 'paused');
+    expect((await command(['resume', id]) as Map)['status'], 'active');
+    expect(
+      (await command(['update', id, '--name', 'Updated']) as Map)['name'],
+      'Updated',
+    );
+    expect((await command(['run-once', id]) as Map)['id'], id);
+    final logs = await command(['logs', id]) as List;
+    expect(logs, hasLength(1));
+    expect((logs.single as Map)['status'], 'succeeded');
+    expect(await command(['delete', id]), {'id': id, 'status': 'deleted'});
+    expect(await command(['ls']), isEmpty);
+  });
+}
+
+final class _ScheduleClient implements AgentClient {
+  @override
+  Future<AgentSession> createSession({
+    required String cwd,
+    required String model,
+    required AgentMode mode,
+    String? modeId,
+    String? thinkingOptionId,
+    Map<String, Object?> featureValues = const {},
+    String? systemPrompt,
+    String? sessionId,
+    List<TimelineItem> initialHistory = const [],
+  }) async => _ScheduleSession();
+}
+
+final class _ScheduleSession implements AgentSession {
+  final _events = StreamController<ProviderEvent>.broadcast();
+
+  @override
+  Stream<ProviderEvent> get events => _events.stream;
+
+  @override
+  Future<void> prompt(String text) async {
+    scheduleMicrotask(() {
+      _events
+        ..add(
+          const AssistantMessageComplete(
+            itemId: 'schedule-output',
+            fullText: 'done',
+          ),
+        )
+        ..add(const TurnCompleted());
+    });
+  }
+
+  @override
+  Future<void> interrupt() async {}
+
+  @override
+  Future<void> dispose() => _events.close();
 }

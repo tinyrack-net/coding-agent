@@ -1,9 +1,39 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:isolate';
 
 import 'package:agent_daemon/src/cli/schedule_command.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'binary exposes schedule and action help',
+    () async {
+      final library = await Isolate.resolvePackageUri(
+        Uri.parse('package:agent_daemon/agent_daemon.dart'),
+      );
+      final packageRoot = File.fromUri(library!).parent.parent.path;
+      final results = await Future.wait([
+        for (final arguments in const [
+          ['schedule', '--help'],
+          ['schedule', 'create', '--help'],
+          ['schedule', 'update', '--help'],
+        ])
+          Process.run(Platform.resolvedExecutable, [
+            'run',
+            'agent_daemon:coding_agent',
+            ...arguments,
+          ], workingDirectory: packageRoot),
+      ]);
+      for (final result in results) {
+        expect(result.exitCode, 0);
+        expect(result.stdout, contains('Usage: coding-agent schedule'));
+        expect(result.stderr, isEmpty);
+      }
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
+
   test('create compiles cadence, provider model, and JSON output', () async {
     Map<String, Object?>? sent;
     var output = '';
@@ -40,7 +70,15 @@ void main() {
       'config': {'provider': 'codex', 'cwd': 'C:/repo', 'model': 'gpt-5.4'},
     });
     expect(sent!['runOnCreate'], isTrue);
-    expect(jsonDecode(output), containsPair('id', 'deadbeef'));
+    expect(jsonDecode(output), {
+      'id': 'deadbeef',
+      'name': 'Review',
+      'cadence': 'cron:*/5 * * * *',
+      'target': 'new-agent:codex',
+      'status': 'active',
+      'nextRunAt': '2026-07-27T00:05:00.000Z',
+      'lastRunAt': null,
+    });
   });
 
   test('remote create requires an explicit daemon-side cwd', () async {
@@ -60,7 +98,7 @@ void main() {
       writeError: (value) => error += value,
     );
 
-    expect(exitCode, 64);
+    expect(exitCode, 1);
     expect(error, contains('--cwd is required when --host is specified'));
   });
 
@@ -90,6 +128,19 @@ void main() {
     final decoded = jsonDecode(output) as List;
     expect(decoded, hasLength(1));
     expect(decoded.single['id'], 'deadbeef');
+  });
+
+  test('empty human lists produce no table header', () async {
+    var output = '';
+    expect(
+      await runScheduleCommand(
+        arguments: ['ls'],
+        request: (_) async => {'schedules': const [], 'error': null},
+        writeOutput: (value) => output += value,
+      ),
+      0,
+    );
+    expect(output, isEmpty);
   });
 
   test('pause verifies target type before mutating', () async {
@@ -125,8 +176,27 @@ void main() {
       writeError: (value) => error += value,
     );
 
-    expect(exitCode, 64);
-    expect(error, contains('Use either --max-runs or --no-max-runs'));
+    expect(exitCode, 1);
+    expect(error, contains('Use either --max-runs <n> or --no-max-runs'));
+  });
+
+  test('delete does not inspect before deleting', () async {
+    final types = <String>[];
+    final exitCode = await runScheduleCommand(
+      arguments: ['delete', 'deadbeef', '--json'],
+      request: (request) async {
+        types.add(request['type']! as String);
+        return {
+          'requestId': request['requestId'],
+          'scheduleId': request['scheduleId'],
+          'error': null,
+        };
+      },
+      writeOutput: (_) {},
+    );
+
+    expect(exitCode, 0);
+    expect(types, ['schedule/delete']);
   });
 
   test('human output covers every schedule lifecycle action', () async {
@@ -336,17 +406,29 @@ void main() {
   });
 
   test(
-    'validation and daemon payload failures return stable exit codes',
+    'syntax failures return usage while semantic failures are command errors',
     () async {
-      final cases = <List<String>>[
+      final syntaxCases = <List<String>>[
         const [],
         ['unknown'],
         ['ls', 'extra'],
         ['inspect'],
+        ['create', 'x', '--model', 'gpt'],
+        ['update', 'id', '--run-now'],
+      ];
+      for (final arguments in syntaxCases) {
+        final code = await runScheduleCommand(
+          arguments: arguments,
+          request: (_) async => fail('syntax failure must not call daemon'),
+          writeError: (_) {},
+        );
+        expect(code, 64, reason: '$arguments');
+      }
+
+      final semanticCases = <List<String>>[
         ['create', ''],
         ['create', 'x', '--every', '7m', '--provider', 'codex'],
         ['create', 'x', '--timezone', 'UTC', '--provider', 'codex'],
-        ['create', 'x', '--every', '5m', '--provider', 'codex', '--model'],
         [
           'create',
           'x',
@@ -366,13 +448,13 @@ void main() {
         ['update', 'id', '--cron', '0 9 * * *', '--every', '1h'],
         ['update', 'id', '--timezone', 'UTC'],
       ];
-      for (final arguments in cases) {
+      for (final arguments in semanticCases) {
         final code = await runScheduleCommand(
           arguments: arguments,
           request: (_) async => {'schedule': _schedule(), 'error': null},
           writeError: (_) {},
         );
-        expect(code, 64, reason: '$arguments');
+        expect(code, 1, reason: '$arguments');
       }
 
       expect(
@@ -388,6 +470,181 @@ void main() {
       );
     },
   );
+
+  test('JSON errors preserve frozen command code and details', () async {
+    var error = '';
+    final code = await runScheduleCommand(
+      arguments: [
+        'create',
+        'review',
+        '--every',
+        '7m',
+        '--provider',
+        'codex',
+        '--json',
+      ],
+      request: (_) async => fail('invalid cadence must not call daemon'),
+      writeError: (value) => error += value,
+    );
+
+    expect(code, 1);
+    expect(jsonDecode(error), {
+      'error': {
+        'code': 'UNREPRESENTABLE_CADENCE',
+        'message': '7m cannot be represented faithfully by five-field cron',
+        'details': 'Use --cron for calendar schedules',
+      },
+    });
+  });
+
+  test('semantic validation runs before daemon connection', () async {
+    var error = '';
+    final code = await runScheduleCommand(
+      arguments: ['update', 'deadbeef', '--json'],
+      environment: const {'TINYRACK_HOST': '127.0.0.1:1'},
+      writeError: (value) => error += value,
+    );
+
+    expect(code, 1);
+    expect((jsonDecode(error) as Map)['error'], {
+      'code': 'NO_UPDATES',
+      'message': 'Specify at least one field to update',
+    });
+  });
+
+  test('cron and timezone flags preserve frozen parser boundaries', () async {
+    Map<String, Object?>? sent;
+    expect(
+      await runScheduleCommand(
+        arguments: ['create', 'review', '--cron', '', '--provider', 'codex'],
+        request: (request) async {
+          sent = request;
+          return {'schedule': _schedule(), 'error': null};
+        },
+        writeOutput: (_) {},
+      ),
+      0,
+    );
+    expect(sent!['cadence'], {'type': 'cron', 'expression': ''});
+
+    var error = '';
+    expect(
+      await runScheduleCommand(
+        arguments: [
+          'create',
+          'review',
+          '--cron',
+          '0 9 * * *',
+          '--timezone',
+          '',
+          '--provider',
+          'codex',
+          '--json',
+        ],
+        request: (_) async => fail('empty timezone must not call daemon'),
+        writeError: (value) => error += value,
+      ),
+      1,
+    );
+    expect((jsonDecode(error) as Map)['error'], {
+      'code': 'INVALID_TIME_ZONE',
+      'message': '--timezone cannot be empty',
+    });
+  });
+
+  test(
+    'positive integer flags preserve JavaScript parseInt compatibility',
+    () async {
+      Map<String, Object?>? update;
+      expect(
+        await runScheduleCommand(
+          arguments: ['update', 'deadbeef', '--max-runs', '2runs'],
+          request: (request) async {
+            if (request['type'] == 'schedule/update') update = request;
+            return {'schedule': _schedule(), 'error': null};
+          },
+          writeOutput: (_) {},
+        ),
+        0,
+      );
+      expect(update!['maxRuns'], 2);
+    },
+  );
+
+  test('JSON list and logs serialize stable CLI rows', () async {
+    var listOutput = '';
+    await runScheduleCommand(
+      arguments: ['ls', '--json'],
+      request: (request) async => {
+        'schedules': [_schedule()],
+        'error': null,
+      },
+      writeOutput: (value) => listOutput += value,
+    );
+    expect((jsonDecode(listOutput) as List).single.keys, {
+      'id',
+      'name',
+      'cadence',
+      'target',
+      'status',
+      'nextRunAt',
+      'lastRunAt',
+    });
+
+    var logsOutput = '';
+    await runScheduleCommand(
+      arguments: ['logs', 'deadbeef', '--json'],
+      request: (request) async {
+        if (request['type'] == 'schedule/inspect') {
+          return {'schedule': _schedule(), 'error': null};
+        }
+        return {
+          'runs': [
+            {
+              'id': 'run-1',
+              'scheduledFor': 'ignored',
+              'startedAt': 'started',
+              'endedAt': 'ignored',
+              'status': 'succeeded',
+              'agentId': 'abc',
+              'output': 'done',
+              'error': null,
+            },
+          ],
+          'error': null,
+        };
+      },
+      writeOutput: (value) => logsOutput += value,
+    );
+    expect((jsonDecode(logsOutput) as List).single, {
+      'id': 'run-1',
+      'status': 'succeeded',
+      'startedAt': 'started',
+      'agentId': 'abc',
+      'output': 'done',
+      'error': null,
+    });
+  });
+
+  test('help and action-specific option boundaries are exposed', () async {
+    for (final arguments in [
+      ['--help'],
+      ['create', '--help'],
+      ['update', '--help'],
+      ['run-once', '--help'],
+    ]) {
+      var output = '';
+      expect(
+        await runScheduleCommand(
+          arguments: arguments,
+          request: (_) async => fail('help must not call daemon'),
+          writeOutput: (value) => output += value,
+        ),
+        0,
+      );
+      expect(output, contains('Usage: coding-agent schedule'));
+    }
+  });
 }
 
 Map<String, Object?> _schedule({String status = 'active'}) => {
