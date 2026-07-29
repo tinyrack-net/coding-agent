@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../composer/create_agent_preferences.dart';
 import '../composer/provider_model_selection.dart';
@@ -20,12 +21,45 @@ import '../widgets/adaptive_modal_sheet.dart';
 import '../widgets/combined_model_selector.dart';
 import '../widgets/fluent/select_field.dart';
 import '../widgets/fluent/toast.dart';
+import '../widgets/provider_icon.dart';
 
 enum _ScheduleFilter { active, ended }
 
 enum _ScheduleDerivedState { active, paused, expired, finished, targetGone }
 
 const _allScheduleHosts = '__all__';
+
+// Lucide 0.546.0, ISC. Matches the frozen Paseo schedule option glyphs.
+const _lucideFolderSvg = '''
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
+</svg>
+''';
+
+const _lucideGitBranchSvg = '''
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <line x1="6" x2="6" y1="3" y2="15"/>
+  <circle cx="18" cy="6" r="3"/>
+  <circle cx="6" cy="18" r="3"/>
+  <path d="M18 9a9 9 0 0 1-9 9"/>
+</svg>
+''';
+
+const _lucideBrainSvg = '''
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M12 18V5"/>
+  <path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"/>
+  <path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5"/>
+  <path d="M17.997 5.125a4 4 0 0 1 2.526 5.77"/>
+  <path d="M18 18a4 4 0 0 0 2-7.464"/>
+  <path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517"/>
+  <path d="M6 18a4 4 0 0 1-2-7.464"/>
+  <path d="M6.003 5.125a4 4 0 0 0-2.526 5.77"/>
+</svg>
+''';
 
 class SchedulesScreen extends ConsumerStatefulWidget {
   const SchedulesScreen({super.key, this.preferencesService});
@@ -748,7 +782,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
         children: _withFieldSpacing([
           if (agentTarget) ...[
             _agentTargetField(agentDirectories),
-            _cadenceEditor(),
+            _cadenceEditor(controlSize),
           ] else ...[
             if (editing || hosts.length > 1)
               _labeledControl(
@@ -812,22 +846,12 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                 scope: snapshotScope,
                 selection: providerSelection,
                 hasClient: client != null,
+                controlSize: controlSize,
               ),
             if (workspaceLifecycle.showIsolation)
-              _labeledControl(
-                'Isolation',
-                ComboBox<String>(
-                  key: const ValueKey('schedule-isolation-selector'),
-                  value: workspaceLifecycle.effectiveIsolation,
-                  items: const [
-                    ComboBoxItem(value: 'local', child: Text('Local')),
-                    ComboBoxItem(value: 'worktree', child: Text('Worktree')),
-                  ],
-                  onChanged: (value) => setState(() {
-                    _isolationTouched = true;
-                    _isolation = value ?? 'local';
-                  }),
-                ),
+              _isolationSelector(
+                workspaceLifecycle.effectiveIsolation,
+                controlSize,
               ),
             if (workspaceLifecycle.showArchiveOnFinish)
               _labeledControl(
@@ -841,7 +865,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                   ),
                 ),
               ),
-            _cadenceEditor(),
+            _cadenceEditor(controlSize),
             _field('Max runs', _maxRuns, placeholder: 'Unlimited'),
           ],
           if (_error != null)
@@ -946,7 +970,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     helper: helper,
   );
 
-  Widget _cadenceEditor() {
+  Widget _cadenceEditor(PaseoFieldControlSize controlSize) {
     final cadence = CronScheduleCadence(
       expression: _cron.text.trim(),
       timezone: _timezone,
@@ -957,31 +981,46 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     final preview = error == null && _cron.text.trim().isNotEmpty
         ? describeScheduleCron(cadence) ?? _cron.text.trim()
         : null;
+    final selectedPresetId = resolveCronPresetId(cadence);
     return _labeledControl(
       'Cadence',
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ComboBox<String>(
-            value: resolveCronPresetId(cadence),
-            items: [
+          PaseoSelectField<String>(
+            field: false,
+            triggerKey: const ValueKey('schedule-cadence-preset-trigger'),
+            label: 'Cadence',
+            value: selectedPresetId == customCronPresetId
+                ? null
+                : selectedPresetId,
+            selectedDisplay: SelectFieldDisplay(
+              label: resolveCronPresetLabel(cadence),
+            ),
+            options: [
               for (final preset in scheduleCadencePresets)
-                ComboBoxItem(value: preset.id, child: Text(preset.label)),
-              const ComboBoxItem(
-                value: customCronPresetId,
-                child: Text('Custom cron'),
-              ),
+                SelectFieldOption(
+                  id: preset.id,
+                  value: preset.id,
+                  label: preset.label,
+                  optionKey: ValueKey('schedule-cadence-preset-${preset.id}'),
+                ),
             ],
-            onChanged: (value) {
-              if (value == null || value == customCronPresetId) return;
+            onChanged: (value, _) {
               final preset = scheduleCadencePresets.firstWhere(
                 (preset) => preset.id == value,
               );
               setState(() => _cron.text = preset.expression);
             },
+            placeholder: 'Select cadence',
+            emptyText: 'No cadences found',
+            searchable: false,
+            title: 'Cadence',
+            size: controlSize,
           ),
           const SizedBox(height: 12),
           TextBox(
+            key: const ValueKey('cadence-cron-expression'),
             controller: _cron,
             placeholder: '0 9 * * *',
             style: const TextStyle(fontFamily: 'monospace'),
@@ -1043,7 +1082,10 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
               id: target.optionId,
               value: target.optionId,
               label: target.projectName,
-              leading: const Icon(FluentIcons.folder, size: 16),
+              leading: _lucideScheduleIcon(
+                _lucideFolderSvg,
+                key: ValueKey('schedule-project-icon-${target.optionId}'),
+              ),
             ),
         ],
         onChanged: (value, _) {
@@ -1087,6 +1129,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     required ProvidersSnapshotScope? scope,
     required ScheduleProviderSelection selection,
     required bool hasClient,
+    required PaseoFieldControlSize controlSize,
   }) {
     if (_cwd.text.trim().isEmpty) {
       return const Text('Select a project to choose a model.');
@@ -1124,6 +1167,23 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
             selectedModel: selection.model,
             isLoading: snapshot.isLoading || snapshot.isFetching,
             disabled: _submitting,
+            triggerFill: true,
+            renderTrigger: (input) => PaseoSelectFieldTrigger(
+              key: const ValueKey('schedule-model-trigger'),
+              label: input.selectedModelLabel,
+              isPlaceholder: selection.model.isEmpty,
+              placeholder: input.selectedModelLabel,
+              leading: selection.provider.isEmpty
+                  ? null
+                  : ProviderIcon(
+                      provider: selection.provider,
+                      size: 16,
+                      color: context.paseoPalette.foregroundMuted,
+                    ),
+              active: input.hovered || input.pressed || input.isOpen,
+              disabled: input.disabled,
+              size: controlSize,
+            ),
             onSelect: (provider, model) => setState(() {
               _selectionTouched = true;
               _provider = provider;
@@ -1149,42 +1209,145 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
         if (selection.thinkingOptions.isNotEmpty)
           _labeledControl(
             'Thinking',
-            ComboBox<String>(
-              key: const ValueKey('schedule-thinking-selector'),
+            PaseoSelectField<String>(
+              field: false,
+              triggerKey: const ValueKey('schedule-thinking-trigger'),
+              label: 'Thinking',
               value: selection.thinkingOptionId,
-              items: [
+              selectedDisplay: SelectFieldDisplay(
+                label:
+                    selection.thinkingOptions
+                        .where(
+                          (option) => option.id == selection.thinkingOptionId,
+                        )
+                        .firstOrNull
+                        ?.label ??
+                    selection.thinkingOptionId,
+              ),
+              options: [
                 for (final option in selection.thinkingOptions)
-                  ComboBoxItem(value: option.id, child: Text(option.label)),
+                  SelectFieldOption(
+                    id: option.id,
+                    value: option.id,
+                    label: option.label,
+                    optionKey: ValueKey(
+                      'schedule-thinking-option-${option.id}',
+                    ),
+                    leading: _lucideScheduleIcon(
+                      _lucideBrainSvg,
+                      key: ValueKey('schedule-thinking-icon-${option.id}'),
+                    ),
+                  ),
               ],
-              onChanged: _submitting
-                  ? null
-                  : (value) => setState(() {
-                      _selectionTouched = true;
-                      _thinkingOptionId = value;
-                    }),
+              onChanged: (value, _) => setState(() {
+                _selectionTouched = true;
+                _thinkingOptionId = value;
+              }),
+              placeholder: 'Select thinking',
+              emptyText: 'No thinking options found',
+              searchable: selection.thinkingOptions.length > 6,
+              title: 'Select thinking',
+              size: controlSize,
+              disabled: _submitting,
             ),
           ),
         if (selection.modes.isNotEmpty)
           _labeledControl(
             'Mode',
-            ComboBox<String>(
-              key: const ValueKey('schedule-mode-selector'),
+            PaseoSelectField<String>(
+              field: false,
+              triggerKey: const ValueKey('schedule-mode-trigger'),
+              label: 'Mode',
               value: selection.modeId,
-              items: [
+              selectedDisplay: SelectFieldDisplay(
+                label:
+                    selection.modes
+                        .where((mode) => mode.id == selection.modeId)
+                        .firstOrNull
+                        ?.label ??
+                    selection.modeId,
+              ),
+              options: [
                 for (final mode in selection.modes)
-                  ComboBoxItem(value: mode.id, child: Text(mode.label)),
+                  SelectFieldOption(
+                    id: mode.id,
+                    value: mode.id,
+                    label: mode.label,
+                  ),
               ],
-              onChanged: _submitting
-                  ? null
-                  : (value) => setState(() {
-                      _selectionTouched = true;
-                      _modeId = value;
-                    }),
+              onChanged: (value, _) => setState(() {
+                _selectionTouched = true;
+                _modeId = value;
+              }),
+              placeholder: 'Default mode',
+              emptyText: 'No modes found',
+              searchable: selection.modes.length > 6,
+              title: 'Select mode',
+              size: controlSize,
+              disabled: _submitting,
             ),
           ),
       ]),
     );
   }
+
+  Widget _isolationSelector(
+    String effectiveIsolation,
+    PaseoFieldControlSize controlSize,
+  ) => _labeledControl(
+    'Isolation',
+    PaseoSelectField<String>(
+      key: const ValueKey('schedule-isolation'),
+      field: false,
+      triggerKey: const ValueKey('schedule-isolation-trigger'),
+      label: 'Isolation',
+      value: effectiveIsolation,
+      selectedDisplay: SelectFieldDisplay(
+        label: effectiveIsolation == 'worktree' ? 'Worktree' : 'Local',
+      ),
+      options: [
+        SelectFieldOption(
+          id: 'local',
+          value: 'local',
+          label: 'Local',
+          optionKey: const ValueKey('schedule-isolation-local'),
+          leading: _lucideScheduleIcon(_lucideFolderSvg),
+        ),
+        SelectFieldOption(
+          id: 'worktree',
+          value: 'worktree',
+          label: 'Worktree',
+          optionKey: const ValueKey('schedule-isolation-worktree'),
+          leading: _lucideScheduleIcon(_lucideGitBranchSvg),
+        ),
+      ],
+      onChanged: (value, _) => setState(() {
+        _isolationTouched = true;
+        _isolation = value;
+      }),
+      placeholder: 'Select isolation',
+      emptyText: 'No isolation options found',
+      searchable: false,
+      title: 'Isolation',
+      size: controlSize,
+      triggerLeading: _lucideScheduleIcon(
+        effectiveIsolation == 'worktree'
+            ? _lucideGitBranchSvg
+            : _lucideFolderSvg,
+      ),
+    ),
+  );
+
+  Widget _lucideScheduleIcon(String svg, {Key? key}) => SvgPicture.string(
+    svg,
+    key: key,
+    width: 16,
+    height: 16,
+    colorFilter: ColorFilter.mode(
+      context.paseoPalette.foregroundMuted,
+      BlendMode.srcIn,
+    ),
+  );
 
   void _clearProviderSelection() {
     _provider = null;

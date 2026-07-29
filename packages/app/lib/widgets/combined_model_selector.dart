@@ -1,13 +1,35 @@
 import 'dart:async';
 
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/services.dart';
 
 import '../composer/provider_model_selection.dart';
 
 typedef ProviderModelSelectionCallback =
     void Function(String provider, String modelId);
 
-class CombinedModelSelector extends StatelessWidget {
+final class CombinedModelTriggerInput {
+  const CombinedModelTriggerInput({
+    required this.selectedModelLabel,
+    required this.onPressed,
+    required this.disabled,
+    required this.isOpen,
+    required this.hovered,
+    required this.pressed,
+  });
+
+  final String selectedModelLabel;
+  final VoidCallback onPressed;
+  final bool disabled;
+  final bool isOpen;
+  final bool hovered;
+  final bool pressed;
+}
+
+typedef CombinedModelTriggerBuilder =
+    Widget Function(CombinedModelTriggerInput input);
+
+class CombinedModelSelector extends StatefulWidget {
   const CombinedModelSelector({
     super.key,
     required this.providers,
@@ -16,7 +38,10 @@ class CombinedModelSelector extends StatelessWidget {
     required this.onSelect,
     this.favoriteKeys = const {},
     this.onToggleFavorite,
+    this.renderTrigger,
+    this.triggerFill = false,
     this.onOpen,
+    this.onClose,
     this.onRetryProvider,
     this.isLoading = false,
     this.isRetryingProvider = false,
@@ -29,42 +54,119 @@ class CombinedModelSelector extends StatelessWidget {
   final ProviderModelSelectionCallback onSelect;
   final Set<String> favoriteKeys;
   final ProviderModelSelectionCallback? onToggleFavorite;
+  final CombinedModelTriggerBuilder? renderTrigger;
+  final bool triggerFill;
   final VoidCallback? onOpen;
+  final VoidCallback? onClose;
   final ValueChanged<String>? onRetryProvider;
   final bool isLoading;
   final bool isRetryingProvider;
   final bool disabled;
 
-  Future<void> _open(BuildContext context) async {
-    onOpen?.call();
+  @override
+  State<CombinedModelSelector> createState() => _CombinedModelSelectorState();
+}
+
+class _CombinedModelSelectorState extends State<CombinedModelSelector> {
+  var _open = false;
+  var _hovered = false;
+  var _pressed = false;
+
+  Future<void> _openSelector() async {
+    if (widget.disabled || _open) return;
+    setState(() => _open = true);
+    widget.onOpen?.call();
     final selection = await showDialog<_SelectedProviderModel>(
       context: context,
       builder: (context) => _ModelBrowserDialog(
-        providers: providers,
-        selectedProvider: selectedProvider,
-        selectedModel: selectedModel,
-        favoriteKeys: favoriteKeys,
-        onToggleFavorite: onToggleFavorite,
-        onRetryProvider: onRetryProvider,
-        isRetryingProvider: isRetryingProvider,
+        providers: widget.providers,
+        selectedProvider: widget.selectedProvider,
+        selectedModel: widget.selectedModel,
+        favoriteKeys: widget.favoriteKeys,
+        onToggleFavorite: widget.onToggleFavorite,
+        onRetryProvider: widget.onRetryProvider,
+        isRetryingProvider: widget.isRetryingProvider,
       ),
     );
+    if (!mounted) return;
+    setState(() {
+      _open = false;
+      _pressed = false;
+    });
+    widget.onClose?.call();
     if (selection != null) {
-      onSelect(selection.provider, selection.modelId);
+      widget.onSelect(selection.provider, selection.modelId);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final label = resolveSelectedModelLabel(
-      providers: providers,
-      selectedProvider: selectedProvider,
-      selectedModel: selectedModel,
-      isLoading: isLoading,
+      providers: widget.providers,
+      selectedProvider: widget.selectedProvider,
+      selectedModel: widget.selectedModel,
+      isLoading: widget.isLoading,
     );
+    final renderTrigger = widget.renderTrigger;
+    if (renderTrigger != null) {
+      final trigger = renderTrigger(
+        CombinedModelTriggerInput(
+          selectedModelLabel: label,
+          onPressed: () => unawaited(_openSelector()),
+          disabled: widget.disabled,
+          isOpen: _open,
+          hovered: _hovered,
+          pressed: _pressed,
+        ),
+      );
+      return KeyedSubtree(
+        key: const ValueKey('combined-model-selector'),
+        child: Semantics(
+          button: true,
+          enabled: !widget.disabled,
+          label: 'Selected model ($label)',
+          child: FocusableActionDetector(
+            enabled: !widget.disabled,
+            shortcuts: const {
+              SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+              SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+            },
+            actions: {
+              ActivateIntent: CallbackAction<ActivateIntent>(
+                onInvoke: (_) {
+                  unawaited(_openSelector());
+                  return null;
+                },
+              ),
+            },
+            onShowHoverHighlight: (value) => setState(() => _hovered = value),
+            mouseCursor: widget.disabled
+                ? SystemMouseCursors.basic
+                : SystemMouseCursors.click,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.disabled ? null : () => unawaited(_openSelector()),
+              onTapDown: widget.disabled
+                  ? null
+                  : (_) => setState(() => _pressed = true),
+              onTapUp: widget.disabled
+                  ? null
+                  : (_) => setState(() => _pressed = false),
+              onTapCancel: widget.disabled
+                  ? null
+                  : () => setState(() => _pressed = false),
+              child: SizedBox(
+                width: widget.triggerFill ? double.infinity : null,
+                child: trigger,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Button(
       key: const ValueKey('combined-model-selector'),
-      onPressed: disabled ? null : () => unawaited(_open(context)),
+      onPressed: widget.disabled ? null : () => unawaited(_openSelector()),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [

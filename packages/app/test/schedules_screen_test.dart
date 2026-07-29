@@ -11,8 +11,10 @@ import 'package:coding_agent_app/state/host_registry_provider.dart';
 import 'package:coding_agent_app/state/schedule_project_targets_provider.dart';
 import 'package:coding_agent_app/state/schedules_provider.dart';
 import 'package:coding_agent_app/widgets/adaptive_modal_sheet.dart';
+import 'package:coding_agent_app/widgets/fluent/select_field.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -216,19 +218,35 @@ void main() {
       tester.getTopLeft(find.byType(ToggleSwitch)).dy,
       greaterThan(tester.getTopLeft(find.text('Archive on finish')).dy),
     );
-    final modeSelector = find.byKey(const ValueKey('schedule-mode-selector'));
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('schedule-model-trigger')))
+          .height,
+      32,
+    );
+    final modeSelector = find.byKey(const ValueKey('schedule-mode-trigger'));
     await tester.ensureVisible(modeSelector);
     await tester.tap(modeSelector);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Plan').last);
     await tester.pumpAndSettle();
     final thinkingSelector = find.byKey(
-      const ValueKey('schedule-thinking-selector'),
+      const ValueKey('schedule-thinking-trigger'),
     );
     await tester.ensureVisible(thinkingSelector);
     await tester.tap(thinkingSelector);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Medium').last);
+    await tester.tap(
+      find.byKey(const ValueKey('schedule-thinking-option-medium')),
+    );
+    await tester.pumpAndSettle();
+    final isolationTrigger = find.byKey(
+      const ValueKey('schedule-isolation-trigger'),
+    );
+    await tester.ensureVisible(isolationTrigger);
+    await tester.tap(isolationTrigger);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('schedule-isolation-worktree')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextBox).at(3), '2 runs');
     await tester.tap(find.text('Create schedule'));
@@ -241,6 +259,7 @@ void main() {
     expect(config.model, 'gpt-5.4');
     expect(config.modeId, 'plan');
     expect(config.thinkingOptionId, 'medium');
+    expect(config.isolation, 'worktree');
     final stored = await preferences.load();
     expect(stored.provider, 'codex');
     expect(stored.providerPreferences['codex']?.model, 'gpt-5.4');
@@ -248,7 +267,7 @@ void main() {
     expect(stored.providerPreferences['codex']?.thinkingByModel, {
       'gpt-5.4': 'medium',
     });
-    expect(stored.isolation, 'local');
+    expect(stored.isolation, 'worktree');
     expect(find.text('Create schedule'), findsNothing);
   });
 
@@ -277,27 +296,24 @@ void main() {
 
     expect(find.text('GPT 5.4'), findsOneWidget);
     expect(
-      tester
-          .widget<ComboBox<String>>(
-            find.byKey(const ValueKey('schedule-mode-selector')),
-          )
-          .value,
+      _selectFieldForTrigger(
+        tester,
+        const ValueKey('schedule-mode-trigger'),
+      ).value,
       'plan',
     );
     expect(
-      tester
-          .widget<ComboBox<String>>(
-            find.byKey(const ValueKey('schedule-thinking-selector')),
-          )
-          .value,
+      _selectFieldForTrigger(
+        tester,
+        const ValueKey('schedule-thinking-trigger'),
+      ).value,
       'medium',
     );
     expect(
-      tester
-          .widget<ComboBox<String>>(
-            find.byKey(const ValueKey('schedule-isolation-selector')),
-          )
-          .value,
+      _selectFieldForTrigger(
+        tester,
+        const ValueKey('schedule-isolation-trigger'),
+      ).value,
       'worktree',
     );
   });
@@ -338,27 +354,24 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      tester
-          .widget<ComboBox<String>>(
-            find.byKey(const ValueKey('schedule-mode-selector')),
-          )
-          .value,
+      _selectFieldForTrigger(
+        tester,
+        const ValueKey('schedule-mode-trigger'),
+      ).value,
       'agent',
     );
     expect(
-      tester
-          .widget<ComboBox<String>>(
-            find.byKey(const ValueKey('schedule-thinking-selector')),
-          )
-          .value,
+      _selectFieldForTrigger(
+        tester,
+        const ValueKey('schedule-thinking-trigger'),
+      ).value,
       'high',
     );
     expect(
-      tester
-          .widget<ComboBox<String>>(
-            find.byKey(const ValueKey('schedule-isolation-selector')),
-          )
-          .value,
+      _selectFieldForTrigger(
+        tester,
+        const ValueKey('schedule-isolation-trigger'),
+      ).value,
       'local',
     );
   });
@@ -419,7 +432,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Every hour'), findsWidgets);
-    await tester.tap(find.text('Every hour').first);
+    final cadenceTrigger = find.byKey(
+      const ValueKey('schedule-cadence-preset-trigger'),
+    );
+    await tester.ensureVisible(cadenceTrigger);
+    await tester.tap(cadenceTrigger);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Weekdays 9:00').last);
     await tester.pumpAndSettle();
@@ -711,6 +728,18 @@ void main() {
   });
 }
 
+PaseoSelectField<String> _selectFieldForTrigger(
+  WidgetTester tester,
+  Key triggerKey,
+) => tester.widget<PaseoSelectField<String>>(
+  find
+      .ancestor(
+        of: find.byKey(triggerKey),
+        matching: find.byType(PaseoSelectField<String>),
+      )
+      .first,
+);
+
 Future<void> _selectCodexModel(WidgetTester tester) async {
   final selector = find.byKey(const ValueKey('combined-model-selector'));
   await tester.ensureVisible(selector);
@@ -727,7 +756,7 @@ Future<void> _selectScheduleProject(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
   final search = find.byKey(const ValueKey('schedule-project-trigger-search'));
   expect(search, findsOneWidget);
-  expect(find.byIcon(FluentIcons.folder), findsWidgets);
+  expect(find.byType(SvgPicture), findsWidgets);
   await tester.enterText(search, label);
   await tester.pump();
   await tester.tap(find.text(label).last);

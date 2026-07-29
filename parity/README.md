@@ -163,6 +163,10 @@ Never hand-edit `upstream_inventory.json`. `ledger.json` is merge-preserved by
   host status, project search, loading preservation, custom option rendering,
   value-key matching, trigger-width flyouts, 60/90 compact snap points, and
   desktop keyboard selection/dismissal.
+- Schedule Model, Thinking, Mode, Isolation, and Cadence now consume that same
+  field contract. The custom Model trigger carries the frozen provider glyph
+  and interaction state, while project/thinking/isolation options use the
+  frozen Lucide paths and Cadence preserves custom cron as display-only state.
 - Ledger status: 427 verified, 242 partial, and 1251 not-started out of 1920.
 - Validation: protocol 332 tests, daemon 898 tests, Flutter 802 tests, root
   analysis, frozen

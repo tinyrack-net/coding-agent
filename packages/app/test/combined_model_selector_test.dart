@@ -222,4 +222,59 @@ void main() {
     await tester.pumpAndSettle();
     expect(selected, 'plain:');
   });
+
+  testWidgets('custom fill trigger receives interaction and lifecycle state', (
+    tester,
+  ) async {
+    var opened = false;
+    var closed = false;
+    await tester.pumpWidget(
+      FluentApp(
+        home: Center(
+          child: SizedBox(
+            width: 360,
+            child: CombinedModelSelector(
+              providers: buildSelectableProviderSelectorProviders(_snapshots),
+              selectedProvider: 'claude',
+              selectedModel: 'sonnet',
+              onSelect: (_, _) {},
+              triggerFill: true,
+              onOpen: () => opened = true,
+              onClose: () => closed = true,
+              renderTrigger: (input) => Container(
+                key: ValueKey('custom-model-trigger-open-${input.isOpen}'),
+                height: 32,
+                alignment: Alignment.centerLeft,
+                child: Text(input.selectedModelLabel),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester
+          .getSize(
+            find.byKey(const ValueKey('custom-model-trigger-open-false')),
+          )
+          .width,
+      360,
+    );
+    await tester.tap(find.byKey(const ValueKey('combined-model-selector')));
+    await tester.pumpAndSettle();
+    expect(opened, isTrue);
+    expect(
+      find.byKey(const ValueKey('custom-model-trigger-open-true')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(closed, isTrue);
+    expect(
+      find.byKey(const ValueKey('custom-model-trigger-open-false')),
+      findsOneWidget,
+    );
+  });
 }

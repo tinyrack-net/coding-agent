@@ -2478,7 +2478,7 @@
         "packages/app/test/provider_model_selection_test.dart",
         "packages/app/test/combined_model_selector_test.dart"
       ],
-      "notes": "The Flutter selector resolves selected and stale model labels, opens the frozen single-provider or all-provider initial view, drills across providers, searches, retries errors, selects synthetic Default models, and toggles favorites. Exact provider glyphs, settings actions, responsive sheet presentation, keyboard geometry, and frozen visual evidence remain."
+      "notes": "The Flutter selector resolves selected and stale model labels, opens the frozen single-provider or all-provider initial view, drills across providers, searches, retries errors, selects synthetic Default models, and toggles favorites. It now exposes the frozen custom fill-trigger contract with selected label, disabled/open/hover/press state and open/close lifecycle; the schedule consumer renders the provider glyph through the shared frozen icon catalog. Exact provider glyphs inside the browser, settings actions, responsive Combobox sheet presentation, browser keyboard geometry, and frozen visual evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/components/community-links.tsx",
@@ -3273,7 +3273,7 @@
       "evidence": [
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": null
+      "notes": "The Flutter editor now uses the shared SelectField with the frozen preset-only option catalog and test identities, represents custom cron as a null selection with a Custom cron display, updates the controlled monospace expression on preset selection, and preserves local validation and preview behavior. Pixel-golden proof for the complete compact and desktop field composition remains."
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/schedule-form-sheet.tsx",
@@ -3282,7 +3282,7 @@
       "evidence": [
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, shows the owning Host as read-only while editing a new-agent schedule, exposes provider and model through the single combined model trigger, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. It now runs in the shared adaptive desktop/compact sheet with frozen card and snap geometry, sticky footer, 16px field stack, 8px label gaps, 96px prompt, Thinking-before-Mode order, and a stacked archive switch. Host and Project use the adaptive SelectField with host status and project folder glyphs plus searchable project labels. Remaining form parity is exact model/mode/thinking/isolation/cadence SelectField conversion, combined model custom-trigger geometry, and screenshot-golden visual proof."
+      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, shows the owning Host as read-only while editing a new-agent schedule, exposes provider and model through the single combined model trigger, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. It runs in the shared adaptive desktop/compact sheet with frozen card and snap geometry, sticky footer, 16px field stack, 8px label gaps, 96px prompt, Thinking-before-Mode order, and a stacked archive switch. Host, Project, Thinking, Mode, Isolation, and Cadence use the adaptive SelectField; Model uses the exported custom SelectField trigger with the frozen provider icon, and project/thinking/isolation options use the frozen Lucide glyph paths. Remaining form parity is exact compact FormTextInput and read-only target control geometry plus screenshot-golden visual proof."
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/schedule-row.tsx",
