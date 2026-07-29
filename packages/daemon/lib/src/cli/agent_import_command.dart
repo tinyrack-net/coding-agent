@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'agent_output_schemas.dart';
 import 'cli_output.dart';
 import 'terminal_command.dart';
 
@@ -75,7 +76,7 @@ Future<int> runAgentImportCommand({
       'title': agent.title.isEmpty ? null : agent.title,
     };
     final rendered = renderCliOutput(
-      CliOutputResult.single(row: result, schema: _agentImportSchema),
+      CliOutputResult.single(row: result, schema: agentRunOutputSchema()),
       invocation.output,
     );
     if (rendered.isNotEmpty) output('$rendered\n');
@@ -236,25 +237,6 @@ final class AgentImportCliInvocation {
     );
   }
 }
-
-final _agentImportSchema = CliOutputSchema(
-  idField: (row) => '${row['agentId']}',
-  columns: [
-    CliOutputColumn(
-      header: 'AGENT ID',
-      field: (row) => row['agentId'],
-      width: 12,
-    ),
-    CliOutputColumn(header: 'STATUS', field: (row) => row['status'], width: 10),
-    CliOutputColumn(
-      header: 'PROVIDER',
-      field: (row) => row['provider'],
-      width: 10,
-    ),
-    CliOutputColumn(header: 'CWD', field: (row) => row['cwd'], width: 30),
-    CliOutputColumn(header: 'TITLE', field: (row) => row['title'], width: 20),
-  ],
-);
 
 String _parseImportCwd(String value) {
   if (value.trim().isEmpty) {

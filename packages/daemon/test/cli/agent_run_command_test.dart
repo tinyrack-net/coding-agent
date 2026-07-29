@@ -153,6 +153,95 @@ void main() {
     );
   });
 
+  test('shared output aliases and frozen option forms are supported', () async {
+    final parsed = AgentRunInvocation.parse(const [
+      '--provider=codex',
+      '--image=first.png',
+      '--env=A=1',
+      '--label=team=core',
+      '--host=ws://127.0.0.1:7777',
+      '--format=yaml',
+      '--json',
+      '--no-color',
+      '--',
+      '-prompt',
+    ]);
+    expect(parsed.prompt, '-prompt');
+    expect(parsed.provider, 'codex');
+    expect(parsed.images, ['first.png']);
+    expect(parsed.env, ['A=1']);
+    expect(parsed.labels, ['team=core']);
+    expect(parsed.host, 'ws://127.0.0.1:7777');
+    expect(parsed.output.format, 'json');
+    expect(parsed.output.noColor, isTrue);
+
+    Future<Map<String, Object?>> create(Map<String, Object?> request) async =>
+        _createdPayload(request['requestId']! as String, cwd: '/repo');
+
+    final table = StringBuffer();
+    expect(
+      await runAgentRunCommand(
+        arguments: const [
+          '--provider',
+          'codex',
+          '--background',
+          '-ocli',
+          '--no-headers',
+          'task',
+        ],
+        currentDirectory: '/repo',
+        environment: const {'PASEO_AGENT_ID': 'parent'},
+        request: create,
+        writeOutput: table.write,
+        writeError: (_) {},
+      ),
+      0,
+    );
+    expect(table.toString(), contains('agent-1'));
+    expect(table.toString(), isNot(contains('AGENT ID')));
+
+    final yaml = StringBuffer();
+    expect(
+      await runAgentRunCommand(
+        arguments: const [
+          '--provider',
+          'codex',
+          '--background',
+          '--format=yaml',
+          'task',
+        ],
+        currentDirectory: '/repo',
+        environment: const {'PASEO_AGENT_ID': 'parent'},
+        request: create,
+        writeOutput: yaml.write,
+        writeError: (_) {},
+      ),
+      0,
+    );
+    expect(yaml.toString(), contains('agentId: agent-1'));
+    expect(yaml.toString(), contains('status: running'));
+  });
+
+  test(
+    'shared yaml renders command errors recovered before invocation',
+    () async {
+      final error = StringBuffer();
+      expect(
+        await runAgentRunCommand(
+          arguments: const ['--provider', 'codex', '--format=yaml'],
+          environment: const {},
+          request: (_) async => fail('request must not run'),
+          writeOutput: (_) {},
+          writeError: error.write,
+        ),
+        1,
+      );
+      expect(error.toString(), contains('error:'));
+      expect(error.toString(), contains('code: MISSING_PROMPT'));
+      expect(error.toString(), contains('message: A prompt is required'));
+    },
+  );
+
   test(
     'caller agent takes workspace precedence without lookup or mint',
     () async {
@@ -332,6 +421,7 @@ void main() {
         '--output-schema',
         '{"type":"object","required":["answer"],'
             '"properties":{"answer":{"type":"string"}}}',
+        '--quiet',
         'Return an answer',
       ],
       currentDirectory: '/repo',

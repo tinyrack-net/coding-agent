@@ -6,6 +6,8 @@ import 'package:path/path.dart' as p;
 
 import '../agent/structured_generation.dart';
 import '../server/daemon_config.dart';
+import 'agent_output_schemas.dart';
+import 'cli_output.dart';
 import 'provider_model.dart';
 import 'terminal_command.dart';
 import 'workspace_command.dart';
@@ -30,8 +32,9 @@ Future<int> runAgentRunCommand({
     output(agentRunHelp);
     return 0;
   }
+  AgentRunInvocation? invocation;
   try {
-    final invocation = AgentRunInvocation.parse(arguments);
+    invocation = AgentRunInvocation.parse(arguments);
     final env = environment ?? Platform.environment;
     final cwd = currentDirectory ?? Directory.current.path;
     var send = request;
@@ -72,7 +75,18 @@ Future<int> runAgentRunCommand({
       readFile ?? (path) => File(path).readAsBytesSync(),
       errorOutput,
     );
-    output(_render(result, invocation));
+    final rendered = renderCliOutput(
+      CliOutputResult.single(
+        row: result.row,
+        schema: agentRunOutputSchema(
+          serialize: result.structuredOutput == null
+              ? null
+              : (_) => result.structuredOutput,
+        ),
+      ),
+      invocation.effectiveOutput,
+    );
+    if (rendered.isNotEmpty) output('$rendered\n');
     return 0;
   } on ProviderModelFormatException catch (error) {
     _writeCommandError(
@@ -82,14 +96,18 @@ Future<int> runAgentRunCommand({
         error.message,
         details: error.details,
       ),
-      arguments,
+      invocation?.effectiveOutput ?? _recoverRunOutputOptions(arguments),
     );
     return 1;
   } on FormatException catch (error) {
     errorOutput('${error.message}\n$agentRunUsage\n');
     return 64;
   } on AgentRunCommandException catch (error) {
-    _writeCommandError(errorOutput, error, arguments);
+    _writeCommandError(
+      errorOutput,
+      error,
+      invocation?.effectiveOutput ?? _recoverRunOutputOptions(arguments),
+    );
     return 1;
   } on Object catch (error) {
     _writeCommandError(
@@ -98,7 +116,7 @@ Future<int> runAgentRunCommand({
         'AGENT_CREATE_FAILED',
         'Failed to create agent: ${_errorText(error)}',
       ),
-      arguments,
+      invocation?.effectiveOutput ?? _recoverRunOutputOptions(arguments),
     );
     return 1;
   } finally {
@@ -134,9 +152,7 @@ final class AgentRunInvocation {
     required this.waitTimeout,
     required this.outputSchema,
     required this.host,
-    required this.format,
-    required this.quiet,
-    required this.headers,
+    required this.output,
   });
 
   final String prompt;
@@ -165,11 +181,14 @@ final class AgentRunInvocation {
   final String? waitTimeout;
   final String? outputSchema;
   final String? host;
-  final String format;
-  final bool quiet;
-  final bool headers;
+  final CliOutputOptions output;
 
   bool get runsInBackground => background || detach;
+
+  CliOutputOptions get effectiveOutput =>
+      outputSchema?.trim().isNotEmpty == true
+      ? output.copyWith(format: 'json', quiet: false)
+      : output;
 
   String? get newWorkspaceKind =>
       newWorkspace ?? (worktree == null ? null : 'worktree');
@@ -186,6 +205,8 @@ final class AgentRunInvocation {
     var json = false;
     var quiet = false;
     var headers = true;
+    var color = true;
+    var positionalOnly = false;
     String? host;
     const valueOptions = {
       '--title',
@@ -210,6 +231,42 @@ final class AgentRunInvocation {
     };
     for (var index = 0; index < arguments.length; index++) {
       final argument = arguments[index];
+      if (!positionalOnly) {
+        final longOption = _splitLongOption(argument);
+        if (longOption != null) {
+          final (option, value) = longOption;
+          switch (option) {
+            case '--image':
+              images.add(value);
+              continue;
+            case '--env':
+              env.add(value);
+              continue;
+            case '--label':
+              labels.add(value);
+              continue;
+            case '--host':
+              host = value;
+              continue;
+            case '--format':
+              format = _normalizeRunOutputFormat(value);
+              continue;
+            default:
+              if (valueOptions.contains(option)) {
+                values[option] = value;
+                continue;
+              }
+          }
+        }
+      }
+      if (!positionalOnly && argument == '--') {
+        positionalOnly = true;
+        continue;
+      }
+      if (positionalOnly) {
+        positionals.add(argument);
+        continue;
+      }
       switch (argument) {
         case '-d' || '--background':
           background = true;
@@ -226,25 +283,20 @@ final class AgentRunInvocation {
         case '--json':
           json = true;
         case '-o' || '--format':
-          final rawFormat = _requiredValue(arguments, ++index, argument);
-          format = rawFormat.trim().toLowerCase();
-          if (format == 'cli') format = 'table';
-          if (!const {'table', 'json', 'yaml'}.contains(format)) {
-            throw AgentRunCommandException(
-              'INVALID_FORMAT',
-              'Unsupported output format: $rawFormat',
-              details: 'Supported formats: table, json, yaml',
-            );
-          }
+          format = _normalizeRunOutputFormat(
+            _requiredValue(arguments, ++index, argument),
+          );
         case '-q' || '--quiet':
           quiet = true;
         case '--no-headers':
           headers = false;
         case '--no-color':
-          break;
+          color = false;
         default:
           if (valueOptions.contains(argument)) {
             values[argument] = _requiredValue(arguments, ++index, argument);
+          } else if (argument.startsWith('-o') && argument.length > 2) {
+            format = _normalizeRunOutputFormat(argument.substring(2));
           } else if (argument.startsWith('-')) {
             throw FormatException('Unknown option: $argument');
           } else {
@@ -290,9 +342,12 @@ final class AgentRunInvocation {
       waitTimeout: values['--wait-timeout'],
       outputSchema: values['--output-schema'],
       host: host,
-      format: json ? 'json' : format,
-      quiet: quiet,
-      headers: headers,
+      output: CliOutputOptions(
+        format: json ? 'json' : format,
+        quiet: quiet,
+        noHeaders: !headers,
+        noColor: !color,
+      ),
     );
   }
 }
@@ -872,107 +927,90 @@ Map<String, Object?> _runRow(
   'title': agent['title'] as String?,
 };
 
-String _render(_AgentRunResult result, AgentRunInvocation invocation) {
-  final structured = result.structuredOutput;
-  if (structured != null) {
-    return '${const JsonEncoder.withIndent('  ').convert(structured)}\n';
-  }
-  if (invocation.quiet) return '${result.row['agentId']}\n';
-  if (invocation.format == 'json') {
-    return '${const JsonEncoder.withIndent('  ').convert(result.row)}\n';
-  }
-  if (invocation.format == 'yaml') return _yamlMap(result.row);
-  const columns = [
-    ('AGENT ID', 'agentId', 12),
-    ('STATUS', 'status', 10),
-    ('PROVIDER', 'provider', 10),
-    ('CWD', 'cwd', 30),
-    ('TITLE', 'title', 20),
-  ];
-  final widths = [
-    for (final column in columns)
-      [
-        column.$1.length,
-        column.$3,
-        '${result.row[column.$2] ?? ''}'.length,
-      ].reduce((a, b) => a > b ? a : b),
-  ];
-  String line(List<String> cells) => [
-    for (var index = 0; index < cells.length; index++)
-      cells[index].padRight(widths[index]),
-  ].join('  ').trimRight();
-  return [
-        if (invocation.headers) line([for (final column in columns) column.$1]),
-        line([for (final column in columns) '${result.row[column.$2] ?? ''}']),
-      ].join('\n') +
-      '\n';
-}
-
 void _writeCommandError(
   void Function(String value) write,
   AgentRunCommandException error,
-  List<String> arguments,
+  CliOutputOptions options,
 ) {
-  final schemaIndex = arguments.indexOf('--output-schema');
-  final hasStructuredSchema =
-      schemaIndex >= 0 &&
-      schemaIndex + 1 < arguments.length &&
-      arguments[schemaIndex + 1].trim().isNotEmpty;
-  final json = arguments.contains('--json') || hasStructuredSchema;
-  final yaml =
-      !json &&
-      arguments.contains('yaml') &&
-      (arguments.contains('--format') || arguments.contains('-o'));
-  final value = {
-    'error': {
-      'code': error.code,
-      'message': error.message,
-      if (error.details != null) 'details': error.details,
-    },
-  };
-  if (json) {
-    write('${const JsonEncoder.withIndent('  ').convert(value)}\n');
-  } else if (yaml) {
-    write(_yamlMap(value));
-  } else {
-    write(
-      'Error: ${error.message}\n'
-      '${error.details == null ? '' : '${error.details}\n'}',
+  write(
+    '${renderCliError(code: error.code, message: error.message, details: error.details, options: options)}\n',
+  );
+}
+
+String _normalizeRunOutputFormat(String raw) {
+  try {
+    return normalizeCliOutputFormat(raw);
+  } on FormatException {
+    throw AgentRunCommandException(
+      'INVALID_FORMAT',
+      'Unsupported output format: $raw',
+      details: 'Supported formats: table, json, yaml',
     );
   }
 }
 
-String _yamlMap(Map<String, Object?> value, [int indent = 0]) {
-  final lines = <String>[];
-  for (final entry in value.entries) {
-    final prefix = ' ' * indent;
-    if (entry.value is Map) {
-      lines.add('$prefix${entry.key}:');
-      lines.add(
-        _yamlMap(
-          Map<String, Object?>.from(entry.value! as Map),
-          indent + 2,
-        ).trimRight(),
+CliOutputOptions _recoverRunOutputOptions(List<String> arguments) {
+  var format = 'table';
+  var json = false;
+  var quiet = false;
+  var noHeaders = false;
+  var noColor = false;
+  var structured = false;
+  for (var index = 0; index < arguments.length; index++) {
+    final argument = arguments[index];
+    if (argument == '--') {
+      break;
+    } else if (argument == '--json') {
+      json = true;
+    } else if (argument == '-q' || argument == '--quiet') {
+      quiet = true;
+    } else if (argument == '--no-headers') {
+      noHeaders = true;
+    } else if (argument == '--no-color') {
+      noColor = true;
+    } else if (argument == '-o' || argument == '--format') {
+      if (index + 1 < arguments.length) {
+        format = _safeRunOutputFormat(arguments[++index], format);
+      }
+    } else if (argument.startsWith('--format=')) {
+      format = _safeRunOutputFormat(
+        argument.substring('--format='.length),
+        format,
       );
-    } else {
-      lines.add('$prefix${entry.key}: ${_yamlScalar(entry.value)}');
+    } else if (argument.startsWith('-o') && argument.length > 2) {
+      format = _safeRunOutputFormat(argument.substring(2), format);
+    } else if (argument == '--output-schema') {
+      if (index + 1 < arguments.length) {
+        structured = arguments[++index].trim().isNotEmpty;
+      }
+    } else if (argument.startsWith('--output-schema=')) {
+      structured = argument
+          .substring('--output-schema='.length)
+          .trim()
+          .isNotEmpty;
     }
   }
-  return '${lines.join('\n')}\n';
+  return CliOutputOptions(
+    format: structured || json ? 'json' : format,
+    quiet: structured ? false : quiet,
+    noHeaders: noHeaders,
+    noColor: noColor,
+  );
 }
 
-String _yamlScalar(Object? value) {
-  if (value == null) return 'null';
-  if (value is num || value is bool) return '$value';
-  final text = '$value';
-  if (text.isNotEmpty &&
-      !RegExp(
-        r'''[:#\[\]{},&*!|>'"%@`]|^\s|\s$|^(null|true|false|~)$''',
-        caseSensitive: false,
-      ).hasMatch(text)) {
-    return text;
+String _safeRunOutputFormat(String raw, String fallback) {
+  try {
+    return normalizeCliOutputFormat(raw);
+  } on FormatException {
+    return fallback;
   }
-  return jsonEncode(text);
+}
+
+(String, String)? _splitLongOption(String argument) {
+  if (!argument.startsWith('--')) return null;
+  final separator = argument.indexOf('=');
+  if (separator < 3) return null;
+  return (argument.substring(0, separator), argument.substring(separator + 1));
 }
 
 String _requiredValue(List<String> arguments, int index, String option) {
