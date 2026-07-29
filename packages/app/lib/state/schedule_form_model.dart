@@ -112,7 +112,20 @@ final class ScheduleProviderSelection {
   final List<ProviderMode> modes;
   final List<ProviderSelectOption> thinkingOptions;
 
-  bool get isAvailable => providers.isNotEmpty && provider.isNotEmpty;
+  bool get hasProvider => provider.isNotEmpty;
+
+  bool get isAvailable {
+    if (!hasProvider) return false;
+    final entry = providers
+        .where((candidate) => candidate.provider == provider)
+        .firstOrNull;
+    if (entry == null || entry.status != ProviderCatalogStatus.ready) {
+      return false;
+    }
+    final models = entry.models;
+    if (models == null) return false;
+    return models.isEmpty || models.any((candidate) => candidate.id == model);
+  }
 }
 
 ScheduleProviderSelection resolveScheduleProviderSelection({
@@ -124,11 +137,21 @@ ScheduleProviderSelection resolveScheduleProviderSelection({
 }) {
   final providers = [
     for (final entry in entries ?? const <ProviderSnapshotEntry>[])
-      if (entry.enabled && entry.status == ProviderCatalogStatus.ready) entry,
+      if (entry.enabled) entry,
   ];
-  if (providers.isEmpty) {
-    return const ScheduleProviderSelection(
-      providers: [],
+  final resolvable = [
+    for (final entry in providers)
+      if (entry.status == ProviderCatalogStatus.ready ||
+          entry.status == ProviderCatalogStatus.loading)
+        entry,
+  ];
+  final requestedProvider = selectedProvider?.trim() ?? '';
+  final provider = resolvable
+      .where((entry) => entry.provider == requestedProvider)
+      .firstOrNull;
+  if (provider == null) {
+    return ScheduleProviderSelection(
+      providers: List.unmodifiable(providers),
       provider: '',
       model: '',
       modeId: '',
@@ -138,20 +161,16 @@ ScheduleProviderSelection resolveScheduleProviderSelection({
     );
   }
 
-  final requestedProvider = selectedProvider?.trim() ?? '';
-  final provider = providers.firstWhere(
-    (entry) => entry.provider == requestedProvider,
-    orElse: () => providers.first,
-  );
-  final models = provider.models ?? const <ProviderModelDefinition>[];
+  final models = provider.models;
   final requestedModel = selectedModel?.trim() ?? '';
-  final model =
-      models.where((entry) => entry.id == requestedModel).firstOrNull ??
-      models.where((entry) => entry.isDefault == true).firstOrNull ??
-      models.firstOrNull;
+  final model = models == null
+      ? null
+      : models.where((entry) => entry.id == requestedModel).firstOrNull ??
+            models.where((entry) => entry.isDefault == true).firstOrNull ??
+            models.firstOrNull;
   final modes = provider.modes ?? const <ProviderMode>[];
   final requestedMode = selectedModeId?.trim() ?? '';
-  final modeId = modes.any((entry) => entry.id == requestedMode)
+  final modeId = requestedMode.isNotEmpty
       ? requestedMode
       : modes.any((entry) => entry.id == provider.defaultModeId)
       ? provider.defaultModeId!
@@ -159,8 +178,9 @@ ScheduleProviderSelection resolveScheduleProviderSelection({
   final thinkingOptions =
       model?.thinkingOptions ?? const <ProviderSelectOption>[];
   final requestedThinking = selectedThinkingOptionId?.trim() ?? '';
-  final thinkingOptionId =
-      thinkingOptions.any((entry) => entry.id == requestedThinking)
+  final thinkingOptionId = models == null
+      ? requestedThinking
+      : thinkingOptions.any((entry) => entry.id == requestedThinking)
       ? requestedThinking
       : thinkingOptions.any(
           (entry) => entry.id == model?.defaultThinkingOptionId,
@@ -176,7 +196,7 @@ ScheduleProviderSelection resolveScheduleProviderSelection({
   return ScheduleProviderSelection(
     providers: List.unmodifiable(providers),
     provider: provider.provider,
-    model: model?.id ?? '',
+    model: models == null ? requestedModel : model?.id ?? '',
     modeId: modeId,
     thinkingOptionId: thinkingOptionId,
     modes: List.unmodifiable(modes),

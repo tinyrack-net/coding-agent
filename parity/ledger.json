@@ -3277,7 +3277,7 @@
       "evidence": [
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. Remaining sheet parity includes the exact single combined model trigger and adaptive modal geometry."
+      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, exposes provider and model through the single combined model trigger, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. Remaining sheet parity is adaptive modal geometry and visual fidelity."
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/schedule-row.tsx",
@@ -6572,13 +6572,13 @@
     },
     {
       "id": "source-unit:packages/app/src/schedules/schedule-form-model.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/state/schedule_form_model.dart; packages/app/lib/screens/schedules_screen.dart",
       "evidence": [
         "packages/app/test/schedule_form_model_test.dart",
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "Provider/model/mode/thinking selection resolves enabled providers from the selected host/project snapshot, resets incompatible values on scope or model changes, and submits resolved option ids. Agent-target edit, workspace lifecycle disclosure, create preferences, progressive field disclosure, parseInt maxRuns normalization, and derived canSubmit state match the frozen model. Remaining parity is the exact pending provider-resolution behavior while a preferred provider is still loading."
+      "notes": "Provider/model/mode/thinking resolution now matches the frozen model: no provider is implicitly selected, ready and loading providers are resolvable, loading intent survives catalog refresh, and unavailable or disabled providers cannot submit. Agent-target edit, workspace lifecycle disclosure, create preferences, progressive field disclosure, parseInt maxRuns normalization, and derived canSubmit state are covered by focused model and widget tests."
     },
     {
       "id": "source-unit:packages/app/src/schedules/schedule-project-targets.ts",

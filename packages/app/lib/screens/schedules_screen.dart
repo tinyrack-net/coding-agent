@@ -708,7 +708,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                 providerPreferences?.thinkingByModel[preferenceModel])
           : _thinkingOptionId,
     );
-    if (providerSelection.isAvailable) {
+    if (providerSelection.hasProvider) {
       _provider = providerSelection.provider;
       _model = providerSelection.model.isEmpty ? null : providerSelection.model;
       _modeId = providerSelection.modeId.isEmpty
@@ -1062,7 +1062,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
         child: Text('Failed to load providers: ${snapshot.error}'),
       );
     }
-    if (!selection.isAvailable) {
+    if (selection.providers.isEmpty) {
       return const Padding(
         padding: EdgeInsets.only(bottom: 12),
         child: Text(
@@ -1082,64 +1082,32 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
         children: [
           const Text('Model'),
           const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: ComboBox<String>(
-                  key: const ValueKey('schedule-provider-selector'),
-                  value: selection.provider,
-                  items: [
-                    for (final provider in selection.providers)
-                      ComboBoxItem(
-                        value: provider.provider,
-                        child: Text(provider.label ?? provider.provider),
-                      ),
-                  ],
-                  onChanged: _submitting
-                      ? null
-                      : (value) {
-                          if (value == null) return;
-                          setState(() {
-                            _selectionTouched = true;
-                            _provider = value;
-                            _model = null;
-                            _modeId = null;
-                            _thinkingOptionId = null;
-                          });
-                        },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: CombinedModelSelector(
-                  providers: selectorProviders,
-                  selectedProvider: selection.provider,
-                  selectedModel: selection.model,
-                  isLoading: snapshot.isLoading || snapshot.isFetching,
-                  disabled: _submitting,
-                  onSelect: (provider, model) => setState(() {
-                    _selectionTouched = true;
-                    _provider = provider;
-                    _model = model.isEmpty ? null : model;
-                    _modeId = null;
-                    _thinkingOptionId = null;
-                  }),
-                  onOpen: scope == null
-                      ? null
-                      : () => ref
-                            .read(providersSnapshotProvider(scope).notifier)
-                            .refetchIfStale(selection.provider),
-                  onRetryProvider: scope == null
-                      ? null
-                      : (provider) => unawaited(
-                          ref
-                              .read(providersSnapshotProvider(scope).notifier)
-                              .refresh([provider]),
-                        ),
-                  isRetryingProvider: snapshot.isRefreshing,
-                ),
-              ),
-            ],
+          CombinedModelSelector(
+            providers: selectorProviders,
+            selectedProvider: selection.provider,
+            selectedModel: selection.model,
+            isLoading: snapshot.isLoading || snapshot.isFetching,
+            disabled: _submitting,
+            onSelect: (provider, model) => setState(() {
+              _selectionTouched = true;
+              _provider = provider;
+              _model = model.isEmpty ? null : model;
+              _modeId = null;
+              _thinkingOptionId = null;
+            }),
+            onOpen: scope == null
+                ? null
+                : () => ref
+                      .read(providersSnapshotProvider(scope).notifier)
+                      .refetchIfStale(selection.provider),
+            onRetryProvider: scope == null
+                ? null
+                : (provider) => unawaited(
+                    ref.read(providersSnapshotProvider(scope).notifier).refresh(
+                      [provider],
+                    ),
+                  ),
+            isRetryingProvider: snapshot.isRefreshing,
           ),
           if (selection.modes.isNotEmpty) ...[
             const SizedBox(height: 12),

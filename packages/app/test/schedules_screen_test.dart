@@ -155,6 +155,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Local project').last);
     await tester.pumpAndSettle();
+    expect(find.text('Select model'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey('schedule-form-submit')),
+          )
+          .onPressed,
+      isNull,
+    );
+    await _selectCodexModel(tester);
     expect(find.text('GPT 5.4'), findsOneWidget);
     expect(find.text('Mode'), findsOneWidget);
     expect(find.text('Thinking'), findsOneWidget);
@@ -220,14 +230,7 @@ void main() {
     await tester.tap(find.text('Local project').last);
     await tester.pumpAndSettle();
 
-    expect(
-      tester
-          .widget<ComboBox<String>>(
-            find.byKey(const ValueKey('schedule-provider-selector')),
-          )
-          .value,
-      'codex',
-    );
+    expect(find.text('GPT 5.4'), findsOneWidget);
     expect(
       tester
           .widget<ComboBox<String>>(
@@ -333,6 +336,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Local project').last);
     await tester.pumpAndSettle();
+    await _selectCodexModel(tester);
 
     expect(find.text('Isolation'), findsNothing);
     expect(find.text('Archive on finish'), findsNothing);
@@ -358,6 +362,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Local project').last);
     await tester.pumpAndSettle();
+    await _selectCodexModel(tester);
 
     expect(find.text('Isolation'), findsNothing);
     expect(find.text('Archive on finish'), findsOneWidget);
@@ -654,6 +659,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Remote project').last);
     await tester.pumpAndSettle();
+    await _selectCodexModel(tester);
 
     final fields = find.byType(TextBox);
     await tester.enterText(fields.at(1), 'Run tests');
@@ -663,6 +669,15 @@ void main() {
 
     expect(notifier.createdServerId, 'server-b');
   });
+}
+
+Future<void> _selectCodexModel(WidgetTester tester) async {
+  final selector = find.byKey(const ValueKey('combined-model-selector'));
+  await tester.ensureVisible(selector);
+  await tester.tap(selector);
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('model-row-codex-gpt-5.4')));
+  await tester.pumpAndSettle();
 }
 
 Future<void> _pump(WidgetTester tester, List<ScheduleSummary> schedules) async {

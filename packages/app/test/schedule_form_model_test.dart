@@ -150,6 +150,7 @@ void main() {
           ],
         ),
       ],
+      selectedProvider: 'codex',
     );
 
     expect(selection.providers.map((entry) => entry.provider), ['codex']);
@@ -184,7 +185,7 @@ void main() {
           ],
         ),
       ],
-      selectedProvider: 'missing',
+      selectedProvider: 'codex',
       selectedModel: 'missing',
       selectedModeId: 'plan',
       selectedThinkingOptionId: 'high',
@@ -192,17 +193,96 @@ void main() {
 
     expect(selection.provider, 'codex');
     expect(selection.model, 'gpt');
-    expect(selection.modeId, 'agent');
+    expect(selection.modeId, 'plan');
     expect(selection.thinkingOptionId, 'medium');
   });
 
-  test('loading, unavailable, and disabled providers cannot submit', () {
+  test('ready providers are listed without being selected implicitly', () {
     final selection = resolveScheduleProviderSelection(
       entries: const [
         ProviderSnapshotEntry(
-          provider: 'loading',
+          provider: 'codex',
+          status: ProviderCatalogStatus.ready,
+          models: [
+            ProviderModelDefinition(provider: 'codex', id: 'gpt', label: 'GPT'),
+          ],
+        ),
+      ],
+    );
+
+    expect(selection.providers.map((entry) => entry.provider), ['codex']);
+    expect(selection.hasProvider, isFalse);
+    expect(selection.isAvailable, isFalse);
+    expect(selection.provider, isEmpty);
+    expect(selection.model, isEmpty);
+  });
+
+  test('loading provider intent survives until its catalog becomes ready', () {
+    final loading = resolveScheduleProviderSelection(
+      entries: const [
+        ProviderSnapshotEntry(
+          provider: 'codex',
           status: ProviderCatalogStatus.loading,
         ),
+        ProviderSnapshotEntry(
+          provider: 'claude',
+          status: ProviderCatalogStatus.ready,
+          models: [
+            ProviderModelDefinition(
+              provider: 'claude',
+              id: 'sonnet',
+              label: 'Sonnet',
+            ),
+          ],
+        ),
+      ],
+      selectedProvider: 'codex',
+      selectedModel: 'gpt',
+      selectedModeId: 'plan',
+      selectedThinkingOptionId: 'high',
+    );
+
+    expect(loading.provider, 'codex');
+    expect(loading.model, 'gpt');
+    expect(loading.modeId, 'plan');
+    expect(loading.thinkingOptionId, 'high');
+    expect(loading.hasProvider, isTrue);
+    expect(loading.isAvailable, isFalse);
+
+    final ready = resolveScheduleProviderSelection(
+      entries: const [
+        ProviderSnapshotEntry(
+          provider: 'codex',
+          status: ProviderCatalogStatus.ready,
+          modes: [ProviderMode(id: 'agent', label: 'Agent')],
+          models: [
+            ProviderModelDefinition(
+              provider: 'codex',
+              id: 'gpt',
+              label: 'GPT',
+              thinkingOptions: [
+                ProviderSelectOption(id: 'medium', label: 'Medium'),
+              ],
+            ),
+          ],
+        ),
+      ],
+      selectedProvider: loading.provider,
+      selectedModel: loading.model,
+      selectedModeId: loading.modeId,
+      selectedThinkingOptionId: loading.thinkingOptionId,
+    );
+
+    expect(ready.provider, 'codex');
+    expect(ready.model, 'gpt');
+    expect(ready.modeId, 'plan');
+    expect(ready.thinkingOptionId, 'medium');
+    expect(ready.isAvailable, isTrue);
+  });
+
+  test('unavailable and disabled providers cannot be resolved', () {
+    final selection = resolveScheduleProviderSelection(
+      entries: const [
         ProviderSnapshotEntry(
           provider: 'offline',
           status: ProviderCatalogStatus.unavailable,
@@ -213,11 +293,12 @@ void main() {
           enabled: false,
         ),
       ],
+      selectedProvider: 'offline',
     );
 
+    expect(selection.providers.map((entry) => entry.provider), ['offline']);
+    expect(selection.hasProvider, isFalse);
     expect(selection.isAvailable, isFalse);
-    expect(selection.provider, isEmpty);
-    expect(selection.model, isEmpty);
   });
 
   test('cadence presets match frozen Paseo options', () {
