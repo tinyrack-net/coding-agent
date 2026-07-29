@@ -5,13 +5,14 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 void main() {
-  const knownCommands = {'ls', 'run', 'status', 'hooks'};
+  const knownCommands = {'ls', 'run', 'status', 'hooks', 'help'};
 
   test('keeps empty, flag, known, and missing invocations in CLI mode', () {
     for (final arguments in <List<String>>[
       [],
       ['--version'],
       ['ls', '--json'],
+      ['help', 'run'],
       ['missing'],
     ]) {
       final invocation = classifyCliInvocation(

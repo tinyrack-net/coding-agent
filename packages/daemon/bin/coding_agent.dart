@@ -19,9 +19,11 @@ import 'package:agent_daemon/src/cli/permit_command.dart';
 import 'package:agent_daemon/src/cli/provider_command.dart';
 import 'package:agent_daemon/src/cli/schedule_command.dart';
 import 'package:agent_daemon/src/cli/script_command.dart';
+import 'package:agent_daemon/src/cli/speech_command.dart';
 import 'package:agent_daemon/src/cli/terminal_command.dart';
 import 'package:agent_daemon/src/cli/workspace_command.dart';
 import 'package:agent_daemon/src/cli/worktree_command.dart';
+import 'package:daemon_lifecycle/daemon_lifecycle.dart';
 
 Future<void> main(List<String> arguments) async {
   final invocation = classifyCliInvocation(
@@ -34,6 +36,24 @@ Future<void> main(List<String> arguments) async {
     return;
   }
   arguments = defaultEmptyCliArguments(arguments);
+  if (arguments.first == 'help') {
+    if (arguments.length == 1) {
+      stdout.write(_rootHelp);
+      exitCode = 0;
+      return;
+    }
+    arguments = [...arguments.sublist(1), '--help'];
+  }
+  if (arguments.first == '--help' || arguments.first == '-h') {
+    stdout.write(_rootHelp);
+    exitCode = 0;
+    return;
+  }
+  if (arguments.first == '--version' || arguments.first == '-v') {
+    stdout.writeln(daemonVersion);
+    exitCode = 0;
+    return;
+  }
   if (arguments.first == 'onboard') {
     exitCode = await runOnboardCommand(arguments: arguments.sublist(1));
     return;
@@ -143,6 +163,10 @@ Future<void> main(List<String> arguments) async {
     exitCode = await runProviderCommand(arguments: arguments.sublist(1));
     return;
   }
+  if (arguments.isNotEmpty && arguments[0] == 'speech') {
+    exitCode = await runSpeechCommand(arguments: arguments.sublist(1));
+    return;
+  }
   if (arguments.isNotEmpty && arguments[0] == 'terminal') {
     exitCode = await runTerminalCommand(arguments: arguments.sublist(1));
     return;
@@ -186,6 +210,7 @@ Future<void> main(List<String> arguments) async {
     '       coding-agent permit <ls|allow|deny> ...\n'
     '       coding-agent script <ls|start|stop> ...\n'
     '       coding-agent provider <ls|models> ...\n'
+    '       coding-agent speech [options]\n'
     '       coding-agent workspace <create|ls|archive> ...\n'
     '       coding-agent worktree <create|ls|archive> ...\n'
     '       coding-agent terminal <ls|create|capture|send-keys|kill> ...\n'
@@ -193,6 +218,53 @@ Future<void> main(List<String> arguments) async {
   );
   exitCode = 64;
 }
+
+const _rootHelp =
+    'Usage: coding-agent [options] [command]\n'
+    '\n'
+    'Tinyrack CLI - control your AI coding agents from the command line\n'
+    '\n'
+    'Options:\n'
+    '  -v, --version        output the version number\n'
+    '  -o, --format <format>  output format: table, json, yaml (default: "table")\n'
+    '  --json               output in JSON format (alias for --format json)\n'
+    '  -q, --quiet          minimal output (IDs only)\n'
+    '  --no-headers         omit table headers\n'
+    '  --no-color           disable colored output\n'
+    '  -h, --help           display help for command\n'
+    '\n'
+    'Commands:\n'
+    '  ls\n'
+    '  run\n'
+    '  import\n'
+    '  clone\n'
+    '  attach\n'
+    '  logs\n'
+    '  stop\n'
+    '  delete\n'
+    '  send\n'
+    '  inspect\n'
+    '  wait\n'
+    '  archive\n'
+    '  onboard\n'
+    '  start\n'
+    '  hooks\n'
+    '  status\n'
+    '  restart\n'
+    '  agent\n'
+    '  daemon\n'
+    '  hub\n'
+    '  chat\n'
+    '  terminal\n'
+    '  script\n'
+    '  loop\n'
+    '  schedule\n'
+    '  heartbeat\n'
+    '  permit\n'
+    '  provider\n'
+    '  speech              Speech commands\n'
+    '  workspace\n'
+    '  help [command]      display help for command\n';
 
 const _knownCommands = {
   'run',
@@ -226,4 +298,5 @@ const _knownCommands = {
   'workspace',
   'worktree',
   'hooks',
+  'help',
 };

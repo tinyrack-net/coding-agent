@@ -43,6 +43,48 @@ void main() {
       expect(status.stdout, contains('coding-agent status'));
       expect(status.stderr, isEmpty);
 
+      final rootHelp = await Process.run(Platform.resolvedExecutable, const [
+        'run',
+        'agent_daemon:coding_agent',
+        '--help',
+      ], workingDirectory: packageRoot);
+      expect(rootHelp.exitCode, 0);
+      expect(rootHelp.stdout, contains('Tinyrack CLI'));
+      expect(rootHelp.stdout, contains('speech'));
+      expect(rootHelp.stdout, contains('workspace'));
+      expect(rootHelp.stdout, contains('heartbeat'));
+      expect(rootHelp.stdout, isNot(contains('\n  worktree')));
+      expect(rootHelp.stderr, isEmpty);
+
+      final version = await Process.run(Platform.resolvedExecutable, const [
+        'run',
+        'agent_daemon:coding_agent',
+        '--version',
+      ], workingDirectory: packageRoot);
+      expect(version.exitCode, 0);
+      expect((version.stdout as String).trim(), '0.2.0');
+      expect(version.stderr, isEmpty);
+
+      final speech = await Process.run(Platform.resolvedExecutable, const [
+        'run',
+        'agent_daemon:coding_agent',
+        'speech',
+        '--help',
+      ], workingDirectory: packageRoot);
+      expect(speech.exitCode, 0);
+      expect(speech.stdout, contains('Speech commands'));
+      expect(speech.stderr, isEmpty);
+
+      final helpSpeech = await Process.run(Platform.resolvedExecutable, const [
+        'run',
+        'agent_daemon:coding_agent',
+        'help',
+        'speech',
+      ], workingDirectory: packageRoot);
+      expect(helpSpeech.exitCode, 0);
+      expect(helpSpeech.stdout, contains('Speech commands'));
+      expect(helpSpeech.stderr, isEmpty);
+
       final project = Directory.systemTemp.createTempSync('cli-open-shell-');
       try {
         final opened = await Process.run(
