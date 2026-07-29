@@ -68,6 +68,7 @@ class AdaptiveModalSheet extends StatelessWidget {
     this.desktopMaxWidth = adaptiveModalDesktopMaxWidth,
     this.compactInitialHeightFactor = adaptiveModalCompactInitialHeightFactor,
     this.compactMaxHeightFactor = adaptiveModalCompactMaxHeightFactor,
+    this.sizeContentToCurrentSnapPoint = false,
   }) : assert(compactInitialHeightFactor >= .2),
        assert(compactInitialHeightFactor <= compactMaxHeightFactor),
        assert(compactMaxHeightFactor <= 1);
@@ -79,6 +80,7 @@ class AdaptiveModalSheet extends StatelessWidget {
   final double desktopMaxWidth;
   final double compactInitialHeightFactor;
   final double compactMaxHeightFactor;
+  final bool sizeContentToCurrentSnapPoint;
 
   @override
   Widget build(BuildContext context) {
@@ -102,6 +104,7 @@ class AdaptiveModalSheet extends StatelessWidget {
               safeArea: safeArea,
               initialHeightFactor: compactInitialHeightFactor,
               maxHeightFactor: compactMaxHeightFactor,
+              sizeContentToCurrentSnapPoint: sizeContentToCurrentSnapPoint,
             )
           : _DesktopAdaptiveModalSheet(
               title: title,
@@ -161,6 +164,7 @@ class _CompactAdaptiveModalSheet extends StatefulWidget {
     required this.safeArea,
     required this.initialHeightFactor,
     required this.maxHeightFactor,
+    required this.sizeContentToCurrentSnapPoint,
   });
 
   final String title;
@@ -170,6 +174,7 @@ class _CompactAdaptiveModalSheet extends StatefulWidget {
   final CompactSheetSafeAreaPadding safeArea;
   final double initialHeightFactor;
   final double maxHeightFactor;
+  final bool sizeContentToCurrentSnapPoint;
 
   @override
   State<_CompactAdaptiveModalSheet> createState() =>
@@ -179,15 +184,32 @@ class _CompactAdaptiveModalSheet extends StatefulWidget {
 class _CompactAdaptiveModalSheetState
     extends State<_CompactAdaptiveModalSheet> {
   var _closing = false;
+  double? _dragStartY;
+
+  void _close() {
+    if (_closing) return;
+    _closing = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onClose();
+    });
+  }
 
   bool _handleDrag(DraggableScrollableNotification notification) {
     if (!_closing && notification.extent <= .25) {
-      _closing = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) widget.onClose();
-      });
+      _close();
     }
     return false;
+  }
+
+  void _handlePointerMove(
+    PointerMoveEvent event,
+    ScrollController scrollController,
+  ) {
+    final startY = _dragStartY;
+    if (startY == null || _closing) return;
+    final atTop =
+        !scrollController.hasClients || scrollController.position.pixels <= 0;
+    if (atTop && event.position.dy - startY >= 160) _close();
   }
 
   @override
@@ -203,20 +225,58 @@ class _CompactAdaptiveModalSheetState
             maxChildSize: widget.maxHeightFactor,
             snap: true,
             snapSizes: [widget.initialHeightFactor, widget.maxHeightFactor],
-            builder: (context, scrollController) => _AdaptiveModalCard(
-              title: widget.title,
-              content: widget.content,
-              onClose: widget.onClose,
-              actions: widget.actions,
-              scrollController: scrollController,
-              contentPaddingBottom:
-                  widget.safeArea.contentPaddingBottom ??
-                  adaptiveModalContentPadding,
-              footerPaddingBottom:
-                  widget.safeArea.footerPaddingBottom ??
-                  adaptiveModalFooterVerticalPadding,
-              compact: true,
-            ),
+            builder: (context, scrollController) {
+              final maxHeight =
+                  MediaQuery.sizeOf(context).height * widget.maxHeightFactor;
+              final card = _AdaptiveModalCard(
+                title: widget.title,
+                content: widget.content,
+                onClose: widget.onClose,
+                actions: widget.actions,
+                scrollController: scrollController,
+                contentPaddingBottom:
+                    widget.safeArea.contentPaddingBottom ??
+                    adaptiveModalContentPadding,
+                footerPaddingBottom:
+                    widget.safeArea.footerPaddingBottom ??
+                    adaptiveModalFooterVerticalPadding,
+                compact: true,
+                exposeCardKey: widget.sizeContentToCurrentSnapPoint,
+                decorate: widget.sizeContentToCurrentSnapPoint,
+                height: widget.sizeContentToCurrentSnapPoint ? null : maxHeight,
+              );
+              final Widget frame;
+              if (widget.sizeContentToCurrentSnapPoint) {
+                frame = card;
+              } else {
+                final paseo = context.paseoPalette;
+                frame = Container(
+                  key: const ValueKey('adaptive-modal-sheet-card'),
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: paseo.surface0,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(16),
+                    ),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: OverflowBox(
+                    alignment: Alignment.topCenter,
+                    minHeight: maxHeight,
+                    maxHeight: maxHeight,
+                    child: SizedBox(height: maxHeight, child: card),
+                  ),
+                );
+              }
+              return Listener(
+                onPointerDown: (event) => _dragStartY = event.position.dy,
+                onPointerMove: (event) =>
+                    _handlePointerMove(event, scrollController),
+                onPointerUp: (_) => _dragStartY = null,
+                onPointerCancel: (_) => _dragStartY = null,
+                child: frame,
+              );
+            },
           ),
         ),
       );
@@ -232,6 +292,9 @@ class _AdaptiveModalCard extends StatelessWidget {
     this.contentPaddingBottom = adaptiveModalContentPadding,
     this.footerPaddingBottom = adaptiveModalFooterVerticalPadding,
     this.compact = false,
+    this.exposeCardKey = true,
+    this.decorate = true,
+    this.height,
   });
 
   final String title;
@@ -242,22 +305,30 @@ class _AdaptiveModalCard extends StatelessWidget {
   final double contentPaddingBottom;
   final double footerPaddingBottom;
   final bool compact;
+  final bool exposeCardKey;
+  final bool decorate;
+  final double? height;
 
   @override
   Widget build(BuildContext context) {
     final palette = FluentTheme.of(context);
     final paseo = context.paseoPalette;
     return Container(
-      key: const ValueKey('adaptive-modal-sheet-card'),
+      key: exposeCardKey
+          ? const ValueKey('adaptive-modal-sheet-card')
+          : const ValueKey('adaptive-modal-sheet-card-content'),
       width: double.infinity,
-      decoration: BoxDecoration(
-        color: compact ? paseo.surface0 : paseo.surface1,
-        borderRadius: compact
-            ? const BorderRadius.vertical(top: Radius.circular(16))
-            : BorderRadius.circular(12),
-        border: Border.all(color: paseo.surface2),
-      ),
-      clipBehavior: Clip.antiAlias,
+      height: height,
+      decoration: decorate
+          ? BoxDecoration(
+              color: compact ? paseo.surface0 : paseo.surface1,
+              borderRadius: compact
+                  ? const BorderRadius.vertical(top: Radius.circular(16))
+                  : BorderRadius.circular(12),
+              border: compact ? null : Border.all(color: paseo.surface2),
+            )
+          : null,
+      clipBehavior: decorate ? Clip.antiAlias : Clip.none,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -265,26 +336,17 @@ class _AdaptiveModalCard extends StatelessWidget {
             Container(
               width: 32,
               height: 4,
-              margin: const EdgeInsets.only(top: 8),
+              margin: const EdgeInsets.only(top: 8, bottom: 11),
               decoration: BoxDecoration(
                 color: palette.resources.textFillColorSecondary,
                 borderRadius: BorderRadius.circular(999),
               ),
             ),
           _AdaptiveModalHeader(title: title, onClose: onClose),
-          Flexible(
-            child: SingleChildScrollView(
-              key: const ValueKey('adaptive-modal-sheet-scroll'),
-              controller: scrollController,
-              padding: EdgeInsets.fromLTRB(
-                adaptiveModalContentPadding,
-                adaptiveModalContentPadding,
-                adaptiveModalContentPadding,
-                contentPaddingBottom,
-              ),
-              child: content,
-            ),
-          ),
+          if (height != null)
+            Expanded(child: _scrollableContent())
+          else
+            Flexible(child: _scrollableContent()),
           if (actions.isNotEmpty)
             _AdaptiveModalFooter(
               actions: actions,
@@ -294,6 +356,18 @@ class _AdaptiveModalCard extends StatelessWidget {
       ),
     );
   }
+
+  Widget _scrollableContent() => SingleChildScrollView(
+    key: const ValueKey('adaptive-modal-sheet-scroll'),
+    controller: scrollController,
+    padding: EdgeInsets.fromLTRB(
+      compact ? 0 : adaptiveModalContentPadding,
+      compact ? 0 : adaptiveModalContentPadding,
+      compact ? 0 : adaptiveModalContentPadding,
+      contentPaddingBottom,
+    ),
+    child: content,
+  );
 }
 
 class _AdaptiveModalHeader extends StatelessWidget {
@@ -368,7 +442,7 @@ class _AdaptiveModalFooter extends StatelessWidget {
         children: [
           for (var index = 0; index < actions.length; index++) ...[
             if (index > 0) const SizedBox(width: 12),
-            Expanded(child: actions[index]),
+            Expanded(child: SizedBox(height: 44, child: actions[index])),
           ],
         ],
       ),

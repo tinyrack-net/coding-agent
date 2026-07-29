@@ -97,8 +97,8 @@ void main() {
       ),
     );
 
-    expect(tester.getSize(find.byKey(const ValueKey('small'))).height, 32);
-    expect(tester.getSize(find.byKey(const ValueKey('medium'))).height, 44);
+    expect(tester.getSize(find.byKey(const ValueKey('small'))).height, 34);
+    expect(tester.getSize(find.byKey(const ValueKey('medium'))).height, 46);
     expect(tester.getSize(find.byKey(const ValueKey('multiline'))).height, 96);
   });
 
@@ -127,7 +127,7 @@ void main() {
       ),
     );
 
-    expect(tester.getSize(find.byKey(const ValueKey('small'))).height, 32);
-    expect(tester.getSize(find.byKey(const ValueKey('medium'))).height, 44);
+    expect(tester.getSize(find.byKey(const ValueKey('small'))).height, 34);
+    expect(tester.getSize(find.byKey(const ValueKey('medium'))).height, 46);
   });
 }

@@ -5,6 +5,7 @@ import 'package:coding_agent_app/composer/create_agent_preferences.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/core/theme.dart';
 import 'package:coding_agent_app/screens/schedules_screen.dart';
+import 'package:coding_agent_app/state/appearance_provider.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/host_registry_provider.dart';
@@ -62,7 +63,7 @@ void main() {
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(500, 800);
+    tester.view.physicalSize = const Size(390, 844);
     addTearDown(tester.view.reset);
     await _pump(tester, const []);
 
@@ -72,28 +73,60 @@ void main() {
     final card = tester.getRect(
       find.byKey(const ValueKey('adaptive-modal-sheet-card')),
     );
-    expect(card.width, 500);
-    expect(card.height, 800 * adaptiveModalCompactInitialHeightFactor);
-    expect(card.bottom, 800);
+    expect(card.width, 390);
+    expect(card.height, 844 * adaptiveModalCompactInitialHeightFactor);
+    expect(card.bottom, 844);
     expect(
       tester.getSize(find.byKey(const ValueKey('schedule-name-input'))).height,
-      44,
+      46,
     );
     expect(
       tester
           .getSize(find.byKey(const ValueKey('schedule-prompt-input')))
           .height,
-      96,
+      112,
     );
     expect(
       tester
           .getSize(find.byKey(const ValueKey('cadence-cron-expression')))
           .height,
-      44,
+      46,
     );
     expect(
-      tester.getRect(find.byKey(const ValueKey('schedule-form-submit'))).bottom,
-      lessThanOrEqualTo(card.bottom - adaptiveModalFooterVerticalPadding),
+      tester.getRect(find.byKey(const ValueKey('schedule-form-submit'))).top,
+      greaterThanOrEqualTo(card.bottom),
+    );
+    expect(
+      tester.getRect(
+        find.byKey(const ValueKey('adaptive-modal-sheet-card-content')),
+      ),
+      within(distance: 1, from: const Rect.fromLTWH(0, 295.4, 390, 759.6)),
+    );
+    expect(
+      tester.getRect(find.byKey(const ValueKey('schedule-name-input'))),
+      within(distance: 1, from: const Rect.fromLTWH(0, 411.4, 390, 46)),
+    );
+    expect(
+      tester.getRect(find.byKey(const ValueKey('schedule-prompt-input'))),
+      within(distance: 1, from: const Rect.fromLTWH(0, 484.4, 390, 112)),
+    );
+    expect(
+      tester.getRect(find.byKey(const ValueKey('schedule-project-trigger'))),
+      within(distance: 1, from: const Rect.fromLTWH(0, 623.4, 390, 46)),
+    );
+    expect(
+      tester.getRect(
+        find.byKey(const ValueKey('schedule-cadence-preset-trigger')),
+      ),
+      within(distance: 1, from: const Rect.fromLTWH(0, 696.4, 390, 46)),
+    );
+    expect(
+      tester.getRect(find.byKey(const ValueKey('cadence-cron-expression'))),
+      within(distance: 1, from: const Rect.fromLTWH(0, 754.4, 390, 46)),
+    );
+    expect(
+      tester.getRect(find.byKey(const ValueKey('schedule-form-submit'))),
+      within(distance: 1, from: const Rect.fromLTWH(201, 999, 165, 44)),
     );
   });
 
@@ -103,7 +136,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(900, 900);
     addTearDown(tester.view.reset);
-    await _pump(tester, const []);
+    await _pump(tester, const [], themeName: AppThemeName.light);
 
     await tester.tap(find.text('New schedule'));
     await tester.pumpAndSettle();
@@ -120,7 +153,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(390, 844);
     addTearDown(tester.view.reset);
-    await _pump(tester, const []);
+    await _pump(tester, const [], themeName: AppThemeName.light);
 
     await tester.tap(find.text('New schedule'));
     await tester.pumpAndSettle();
@@ -245,19 +278,19 @@ void main() {
     final fields = find.byType(TextBox);
     expect(
       tester.getSize(find.byKey(const ValueKey('schedule-name-input'))).height,
-      32,
+      34,
     );
     expect(
       tester
           .getSize(find.byKey(const ValueKey('schedule-prompt-input')))
           .height,
-      96,
+      98,
     );
     expect(
       tester
           .getSize(find.byKey(const ValueKey('cadence-cron-expression')))
           .height,
-      32,
+      34,
     );
     await tester.enterText(fields.at(1), 'Run tests');
     await tester.enterText(fields.at(2), '*/5 * * * *');
@@ -287,7 +320,7 @@ void main() {
       tester
           .getSize(find.byKey(const ValueKey('schedule-model-trigger')))
           .height,
-      32,
+      34,
     );
     final modeSelector = find.byKey(const ValueKey('schedule-mode-trigger'));
     await tester.ensureVisible(modeSelector);
@@ -640,7 +673,7 @@ void main() {
       tester
           .getSize(find.byKey(const ValueKey('schedule-agent-target')))
           .height,
-      32,
+      34,
     );
 
     await tester.enterText(find.byType(TextBox), '30 * * * *');
@@ -834,8 +867,16 @@ Future<void> _selectScheduleProject(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _pump(WidgetTester tester, List<ScheduleSummary> schedules) async {
-  await _pumpWithNotifier(tester, _FakeSchedulesNotifier(schedules));
+Future<void> _pump(
+  WidgetTester tester,
+  List<ScheduleSummary> schedules, {
+  AppThemeName themeName = AppThemeName.dark,
+}) async {
+  await _pumpWithNotifier(
+    tester,
+    _FakeSchedulesNotifier(schedules),
+    themeName: themeName,
+  );
 }
 
 Future<void> _pumpWithNotifier(
@@ -847,6 +888,7 @@ Future<void> _pumpWithNotifier(
   bool supportsWorkspaceMultiplicity = true,
   bool projectsAreGit = true,
   CreateAgentPreferencesService? preferencesService,
+  AppThemeName themeName = AppThemeName.dark,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -870,7 +912,7 @@ Future<void> _pumpWithNotifier(
         }),
       ],
       child: FluentApp(
-        theme: buildAppTheme(),
+        theme: buildAppTheme(themeName),
         home: SchedulesScreen(
           preferencesService:
               preferencesService ??

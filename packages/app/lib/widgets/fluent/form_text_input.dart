@@ -35,6 +35,7 @@ class PaseoField extends StatelessWidget {
             style: TextStyle(
               color: context.paseoPalette.foregroundMuted,
               fontSize: 14,
+              height: 19 / 14,
               fontWeight: FontWeight.normal,
             ),
           ),
@@ -68,7 +69,8 @@ class PaseoField extends StatelessWidget {
 
 /// Paseo's field-sized text input chrome.
 ///
-/// The frozen client uses the same 32/44 logical-pixel geometry as
+/// The frozen web client renders the 32/44 minimum geometry at 34/46 logical
+/// pixels once its one-pixel border is included.
 /// [PaseoSelectFieldTrigger], including the 1.4 text line height and adaptive
 /// horizontal padding.
 class PaseoFormTextInput extends StatelessWidget {
@@ -105,7 +107,7 @@ class PaseoFormTextInput extends StatelessWidget {
     final medium = size == PaseoFieldControlSize.md;
     final fontSize = medium ? 16.0 : 14.0;
     final lineHeight = fontSize * 1.4;
-    final controlHeight = medium ? 44.0 : 32.0;
+    final controlHeight = medium ? 46.0 : 34.0;
     final horizontalPadding = medium ? 16.0 : 12.0;
     final verticalPadding = (controlHeight - lineHeight) / 2;
     final radius = medium ? 8.0 : 6.0;
@@ -190,7 +192,7 @@ class PaseoReadOnlyField extends StatelessWidget {
     final palette = context.paseoPalette;
     final medium = size == PaseoFieldControlSize.md;
     return Container(
-      height: medium ? 44 : 32,
+      height: medium ? 46 : 34,
       padding: EdgeInsets.symmetric(horizontal: medium ? 16 : 12),
       alignment: Alignment.centerLeft,
       decoration: BoxDecoration(

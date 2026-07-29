@@ -13,7 +13,7 @@ void main() {
     await _pump(tester, value: null, onChanged: (value, _) => selected = value);
 
     final trigger = find.byKey(const ValueKey('project-trigger'));
-    expect(tester.getSize(trigger).height, 32);
+    expect(tester.getSize(trigger).height, 34);
     expect(find.text('Select project'), findsOneWidget);
 
     await tester.tap(trigger);
@@ -29,32 +29,33 @@ void main() {
     expect(selected, 'one');
   });
 
-  testWidgets('compact trigger uses 44px geometry and adaptive sheet', (
-    tester,
-  ) async {
-    await _setViewport(tester, const Size(500, 800));
-    await _pump(
-      tester,
-      value: null,
-      size: PaseoFieldControlSize.md,
-      onChanged: (_, _) {},
-    );
+  testWidgets(
+    'compact trigger uses frozen 46px browser geometry and adaptive sheet',
+    (tester) async {
+      await _setViewport(tester, const Size(500, 800));
+      await _pump(
+        tester,
+        value: null,
+        size: PaseoFieldControlSize.md,
+        onChanged: (_, _) {},
+      );
 
-    final trigger = find.byKey(const ValueKey('project-trigger'));
-    expect(tester.getSize(trigger).height, 44);
-    await tester.tap(trigger);
-    await tester.pumpAndSettle();
+      final trigger = find.byKey(const ValueKey('project-trigger'));
+      expect(tester.getSize(trigger).height, 46);
+      await tester.tap(trigger);
+      await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const ValueKey('adaptive-modal-sheet-card')),
-      findsOneWidget,
-    );
-    final card = tester.getRect(
-      find.byKey(const ValueKey('adaptive-modal-sheet-card')),
-    );
-    expect(card.height, 800 * .6);
-    expect(card.bottom, 800);
-  });
+      expect(
+        find.byKey(const ValueKey('adaptive-modal-sheet-card')),
+        findsOneWidget,
+      );
+      final card = tester.getRect(
+        find.byKey(const ValueKey('adaptive-modal-sheet-card')),
+      );
+      expect(card.height, 800 * .6);
+      expect(card.bottom, 800);
+    },
+  );
 
   testWidgets('search filters labels and descriptions and reports empty', (
     tester,

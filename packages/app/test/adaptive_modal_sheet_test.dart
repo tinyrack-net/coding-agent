@@ -78,7 +78,27 @@ void main() {
       decoration.borderRadius,
       const BorderRadius.vertical(top: Radius.circular(16)),
     );
+    expect(
+      tester.getRect(find.byKey(const ValueKey('cancel'))).top,
+      greaterThanOrEqualTo(card.bottom),
+    );
   });
+
+  testWidgets(
+    'compact visible-content mode keeps its footer in the live snap',
+    (tester) async {
+      await _setViewport(tester, const Size(500, 800));
+      await _pumpSheet(tester, sizeContentToCurrentSnapPoint: true);
+
+      final card = tester.getRect(
+        find.byKey(const ValueKey('adaptive-modal-sheet-card')),
+      );
+      expect(
+        tester.getRect(find.byKey(const ValueKey('cancel'))).bottom,
+        lessThanOrEqualTo(card.bottom),
+      );
+    },
+  );
 
   testWidgets('header close action and equal-width footer are interactive', (
     tester,
@@ -90,6 +110,8 @@ void main() {
     final cancel = tester.getRect(find.byKey(const ValueKey('cancel')));
     final submit = tester.getRect(find.byKey(const ValueKey('submit')));
     expect(cancel.width, submit.width);
+    expect(cancel.height, 44);
+    expect(submit.height, 44);
 
     await tester.tap(find.byKey(const ValueKey('adaptive-modal-sheet-close')));
     await tester.pump(const Duration(milliseconds: 100));
@@ -101,10 +123,7 @@ void main() {
     var closed = false;
     await _pumpSheet(tester, onClose: () => closed = true);
 
-    await tester.drag(
-      find.byKey(const ValueKey('adaptive-modal-sheet-scroll')),
-      const Offset(0, 500),
-    );
+    await tester.dragFrom(const Offset(250, 400), const Offset(0, 500));
     await tester.pumpAndSettle();
 
     expect(closed, isTrue);
@@ -117,26 +136,26 @@ Future<void> _setViewport(WidgetTester tester, Size size) async {
   addTearDown(tester.view.reset);
 }
 
-Future<void> _pumpSheet(WidgetTester tester, {VoidCallback? onClose}) =>
-    tester.pumpWidget(
-      FluentApp(
-        theme: buildAppTheme(),
-        home: AdaptiveModalSheet(
-          title: 'New schedule',
-          onClose: onClose ?? () {},
-          content: const SizedBox(height: 2000),
-          actions: const [
-            Button(
-              key: ValueKey('cancel'),
-              onPressed: null,
-              child: Text('Cancel'),
-            ),
-            FilledButton(
-              key: ValueKey('submit'),
-              onPressed: null,
-              child: Text('Submit'),
-            ),
-          ],
+Future<void> _pumpSheet(
+  WidgetTester tester, {
+  VoidCallback? onClose,
+  bool sizeContentToCurrentSnapPoint = false,
+}) => tester.pumpWidget(
+  FluentApp(
+    theme: buildAppTheme(),
+    home: AdaptiveModalSheet(
+      title: 'New schedule',
+      onClose: onClose ?? () {},
+      sizeContentToCurrentSnapPoint: sizeContentToCurrentSnapPoint,
+      content: const SizedBox(height: 2000),
+      actions: const [
+        Button(key: ValueKey('cancel'), onPressed: null, child: Text('Cancel')),
+        FilledButton(
+          key: ValueKey('submit'),
+          onPressed: null,
+          child: Text('Submit'),
         ),
-      ),
-    );
+      ],
+    ),
+  ),
+);

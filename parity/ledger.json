@@ -2332,9 +2332,11 @@
       "implementation": "packages/app/lib/widgets/adaptive_modal_sheet.dart",
       "evidence": [
         "packages/app/test/adaptive_modal_sheet_test.dart",
-        "packages/app/test/schedules_screen_test.dart"
+        "packages/app/test/schedules_screen_test.dart",
+        "parity/oracle/paseo_schedule_form_compact_390x844.png",
+        "parity/oracle/paseo_schedule_form_geometry.json"
       ],
-      "notes": "Desktop 520px/85% card geometry, 24px header/content/footer insets, sticky equal-width actions, 160ms fade, close and barrier dismissal, compact 65%/90% draggable presentation, pan-down dismissal, keyboard inset, and compact safe-area behavior are implemented. Remaining shared primitive parity includes inline/search headers, nested modal isolation, push/replace presentation, non-scrollable content, web portal stacking, and adaptive native text-input ownership."
+      "notes": "Desktop 520px/85% card geometry, 24px header/content/footer insets, sticky equal-width 44px actions, 160ms fade, close and barrier dismissal, compact 65%/90% draggable presentation, max-snap content sizing, pan-down dismissal, keyboard inset, and compact safe-area behavior are implemented. The compact schedule journey is locked to the frozen runtime geometry within one logical pixel. Remaining shared primitive parity includes inline/search headers, nested modal isolation, push/replace presentation, non-scrollable content, web portal stacking, and adaptive native text-input ownership."
     },
     {
       "id": "source-unit:packages/app/src/components/add-host-method-modal.tsx",
@@ -3284,9 +3286,12 @@
       "evidence": [
         "packages/app/test/schedules_screen_test.dart",
         "packages/app/test/goldens/schedule_form_desktop_900x900.png",
-        "packages/app/test/goldens/schedule_form_compact_390x844.png"
+        "packages/app/test/goldens/schedule_form_compact_390x844.png",
+        "parity/oracle/paseo_schedule_form_desktop_900x900.png",
+        "parity/oracle/paseo_schedule_form_compact_390x844.png",
+        "parity/oracle/paseo_schedule_form_geometry.json"
       ],
-      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, shows the owning Host as read-only while editing a new-agent schedule, exposes provider and model through the single combined model trigger, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. It runs in the shared adaptive desktop/compact sheet with frozen card and snap geometry, sticky footer, 16px field stack, 8px label gaps, 96px prompt, Thinking-before-Mode order, and a stacked archive switch. Host, Project, Thinking, Mode, Isolation, and Cadence use the adaptive SelectField; Model uses the exported custom SelectField trigger with the frozen provider icon, project/thinking/isolation options use the frozen Lucide glyph paths, and every text/read-only control now follows the frozen 32/44px adaptive field geometry. Deterministic Windows desktop and compact Flutter regression goldens cover the pristine create state; captured Paseo-oracle overlay comparison remains."
+      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, shows the owning Host as read-only while editing a new-agent schedule, exposes provider and model through the single combined model trigger, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. It runs in the shared adaptive desktop/compact sheet with frozen card and snap geometry, an initially off-screen compact footer, desktop 16px versus compact 0px field spacing, 8px label gaps, responsive 98/112px prompt geometry, Thinking-before-Mode order, and a stacked archive switch. Host, Project, Thinking, Mode, Isolation, and Cadence use the adaptive SelectField; Model uses the exported custom SelectField trigger with the frozen provider icon, project/thinking/isolation options use the frozen Lucide glyph paths, and every text/read-only control follows the frozen browser-rendered 34/46px adaptive field geometry. Frozen Paseo desktop/compact captures and extracted geometry are checked by deterministic Flutter goldens and compact one-pixel geometry assertions."
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/schedule-row.tsx",
@@ -3752,7 +3757,7 @@
         "packages/app/test/form_text_input_test.dart",
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "Flutter now has the reusable Field and FormTextInput contracts: label/control/subtext use the frozen 8px stack, errors take precedence over hints, empty subtext is omitted, derived hint/error test identities are stable, and subtext is single-line. Input chrome matches the frozen 32/44px adaptive geometry, 12/16px padding, 6/8px radii, 1.4 line height, surface, hover/focus/disabled states, multiline sizing, and accessibility semantics. Schedule fields and immutable Target values consume the shared implementation."
+      "notes": "Flutter now has the reusable Field and FormTextInput contracts: label/control/subtext use the frozen 8px stack, errors take precedence over hints, empty subtext is omitted, derived hint/error test identities are stable, and subtext is single-line. Input chrome matches the frozen web runtime's border-inclusive 34/46px geometry, 12/16px padding, 6/8px radii, 1.4 line height, surface, hover/focus/disabled states, multiline sizing, and accessibility semantics. Schedule fields and immutable Target values consume the shared implementation."
     },
     {
       "id": "source-unit:packages/app/src/components/ui/isolated-bottom-sheet-modal/index.tsx",

@@ -412,7 +412,7 @@ class PaseoSelectFieldTrigger extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.paseoPalette;
     final medium = size == PaseoFieldControlSize.md;
-    final height = medium ? 44.0 : 32.0;
+    final height = medium ? 46.0 : 34.0;
     final horizontalPadding = medium ? 16.0 : 12.0;
     final radius = medium ? 8.0 : 6.0;
     final fontSize = medium ? 16.0 : 14.0;

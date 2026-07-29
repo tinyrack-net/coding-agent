@@ -1,0 +1,194 @@
+{
+  "desktop": {
+    "viewport": {
+      "width": 900,
+      "height": 900
+    },
+    "form": {
+      "x": 0,
+      "y": 0,
+      "width": 900,
+      "height": 900
+    },
+    "nameLabel": {
+      "x": 215,
+      "y": 196.5,
+      "width": 470,
+      "height": 19
+    },
+    "nameInput": {
+      "x": 228,
+      "y": 230.5,
+      "width": 444,
+      "height": 20
+    },
+    "promptLabel": {
+      "x": 215,
+      "y": 273.5,
+      "width": 470,
+      "height": 19
+    },
+    "promptInput": {
+      "x": 228,
+      "y": 307.5,
+      "width": 444,
+      "height": 80
+    },
+    "projectLabel": {
+      "x": 215,
+      "y": 410.5,
+      "width": 470,
+      "height": 19
+    },
+    "projectTrigger": {
+      "x": 215,
+      "y": 437.5,
+      "width": 470,
+      "height": 34
+    },
+    "cadenceLabel": {
+      "x": 215,
+      "y": 487.5,
+      "width": 470,
+      "height": 19
+    },
+    "cadenceTrigger": {
+      "x": 215,
+      "y": 514.5,
+      "width": 470,
+      "height": 34
+    },
+    "cronInput": {
+      "x": 228,
+      "y": 567.5,
+      "width": 444,
+      "height": 20
+    },
+    "cadencePreview": {
+      "x": 215,
+      "y": 606.5,
+      "width": 470,
+      "height": 16
+    },
+    "maxRunsLabel": {
+      "x": 215,
+      "y": 638.5,
+      "width": 470,
+      "height": 19
+    },
+    "maxRunsInput": {
+      "x": 228,
+      "y": 672.5,
+      "width": 444,
+      "height": 20
+    },
+    "cancel": {
+      "x": 215,
+      "y": 736.5,
+      "width": 229,
+      "height": 44
+    },
+    "submit": {
+      "x": 456,
+      "y": 736.5,
+      "width": 229,
+      "height": 44
+    }
+  },
+  "compact": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "form": {
+      "x": 0,
+      "y": 319.3999938964844,
+      "width": 390,
+      "height": 65
+    },
+    "nameLabel": {
+      "x": 0,
+      "y": 384.3999938964844,
+      "width": 390,
+      "height": 19
+    },
+    "nameInput": {
+      "x": 17,
+      "y": 423.3999938964844,
+      "width": 356,
+      "height": 22
+    },
+    "promptLabel": {
+      "x": 0,
+      "y": 457.3999938964844,
+      "width": 390,
+      "height": 19
+    },
+    "promptInput": {
+      "x": 17,
+      "y": 496.3999938964844,
+      "width": 356,
+      "height": 88.00003051757812
+    },
+    "projectLabel": {
+      "x": 0,
+      "y": 596.4000244140625,
+      "width": 390,
+      "height": 19
+    },
+    "projectTrigger": {
+      "x": 0,
+      "y": 623.4000244140625,
+      "width": 390,
+      "height": 46
+    },
+    "cadenceLabel": {
+      "x": 0,
+      "y": 669.4000244140625,
+      "width": 390,
+      "height": 19
+    },
+    "cadenceTrigger": {
+      "x": 0,
+      "y": 696.4000244140625,
+      "width": 390,
+      "height": 46
+    },
+    "cronInput": {
+      "x": 17,
+      "y": 766.4000244140625,
+      "width": 356,
+      "height": 22
+    },
+    "cadencePreview": {
+      "x": 0,
+      "y": 812.4000244140625,
+      "width": 390,
+      "height": 16
+    },
+    "maxRunsLabel": {
+      "x": 0,
+      "y": 828.4000244140625,
+      "width": 390,
+      "height": 19
+    },
+    "maxRunsInput": {
+      "x": 17,
+      "y": 867.4000244140625,
+      "width": 356,
+      "height": 22
+    },
+    "cancel": {
+      "x": 24,
+      "y": 999.0093994140625,
+      "width": 165,
+      "height": 44
+    },
+    "submit": {
+      "x": 201,
+      "y": 999.0093994140625,
+      "width": 165,
+      "height": 44
+    }
+  }
+}

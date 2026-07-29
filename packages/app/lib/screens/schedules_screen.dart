@@ -699,6 +699,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
         MediaQuery.sizeOf(context).width < adaptiveModalCompactBreakpoint
         ? PaseoFieldControlSize.md
         : PaseoFieldControlSize.sm;
+    final compact = controlSize == PaseoFieldControlSize.md;
     final hostClients = ref.watch(hostRuntimeClientsProvider);
     final client = _serverId == null ? null : hostClients[_serverId];
     ScheduleProjectTarget? selectedProject;
@@ -889,7 +890,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
           ],
           if (_error != null)
             Text(_error!, style: TextStyle(color: context.statusColors.danger)),
-        ]),
+        ], spacing: compact ? 0 : 16),
       ),
       actions: [
         Button(
@@ -929,12 +930,13 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     );
   }
 
-  List<Widget> _withFieldSpacing(List<Widget> fields) => [
-    for (var index = 0; index < fields.length; index++) ...[
-      if (index > 0) const SizedBox(height: 16),
-      fields[index],
-    ],
-  ];
+  List<Widget> _withFieldSpacing(List<Widget> fields, {double spacing = 16}) =>
+      [
+        for (var index = 0; index < fields.length; index++) ...[
+          if (index > 0 && spacing > 0) SizedBox(height: spacing),
+          fields[index],
+        ],
+      ];
 
   Widget _labeledControl(
     String label,
@@ -968,7 +970,9 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
       placeholder: placeholder,
       size: controlSize,
       maxLines: maxLines,
-      multilineHeight: maxLines > 1 ? 96 : null,
+      multilineHeight: maxLines > 1
+          ? (controlSize == PaseoFieldControlSize.md ? 112 : 98)
+          : null,
       keyboardType: keyboardType,
       onChanged: onChanged,
     ),
@@ -1034,7 +1038,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
             onChanged: (_) => setState(() {}),
           ),
           if (error != null || preview != null) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 12),
             Text(
               error ?? preview!,
               style: context.textStyles.bodySmall?.copyWith(
