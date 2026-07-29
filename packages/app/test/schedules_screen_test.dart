@@ -68,7 +68,6 @@ void main() {
     final fields = find.byType(TextBox);
     await tester.enterText(fields.at(1), 'Updated prompt');
     await tester.enterText(fields.at(2), '15 * * * *');
-    await tester.enterText(fields.at(3), 'Asia/Seoul');
     await tester.tap(find.text('Save changes'));
     await tester.pumpAndSettle();
 
@@ -77,7 +76,7 @@ void main() {
     expect(notifier.updatedChanges!['cadence'], {
       'type': 'cron',
       'expression': '15 * * * *',
-      'timezone': 'Asia/Seoul',
+      'timezone': 'UTC',
     });
     expect(notifier.updatedChanges!['newAgentConfig'], isA<Map>());
   });
@@ -126,16 +125,42 @@ void main() {
     final fields = find.byType(TextBox);
     await tester.enterText(fields.at(1), 'Run tests');
     await tester.enterText(fields.at(2), '*/5 * * * *');
-    await tester.enterText(fields.at(4), 'codex');
-    await tester.enterText(fields.at(5), 'gpt-5.4');
-    await tester.enterText(fields.at(6), 'C:/repo');
-    await tester.enterText(fields.at(7), '2');
+    await tester.enterText(fields.at(3), 'codex');
+    await tester.enterText(fields.at(4), 'gpt-5.4');
+    await tester.enterText(fields.at(5), 'C:/repo');
+    await tester.enterText(fields.at(6), '2');
     await tester.tap(find.text('Create schedule'));
     await tester.pumpAndSettle();
 
     expect(notifier.createdPrompt, 'Run tests');
     expect(notifier.createdMaxRuns, 2);
     expect(find.text('Create schedule'), findsNothing);
+  });
+
+  testWidgets('cadence editor applies presets and previews custom cron', (
+    tester,
+  ) async {
+    await _pump(tester, const []);
+    await tester.tap(find.text('New schedule'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Every hour'), findsWidgets);
+    await tester.tap(find.text('Every hour').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Weekdays 9:00').last);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextBox, '0 9 * * 1-5'), findsOneWidget);
+    expect(find.text('Weekdays at 09:00 UTC'), findsOneWidget);
+
+    final cron = find.byType(TextBox).at(2);
+    await tester.enterText(cron, '61 * * * *');
+    await tester.pump();
+    expect(find.text('Invalid minute value'), findsOneWidget);
+
+    await tester.enterText(cron, '30 8 * * 1-5');
+    await tester.pump();
+    expect(find.text('Custom cron'), findsWidgets);
+    expect(find.text('Weekdays at 08:30 UTC'), findsOneWidget);
   });
 
   testWidgets('paused row menu resumes, runs, and confirms deletion', (
@@ -333,8 +358,8 @@ void main() {
     final fields = find.byType(TextBox);
     await tester.enterText(fields.at(1), 'Run tests');
     await tester.enterText(fields.at(2), '*/5 * * * *');
-    await tester.enterText(fields.at(4), 'codex');
-    await tester.enterText(fields.at(6), 'C:/repo');
+    await tester.enterText(fields.at(3), 'codex');
+    await tester.enterText(fields.at(5), 'C:/repo');
     await tester.tap(find.text('Create schedule'));
     await tester.pumpAndSettle();
 

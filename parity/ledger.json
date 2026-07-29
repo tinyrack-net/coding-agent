@@ -6545,16 +6545,20 @@
     },
     {
       "id": "source-unit:packages/app/src/schedules/aggregated-schedules.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/app/lib/state/schedules_provider.dart",
+      "evidence": [
+        "packages/app/test/aggregated_schedules_provider_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "source-unit:packages/app/src/schedules/schedule-cadence-options.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/app/lib/state/schedule_form_model.dart",
+      "evidence": [
+        "packages/app/test/schedule_form_model_test.dart"
+      ],
       "notes": null
     },
     {
@@ -6568,9 +6572,12 @@
     },
     {
       "id": "source-unit:packages/app/src/schedules/schedule-form-model.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "partial",
+      "implementation": "packages/app/lib/state/schedule_form_model.dart; packages/app/lib/screens/schedules_screen.dart",
+      "evidence": [
+        "packages/app/test/schedule_form_model_test.dart",
+        "packages/app/test/schedules_screen_test.dart"
+      ],
       "notes": null
     },
     {

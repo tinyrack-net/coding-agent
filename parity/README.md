@@ -157,7 +157,7 @@ Never hand-edit `upstream_inventory.json`. `ledger.json` is merge-preserved by
 - Schedule CLI create/list/inspect/logs/pause/resume/run-once/update/delete now
   matches frozen action-specific options, validation order, stable table/JSON
   projections, structured errors, help, and the real daemon lifecycle.
-- Ledger status: 420 verified, 240 partial, and 1260 not-started out of 1920.
+- Ledger status: 422 verified, 241 partial, and 1257 not-started out of 1920.
 - Validation: protocol 332 tests, daemon 898 tests, Flutter 802 tests, root
   analysis, frozen
   inventory validation, and package coverage of protocol 95.24%, relay 95.17%,

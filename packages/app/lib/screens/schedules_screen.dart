@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../state/agents_provider.dart';
 import '../state/host_registry_provider.dart';
+import '../state/schedule_form_model.dart';
 import '../state/schedules_provider.dart';
 import '../widgets/fluent/toast.dart';
 
@@ -546,12 +547,12 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
   late final TextEditingController _name;
   late final TextEditingController _prompt;
   late final TextEditingController _cron;
-  late final TextEditingController _timezone;
   late final TextEditingController _provider;
   late final TextEditingController _model;
   late final TextEditingController _cwd;
   late final TextEditingController _maxRuns;
   String? _serverId;
+  late final String _timezone;
   var _isolation = 'local';
   var _archiveOnFinish = true;
   var _submitting = false;
@@ -563,15 +564,14 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     final schedule = widget.schedule;
     final target = schedule?.target;
     final config = target is NewAgentScheduleTarget ? target.config : null;
-    final cadence = schedule?.cadence;
+    final cadence = normalizeScheduleFormCadence(
+      schedule?.cadence ?? const EveryScheduleCadence(everyMs: 3600000),
+      'UTC',
+    );
     _name = TextEditingController(text: schedule?.name ?? '');
     _prompt = TextEditingController(text: schedule?.prompt ?? '');
-    _cron = TextEditingController(
-      text: cadence is CronScheduleCadence ? cadence.expression : '0 9 * * *',
-    );
-    _timezone = TextEditingController(
-      text: cadence is CronScheduleCadence ? cadence.timezone ?? '' : '',
-    );
+    _cron = TextEditingController(text: cadence.expression);
+    _timezone = cadence.timezone ?? 'UTC';
     _provider = TextEditingController(text: config?.provider ?? 'codex');
     _model = TextEditingController(text: config?.model ?? '');
     _cwd = TextEditingController(text: config?.cwd ?? '');
@@ -590,7 +590,6 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
       _name,
       _prompt,
       _cron,
-      _timezone,
       _provider,
       _model,
       _cwd,
@@ -633,13 +632,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
               ],
               _field('Name', _name, placeholder: 'Optional'),
               _field('Prompt', _prompt, maxLines: 4),
-              _field(
-                'Cadence',
-                _cron,
-                placeholder: '0 9 * * *',
-                helper: 'Five-field cron expression',
-              ),
-              _field('Timezone', _timezone, placeholder: 'UTC'),
+              _cadenceEditor(),
               if (newAgent) ...[
                 _field('Provider', _provider),
                 _field('Model', _model, placeholder: 'Provider default'),
@@ -720,6 +713,65 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     ),
   );
 
+  Widget _cadenceEditor() {
+    final cadence = CronScheduleCadence(
+      expression: _cron.text.trim(),
+      timezone: _timezone,
+    );
+    final error = _cron.text.trim().isEmpty
+        ? null
+        : validateScheduleCron(_cron.text);
+    final preview = error == null && _cron.text.trim().isNotEmpty
+        ? describeScheduleCron(cadence) ?? _cron.text.trim()
+        : null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Cadence'),
+          const SizedBox(height: 6),
+          ComboBox<String>(
+            value: resolveCronPresetId(cadence),
+            items: [
+              for (final preset in scheduleCadencePresets)
+                ComboBoxItem(value: preset.id, child: Text(preset.label)),
+              const ComboBoxItem(
+                value: customCronPresetId,
+                child: Text('Custom cron'),
+              ),
+            ],
+            onChanged: (value) {
+              if (value == null || value == customCronPresetId) return;
+              final preset = scheduleCadencePresets.firstWhere(
+                (preset) => preset.id == value,
+              );
+              setState(() => _cron.text = preset.expression);
+            },
+          ),
+          const SizedBox(height: 12),
+          TextBox(
+            controller: _cron,
+            placeholder: '0 9 * * *',
+            style: const TextStyle(fontFamily: 'monospace'),
+            onChanged: (_) => setState(() {}),
+          ),
+          if (error != null || preview != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              error ?? preview!,
+              style: context.textStyles.bodySmall?.copyWith(
+                color: error == null
+                    ? context.tokens.onSurfaceVariant
+                    : context.statusColors.danger,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     final prompt = _prompt.text.trim();
     final cron = _cron.text.trim();
@@ -728,7 +780,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     final maxRuns = _maxRuns.text.trim().isEmpty
         ? null
         : int.tryParse(_maxRuns.text.trim());
-    final cronError = validateCronExpression(cron);
+    final cronError = validateScheduleCron(cron);
     if (prompt.isEmpty) {
       setState(() => _error = 'Prompt is required.');
       return;
@@ -755,10 +807,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
       _submitting = true;
       _error = null;
     });
-    final cadence = CronScheduleCadence(
-      expression: cron,
-      timezone: _timezone.text.trim().isEmpty ? null : _timezone.text.trim(),
-    );
+    final cadence = CronScheduleCadence(expression: cron, timezone: _timezone);
     try {
       final notifier = ref.read(aggregatedSchedulesProvider.notifier);
       if (widget.schedule == null) {
