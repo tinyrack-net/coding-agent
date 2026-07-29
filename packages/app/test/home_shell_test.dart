@@ -11,6 +11,7 @@ import 'package:coding_agent_app/screens/status_screen.dart';
 import 'package:coding_agent_app/state/daemon_lifecycle_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
+import 'package:coding_agent_app/state/host_registry_provider.dart';
 import 'package:coding_agent_app/state/sidebar_callout_provider.dart';
 import 'package:coding_agent_app/state/sidebar_callout_state.dart';
 import 'package:coding_agent_app/state/sidebar_width_provider.dart';
@@ -210,6 +211,7 @@ Future<ProviderContainer> pumpHomeShell(
   List<ProjectInfo> projects = const [],
   Map<String, List<WorktreeInfo>> worktreesByProject = const {},
   Completer<List<ProjectInfo>>? projectListGate,
+  HostProfile? activeHost,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final client = FakeDaemonClient(
@@ -221,6 +223,7 @@ Future<ProviderContainer> pumpHomeShell(
   final container = ProviderContainer(
     overrides: [
       daemonClientProvider.overrideWithValue(client),
+      if (activeHost != null) activeHostProvider.overrideWithValue(activeHost),
       // Otherwise navigating to StatusScreen/SettingsScreen watches the real
       // daemonLifecycleProvider, which spins up an actual DaemonSupervisor
       // probing the network on this (real Windows) test host.
@@ -452,6 +455,46 @@ void main() {
       '/new',
     );
   });
+
+  testWidgets(
+    'project new-workspace action targets that project on the active host',
+    (tester) async {
+      await pumpHomeShell(
+        tester,
+        projects: const [_projectA],
+        worktreesByProject: const {
+          '/repo-a': [_mainWorktreeA],
+        },
+        activeHost: const HostProfile(
+          serverId: 'server-1',
+          label: 'Test host',
+          connections: [],
+          preferredConnectionId: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        ),
+      );
+
+      final action = find.byKey(
+        const ValueKey('project-new-workspace-/repo-a'),
+      );
+      expect(action, findsOneWidget);
+
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+
+      final screen = find.byType(NewWorkspaceScreen);
+      expect(screen, findsOneWidget);
+      final uri = GoRouterState.of(tester.element(screen)).uri;
+      expect(uri.path, '/new');
+      expect(uri.queryParameters, {
+        'serverId': 'server-1',
+        'dir': '/repo-a',
+        'name': 'repo-a',
+        'projectId': '/repo-a',
+      });
+    },
+  );
 
   testWidgets('the Status row navigates to StatusScreen', (tester) async {
     await pumpHomeShell(tester);

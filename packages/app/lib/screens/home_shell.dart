@@ -9,9 +9,11 @@ import '../core/host_routes.dart';
 import '../core/theme.dart';
 import '../core/worktree_actions.dart';
 import '../layout/desktop_sidebar_layout.dart';
+import '../sidebar/sidebar_project_row_model.dart';
 import '../sidebar/workspace_agent_activity.dart';
 import '../state/agents_provider.dart';
 import '../state/daemon_providers.dart';
+import '../state/host_registry_provider.dart';
 import '../state/app_sidebar_visibility_provider.dart';
 import '../state/workspace_focus_mode_provider.dart';
 import '../state/workspace_agent_activity_provider.dart';
@@ -371,14 +373,18 @@ class _ProjectHeaderRow extends StatelessWidget {
   const _ProjectHeaderRow({
     required this.name,
     required this.isGitRepo,
-    required this.collapsed,
+    required this.model,
     required this.onTap,
+    required this.onNewWorkspace,
+    required this.projectKey,
   });
 
   final String name;
   final bool isGitRepo;
-  final bool collapsed;
+  final SidebarProjectRowModel model;
   final VoidCallback onTap;
+  final VoidCallback? onNewWorkspace;
+  final String projectKey;
 
   @override
   Widget build(BuildContext context) {
@@ -410,8 +416,17 @@ class _ProjectHeaderRow extends StatelessWidget {
                     style: context.textStyles.bodyMedium,
                   ),
                 ),
+                if (model.trailingAction is SidebarProjectNewWorkspaceAction)
+                  Tooltip(
+                    message: 'New workspace in $name',
+                    child: IconButton(
+                      key: ValueKey('project-new-workspace-$projectKey'),
+                      icon: const Icon(FluentIcons.add, size: 12),
+                      onPressed: onNewWorkspace,
+                    ),
+                  ),
                 Icon(
-                  collapsed
+                  model.chevron == SidebarProjectChevron.expand
                       ? FluentIcons.chevron_right
                       : FluentIcons.chevron_down,
                   size: 12,
@@ -467,6 +482,11 @@ class _SidebarState extends ConsumerState<_Sidebar> {
     final selected = ref.watch(selectedWorktreeProvider);
     final groups = ref.watch(sidebarGroupsProvider);
     final projects = ref.watch(projectsProvider);
+    final client = ref.watch(daemonClientProvider);
+    final serverId =
+        ref.watch(activeHostProvider)?.serverId ?? client.serverInfo?.serverId;
+    final supportsMultiplicity =
+        client.serverInfo?.features['workspaceMultiplicity'] == true;
     final isInitialLoad =
         projects.isLoading &&
         (projects.value?.isEmpty ?? true) &&
@@ -535,15 +555,58 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                         ),
                     ],
                     for (final section in groups.projectSections) ...[
-                      _ProjectHeaderRow(
-                        name: section.project.name.isEmpty
-                            ? section.project.path
-                            : section.project.name,
-                        isGitRepo: section.project.isGitRepo,
-                        collapsed: _collapsedProjectPaths.contains(
-                          section.project.path,
-                        ),
-                        onTap: () => _toggleProject(section.project.path),
+                      Builder(
+                        builder: (context) {
+                          final project = section.project;
+                          final collapsed = _collapsedProjectPaths.contains(
+                            project.path,
+                          );
+                          final entry = SidebarProjectEntry(
+                            projectKey: project.path,
+                            projectName: project.name,
+                            hosts: [
+                              if (serverId != null)
+                                SidebarProjectHost(
+                                  serverId: serverId,
+                                  iconWorkingDir: project.path,
+                                  canCreateWorktree: project.isGitRepo,
+                                ),
+                            ],
+                          );
+                          final model = buildSidebarProjectRowModel(
+                            project: entry,
+                            collapsed: collapsed,
+                            supportsMultiplicityByServerId: {
+                              ?serverId: supportsMultiplicity,
+                            },
+                          );
+                          final action = model.trailingAction;
+                          return _ProjectHeaderRow(
+                            name: project.name.isEmpty
+                                ? project.path
+                                : project.name,
+                            isGitRepo: project.isGitRepo,
+                            model: model,
+                            projectKey: project.path,
+                            onTap: () => _toggleProject(project.path),
+                            onNewWorkspace:
+                                action is SidebarProjectNewWorkspaceAction
+                                ? () => context.push(
+                                    buildNewWorkspaceRoute(
+                                      NewWorkspaceRouteOptions(
+                                        serverId: action.target.serverId,
+                                        sourceDirectory:
+                                            action.target.iconWorkingDir,
+                                        displayName: project.name.isEmpty
+                                            ? project.path
+                                            : project.name,
+                                        projectId: project.path,
+                                      ),
+                                    ),
+                                  )
+                                : null,
+                          );
+                        },
                       ),
                       if (!_collapsedProjectPaths.contains(
                         section.project.path,

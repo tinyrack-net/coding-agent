@@ -8815,10 +8815,13 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/sidebar-project-row-model.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/sidebar/sidebar_project_row_model.dart; packages/app/lib/screens/home_shell.dart",
+      "evidence": [
+        "packages/app/test/sidebar_project_row_model_test.dart",
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "Matches the frozen expandable project-section projection, first valid icon host selection, git worktree or workspace-multiplicity gate, and first capable host targeting. The sidebar project header consumes the projection and opens a host- and project-scoped New Workspace route."
     },
     {
       "id": "source-unit:packages/app/src/utils/sidebar-reorder.ts",
