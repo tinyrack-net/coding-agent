@@ -7,6 +7,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../composer/create_agent_preferences.dart';
 import '../composer/provider_model_selection.dart';
+import '../core/device_timezone.dart';
 import '../core/external_url_launcher.dart';
 import '../core/theme.dart';
 import '../providers/providers_snapshot.dart';
@@ -66,9 +67,14 @@ const _lucideBrainSvg = '''
 ''';
 
 class SchedulesScreen extends ConsumerStatefulWidget {
-  const SchedulesScreen({super.key, this.preferencesService});
+  const SchedulesScreen({
+    super.key,
+    this.preferencesService,
+    this.deviceTimeZoneLoader = getDeviceTimeZone,
+  });
 
   final CreateAgentPreferencesService? preferencesService;
+  final DeviceTimeZoneLoader deviceTimeZoneLoader;
 
   @override
   ConsumerState<SchedulesScreen> createState() => _SchedulesScreenState();
@@ -195,6 +201,7 @@ class _SchedulesScreenState extends ConsumerState<SchedulesScreen> {
         schedule: entry?.schedule,
         serverId: entry?.serverId,
         preferencesService: widget.preferencesService,
+        deviceTimeZoneLoader: widget.deviceTimeZoneLoader,
       ),
     );
   }
@@ -997,10 +1004,12 @@ class _ScheduleFormDialog extends ConsumerStatefulWidget {
     this.schedule,
     this.serverId,
     this.preferencesService,
+    required this.deviceTimeZoneLoader,
   });
   final ScheduleSummary? schedule;
   final String? serverId;
   final CreateAgentPreferencesService? preferencesService;
+  final DeviceTimeZoneLoader deviceTimeZoneLoader;
 
   @override
   ConsumerState<_ScheduleFormDialog> createState() =>
@@ -1022,7 +1031,9 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
   late final CreateAgentPreferencesService _preferencesService;
   var _selectionTouched = false;
   var _isolationTouched = false;
-  late final String _timezone;
+  late String _timezone;
+  late final bool _hasExplicitTimezone;
+  var _timezoneReady = false;
   var _isolation = 'local';
   var _archiveOnFinish = true;
   var _submitting = false;
@@ -1034,14 +1045,21 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     final schedule = widget.schedule;
     final target = schedule?.target;
     final config = target is NewAgentScheduleTarget ? target.config : null;
+    final scheduleCadence = schedule?.cadence;
+    final explicitTimezone = scheduleCadence is CronScheduleCadence
+        ? scheduleCadence.timezone?.trim()
+        : null;
+    _hasExplicitTimezone =
+        explicitTimezone != null && explicitTimezone.isNotEmpty;
+    _timezone = _hasExplicitTimezone ? explicitTimezone! : 'UTC';
+    _timezoneReady = _hasExplicitTimezone;
     final cadence = normalizeScheduleFormCadence(
-      schedule?.cadence ?? const EveryScheduleCadence(everyMs: 3600000),
-      'UTC',
+      scheduleCadence ?? const EveryScheduleCadence(everyMs: 3600000),
+      _timezone,
     );
     _name = TextEditingController(text: schedule?.name ?? '');
     _prompt = TextEditingController(text: schedule?.prompt ?? '');
     _cron = TextEditingController(text: cadence.expression);
-    _timezone = cadence.timezone ?? 'UTC';
     _provider = config?.provider;
     _model = config?.model;
     _modeId = config?.modeId;
@@ -1056,6 +1074,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     _preferencesService =
         widget.preferencesService ?? createAgentPreferencesService;
     unawaited(_hydratePreferences());
+    if (!_hasExplicitTimezone) unawaited(_hydrateDeviceTimeZone());
   }
 
   @override
@@ -1087,6 +1106,22 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     } catch (_) {
       // Local preferences must not prevent schedule creation.
     }
+  }
+
+  Future<void> _hydrateDeviceTimeZone() async {
+    var timezone = 'UTC';
+    try {
+      final resolved = (await widget.deviceTimeZoneLoader()).trim();
+      if (resolved.isNotEmpty) timezone = resolved;
+    } catch (_) {
+      // UTC remains a usable fallback when the platform timezone is
+      // temporarily unavailable.
+    }
+    if (!mounted || _hasExplicitTimezone) return;
+    setState(() {
+      _timezone = timezone;
+      _timezoneReady = true;
+    });
   }
 
   @override
@@ -1306,7 +1341,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
         ),
         FilledButton(
           key: const ValueKey('schedule-form-submit'),
-          onPressed: readiness.canSubmit ? _submit : null,
+          onPressed: readiness.canSubmit && _timezoneReady ? _submit : null,
           child: Text(editing ? 'Save changes' : 'Create schedule'),
         ),
       ],

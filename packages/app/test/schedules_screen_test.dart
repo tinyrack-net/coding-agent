@@ -397,8 +397,20 @@ void main() {
   testWidgets('edit sheet submits cadence and new-agent configuration', (
     tester,
   ) async {
-    final notifier = _FakeSchedulesNotifier([_schedule(id: 'active')]);
-    await _pumpWithNotifier(tester, notifier);
+    final notifier = _FakeSchedulesNotifier([
+      _schedule(
+        id: 'active',
+        cadence: const CronScheduleCadence(
+          expression: '*/5 * * * *',
+          timezone: 'UTC',
+        ),
+      ),
+    ]);
+    await _pumpWithNotifier(
+      tester,
+      notifier,
+      deviceTimeZoneLoader: () async => 'Asia/Seoul',
+    );
     await tester.tap(find.text('Active schedule'));
     await tester.pumpAndSettle();
 
@@ -454,7 +466,12 @@ void main() {
     final preferences = CreateAgentPreferencesService(
       _MemoryPreferenceStorage(),
     );
-    await _pumpWithNotifier(tester, notifier, preferencesService: preferences);
+    await _pumpWithNotifier(
+      tester,
+      notifier,
+      preferencesService: preferences,
+      deviceTimeZoneLoader: () async => 'Asia/Seoul',
+    );
     await tester.tap(find.text('New schedule').last);
     await tester.pumpAndSettle();
 
@@ -544,6 +561,11 @@ void main() {
 
     expect(notifier.createdPrompt, 'Run tests');
     expect(notifier.createdMaxRuns, 2);
+    expect(notifier.createdCadence?.toJson(), {
+      'type': 'cron',
+      'expression': '*/5 * * * *',
+      'timezone': 'Asia/Seoul',
+    });
     final config = (notifier.createdTarget! as NewAgentScheduleTarget).config;
     expect(config.provider, 'codex');
     expect(config.model, 'gpt-5.4');
@@ -1268,12 +1290,14 @@ Future<void> _pump(
   List<ScheduleSummary> schedules, {
   AppThemeName themeName = AppThemeName.dark,
   ExternalUrlLauncher? launcher,
+  Future<String> Function()? deviceTimeZoneLoader,
 }) async {
   await _pumpWithNotifier(
     tester,
     _FakeSchedulesNotifier(schedules),
     themeName: themeName,
     launcher: launcher,
+    deviceTimeZoneLoader: deviceTimeZoneLoader,
   );
 }
 
@@ -1290,6 +1314,7 @@ Future<void> _pumpWithNotifier(
   CreateAgentPreferencesService? preferencesService,
   AppThemeName themeName = AppThemeName.dark,
   ExternalUrlLauncher? launcher,
+  Future<String> Function()? deviceTimeZoneLoader,
 }) async {
   final effectiveHosts = hostRegistry?.hosts ?? hosts;
   await tester.pumpWidget(
@@ -1328,6 +1353,7 @@ Future<void> _pumpWithNotifier(
           preferencesService:
               preferencesService ??
               CreateAgentPreferencesService(_MemoryPreferenceStorage()),
+          deviceTimeZoneLoader: deviceTimeZoneLoader ?? _loadUtcDeviceTimeZone,
         ),
       ),
     ),
@@ -1338,6 +1364,8 @@ Future<void> _pumpWithNotifier(
     await tester.pump();
   }
 }
+
+Future<String> _loadUtcDeviceTimeZone() async => 'UTC';
 
 final class _FakeExternalUrlLauncher implements ExternalUrlLauncher {
   final opened = <String>[];
@@ -1373,6 +1401,7 @@ class _FakeSchedulesNotifier extends AggregatedSchedulesNotifier {
   String? createdServerId;
   int? createdMaxRuns;
   ScheduleTarget? createdTarget;
+  ScheduleCadence? createdCadence;
   final resumed = <String>[];
   final paused = <String>[];
   final ran = <String>[];
@@ -1413,6 +1442,7 @@ class _FakeSchedulesNotifier extends AggregatedSchedulesNotifier {
     createdPrompt = prompt;
     createdMaxRuns = maxRuns;
     createdTarget = target;
+    createdCadence = cadence;
     return _schedule(id: 'created');
   }
 
@@ -1647,6 +1677,9 @@ ScheduleSummary _schedule({
   required String id,
   ScheduleStatus status = ScheduleStatus.active,
   String? name,
+  ScheduleCadence cadence = const CronScheduleCadence(
+    expression: '*/5 * * * *',
+  ),
   ScheduleTarget? target,
   String? expiresAt,
   String createdAt = '2026-07-27T00:00:00.000Z',
@@ -1658,7 +1691,7 @@ ScheduleSummary _schedule({
           ? 'Ended schedule'
           : 'Active schedule'),
   prompt: 'Review the branch',
-  cadence: const CronScheduleCadence(expression: '*/5 * * * *'),
+  cadence: cadence,
   target:
       target ??
       const NewAgentScheduleTarget(

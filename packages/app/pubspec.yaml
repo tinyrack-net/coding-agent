@@ -40,6 +40,7 @@ dependencies:
   web: ^1.1.1
   flutter_localizations:
     sdk: flutter
+  flutter_timezone: 5.1.0
 
 dev_dependencies:
   flutter_test:

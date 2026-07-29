@@ -89,8 +89,9 @@
     {
       "id": "app-route:/schedules",
       "status": "partial",
-      "implementation": "packages/app/lib/screens/schedules_screen.dart",
+      "implementation": "packages/app/lib/core/device_timezone.dart; packages/app/lib/screens/schedules_screen.dart",
       "evidence": [
+        "packages/app/test/device_timezone_test.dart",
         "packages/app/test/schedules_screen_test.dart",
         "packages/app/test/goldens/schedule_form_desktop_900x900.png",
         "packages/app/test/goldens/schedule_form_compact_390x844.png"
@@ -3295,15 +3296,16 @@
     {
       "id": "source-unit:packages/app/src/components/schedules/cadence-editor.tsx",
       "status": "verified",
-      "implementation": "packages/app/lib/screens/schedules_screen.dart; packages/app/lib/state/schedule_form_model.dart",
+      "implementation": "packages/app/lib/core/device_timezone.dart; packages/app/lib/screens/schedules_screen.dart; packages/app/lib/state/schedule_form_model.dart",
       "evidence": [
+        "packages/app/test/device_timezone_test.dart",
         "packages/app/test/schedule_form_model_test.dart",
         "packages/app/test/schedules_screen_test.dart",
         "packages/app/test/goldens/schedule_form_desktop_900x900.png",
         "packages/app/test/goldens/schedule_form_compact_390x844.png",
         "parity/oracle/paseo_schedule_form_geometry.json"
       ],
-      "notes": "Verified against the frozen source: the shared SelectField exposes the exact preset catalog and option identities, custom cron remains a null selection with the Custom cron display, preset and controlled text changes preserve timezone semantics, interval cadence normalization and cron validation/description copy match, and error precedence suppresses previews. The monospace expression, 12px control/feedback stack, desktop/compact geometry, and visual composition are locked by model tests, widget tests, Flutter goldens, and captured oracle geometry."
+      "notes": "Verified against the frozen source: the shared SelectField exposes the exact preset catalog and option identities, custom cron remains a null selection with the Custom cron display, preset and controlled text changes preserve explicit timezone semantics while timezone-less cadences use the device IANA identifier, interval cadence normalization and cron validation/description copy match, and error precedence suppresses previews. The monospace expression, 12px control/feedback stack, desktop/compact geometry, and visual composition are locked by model tests, widget tests, Flutter goldens, and captured oracle geometry."
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/schedule-form-sheet.tsx",
@@ -3317,7 +3319,7 @@
         "parity/oracle/paseo_schedule_form_compact_390x844.png",
         "parity/oracle/paseo_schedule_form_geometry.json"
       ],
-      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, shows the owning Host as read-only while editing a new-agent schedule, exposes provider and model through the single combined model trigger, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. It runs in the shared adaptive desktop/compact sheet with frozen card and snap geometry, an initially off-screen compact footer, desktop 16px versus compact 0px field spacing, 8px label gaps, responsive 98/112px prompt geometry, Thinking-before-Mode order, and a stacked archive switch. Host, Project, Thinking, Mode, Isolation, and Cadence use the adaptive SelectField; Model uses the exported custom SelectField trigger with the frozen provider icon, project/thinking/isolation options use the frozen Lucide glyph paths, and every text/read-only control follows the frozen browser-rendered 34/46px adaptive field geometry. Frozen Paseo desktop/compact captures and extracted geometry are checked by deterministic Flutter goldens and compact one-pixel geometry assertions."
+      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, shows the owning Host as read-only while editing a new-agent schedule, exposes provider and model through the single combined model trigger, disables submit until the derived state, cadence, and device timezone are ready, preserves explicit schedule timezones, and uses JavaScript parseInt-compatible maxRuns normalization. It runs in the shared adaptive desktop/compact sheet with frozen card and snap geometry, an initially off-screen compact footer, desktop 16px versus compact 0px field spacing, 8px label gaps, responsive 98/112px prompt geometry, Thinking-before-Mode order, and a stacked archive switch. Host, Project, Thinking, Mode, Isolation, and Cadence use the adaptive SelectField; Model uses the exported custom SelectField trigger with the frozen provider icon, project/thinking/isolation options use the frozen Lucide glyph paths, and every text/read-only control follows the frozen browser-rendered 34/46px adaptive field geometry. Frozen Paseo desktop/compact captures and extracted geometry are checked by deterministic Flutter goldens and compact one-pixel geometry assertions."
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/schedule-row.tsx",
@@ -8153,10 +8155,13 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/device-timezone.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/device_timezone.dart; packages/app/lib/screens/schedules_screen.dart",
+      "evidence": [
+        "packages/app/test/device_timezone_test.dart",
+        "packages/app/test/schedules_screen_test.dart"
+      ],
+      "notes": "Uses the native platform or browser timezone service to return the standardized IANA identifier equivalent to Intl resolvedOptions timeZone. New and timezone-less schedule cadences adopt the device identifier, explicit schedule timezones remain unchanged, and UTC is used only when native resolution fails."
     },
     {
       "id": "source-unit:packages/app/src/utils/diff-highlight.ts",
