@@ -17,6 +17,7 @@ import '../state/workspace_providers.dart';
 import '../state/worktree_tabs_provider.dart';
 import '../state/worktree_titles_provider.dart';
 import '../widgets/fluent/toast.dart';
+import '../widgets/sidebar_agent_list_skeleton.dart';
 import '../widgets/worktree_tabbed_pane.dart';
 import '../workspace/workspace_deck_retention.dart';
 
@@ -369,6 +370,11 @@ class _SidebarState extends ConsumerState<_Sidebar> {
   Widget build(BuildContext context) {
     final selected = ref.watch(selectedWorktreeProvider);
     final groups = ref.watch(sidebarGroupsProvider);
+    final projects = ref.watch(projectsProvider);
+    final isInitialLoad =
+        projects.isLoading &&
+        (projects.value?.isEmpty ?? true) &&
+        groups.isEmpty;
 
     void selectRow(SidebarWorktreeRow row) {
       ref.read(selectedWorktreeProvider.notifier).select(row.key);
@@ -412,7 +418,9 @@ class _SidebarState extends ConsumerState<_Sidebar> {
         ),
         const Divider(),
         Expanded(
-          child: groups.isEmpty
+          child: isInitialLoad
+              ? const SidebarAgentListSkeleton()
+              : groups.isEmpty
               ? Center(
                   child: Text(
                     'No agents yet',

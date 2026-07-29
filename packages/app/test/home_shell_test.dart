@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/app_router.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
@@ -119,11 +121,13 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
     this.agents = const [],
     this.projects = const [],
     this.worktreesByProject = const {},
+    this.projectListGate,
   }) : super(uri: Uri.parse('ws://fake'));
 
   final List<AgentSummary> agents;
   final List<ProjectInfo> projects;
   final Map<String, List<WorktreeInfo>> worktreesByProject;
+  final Completer<List<ProjectInfo>>? projectListGate;
 
   @override
   Stream<RpcEvent> get events => const Stream.empty();
@@ -141,6 +145,10 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
     Map<String, Object?> payload, {
     Duration timeout = const Duration(seconds: 30),
   }) async {
+    if (type == MessageTypes.projectListRequest && projectListGate != null) {
+      final gatedProjects = await projectListGate!.future;
+      return {'projects': gatedProjects.map((p) => p.toJson()).toList()};
+    }
     if (type == MessageTypes.agentRenameRequest) {
       final agentId = payload['agentId'] as String;
       final title = payload['title'] as String;
@@ -170,12 +178,14 @@ Future<ProviderContainer> pumpHomeShell(
   List<AgentSummary> agents = const [],
   List<ProjectInfo> projects = const [],
   Map<String, List<WorktreeInfo>> worktreesByProject = const {},
+  Completer<List<ProjectInfo>>? projectListGate,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final client = FakeDaemonClient(
     agents: agents,
     projects: projects,
     worktreesByProject: worktreesByProject,
+    projectListGate: projectListGate,
   );
   final container = ProviderContainer(
     overrides: [
@@ -211,6 +221,28 @@ Future<ProviderContainer> pumpHomeShell(
 }
 
 void main() {
+  testWidgets('shows the Paseo skeleton only during the initial empty load', (
+    tester,
+  ) async {
+    final projectListGate = Completer<List<ProjectInfo>>();
+    await pumpHomeShell(tester, projectListGate: projectListGate);
+
+    expect(
+      find.byKey(const ValueKey('sidebar-agent-list-skeleton')),
+      findsOneWidget,
+    );
+    expect(find.text('No agents yet'), findsNothing);
+
+    projectListGate.complete(const []);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('sidebar-agent-list-skeleton')),
+      findsNothing,
+    );
+    expect(find.text('No agents yet'), findsOneWidget);
+  });
+
   testWidgets('no agents: shows the empty placeholder', (tester) async {
     await pumpHomeShell(tester);
 

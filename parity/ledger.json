@@ -3329,10 +3329,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar-agent-list-skeleton.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/sidebar_agent_list_skeleton.dart; packages/app/lib/screens/home_shell.dart",
+      "evidence": [
+        "packages/app/test/sidebar_agent_list_skeleton_test.dart",
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "Flutter now renders the frozen initial-load sidebar placeholder with three sections at 1.0/0.7/0.4 opacity, three rows per section, exact 4/8/12/16px spacing, 14px chevron, 16px project icon, 8px dots, 40x20 badges, surface2 fills, 2/6/full radii, and a 0.4-to-0.8 one-second-per-direction pulse. Decorative content is excluded from semantics and clipped without geometry compression in short windows. HomeShell shows it only while the initial empty project directory is loading, then transitions to the real empty or populated sidebar."
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar-callout-slot.d.ts",
