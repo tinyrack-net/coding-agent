@@ -320,6 +320,38 @@ class _FakeDaemonClient extends DaemonClient {
         prNumber: 42,
         items: timelineMode == 'empty' || timelineMode == 'error'
             ? const []
+            : timelineMode == 'collapsed-review'
+            ? const [
+                PullRequestTimelineReview(
+                  id: 'review-2',
+                  author: 'maintainer',
+                  authorUrl: null,
+                  avatarUrl: null,
+                  body: 'Please revise this.',
+                  createdAt: 1760000200,
+                  url: 'https://example.test/review/2',
+                  reviewState: PullRequestTimelineReviewState.changesRequested,
+                ),
+                PullRequestTimelineComment(
+                  id: 'comment-2',
+                  author: 'reviewer',
+                  authorUrl: null,
+                  avatarUrl: null,
+                  body: 'Range comment.',
+                  createdAt: 1760000300,
+                  url: 'https://example.test/comment/2',
+                  reviewId: 'review-2',
+                  threadId: 'PRRT_1',
+                  location: PullRequestTimelineCommentLocation(
+                    path: 'lib/range.dart',
+                    startLine: 4,
+                    line: 8,
+                    threadId: 'PRRT_1',
+                    isResolved: false,
+                    isOutdated: false,
+                  ),
+                ),
+              ]
             : timelineMode == 'thread-menu'
             ? const [
                 PullRequestTimelineComment(
@@ -1051,6 +1083,82 @@ void main() {
     expect(decoration.shape, BoxShape.circle);
     expect(decoration.color, const Color(0xffeab308));
     expect(find.text('R'), findsOneWidget);
+    final approvedIcon = tester.widget<Icon>(
+      find.byKey(const ValueKey('activity-verb-icon-review-1')),
+    );
+    expect(approvedIcon.icon, FluentIcons.status_circle_checkmark);
+    expect(approvedIcon.size, 12);
+  });
+
+  testWidgets('review header matches Paseo state glyph and collapsed actions', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(380, 700);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final container = await _pumpExplorer(
+      tester,
+      _FakeDaemonClient(timelineMode: 'collapsed-review'),
+    );
+    await _tapPullRequestTab(tester);
+    await tester.pump(const Duration(milliseconds: 150));
+
+    final verbIcon = tester.widget<Icon>(
+      find.byKey(const ValueKey('activity-verb-icon-review-2')),
+    );
+    expect(verbIcon.icon, FluentIcons.status_circle_error_x);
+    expect(verbIcon.size, 12);
+    expect(find.text('Please revise this.'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('collapsed-review-add-review-2')),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('activity-header-review-2')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Please revise this.'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('collapsed-review-add-review-2')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('collapsed-review-add-review-2')))
+          .height,
+      20,
+    );
+    final threadCount = find.byKey(
+      const ValueKey('collapsed-review-thread-count-review-2'),
+    );
+    expect(threadCount, findsOneWidget);
+    expect(
+      find.descendant(of: threadCount, matching: find.text('1')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: threadCount,
+        matching: find.byIcon(FluentIcons.message),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('collapsed-review-add-review-2')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Please revise this.'), findsNothing);
+    expect(container.read(workspaceAttachmentsProvider(_cwd)), hasLength(1));
+
+    await tester.tap(
+      find.byKey(const ValueKey('collapsed-review-add-review-2')),
+    );
+    await tester.pumpAndSettle();
+    expect(container.read(workspaceAttachmentsProvider(_cwd)), hasLength(1));
   });
 
   testWidgets('PR Markdown links open through the platform', (tester) async {

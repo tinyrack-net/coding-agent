@@ -799,6 +799,55 @@ class _GhostChatButton extends StatelessWidget {
   }
 }
 
+class _CollapsedReviewAddButton extends StatelessWidget {
+  const _CollapsedReviewAddButton({super.key, required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: true,
+      label: 'Add to chat',
+      child: HoverButton(
+        onPressed: onPressed,
+        builder: (context, states) {
+          final hovered = states.contains(WidgetState.hovered);
+          final pressed = states.contains(WidgetState.pressed);
+          final color = hovered
+              ? context.fluentTheme.resources.textFillColorPrimary
+              : context.tokens.onSurfaceVariant;
+          return Opacity(
+            opacity: pressed ? .85 : 1,
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                border: Border.all(color: Colors.transparent),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(FluentIcons.comment_add, size: 12, color: color),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Add to chat',
+                    style: TextStyle(fontSize: 10, color: color),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _ActivitySummary extends StatelessWidget {
   const _ActivitySummary({required this.items});
 
@@ -1086,6 +1135,7 @@ class _ActivityCard extends StatelessWidget {
     required this.onOpenUrl,
     required this.brandLabel,
     this.embedded = false,
+    this.collapsedThreadCount,
   });
 
   final PullRequestTimelineItem item;
@@ -1096,10 +1146,10 @@ class _ActivityCard extends StatelessWidget {
   final ValueChanged<String> onOpenUrl;
   final String brandLabel;
   final bool embedded;
+  final int? collapsedThreadCount;
 
   @override
   Widget build(BuildContext context) {
-    final presentation = _activityPresentation(context, item);
     final location = item is PullRequestTimelineComment
         ? (item as PullRequestTimelineComment).location
         : null;
@@ -1118,6 +1168,7 @@ class _ActivityCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           HoverButton(
+            key: ValueKey('activity-header-${item.id}'),
             onPressed: item.body.trim().isEmpty ? onOpen : onToggle,
             builder: (context, states) => Container(
               constraints: const BoxConstraints(minHeight: 36),
@@ -1129,20 +1180,22 @@ class _ActivityCard extends StatelessWidget {
                 children: [
                   _ActivityAvatar(item: item, size: 20),
                   const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      item.author,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            item.author,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Flexible(flex: 2, child: _ActivityVerb(item: item)),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    presentation.label,
-                    style: TextStyle(fontSize: 10, color: presentation.color),
-                  ),
-                  const Spacer(),
                   Text(
                     formatPullRequestAge(item.createdAt),
                     style: TextStyle(
@@ -1150,6 +1203,37 @@ class _ActivityCard extends StatelessWidget {
                       color: context.tokens.onSurfaceVariant,
                     ),
                   ),
+                  if (collapsed &&
+                      collapsedThreadCount != null &&
+                      onAddToChat != null) ...[
+                    const SizedBox(width: 8),
+                    _CollapsedReviewAddButton(
+                      key: ValueKey('collapsed-review-add-${item.id}'),
+                      onPressed: onAddToChat!,
+                    ),
+                  ],
+                  if (collapsed && collapsedThreadCount != null) ...[
+                    const SizedBox(width: 8),
+                    Row(
+                      key: ValueKey('collapsed-review-thread-count-${item.id}'),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          FluentIcons.message,
+                          size: 11,
+                          color: context.tokens.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '$collapsedThreadCount',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: context.tokens.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(width: 2),
                   _ActivityActionsMenu(
                     item: item,
@@ -1202,6 +1286,56 @@ class _ActivityCard extends StatelessWidget {
   }
 }
 
+class _ActivityVerb extends StatelessWidget {
+  const _ActivityVerb({required this.item});
+
+  final PullRequestTimelineItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final presentation = _activityPresentation(context, item);
+    final icon = switch (item) {
+      PullRequestTimelineReview(
+        reviewState: PullRequestTimelineReviewState.approved,
+      ) =>
+        FluentIcons.status_circle_checkmark,
+      PullRequestTimelineReview(
+        reviewState: PullRequestTimelineReviewState.changesRequested,
+      ) =>
+        FluentIcons.status_circle_error_x,
+      _ => null,
+    };
+    final label = Text(
+      presentation.label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: 10, color: presentation.color),
+    );
+    if (icon == null) return label;
+    final glyph = Icon(
+      icon,
+      key: ValueKey('activity-verb-icon-${item.id}'),
+      size: 12,
+      color: presentation.color,
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 16) {
+          return Align(alignment: Alignment.centerLeft, child: glyph);
+        }
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            glyph,
+            const SizedBox(width: 4),
+            Flexible(child: label),
+          ],
+        );
+      },
+    );
+  }
+}
+
 class _ReviewCard extends StatelessWidget {
   const _ReviewCard({
     required this.review,
@@ -1249,6 +1383,7 @@ class _ReviewCard extends StatelessWidget {
             onOpenUrl: onOpen,
             brandLabel: brandLabel,
             embedded: true,
+            collapsedThreadCount: threads.length,
           ),
           if (!collapsed)
             for (final thread in threads)
