@@ -941,29 +941,11 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     Widget control, {
     String? helper,
     bool error = false,
-  }) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text(
-        label,
-        style: TextStyle(color: context.tokens.onSurfaceVariant, fontSize: 14),
-      ),
-      const SizedBox(height: 8),
-      control,
-      if (helper != null) ...[
-        const SizedBox(height: 4),
-        Text(
-          helper,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: context.textStyles.bodySmall?.copyWith(
-            color: error
-                ? context.statusColors.danger
-                : context.tokens.onSurfaceVariant,
-          ),
-        ),
-      ],
-    ],
+  }) => PaseoField(
+    label: label,
+    hint: error ? null : helper,
+    error: error ? helper : null,
+    child: control,
   );
 
   Widget _field(

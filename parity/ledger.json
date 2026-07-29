@@ -3742,13 +3742,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/ui/form-field.tsx",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/widgets/fluent/form_text_input.dart; packages/app/lib/screens/schedules_screen.dart",
       "evidence": [
         "packages/app/test/form_text_input_test.dart",
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "Flutter now has reusable FormTextInput chrome with frozen 32/44px adaptive geometry, 12/16px padding, 6/8px radii, 1.4 line height, surface, hover/focus/disabled states, multiline sizing, semantics, and matching read-only field geometry. The schedule form consumes it for every text input and Target value. A reusable Field label/hint/error wrapper and cross-screen adoption remain."
+      "notes": "Flutter now has the reusable Field and FormTextInput contracts: label/control/subtext use the frozen 8px stack, errors take precedence over hints, empty subtext is omitted, derived hint/error test identities are stable, and subtext is single-line. Input chrome matches the frozen 32/44px adaptive geometry, 12/16px padding, 6/8px radii, 1.4 line height, surface, hover/focus/disabled states, multiline sizing, and accessibility semantics. Schedule fields and immutable Target values consume the shared implementation."
     },
     {
       "id": "source-unit:packages/app/src/components/ui/isolated-bottom-sheet-modal/index.tsx",

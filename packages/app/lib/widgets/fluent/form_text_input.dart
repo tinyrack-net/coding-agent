@@ -3,6 +3,69 @@ import 'package:fluent_ui/fluent_ui.dart';
 import '../../core/theme.dart';
 import 'select_field.dart';
 
+/// Label, control, and optional validation text in Paseo's field stack.
+class PaseoField extends StatelessWidget {
+  const PaseoField({
+    super.key,
+    required this.label,
+    required this.child,
+    this.hint,
+    this.error,
+    this.testId,
+  });
+
+  final String label;
+  final Widget child;
+  final String? hint;
+  final String? error;
+  final String? testId;
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveError = error?.isNotEmpty == true ? error : null;
+    final effectiveHint = hint?.isNotEmpty == true ? hint : null;
+    final subtext = effectiveError ?? effectiveHint;
+    return KeyedSubtree(
+      key: testId == null ? null : ValueKey<String>(testId!),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: context.paseoPalette.foregroundMuted,
+              fontSize: 14,
+              fontWeight: FontWeight.normal,
+            ),
+          ),
+          const SizedBox(height: 8),
+          child,
+          if (subtext != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              subtext,
+              key: testId == null
+                  ? null
+                  : ValueKey(
+                      '$testId-${effectiveError == null ? 'hint' : 'error'}',
+                    ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: effectiveError == null
+                    ? context.paseoPalette.foregroundMuted
+                    : context.statusColors.danger,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// Paseo's field-sized text input chrome.
 ///
 /// The frozen client uses the same 32/44 logical-pixel geometry as
