@@ -8999,10 +8999,14 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/workspace-agent-activity.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/sidebar/workspace_agent_activity.dart; packages/app/lib/state/workspace_agent_activity_provider.dart; packages/app/lib/screens/home_shell.dart",
+      "evidence": [
+        "packages/app/test/workspace_agent_activity_test.dart",
+        "packages/app/test/home_shell_test.dart",
+        "packages/app/test/sidebar_grouping_provider_test.dart"
+      ],
+      "notes": "Matches frozen latest-root selection per workspace, attention timestamp precedence, archived and same-workspace child exclusion, cross-workspace subagent ownership, stable entry/index identity while status is unchanged, and new entry times on transitions. Workspace-aware sidebar rows consume the index; only legacy rows without workspace identity retain aggregate fallback."
     },
     {
       "id": "source-unit:packages/app/src/utils/workspace-archive-navigation.ts",

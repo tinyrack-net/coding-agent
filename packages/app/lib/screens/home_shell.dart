@@ -9,10 +9,12 @@ import '../core/host_routes.dart';
 import '../core/theme.dart';
 import '../core/worktree_actions.dart';
 import '../layout/desktop_sidebar_layout.dart';
+import '../sidebar/workspace_agent_activity.dart';
 import '../state/agents_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/app_sidebar_visibility_provider.dart';
 import '../state/workspace_focus_mode_provider.dart';
+import '../state/workspace_agent_activity_provider.dart';
 import '../state/sidebar_grouping_provider.dart';
 import '../state/sidebar_pins_provider.dart';
 import '../state/sidebar_width_provider.dart';
@@ -663,7 +665,16 @@ class _SidebarWorktreeRow extends ConsumerWidget {
       1 => '${row.agents.single.provider} · ${row.agents.single.model}',
       final n => '$n sessions',
     };
-    final stateBucket = _aggregateStateBucket(row.agents);
+    final activity = latestWorkspaceActivityForAgents(
+      row.agents,
+      ref.watch(workspaceAgentActivityIndexProvider),
+    );
+    final hasWorkspaceIdentity = row.agents.any(
+      (agent) => agent.workspaceId?.trim().isNotEmpty == true,
+    );
+    final stateBucket =
+        activity?.status ??
+        (hasWorkspaceIdentity ? null : _aggregateStateBucket(row.agents));
     final worktree = row.worktree;
     final branch =
         worktree?.branch ??

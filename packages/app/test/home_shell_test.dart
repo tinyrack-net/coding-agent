@@ -59,6 +59,33 @@ const _attentionAgent = AgentSummary(
   attentionTimestamp: '2026-07-26T00:00:00.000Z',
 );
 
+const _workspaceRoot = AgentSummary(
+  agentId: 'workspace-root',
+  title: 'Workspace root',
+  cwd: '/work/shared',
+  provider: 'codex',
+  model: 'gpt',
+  mode: AgentMode.normal,
+  runState: AgentRunState.idle,
+  createdAtMs: 100,
+  updatedAt: '2026-06-01T10:00:00.000Z',
+  workspaceId: 'workspace-shared',
+);
+
+const _sameWorkspaceChild = AgentSummary(
+  agentId: 'workspace-child',
+  title: 'Same workspace child',
+  cwd: '/work/shared',
+  provider: 'codex',
+  model: 'gpt',
+  mode: AgentMode.normal,
+  runState: AgentRunState.awaitingPermission,
+  createdAtMs: 200,
+  updatedAt: '2026-06-01T10:01:00.000Z',
+  workspaceId: 'workspace-shared',
+  parentAgentId: 'workspace-root',
+);
+
 const _agent3 = AgentSummary(
   agentId: 'a3',
   title: 'Third agent',
@@ -323,6 +350,30 @@ void main() {
     final indicator = tester.widget<Icon>(find.byIcon(FluentIcons.ringer));
     expect(indicator.color, Colors.yellow);
   });
+
+  testWidgets(
+    'same-workspace child activity does not replace the workspace root state',
+    (tester) async {
+      await pumpHomeShell(
+        tester,
+        agents: [_workspaceRoot, _sameWorkspaceChild],
+      );
+
+      expect(find.text('2 sessions'), findsOneWidget);
+      expect(find.byIcon(FluentIcons.ringer), findsNothing);
+      final workspaceTile = find.ancestor(
+        of: find.text('2 sessions'),
+        matching: find.byType(ListTile),
+      );
+      final indicator = tester.widget<Icon>(
+        find.descendant(
+          of: workspaceTile,
+          matching: find.byIcon(FluentIcons.circle_fill),
+        ),
+      );
+      expect(indicator.color, Colors.grey[100]);
+    },
+  );
 
   testWidgets('selecting an agent shows its chat screen', (tester) async {
     await pumpHomeShell(tester, agents: [_agent1]);
