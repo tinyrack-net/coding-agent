@@ -159,6 +159,7 @@ RootOutputForwarding rootOutputForwarding(List<String> arguments) {
     'permit',
     'provider',
     'script',
+    'chat',
     'workspace',
     'worktree',
   }.contains(first)) {
@@ -175,7 +176,6 @@ RootOutputForwarding rootOutputForwarding(List<String> arguments) {
     'restart',
     'daemon',
     'hub',
-    'chat',
     'schedule',
     'heartbeat',
     'loop',

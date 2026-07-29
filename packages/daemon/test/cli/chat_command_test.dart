@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:agent_daemon/src/cli/chat_command.dart';
 import 'package:test/test.dart';
@@ -27,6 +28,11 @@ void main() {
       expect(code, 0);
       expect(client.requests.first['type'], scenario.type);
       expect(output.toString(), contains('"name": "Review"'));
+      final decoded = jsonDecode(output.toString());
+      expect(
+        decoded,
+        scenario.type == 'chat/list' ? isA<List<dynamic>>() : isA<Map>(),
+      );
       expect(client.closed, isTrue);
     }
   });
@@ -176,6 +182,21 @@ void main() {
     errors.clear();
     expect(
       await runChatCommand(
+        arguments: ['inspect', 'missing', '--json'],
+        connect: _connector(_FakeChatClient(fail: true)),
+        writeError: errors.write,
+      ),
+      1,
+    );
+    final jsonError =
+        (jsonDecode(errors.toString()) as Map<String, dynamic>)['error']
+            as Map<String, dynamic>;
+    expect(jsonError['code'], 'CHAT_INSPECT_FAILED');
+    expect(jsonError['message'], contains('chat_room_not_found'));
+
+    errors.clear();
+    expect(
+      await runChatCommand(
         arguments: ['ls'],
         connect: ({required host, required home, required environment}) async =>
             throw StateError('offline'),
@@ -184,6 +205,20 @@ void main() {
       1,
     );
     expect(errors.toString(), contains('offline'));
+
+    errors.clear();
+    expect(
+      await runChatCommand(
+        arguments: ['ls', '--format', 'yaml'],
+        connect: ({required host, required home, required environment}) async =>
+            throw StateError('offline'),
+        writeError: errors.write,
+      ),
+      1,
+    );
+    expect(errors.toString(), startsWith('error:\n'));
+    expect(errors.toString(), contains('code: CHAT_LIST_FAILED'));
+    expect(errors.toString(), contains('message: "Failed to list chat rooms:'));
 
     errors.clear();
     expect(
@@ -203,7 +238,7 @@ void main() {
         connect: _connector(_FakeChatClient(invalidRoom: true)),
         writeError: errors.write,
       ),
-      64,
+      1,
     );
     expect(errors.toString(), contains('room must be an object'));
   });
@@ -230,7 +265,11 @@ void main() {
       ),
       0,
     );
-    expect(output.toString(), contains('…'));
+    expect(
+      output.toString(),
+      contains('A very long room name that is clipped'),
+    );
+    expect(output.toString(), isNot(contains('…')));
 
     output.clear();
     expect(
@@ -242,6 +281,74 @@ void main() {
       0,
     );
     expect(output.toString(), isEmpty);
+  });
+
+  test('chat supports frozen yaml quiet and header output options', () async {
+    final yaml = StringBuffer();
+    expect(
+      await runChatCommand(
+        arguments: ['ls', '--format=yaml'],
+        connect: _connector(_FakeChatClient()),
+        writeOutput: yaml.write,
+      ),
+      0,
+    );
+    expect(yaml.toString(), contains('- name: Review'));
+    expect(yaml.toString(), contains('  id: room-1'));
+    expect(yaml.toString(), contains('  messages: 1'));
+
+    final compactYaml = StringBuffer();
+    expect(
+      await runChatCommand(
+        arguments: ['post', 'Review', 'hello', '-oyaml'],
+        connect: _connector(_FakeChatClient()),
+        writeOutput: compactYaml.write,
+      ),
+      0,
+    );
+    expect(compactYaml.toString(), startsWith('id: message-1\n'));
+    expect(compactYaml.toString(), contains('mentionAgentIds:\n  - agent-2'));
+
+    for (final scenario in [
+      (arguments: ['create', 'Review', '--quiet'], id: 'room-1\n'),
+      (arguments: ['ls', '-q'], id: 'room-1\n'),
+      (arguments: ['post', 'Review', 'hello', '-q'], id: 'message-1\n'),
+      (arguments: ['read', 'Review', '--quiet'], id: 'message-1\n'),
+    ]) {
+      final output = StringBuffer();
+      expect(
+        await runChatCommand(
+          arguments: scenario.arguments,
+          connect: _connector(_FakeChatClient()),
+          writeOutput: output.write,
+        ),
+        0,
+      );
+      expect(output.toString(), scenario.id);
+    }
+
+    final noHeaders = StringBuffer();
+    expect(
+      await runChatCommand(
+        arguments: ['ls', '--no-headers', '--no-color'],
+        connect: _connector(_FakeChatClient()),
+        writeOutput: noHeaders.write,
+      ),
+      0,
+    );
+    expect(noHeaders.toString(), isNot(contains('NAME')));
+    expect(noHeaders.toString(), contains('Review'));
+
+    final jsonWins = StringBuffer();
+    expect(
+      await runChatCommand(
+        arguments: ['ls', '--json', '--format', 'yaml'],
+        connect: _connector(_FakeChatClient()),
+        writeOutput: jsonWins.write,
+      ),
+      0,
+    );
+    expect(jsonDecode(jsonWins.toString()), isA<List<dynamic>>());
   });
 
   test('ISO since and hour/day durations are accepted', () async {

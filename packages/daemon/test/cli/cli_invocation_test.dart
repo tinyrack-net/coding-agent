@@ -96,6 +96,16 @@ void main() {
     );
     expect(
       normalizeRootCliArguments(const [
+        '--format',
+        'yaml',
+        '--quiet',
+        'chat',
+        'ls',
+      ]).forward(),
+      const ['chat', 'ls', '--format', 'yaml', '--quiet'],
+    );
+    expect(
+      normalizeRootCliArguments(const [
         '--json',
         'speech',
         'future-command',

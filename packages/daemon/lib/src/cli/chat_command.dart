@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_output.dart';
 import 'schedule_command.dart'
     show resolveScheduleDaemonEndpoint, ScheduleDaemonEndpoint;
 
@@ -50,13 +51,13 @@ Future<int> runChatCommand({
       environment: env,
     );
     final result = await _executeChat(client, invocation, env);
-    _renderChatResult(result, json: invocation.json, write: out);
+    _renderChatResult(result, options: invocation.output, write: out);
     return 0;
-  } on FormatException catch (error) {
-    err('${error.message}\n');
-    return 64;
   } on Object catch (error) {
-    err('${_errorText(error)}\n');
+    final commandError = _toChatCommandError(invocation.action, error);
+    err(
+      '${renderCliError(code: commandError.code, message: commandError.message, details: commandError.details, options: invocation.output)}\n',
+    );
     return 1;
   } finally {
     await client?.close();
@@ -80,13 +81,14 @@ Future<_ChatResult> _executeChat(
       );
       return _ChatResult.rooms([
         ChatRoomDetail.fromJson(_requiredMap(payload, 'room')),
-      ]);
+      ], isList: false);
     case 'ls':
       final payload = await client.request(
         ChatListRequest(requestId: requestId).toJson(),
       );
       return _ChatResult.rooms(
         _mapList(payload, 'rooms', ChatRoomDetail.fromJson),
+        isList: true,
       );
     case 'inspect':
     case 'delete':
@@ -101,7 +103,7 @@ Future<_ChatResult> _executeChat(
       );
       return _ChatResult.rooms([
         ChatRoomDetail.fromJson(_requiredMap(payload, 'room')),
-      ]);
+      ], isList: false);
     case 'post':
       final payload = await client.request(
         ChatPostRequest(
@@ -115,6 +117,7 @@ Future<_ChatResult> _executeChat(
       final messages = [ChatMessage.fromJson(_requiredMap(payload, 'message'))];
       return _ChatResult.messages(
         await _attachAgentNames(client, messages, bestEffort: true),
+        isList: false,
       );
     case 'read':
       final payload = await client.request(
@@ -129,6 +132,7 @@ Future<_ChatResult> _executeChat(
       final messages = _mapList(payload, 'messages', ChatMessage.fromJson);
       return _ChatResult.messages(
         await _attachAgentNames(client, messages, bestEffort: true),
+        isList: true,
       );
     case 'wait':
       final deadline = invocation.timeout == null
@@ -166,6 +170,7 @@ Future<_ChatResult> _executeChat(
       final messages = _mapList(payload, 'messages', ChatMessage.fromJson);
       return _ChatResult.messages(
         await _attachAgentNames(client, messages, bestEffort: true),
+        isList: true,
       );
     default:
       throw StateError('Unsupported chat action ${invocation.action}');
@@ -229,9 +234,10 @@ Future<ChatRpcClient> connectChatClient({
   try {
     return await _ChatSocketClient.connect(endpoint);
   } on Object catch (error) {
-    throw StateError(
-      'Cannot connect to daemon at ${endpoint.webSocketUri}: $error\n'
-      'Start the daemon with: coding-agent daemon start',
+    throw _ChatCommandException(
+      'DAEMON_NOT_RUNNING',
+      'Cannot connect to daemon at ${endpoint.webSocketUri}: $error',
+      details: 'Start the daemon with: coding-agent daemon start',
     );
   }
 }
@@ -347,7 +353,18 @@ final class _ChatInvocation extends _ChatParsed {
   int? limit;
   String? since;
   Duration? timeout;
+  String format = 'table';
   bool json = false;
+  bool quiet = false;
+  bool headers = true;
+  bool color = true;
+
+  CliOutputOptions get output => CliOutputOptions(
+    format: json ? 'json' : format,
+    quiet: quiet,
+    noHeaders: !headers,
+    noColor: !color,
+  );
 }
 
 _ChatParsed _parseChatInvocation(List<String> arguments) {
@@ -364,6 +381,22 @@ _ChatParsed _parseChatInvocation(List<String> arguments) {
     switch (argument) {
       case '--json':
         result.json = true;
+      case '-o' || '--format':
+        final raw = next();
+        if (raw == null) {
+          return _ChatParseFailure('$argument requires a value');
+        }
+        try {
+          result.format = normalizeCliOutputFormat(raw);
+        } on FormatException catch (error) {
+          return _ChatParseFailure(error.message);
+        }
+      case '-q' || '--quiet':
+        result.quiet = true;
+      case '--no-headers':
+        result.headers = false;
+      case '--no-color':
+        result.color = false;
       case '--host':
         result.host = next();
         if (result.host == null)
@@ -412,6 +445,24 @@ _ChatParsed _parseChatInvocation(List<String> arguments) {
           return _ChatParseFailure(error.message);
         }
       default:
+        if (argument.startsWith('--format=')) {
+          try {
+            result.format = normalizeCliOutputFormat(
+              argument.substring('--format='.length),
+            );
+          } on FormatException catch (error) {
+            return _ChatParseFailure(error.message);
+          }
+          continue;
+        }
+        if (argument.startsWith('-o') && argument.length > 2) {
+          try {
+            result.format = normalizeCliOutputFormat(argument.substring(2));
+          } on FormatException catch (error) {
+            return _ChatParseFailure(error.message);
+          }
+          continue;
+        }
         if (argument.startsWith('-')) {
           return _ChatParseFailure('Unknown option: $argument');
         }
@@ -452,38 +503,28 @@ _ChatParsed _parseChatInvocation(List<String> arguments) {
 
 void _renderChatResult(
   _ChatResult result, {
-  required bool json,
+  required CliOutputOptions options,
   required void Function(String) write,
 }) {
   if (result.rooms != null) {
     final rows = result.rooms!.map(_roomRow).toList(growable: false);
-    if (json) {
-      write('${const JsonEncoder.withIndent('  ').convert(rows)}\n');
-      return;
-    }
-    write(
-      'NAME                  ID                                   PURPOSE                        MESSAGES  LAST MESSAGE\n',
+    final rendered = renderCliOutput(
+      result.isList
+          ? CliOutputResult.list(rows: rows, schema: _chatRoomSchema)
+          : CliOutputResult.single(row: rows.single, schema: _chatRoomSchema),
+      options,
     );
-    for (final row in rows) {
-      write(
-        '${_fit('${row['name']}', 22)}'
-        '${_fit('${row['id']}', 37)}'
-        '${_fit('${row['purpose']}', 31)}'
-        '${_fit('${row['messages']}', 10, right: true)}'
-        '${row['lastMessageAt']}\n',
-      );
-    }
+    if (rendered.isNotEmpty) write('$rendered\n');
     return;
   }
-  final rows = result.messages!;
-  if (json) {
-    write(
-      '${const JsonEncoder.withIndent('  ').convert(rows.map((row) => row.toJson()).toList())}\n',
-    );
-    return;
-  }
-  if (rows.isEmpty) return;
-  write('${rows.map(_renderMessage).join('\n\n')}\n');
+  final rows = [for (final message in result.messages!) message.toJson()];
+  final rendered = renderCliOutput(
+    result.isList
+        ? CliOutputResult.list(rows: rows, schema: _chatMessageSchema)
+        : CliOutputResult.single(row: rows.single, schema: _chatMessageSchema),
+    options,
+  );
+  if (rendered.isNotEmpty) write('$rendered\n');
 }
 
 Map<String, Object?> _roomRow(ChatRoomDetail room) => {
@@ -494,26 +535,90 @@ Map<String, Object?> _roomRow(ChatRoomDetail room) => {
   'lastMessageAt': room.lastMessageAt ?? '-',
 };
 
-String _renderMessage(_NamedChatMessage named) {
-  final message = named.message;
-  final author = named.authorName == null
-      ? message.authorAgentId
-      : '${named.authorName} (${message.authorAgentId})';
+final _chatRoomSchema = CliOutputSchema(
+  idField: (row) => '${row['id']}',
+  columns: [
+    CliOutputColumn(header: 'NAME', field: (row) => row['name'], width: 22),
+    CliOutputColumn(header: 'ID', field: (row) => row['id'], width: 36),
+    CliOutputColumn(
+      header: 'PURPOSE',
+      field: (row) => row['purpose'],
+      width: 30,
+    ),
+    CliOutputColumn(
+      header: 'MESSAGES',
+      field: (row) => row['messages'],
+      width: 10,
+      alignment: CliOutputAlignment.right,
+    ),
+    CliOutputColumn(
+      header: 'LAST MESSAGE',
+      field: (row) => row['lastMessageAt'],
+      width: 24,
+    ),
+  ],
+);
+
+final _chatMessageSchema = CliOutputSchema(
+  idField: (row) => '${row['id']}',
+  columns: [
+    CliOutputColumn(header: 'ID', field: (row) => row['id'], width: 36),
+    CliOutputColumn(header: 'AUTHOR', field: (row) => row['author'], width: 16),
+    CliOutputColumn(
+      header: 'AUTHOR NAME',
+      field: (row) => row['authorName'] ?? '-',
+      width: 20,
+    ),
+    CliOutputColumn(
+      header: 'CREATED',
+      field: (row) => row['createdAt'],
+      width: 24,
+    ),
+    CliOutputColumn(
+      header: 'REPLY TO',
+      field: (row) => row['replyTo'],
+      width: 36,
+    ),
+    CliOutputColumn(
+      header: 'MENTIONS',
+      field: (row) {
+        final labels = row['mentionLabels'] as List<Object?>;
+        return labels.isEmpty ? '-' : labels.join(', ');
+      },
+      width: 24,
+    ),
+    CliOutputColumn(header: 'MESSAGE', field: (row) => row['body'], width: 60),
+  ],
+  renderHuman: _renderChatTranscript,
+);
+
+String _renderChatTranscript(
+  List<Map<String, Object?>> rows,
+  CliOutputOptions _,
+) => rows.map(_renderMessageRow).join('\n\n');
+
+String _renderMessageRow(Map<String, Object?> row) {
+  final authorName = row['authorName'];
+  final author = authorName == null
+      ? '${row['author']}'
+      : '$authorName (${row['author']})';
+  final createdAt = '${row['createdAt']}';
   final timestamp =
-      DateTime.tryParse(message.createdAt)
+      DateTime.tryParse(createdAt)
           ?.toUtc()
           .toIso8601String()
           .replaceFirst('T', ' ')
           .replaceFirst('.000Z', 'Z') ??
-      message.createdAt;
+      createdAt;
+  final replyTo = '${row['replyTo']}';
+  final mentionLabels = row['mentionLabels'] as List<Object?>;
+  final body = '${row['body']}';
   final lines = <String>[
-    '┌─ $author ── $timestamp ── [msg ${message.id}]',
-    if (message.replyToMessageId != null)
-      '│  reply-to: msg ${message.replyToMessageId}',
-    if (named.mentionLabels.isNotEmpty)
-      '│  mentions: ${named.mentionLabels.join(', ')}',
+    '┌─ $author ── $timestamp ── [msg ${row['id']}]',
+    if (replyTo != '-') '│  reply-to: msg $replyTo',
+    if (mentionLabels.isNotEmpty) '│  mentions: ${mentionLabels.join(', ')}',
     '│',
-    for (final line in message.body.split(RegExp(r'\r?\n'))) '│  $line',
+    for (final line in body.split(RegExp(r'\r?\n'))) '│  $line',
     '│',
     '└─',
   ];
@@ -521,13 +626,18 @@ String _renderMessage(_NamedChatMessage named) {
 }
 
 final class _ChatResult {
-  const _ChatResult._({this.rooms, this.messages});
-  factory _ChatResult.rooms(List<ChatRoomDetail> rooms) =>
-      _ChatResult._(rooms: rooms);
-  factory _ChatResult.messages(List<_NamedChatMessage> messages) =>
-      _ChatResult._(messages: messages);
+  const _ChatResult._({this.rooms, this.messages, required this.isList});
+  factory _ChatResult.rooms(
+    List<ChatRoomDetail> rooms, {
+    required bool isList,
+  }) => _ChatResult._(rooms: rooms, isList: isList);
+  factory _ChatResult.messages(
+    List<_NamedChatMessage> messages, {
+    required bool isList,
+  }) => _ChatResult._(messages: messages, isList: isList);
   final List<ChatRoomDetail>? rooms;
   final List<_NamedChatMessage>? messages;
+  final bool isList;
 }
 
 final class _NamedChatMessage {
@@ -557,6 +667,31 @@ final class _ChatRpcException implements Exception {
   final String message;
   @override
   String toString() => '$code: $message';
+}
+
+final class _ChatCommandException implements Exception {
+  const _ChatCommandException(this.code, this.message, {this.details});
+  final String code;
+  final String message;
+  final String? details;
+}
+
+_ChatCommandException _toChatCommandError(String action, Object error) {
+  if (error case _ChatCommandException()) return error;
+  if (error case _ChatRpcException(:final code, :final message)) {
+    return _ChatCommandException(code, message);
+  }
+  final (code, label) = switch (action) {
+    'create' => ('CHAT_CREATE_FAILED', 'create chat room'),
+    'ls' => ('CHAT_LIST_FAILED', 'list chat rooms'),
+    'inspect' => ('CHAT_INSPECT_FAILED', 'inspect chat room'),
+    'delete' => ('CHAT_DELETE_FAILED', 'delete chat room'),
+    'post' => ('CHAT_POST_FAILED', 'post chat message'),
+    'read' => ('CHAT_READ_FAILED', 'read chat messages'),
+    'wait' => ('CHAT_WAIT_FAILED', 'wait for chat messages'),
+    _ => ('CHAT_FAILED', 'run chat command'),
+  };
+  return _ChatCommandException(code, 'Failed to $label: ${_errorText(error)}');
 }
 
 String _authorAgentId(Map<String, String> environment) {
@@ -620,13 +755,6 @@ List<T> _mapList<T>(
   return [
     for (final item in value) parse(Map<String, Object?>.from(item as Map)),
   ];
-}
-
-String _fit(String value, int width, {bool right = false}) {
-  final clipped = value.length >= width
-      ? '${value.substring(0, width - 2)}…'
-      : value;
-  return right ? clipped.padLeft(width) : clipped.padRight(width);
 }
 
 String _errorText(Object error) => switch (error) {

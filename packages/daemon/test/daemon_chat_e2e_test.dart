@@ -48,15 +48,14 @@ void main() {
       }
 
       final created =
-          (await chat(['create', 'Review', '--purpose', 'Coordinate']))!
-              as List;
-      final roomId = (created.single as Map)['id'] as String;
-      expect((created.single as Map)['name'], 'Review');
+          (await chat(['create', 'Review', '--purpose', 'Coordinate']))! as Map;
+      final roomId = created['id'] as String;
+      expect(created['name'], 'Review');
 
       final posted =
-          (await chat(['post', roomId, 'first @agent-missing']))! as List;
-      final firstMessageId = (posted.single as Map)['id'] as String;
-      expect((posted.single as Map)['author'], 'agent-e2e');
+          (await chat(['post', roomId, 'first @agent-missing']))! as Map;
+      final firstMessageId = posted['id'] as String;
+      expect(posted['author'], 'agent-e2e');
 
       final waitFuture = chat(['wait', roomId, '--timeout', '5s']);
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -85,8 +84,8 @@ void main() {
       expect(roomsAfterRestart, hasLength(1));
       expect((roomsAfterRestart.single as Map)['messages'], 2);
 
-      final deleted = (await chat(['delete', roomId]))! as List;
-      expect((deleted.single as Map)['name'], 'Review');
+      final deleted = (await chat(['delete', roomId]))! as Map;
+      expect(deleted['name'], 'Review');
       expect(await chat(['ls']), isEmpty);
 
       final errors = StringBuffer();
@@ -103,7 +102,7 @@ void main() {
         ),
         1,
       );
-      expect(errors.toString(), contains('chat_room_not_found'));
+      expect(errors.toString(), contains('Chat room not found'));
     },
     timeout: const Timeout(Duration(seconds: 60)),
   );

@@ -9218,7 +9218,7 @@
         "packages/daemon/test/daemon_agent_cli_e2e_test.dart",
         "packages/daemon/test/daemon_agent_delete_e2e_test.dart"
       ],
-      "notes": "Frozen command registration, root help/version, hidden worktree compatibility alias, speech namespace, top-level/nested aliases, and Commander-style output options before full-output commands are ported. JSON-only command families still require shared YAML/quiet/table rendering."
+      "notes": "Frozen command registration, root help/version, hidden worktree compatibility alias, speech namespace, top-level/nested aliases, and Commander-style output options before full-output commands are ported. Chat now uses the shared renderer; the remaining JSON-only command families still require migration."
     },
     {
       "id": "source-unit:packages/cli/src/commands/agent/archive.ts",
@@ -9477,11 +9477,13 @@
     {
       "id": "source-unit:packages/cli/src/commands/chat/schema.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/chat_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/cli_output.dart",
       "evidence": [
-        "packages/daemon/test/cli/chat_command_test.dart"
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
       ],
-      "notes": "Paseo chat CLI argument and duration schemas ported."
+      "notes": "Frozen room/message schemas, single/list result distinction, content-sized table columns, transcript renderer, JSON/YAML/quiet/header options, and duration arguments are ported."
     },
     {
       "id": "source-unit:packages/cli/src/commands/chat/shared.ts",
@@ -10173,17 +10175,24 @@
     },
     {
       "id": "source-unit:packages/cli/src/output/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
+      "evidence": [
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/cli/chat_command_test.dart"
+      ],
+      "notes": "The shared Dart output entrypoint exports typed result, schema, JSON, YAML, quiet, table, and error rendering used by chat; remaining CLI families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/json.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
+      "evidence": [
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart"
+      ],
+      "notes": "Pretty two-space single-object/list JSON and structured errors are ported; schema custom serializers and identical-list collapse remain."
     },
     {
       "id": "source-unit:packages/cli/src/output/pairing.ts",
@@ -10196,52 +10205,69 @@
     },
     {
       "id": "source-unit:packages/cli/src/output/quiet.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
+      "evidence": [
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/cli/chat_command_test.dart"
+      ],
+      "notes": "Frozen single and list ID projection, empty-list behavior, and quiet precedence over structured formats are ported."
     },
     {
       "id": "source-unit:packages/cli/src/output/render.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
+      "evidence": [
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/cli/chat_command_test.dart"
+      ],
+      "notes": "Quiet precedence, JSON/YAML/table dispatch, custom human rendering, and structured errors are ported; ANSI color behavior and remaining consumers are pending."
     },
     {
       "id": "source-unit:packages/cli/src/output/table.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
+      "evidence": [
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/cli/chat_command_test.dart"
+      ],
+      "notes": "Frozen content-derived minimum widths, left/right/center alignment, header suppression, single/list rows, and no clipping are ported; ANSI-aware color measurement remains."
     },
     {
       "id": "source-unit:packages/cli/src/output/types.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/provider_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/provider_command.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_invocation_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/cli/chat_command_test.dart",
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": "Root format/json/quiet/header/color options and full-output command forwarding are typed; a single shared result/schema abstraction still needs to replace JSON-only command renderers."
+      "notes": "Root options, single/list results, schemas, columns, alignment, custom human renderers, and output options are typed; schema serializers and column color callbacks remain."
     },
     {
       "id": "source-unit:packages/cli/src/output/with-output.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_invocation_test.dart",
         "packages/daemon/test/cli/cli_root_output_process_test.dart",
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/cli/chat_command_test.dart",
+        "packages/daemon/test/daemon_chat_e2e_test.dart",
         "packages/daemon/test/cli/provider_command_test.dart"
       ],
-      "notes": "Global options preceding full-output commands are normalized into their existing renderer and verified through the real binary; JSON-only command families remain to migrate."
+      "notes": "Global and local options feed shared result and error rendering for chat and existing full-output commands; remaining JSON-only command families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/yaml.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/cli/cli_output.dart",
+      "evidence": [
+        "packages/daemon/test/cli/cli_output_test.dart",
+        "packages/daemon/test/cli/chat_command_test.dart"
+      ],
+      "notes": "Recursive maps/lists, empty collections, stable scalar quoting, single/list results, and structured errors are ported; schema custom serializers and document streaming remain."
     },
     {
       "id": "source-unit:packages/cli/src/run.ts",
