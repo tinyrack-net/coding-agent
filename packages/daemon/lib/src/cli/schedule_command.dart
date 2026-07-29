@@ -22,10 +22,11 @@ Future<int> runScheduleCommand({
 }) async {
   final output = writeOutput ?? stdout.write;
   final errorOutput = writeError ?? stderr.write;
-  if (arguments.contains('--help') || arguments.contains('-h')) {
+  if (_hasOptionBeforeTerminator(arguments, const {'--help', '-h'})) {
     output(scheduleHelp(arguments.isEmpty ? null : arguments.first));
     return 0;
   }
+  final jsonOutput = _hasOptionBeforeTerminator(arguments, const {'--json'});
   try {
     final parsed = ScheduleCliInvocation.parse(arguments);
     final env = environment ?? Platform.environment;
@@ -62,13 +63,13 @@ Future<int> runScheduleCommand({
       await client?.close();
     }
   } on ScheduleCommandException catch (error) {
-    _writeScheduleError(errorOutput, error, json: arguments.contains('--json'));
+    _writeScheduleError(errorOutput, error, json: jsonOutput);
     return 1;
   } on ProviderModelFormatException catch (error) {
     _writeScheduleError(
       errorOutput,
       ScheduleCommandException(error.code, error.message, error.details),
-      json: arguments.contains('--json'),
+      json: jsonOutput,
     );
     return 1;
   } on FormatException catch (error) {
@@ -78,7 +79,7 @@ Future<int> runScheduleCommand({
     _writeScheduleError(
       errorOutput,
       ScheduleCommandException('UNKNOWN_ERROR', _errorText(error)),
-      json: arguments.contains('--json'),
+      json: jsonOutput,
     );
     return 1;
   }
@@ -182,15 +183,25 @@ final class ScheduleCliInvocation {
     final positionals = <String>[];
     final values = <String, String>{};
     final flags = <String>{};
+    var positionalOnly = false;
     for (var index = 1; index < arguments.length; index++) {
       final argument = arguments[index];
-      if (booleanOptions.contains(argument)) {
+      if (!positionalOnly && argument == '--') {
+        positionalOnly = true;
+      } else if (positionalOnly) {
+        positionals.add(argument);
+      } else if (booleanOptions.contains(argument)) {
         flags.add(argument);
       } else if (valueOptions.contains(argument)) {
         if (index + 1 >= arguments.length) {
           throw FormatException('$argument requires a value');
         }
         values[argument] = arguments[++index];
+      } else if (_splitLongOption(argument) case (
+        final option,
+        final value,
+      ) when valueOptions.contains(option)) {
+        values[option] = value;
       } else if (argument.startsWith('-')) {
         throw FormatException('Unknown option: $argument');
       } else {
@@ -400,16 +411,7 @@ Map<String, Object?> _createRequest(
         },
       };
     }(),
-    'self' => {
-      'type': 'self',
-      'agentId':
-          environment['TINYRACK_AGENT_ID']?.trim() ??
-          environment['PASEO_AGENT_ID']?.trim() ??
-          (throw const ScheduleCommandException(
-            'INVALID_TARGET',
-            '--target self requires running inside a Tinyrack agent',
-          )),
-    },
+    'self' => {'type': 'self', 'agentId': _currentAgentId(environment)},
     final value => {'type': 'agent', 'agentId': value},
   };
   final maxRuns = _positiveIntOption(
@@ -433,6 +435,17 @@ Map<String, Object?> _createRequest(
           .add(Duration(milliseconds: _parseDuration(expiresIn)))
           .toIso8601String(),
   };
+}
+
+String _currentAgentId(Map<String, String> environment) {
+  for (final key in const ['TINYRACK_AGENT_ID', 'PASEO_AGENT_ID']) {
+    final value = environment[key]?.trim();
+    if (value != null && value.isNotEmpty) return value;
+  }
+  throw const ScheduleCommandException(
+    'INVALID_TARGET',
+    '--target self requires running inside a Tinyrack agent',
+  );
 }
 
 Map<String, Object?> _updateRequest(
@@ -836,11 +849,16 @@ String scheduleHelp(String? action) => switch (action) {
         '(--every <duration> | --cron <expr>) [options]\n'
         'Create a schedule\n\n'
         'Options:\n'
-        '  --timezone <iana>       IANA time zone for cron cadence\n'
+        '  --every <duration>      Cron-compatible cadence preset '
+        '(for example: 5m, 1h)\n'
+        '  --cron <expr>           Cron cadence expression\n'
+        '  --timezone <iana>       IANA time zone for cron cadence '
+        '(default: UTC)\n'
         '  --name <name>           Optional schedule name\n'
-        '  --provider <provider>   Agent provider or provider/model\n'
+        '  --provider <provider>   Agent provider, or provider/model\n'
         '  --mode <mode>           Provider-specific mode\n'
-        '  --cwd <path>            Working directory\n'
+        '  --cwd <path>            Working directory '
+        '(default: current; required with --host)\n'
         '  --run-now               Fire one immediate run on creation\n'
         '  --max-runs <n>          Maximum number of runs\n'
         '  --expires-in <duration> Time to live for the schedule\n'
@@ -862,6 +880,21 @@ String scheduleHelp(String? action) => switch (action) {
         'Commands: create, ls, inspect, logs, pause, resume, delete, '
         'run-once, update\n',
 };
+
+bool _hasOptionBeforeTerminator(List<String> arguments, Set<String> options) {
+  for (final argument in arguments) {
+    if (argument == '--') return false;
+    if (options.contains(argument)) return true;
+  }
+  return false;
+}
+
+(String, String)? _splitLongOption(String argument) {
+  if (!argument.startsWith('--')) return null;
+  final separator = argument.indexOf('=');
+  if (separator < 3) return null;
+  return (argument.substring(0, separator), argument.substring(separator + 1));
+}
 
 final class _ScheduleSocketClient {
   _ScheduleSocketClient(this._socket, this._frames);

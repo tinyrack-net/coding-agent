@@ -9612,12 +9612,12 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/create.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/cli/schedule_command.dart",
       "evidence": [
         "packages/daemon/test/cli/schedule_command_test.dart"
       ],
-      "notes": null
+      "notes": "Ports the frozen create command from option parsing through daemon cleanup: prompt/cadence/remote-cwd validation, cron-compatible every presets, timezone/name/provider-model/mode/target/max-runs/expiry/run-now projection, self compatibility scope, stable schedule row output, structured errors, Commander-style long-option equals syntax and option terminator semantics, complete visible help, and Tinyrack-branded daemon guidance."
     },
     {
       "id": "source-unit:packages/cli/src/commands/schedule/delete.ts",

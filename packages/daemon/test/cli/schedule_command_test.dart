@@ -81,6 +81,151 @@ void main() {
     });
   });
 
+  test('create accepts Commander long-option equals syntax', () async {
+    Map<String, Object?>? sent;
+    final exitCode = await runScheduleCommand(
+      arguments: [
+        'create',
+        'review',
+        '--cron=0 9 * * *',
+        '--timezone=Asia/Seoul',
+        '--name=Morning',
+        '--provider=codex/gpt-5.4',
+        '--mode=full-access',
+        '--cwd=C:/remote',
+        '--max-runs=3runs',
+        '--expires-in=1h',
+        '--host=remote:6868',
+      ],
+      request: (request) async {
+        sent = request;
+        return {'schedule': _schedule(), 'error': null};
+      },
+      writeOutput: (_) {},
+    );
+
+    expect(exitCode, 0);
+    expect(sent, isNotNull);
+    expect(sent!['prompt'], 'review');
+    expect(sent!['name'], 'Morning');
+    expect(sent!['cadence'], {
+      'type': 'cron',
+      'expression': '0 9 * * *',
+      'timezone': 'Asia/Seoul',
+    });
+    expect(sent!['target'], {
+      'type': 'new-agent',
+      'config': {
+        'provider': 'codex',
+        'cwd': 'C:/remote',
+        'model': 'gpt-5.4',
+        'modeId': 'full-access',
+      },
+    });
+    expect(sent!['maxRuns'], 3);
+    expect(sent!['expiresAt'], isA<String>());
+  });
+
+  test(
+    'option terminator preserves option-like prompts and output mode',
+    () async {
+      Map<String, Object?>? sent;
+      var output = '';
+      expect(
+        await runScheduleCommand(
+          arguments: [
+            'create',
+            '--every=5m',
+            '--provider=codex',
+            '--',
+            '--json',
+          ],
+          request: (request) async {
+            sent = request;
+            return {'schedule': _schedule(), 'error': null};
+          },
+          writeOutput: (value) => output += value,
+        ),
+        0,
+      );
+      expect(sent!['prompt'], '--json');
+      expect(output, startsWith('ID'));
+
+      sent = null;
+      expect(
+        await runScheduleCommand(
+          arguments: [
+            'create',
+            '--every=5m',
+            '--provider=codex',
+            '--',
+            '--help',
+          ],
+          request: (request) async {
+            sent = request;
+            return {'schedule': _schedule(), 'error': null};
+          },
+          writeOutput: (_) {},
+        ),
+        0,
+      );
+      expect(sent!['prompt'], '--help');
+    },
+  );
+
+  test(
+    'self target skips blank branded ids and rejects an empty scope',
+    () async {
+      Map<String, Object?>? sent;
+      expect(
+        await runScheduleCommand(
+          arguments: [
+            'create',
+            'heartbeat',
+            '--every',
+            '1h',
+            '--target',
+            'self',
+          ],
+          environment: const {
+            'TINYRACK_AGENT_ID': '   ',
+            'PASEO_AGENT_ID': '11111111-1111-4111-8111-111111111111',
+          },
+          request: (request) async {
+            sent = request;
+            return {'schedule': _schedule(), 'error': null};
+          },
+          writeOutput: (_) {},
+        ),
+        0,
+      );
+      expect(sent!['target'], {
+        'type': 'self',
+        'agentId': '11111111-1111-4111-8111-111111111111',
+      });
+
+      var error = '';
+      expect(
+        await runScheduleCommand(
+          arguments: [
+            'create',
+            'heartbeat',
+            '--every',
+            '1h',
+            '--target',
+            'self',
+          ],
+          environment: const {'TINYRACK_AGENT_ID': ' ', 'PASEO_AGENT_ID': '\t'},
+          request: (_) async =>
+              fail('blank self ids must not reach the daemon'),
+          writeError: (value) => error += value,
+        ),
+        1,
+      );
+      expect(error, contains('--target self requires'));
+    },
+  );
+
   test('remote create requires an explicit daemon-side cwd', () async {
     var error = '';
     final exitCode = await runScheduleCommand(
@@ -643,6 +788,12 @@ void main() {
         0,
       );
       expect(output, contains('Usage: coding-agent schedule'));
+      if (arguments.first == 'create') {
+        expect(output, contains('--every <duration>'));
+        expect(output, contains('--cron <expr>'));
+        expect(output, contains('(default: UTC)'));
+        expect(output, isNot(contains('--target')));
+      }
     }
   });
 }
