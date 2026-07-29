@@ -7,18 +7,21 @@ import 'package:go_router/go_router.dart';
 import '../core/daemon_client.dart';
 import '../core/theme.dart';
 import '../core/worktree_actions.dart';
+import '../layout/desktop_sidebar_layout.dart';
 import '../state/agents_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/app_sidebar_visibility_provider.dart';
 import '../state/workspace_focus_mode_provider.dart';
 import '../state/sidebar_grouping_provider.dart';
 import '../state/sidebar_pins_provider.dart';
+import '../state/sidebar_width_provider.dart';
 import '../state/workspace_providers.dart';
 import '../state/worktree_tabs_provider.dart';
 import '../state/worktree_titles_provider.dart';
 import '../widgets/fluent/toast.dart';
 import '../widgets/sidebar_agent_list_skeleton.dart';
 import '../widgets/sidebar_callout_slot.dart';
+import '../widgets/sidebar_resize_handle.dart';
 import '../widgets/worktree_tabbed_pane.dart';
 import '../workspace/workspace_deck_retention.dart';
 
@@ -33,17 +36,106 @@ class HomeShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sidebarVisible = ref.watch(appSidebarVisibilityProvider);
     final focusMode = ref.watch(workspaceFocusModeProvider);
+    final content = _HomeContentDeck(routeChild: child);
     return Container(
       color: FluentTheme.of(context).scaffoldBackgroundColor,
-      child: Row(
-        children: [
-          if (sidebarVisible && !focusMode) ...[
-            const SizedBox(width: 280, child: _Sidebar()),
-            const Divider(direction: Axis.vertical),
+      child: sidebarVisible && !focusMode
+          ? _ResizableHomeLayout(content: content)
+          : content,
+    );
+  }
+}
+
+class _ResizableHomeLayout extends ConsumerStatefulWidget {
+  const _ResizableHomeLayout({required this.content});
+
+  final Widget content;
+
+  @override
+  ConsumerState<_ResizableHomeLayout> createState() =>
+      _ResizableHomeLayoutState();
+}
+
+class _ResizableHomeLayoutState extends ConsumerState<_ResizableHomeLayout> {
+  double? _dragWidth;
+  double _dragStartWidth = defaultSidebarWidth;
+  double _dragStartGlobalX = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final requestedWidth = ref.watch(sidebarWidthProvider);
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final persistedVisibleWidth = resolveDesktopSidebarWidth(
+      requestedWidth: requestedWidth,
+      viewportWidth: viewportWidth,
+    );
+    final visibleWidth = resolveDesktopSidebarWidth(
+      requestedWidth: _dragWidth ?? persistedVisibleWidth,
+      viewportWidth: viewportWidth,
+    );
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Row(
+          children: [
+            SizedBox(width: visibleWidth),
+            Expanded(child: widget.content),
           ],
-          Expanded(child: _HomeContentDeck(routeChild: child)),
-        ],
-      ),
+        ),
+        Positioned(
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: visibleWidth + 5,
+          child: Stack(
+            children: [
+              Positioned(
+                key: const ValueKey('left-sidebar'),
+                top: 0,
+                bottom: 0,
+                left: 0,
+                width: visibleWidth,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      right: BorderSide(color: context.paseoPalette.border),
+                    ),
+                  ),
+                  child: const _Sidebar(),
+                ),
+              ),
+              SidebarResizeHandle(
+                edge: SidebarResizeEdge.right,
+                testId: 'left-sidebar-resize-handle',
+                onDragStart: (details) {
+                  _dragStartWidth = visibleWidth;
+                  _dragStartGlobalX = details.globalPosition.dx;
+                  setState(() => _dragWidth = visibleWidth);
+                },
+                onDragUpdate: (details) {
+                  final translated =
+                      _dragStartWidth +
+                      details.globalPosition.dx -
+                      _dragStartGlobalX;
+                  setState(
+                    () => _dragWidth = resolveDesktopSidebarWidth(
+                      requestedWidth: translated,
+                      viewportWidth: viewportWidth,
+                    ),
+                  );
+                },
+                onDragEnd: (_) {
+                  final committed = _dragWidth ?? visibleWidth;
+                  ref.read(sidebarWidthProvider.notifier).setWidth(committed);
+                  setState(() => _dragWidth = null);
+                },
+                onDragCancel: () => setState(() => _dragWidth = null),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

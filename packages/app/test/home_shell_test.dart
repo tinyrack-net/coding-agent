@@ -13,6 +13,7 @@ import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/sidebar_callout_provider.dart';
 import 'package:coding_agent_app/state/sidebar_callout_state.dart';
+import 'package:coding_agent_app/state/sidebar_width_provider.dart';
 import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
 import 'package:coding_agent_app/widgets/worktree_tabbed_pane.dart';
 import 'package:fluent_ui/fluent_ui.dart';
@@ -223,6 +224,25 @@ Future<ProviderContainer> pumpHomeShell(
 }
 
 void main() {
+  testWidgets('sidebar drag resizes, clamps, and commits the width', (
+    tester,
+  ) async {
+    final container = await pumpHomeShell(tester);
+    final sidebar = find.byKey(const ValueKey('left-sidebar'));
+    final handle = find.byKey(const ValueKey('left-sidebar-resize-handle'));
+
+    expect(tester.getSize(sidebar).width, 320);
+    await tester.drag(handle, const Offset(500, 0));
+    await tester.pump();
+    expect(tester.getSize(sidebar).width, 400);
+    expect(container.read(sidebarWidthProvider), 400);
+
+    await tester.drag(handle, const Offset(-800, 0));
+    await tester.pump();
+    expect(tester.getSize(sidebar).width, 200);
+    expect(container.read(sidebarWidthProvider), 200);
+  });
+
   testWidgets('renders the active native callout above the footer', (
     tester,
   ) async {

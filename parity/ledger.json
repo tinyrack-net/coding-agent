@@ -2523,10 +2523,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/desktop-sidebar-layout.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/layout/desktop_sidebar_layout.dart",
+      "evidence": [
+        "packages/app/test/desktop_sidebar_layout_test.dart",
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "Dart reproduces the frozen desktop chrome ownership projection, 400px center-pane reservation, render-only sidebar and explorer width clamping, settings/explorer content minimums, and navigation-sharing decision. HomeShell consumes the sidebar resolver so viewport changes never overwrite the persisted preference."
     },
     {
       "id": "source-unit:packages/app/src/components/desktop/titlebar-drag-region.tsx",
@@ -3377,10 +3380,14 @@
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar-resize-handle.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/sidebar_resize_handle.dart; packages/app/lib/screens/home_shell.dart; packages/app/lib/state/sidebar_width_provider.dart",
+      "evidence": [
+        "packages/app/test/sidebar_resize_handle_test.dart",
+        "packages/app/test/sidebar_width_provider_test.dart",
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "Flutter now uses the frozen 10px boundary hit area, column-resize cursor, 100ms delayed 1px foreground highlight at 25% opacity, timer cleanup, and horizontal drag lifecycle. HomeShell updates a transient clamped width during drag, commits only on end, and renders the sidebar at the persisted 320px default within the 200-600px preference bounds and 400px center-pane constraint."
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar-workspace-list.tsx",
@@ -7290,20 +7297,27 @@
     {
       "id": "source-unit:packages/app/src/stores/panel-store/index.ts",
       "status": "partial",
-      "implementation": "packages/app/lib/state/app_sidebar_visibility_provider.dart; packages/app/lib/state/workspace_focus_mode_provider.dart; packages/app/lib/widgets/workspace_explorer.dart",
+      "implementation": "packages/app/lib/state/app_sidebar_visibility_provider.dart; packages/app/lib/state/workspace_focus_mode_provider.dart; packages/app/lib/state/sidebar_width_provider.dart; packages/app/lib/layout/desktop_sidebar_layout.dart; packages/app/lib/widgets/workspace_explorer.dart",
       "evidence": [
-        "packages/app/test/app_command_center_host_test.dart; packages/app/test/appearance_provider_test.dart"
+        "packages/app/test/app_command_center_host_test.dart",
+        "packages/app/test/appearance_provider_test.dart",
+        "packages/app/test/sidebar_width_provider_test.dart",
+        "packages/app/test/desktop_sidebar_layout_test.dart",
+        "packages/app/test/home_shell_test.dart"
       ],
-      "notes": "Desktop sidebar, explorer, and focus-mode actions are live; remaining compact/mobile panel state is pending."
+      "notes": "Desktop sidebar visibility, focus mode, persisted sidebar width, viewport-aware rendering, and explorer actions are live. Remaining compact/mobile panel selection, explorer persisted width/split/sort migration, and the unified versioned store contract are pending."
     },
     {
       "id": "source-unit:packages/app/src/stores/panel-store/state.ts",
       "status": "partial",
-      "implementation": "packages/app/lib/state/app_sidebar_visibility_provider.dart; packages/app/lib/state/workspace_focus_mode_provider.dart; packages/app/lib/widgets/workspace_explorer.dart",
+      "implementation": "packages/app/lib/state/app_sidebar_visibility_provider.dart; packages/app/lib/state/workspace_focus_mode_provider.dart; packages/app/lib/state/sidebar_width_provider.dart; packages/app/lib/layout/desktop_sidebar_layout.dart; packages/app/lib/widgets/workspace_explorer.dart",
       "evidence": [
-        "packages/app/test/app_command_center_host_test.dart; packages/app/test/appearance_provider_test.dart"
+        "packages/app/test/app_command_center_host_test.dart",
+        "packages/app/test/appearance_provider_test.dart",
+        "packages/app/test/sidebar_width_provider_test.dart",
+        "packages/app/test/desktop_sidebar_layout_test.dart"
       ],
-      "notes": "Desktop visibility and focus state are modeled; mobile panel migration and persisted size fields remain."
+      "notes": "Desktop visibility, focus state, exact sidebar width constants/clamping, explorer render constraints, and sidebar width persistence are modeled. Mobile revisioned selection plus the remaining explorer tab/path/width/split/sort fields and migrations remain."
     },
     {
       "id": "source-unit:packages/app/src/stores/provider-settings-store.ts",
