@@ -81,12 +81,23 @@ final workspaceCatalogRevisionProvider =
       WorkspaceCatalogRevisionNotifier.new,
     );
 
-Future<List<WorkspaceDescriptor>> fetchAllWorkspaces(
+final class WorkspaceCatalogSnapshot {
+  const WorkspaceCatalogSnapshot({
+    required this.workspaces,
+    required this.emptyProjects,
+  });
+
+  final List<WorkspaceDescriptor> workspaces;
+  final List<WorkspaceProjectDescriptor> emptyProjects;
+}
+
+Future<WorkspaceCatalogSnapshot> fetchWorkspaceCatalogSnapshot(
   DaemonClient client, {
   bool subscribe = false,
 }) async {
   const uuid = Uuid();
   final entries = <WorkspaceDescriptor>[];
+  final emptyProjects = <WorkspaceProjectDescriptor>[];
   String? cursor;
   do {
     final request = FetchWorkspacesRequest(
@@ -98,6 +109,7 @@ Future<List<WorkspaceDescriptor>> fetchAllWorkspaces(
     final message = await client.requestSessionMessage(request.toJson());
     final response = FetchWorkspacesResponse.fromJson(message);
     entries.addAll(response.entries);
+    emptyProjects.addAll(response.emptyProjects);
     cursor = response.pageInfo.hasMore ? response.pageInfo.nextCursor : null;
     if (response.pageInfo.hasMore && cursor == null) {
       throw const FormatException(
@@ -105,8 +117,19 @@ Future<List<WorkspaceDescriptor>> fetchAllWorkspaces(
       );
     }
   } while (cursor != null);
-  return List.unmodifiable(entries);
+  return WorkspaceCatalogSnapshot(
+    workspaces: List.unmodifiable(entries),
+    emptyProjects: List.unmodifiable(emptyProjects),
+  );
 }
+
+Future<List<WorkspaceDescriptor>> fetchAllWorkspaces(
+  DaemonClient client, {
+  bool subscribe = false,
+}) async => (await fetchWorkspaceCatalogSnapshot(
+  client,
+  subscribe: subscribe,
+)).workspaces;
 
 List<WorkspaceDescriptor> applyWorkspaceDirectoryUpdate(
   List<WorkspaceDescriptor> current,

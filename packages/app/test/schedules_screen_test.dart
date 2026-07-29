@@ -3,6 +3,7 @@ import 'package:coding_agent_app/core/theme.dart';
 import 'package:coding_agent_app/screens/schedules_screen.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/host_registry_provider.dart';
+import 'package:coding_agent_app/state/schedule_project_targets_provider.dart';
 import 'package:coding_agent_app/state/schedules_provider.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -127,8 +128,13 @@ void main() {
     await tester.enterText(fields.at(2), '*/5 * * * *');
     await tester.enterText(fields.at(3), 'codex');
     await tester.enterText(fields.at(4), 'gpt-5.4');
-    await tester.enterText(fields.at(5), 'C:/repo');
-    await tester.enterText(fields.at(6), '2');
+    final projectPicker = find.byType(ComboBox<String>).at(1);
+    await tester.ensureVisible(projectPicker);
+    await tester.tap(projectPicker);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local project').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextBox).at(5), '2');
     await tester.tap(find.text('Create schedule'));
     await tester.pumpAndSettle();
 
@@ -350,16 +356,21 @@ void main() {
     await tester.tap(find.text('New schedule'));
     await tester.pumpAndSettle();
     expect(find.text('Host'), findsOneWidget);
-    await tester.tap(find.text('Local').first);
+    await tester.tap(find.byType(ComboBox<String>).first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Remote').last);
+    await tester.pumpAndSettle();
+    final projectPicker = find.byType(ComboBox<String>).at(2);
+    await tester.ensureVisible(projectPicker);
+    await tester.tap(projectPicker);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remote project').last);
     await tester.pumpAndSettle();
 
     final fields = find.byType(TextBox);
     await tester.enterText(fields.at(1), 'Run tests');
     await tester.enterText(fields.at(2), '*/5 * * * *');
     await tester.enterText(fields.at(3), 'codex');
-    await tester.enterText(fields.at(5), 'C:/repo');
     await tester.tap(find.text('Create schedule'));
     await tester.pumpAndSettle();
 
@@ -385,6 +396,9 @@ Future<void> _pumpWithNotifier(
         hostRegistryProvider.overrideWith(() => _ScheduleHostRegistry(hosts)),
         agentDirectoryReplicaStoreProvider.overrideWith(
           () => _ScheduleAgentStore(agentDirectories),
+        ),
+        scheduleProjectTargetsProvider.overrideWith(
+          () => _ScheduleProjectTargets(_targetsFor(hosts)),
         ),
       ],
       child: FluentApp(theme: buildAppTheme(), home: const SchedulesScreen()),
@@ -516,6 +530,32 @@ final class _ScheduleAgentStore extends AgentDirectoryReplicaStoreNotifier {
   @override
   Map<String, Map<String, AgentSummary>> build() => directories;
 }
+
+final class _ScheduleProjectTargets extends ScheduleProjectTargetsNotifier {
+  _ScheduleProjectTargets(this.targets);
+
+  final List<ScheduleProjectTarget> targets;
+
+  @override
+  Future<ScheduleProjectTargetsState> build() async =>
+      ScheduleProjectTargetsState(targets: targets);
+}
+
+List<ScheduleProjectTarget> _targetsFor(List<HostProfile> hosts) => [
+  for (final host in hosts)
+    ScheduleProjectTarget(
+      optionId: buildScheduleProjectOptionId(
+        host.serverId,
+        'project-${host.serverId}',
+      ),
+      serverId: host.serverId,
+      serverName: host.label,
+      projectKey: 'project-${host.serverId}',
+      projectName: '${host.label} project',
+      cwd: 'C:/repo',
+      isGit: true,
+    ),
+];
 
 const _oneHost = [
   HostProfile(

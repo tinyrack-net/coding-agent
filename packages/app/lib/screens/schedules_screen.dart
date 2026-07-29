@@ -6,6 +6,7 @@ import '../core/theme.dart';
 import '../state/agents_provider.dart';
 import '../state/host_registry_provider.dart';
 import '../state/schedule_form_model.dart';
+import '../state/schedule_project_targets_provider.dart';
 import '../state/schedules_provider.dart';
 import '../widgets/fluent/toast.dart';
 
@@ -31,6 +32,10 @@ class _SchedulesScreenState extends ConsumerState<SchedulesScreen> {
     final schedules = ref.watch(aggregatedSchedulesProvider);
     final hosts = ref.watch(hostRegistryProvider).hosts;
     final agentDirectories = ref.watch(agentDirectoryReplicaStoreProvider);
+    final projectTargets =
+        ref.watch(scheduleProjectTargetsProvider).value?.targets ??
+        const <ScheduleProjectTarget>[];
+    final projectNameByCwd = buildScheduleProjectNameByCwd(projectTargets);
     final selectedHost =
         _selectedHost == _allScheduleHosts ||
             hosts.any((host) => host.serverId == _selectedHost)
@@ -68,6 +73,7 @@ class _SchedulesScreenState extends ConsumerState<SchedulesScreen> {
               _resolveSchedule(
                 entry,
                 agentDirectories: agentDirectories,
+                projectNameByCwd: projectNameByCwd,
                 now: now,
               ),
           ];
@@ -605,6 +611,9 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     final editing = widget.schedule != null;
     final newAgent = widget.schedule?.target is! AgentScheduleTarget;
     final hosts = ref.watch(hostRegistryProvider).hosts;
+    final projectTargets =
+        ref.watch(scheduleProjectTargetsProvider).value?.targets ??
+        const <ScheduleProjectTarget>[];
     return ContentDialog(
       constraints: const BoxConstraints(maxWidth: 560),
       title: Text(editing ? 'Edit schedule' : 'New schedule'),
@@ -626,7 +635,10 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                         child: Text(host.label),
                       ),
                   ],
-                  onChanged: (value) => setState(() => _serverId = value),
+                  onChanged: (value) => setState(() {
+                    _serverId = value;
+                    _cwd.clear();
+                  }),
                 ),
                 const SizedBox(height: 12),
               ],
@@ -636,7 +648,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
               if (newAgent) ...[
                 _field('Provider', _provider),
                 _field('Model', _model, placeholder: 'Provider default'),
-                _field('Project', _cwd, placeholder: 'Working directory'),
+                _projectSelector(projectTargets),
                 const SizedBox(height: 12),
                 const Text('Isolation'),
                 const SizedBox(height: 6),
@@ -767,6 +779,68 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _projectSelector(List<ScheduleProjectTarget> targets) {
+    final options = [
+      for (final target in targets)
+        if (target.serverId == _serverId) target,
+    ];
+    ScheduleProjectTarget? selected;
+    for (final target in options) {
+      if (target.cwd == _cwd.text.trim()) {
+        selected = target;
+        break;
+      }
+    }
+    final storedValue =
+        selected == null &&
+            _cwd.text.trim().isNotEmpty &&
+            widget.schedule != null
+        ? '__stored_project__'
+        : null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Project'),
+          const SizedBox(height: 6),
+          ComboBox<String>(
+            value: selected?.optionId ?? storedValue,
+            placeholder: const Text('Select project'),
+            items: [
+              if (storedValue != null)
+                ComboBoxItem(
+                  value: storedValue,
+                  child: Text(
+                    describeScheduleCwd(
+                      serverId: _serverId ?? '',
+                      cwd: _cwd.text,
+                      projectNameByCwd: const {},
+                    ),
+                  ),
+                ),
+              for (final target in options)
+                ComboBoxItem(
+                  value: target.optionId,
+                  child: Text(target.projectName),
+                ),
+            ],
+            onChanged: (value) {
+              if (value == null || value == storedValue) return;
+              final target = options.firstWhere(
+                (target) => target.optionId == value,
+              );
+              setState(() {
+                _serverId = target.serverId;
+                _cwd.text = target.cwd;
+              });
+            },
+          ),
         ],
       ),
     );
@@ -904,6 +978,7 @@ final class _ResolvedScheduleRow {
 _ResolvedScheduleRow _resolveSchedule(
   AggregatedSchedule entry, {
   required Map<String, Map<String, AgentSummary>> agentDirectories,
+  required Map<String, String> projectNameByCwd,
   required DateTime now,
 }) {
   final schedule = entry.schedule;
@@ -913,7 +988,11 @@ _ResolvedScheduleRow _resolveSchedule(
   var targetGone = false;
   switch (target) {
     case NewAgentScheduleTarget(config: final config):
-      targetLabel = config.cwd;
+      targetLabel = describeScheduleCwd(
+        serverId: entry.serverId,
+        cwd: config.cwd,
+        projectNameByCwd: projectNameByCwd,
+      );
       provider = config.provider;
     case AgentScheduleTarget(agentId: final agentId) ||
         SelfScheduleTarget(agentId: final agentId):
