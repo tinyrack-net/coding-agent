@@ -5,6 +5,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/attachments/memory_attachment_store.dart';
 import 'package:coding_agent_app/composer/composer_image_attachment_service.dart';
 import 'package:coding_agent_app/state/timeline_provider.dart';
+import 'package:coding_agent_app/widgets/diff/diff_viewer.dart';
 import 'package:coding_agent_app/widgets/timeline_item_tile.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -66,6 +67,37 @@ void main() {
     await tester.tap(find.text('Worktree Setup'));
     await tester.pumpAndSettle();
     expect(find.text('dependencies installed'), findsOneWidget);
+  });
+
+  testWidgets('edit tool renders old/new text through the diff viewer', (
+    tester,
+  ) async {
+    const item = ToolCallItem(
+      id: 'edit',
+      toolName: 'Edit',
+      status: ToolCallStatus.success,
+      detail: EditDetail(
+        path: 'lib/main.dart',
+        oldString: 'const value = 1;',
+        newString: 'const value = 2;',
+      ),
+    );
+    await tester.pumpWidget(
+      const FluentApp(
+        home: ScaffoldPage(content: TimelineItemTile(item: item)),
+      ),
+    );
+
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DiffViewer), findsOneWidget);
+    final rendered = tester
+        .widgetList<RichText>(find.byType(RichText))
+        .map((widget) => widget.text.toPlainText())
+        .join('\n');
+    expect(rendered, contains('-const value = 1;'));
+    expect(rendered, contains('+const value = 2;'));
   });
 
   testWidgets('rich optimistic user content renders images and attachments', (

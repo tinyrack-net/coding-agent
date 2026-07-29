@@ -6,7 +6,9 @@ import '../attachments/attachment_store.dart';
 import '../composer/composer_image_attachment_service.dart';
 import '../composer/composer_image_attachments.dart';
 import '../core/theme.dart';
+import '../core/tool_call_parsers.dart';
 import '../state/timeline_provider.dart';
+import 'diff/diff_viewer.dart';
 
 /// Pure presentation of a single [TimelineItem]. Kept free of providers so it
 /// is trivially widget-testable; permission responses are surfaced via
@@ -470,8 +472,11 @@ class _ToolCallCard extends StatelessWidget {
     return switch (detail) {
       ShellDetail(:final output) when output != null && output.isNotEmpty =>
         _MonoBlock(text: output),
-      EditDetail(:final diff) when diff != null && diff.isNotEmpty => _DiffView(
-        diff: diff,
+      EditDetail(:final diff, :final oldString, :final newString) => DiffViewer(
+        diffLines: diff != null && diff.isNotEmpty
+            ? parseUnifiedDiff(diff)
+            : buildLineDiff(oldString ?? '', newString ?? ''),
+        maxHeight: 300,
       ),
       WriteDetail(:final contentPreview)
           when contentPreview != null && contentPreview.isNotEmpty =>
@@ -588,43 +593,6 @@ class _MonoBlock extends StatelessWidget {
       ),
       child: SelectableText(
         text,
-        style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-      ),
-    );
-  }
-}
-
-class _DiffView extends StatelessWidget {
-  const _DiffView({required this.diff});
-
-  final String diff;
-
-  @override
-  Widget build(BuildContext context) {
-    final lines = diff.split('\n');
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: context.tokens.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: SelectableText.rich(
-        TextSpan(
-          children: [
-            for (final line in lines)
-              TextSpan(
-                text: '$line\n',
-                style: TextStyle(
-                  color: line.startsWith('+')
-                      ? Colors.green
-                      : line.startsWith('-')
-                      ? Colors.red
-                      : null,
-                ),
-              ),
-          ],
-        ),
         style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
       ),
     );

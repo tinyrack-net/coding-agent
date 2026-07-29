@@ -2478,10 +2478,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/code-insets.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/code_insets.dart",
+      "evidence": [
+        "packages/app/test/diff_viewer_test.dart"
+      ],
+      "notes": "Matches the frozen two-digit minimum gutter formula, monospace digit-width ceiling, 12px fallback padding, and 12/16px Paseo code-surface insets."
     },
     {
       "id": "source-unit:packages/app/src/components/combined-model-selector.tsx",
@@ -2586,10 +2588,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/diff-viewer.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/diff/diff_viewer.dart; packages/app/lib/widgets/diff/diff_scroll.dart; packages/app/lib/core/tool_call_parsers.dart; packages/app/lib/widgets/code_insets.dart; packages/app/lib/widgets/syntax_token_styles.dart",
+      "evidence": [
+        "packages/app/test/diff_viewer_test.dart",
+        "packages/app/test/tool_call_parsers_test.dart"
+      ],
+      "notes": "Matches frozen empty/default labeling, nested vertical and horizontal scrolling, max/fill height behavior, code insets, non-wrapping 12px mono lines, exact header/context/add/remove surfaces, changed-segment highlights, syntax token styling, prefix separation, and viewport minimum width."
     },
     {
       "id": "source-unit:packages/app/src/components/download-toast.tsx",
@@ -3675,10 +3680,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/tool-call-details.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/widgets/timeline_item_tile.dart; packages/app/lib/widgets/diff/diff_viewer.dart; packages/app/lib/core/tool_call_parsers.dart",
+      "evidence": [
+        "packages/app/test/timeline_item_tile_test.dart",
+        "packages/app/test/diff_viewer_test.dart"
+      ],
+      "notes": "The edit-detail path now matches Paseo unified-diff precedence, old/new fallback, word highlights, nested scrolling, and height cap. The wider frozen tool detail component still has unported shell/file/search/subagent layouts and full-height orchestration."
     },
     {
       "id": "source-unit:packages/app/src/components/tool-call-sheet.tsx",
@@ -7519,10 +7527,12 @@
     },
     {
       "id": "source-unit:packages/app/src/styles/syntax-token-styles.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/syntax_token_styles.dart",
+      "evidence": [
+        "packages/app/test/diff_viewer_test.dart"
+      ],
+      "notes": "Ports every frozen GitHub light/dark syntax token color and preserves base-foreground fallback for null or unknown styles."
     },
     {
       "id": "source-unit:packages/app/src/styles/theme.ts",
@@ -8719,10 +8729,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/tool-call-parsers.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/tool_call_parsers.dart",
+      "evidence": [
+        "packages/app/test/tool_call_parsers_test.dart"
+      ],
+      "notes": "Ports frozen CRLF line splitting, LCS line diff ordering, adjacent remove/add word-level LCS segments, unified diff metadata filtering and line classification, diff prefixes, and strict TodoWrite/update_plan task extraction."
     },
     {
       "id": "source-unit:packages/app/src/utils/web-focus.ts",
