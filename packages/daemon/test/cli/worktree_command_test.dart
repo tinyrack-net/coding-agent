@@ -122,6 +122,79 @@ void main() {
     });
   });
 
+  test('supports shared output aliases and frozen option forms', () async {
+    final parsed = WorktreeCliInvocation.parse(const [
+      'create',
+      '--mode=branch-off',
+      '--new-branch=feature-x',
+      '--host=ws://127.0.0.1:7777',
+      '--format=yaml',
+      '--json',
+      '--no-color',
+    ]);
+    expect(parsed.values['--mode'], 'branch-off');
+    expect(parsed.values['--new-branch'], 'feature-x');
+    expect(parsed.host, 'ws://127.0.0.1:7777');
+    expect(parsed.output.format, 'json');
+    expect(parsed.output.noColor, isTrue);
+
+    final output = StringBuffer();
+    expect(
+      await runWorktreeCommand(
+        arguments: const ['archive', '-ocli', '--no-headers', '--', '-feature'],
+        request: (message) async {
+          if (message['type'] == PaseoWorktreeListRequest.type) {
+            return {
+              'requestId': message['requestId'],
+              'worktrees': [
+                {
+                  'worktreePath': '/managed/-feature',
+                  'createdAt': 'now',
+                  'branchName': 'feature',
+                  'head': null,
+                },
+              ],
+              'error': null,
+            };
+          }
+          return {
+            'requestId': message['requestId'],
+            'success': true,
+            'removedAgents': <String>[],
+            'error': null,
+          };
+        },
+        writeOutput: output.write,
+      ),
+      0,
+    );
+    expect(output.toString(), isNot(contains('REMOVED AGENTS')));
+    expect(output.toString(), contains('-feature'));
+    expect(output.toString(), contains('archived'));
+  });
+
+  test('shared yaml renders worktree command errors', () async {
+    final error = StringBuffer();
+    expect(
+      await runWorktreeCommand(
+        arguments: const ['archive', 'missing', '--format=yaml'],
+        request: (message) async => {
+          'requestId': message['requestId'],
+          'worktrees': <Object?>[],
+          'error': null,
+        },
+        writeError: error.write,
+      ),
+      1,
+    );
+    expect(error.toString(), contains('error:'));
+    expect(error.toString(), contains('code: WORKTREE_NOT_FOUND'));
+    expect(
+      error.toString(),
+      contains('message: "Worktree not found: missing"'),
+    );
+  });
+
   test('help and binary dispatch expose all worktree commands', () async {
     for (final arguments in const [
       ['--help'],
