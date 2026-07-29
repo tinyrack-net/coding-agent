@@ -19,6 +19,7 @@ import 'package:coding_agent_app/state/sidebar_width_provider.dart';
 import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
 import 'package:coding_agent_app/widgets/worktree_tabbed_pane.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -582,9 +583,7 @@ void main() {
       const ValueKey('sidebar-project-section-/repo-a'),
     );
     expect(
-      tester.widget(
-        find.byKey(const ValueKey('sidebar-project-drag-/repo-a')),
-      ),
+      tester.widget(find.byKey(const ValueKey('sidebar-project-drag-/repo-a'))),
       isA<ReorderableDragStartListener>(),
     );
     final outerList = find
@@ -607,9 +606,7 @@ void main() {
     );
     expect(
       tester.widget(
-        find.byKey(
-          const ValueKey('sidebar-workspace-drag-legacy:/repo-b'),
-        ),
+        find.byKey(const ValueKey('sidebar-workspace-drag-legacy:/repo-b')),
       ),
       isA<ReorderableDragStartListener>(),
     );
@@ -667,6 +664,24 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Renamed agent'), findsOneWidget);
+  });
+
+  testWidgets('secondary click on a workspace row opens its context menu', (
+    tester,
+  ) async {
+    await pumpHomeShell(tester, agents: [_agent1]);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('First agent')),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Copy path'), findsOneWidget);
+    expect(find.text('Rename'), findsOneWidget);
+    expect(find.text('Pin'), findsOneWidget);
+    await gesture.up();
   });
 
   testWidgets('an idle worktree with no agent still renders a full kebab menu '

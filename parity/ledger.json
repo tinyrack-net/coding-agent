@@ -3638,10 +3638,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar/use-long-press-drag-interaction.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/sidebar/sidebar_gesture_interaction.dart; packages/app/lib/screens/home_shell.dart",
+      "evidence": [
+        "packages/app/test/sidebar_gesture_interaction_test.dart",
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "Ports the 180ms/4px mobile drag arm, 450ms/6px stationary context menu, pre-arm scroll/swipe cancellation, web bypass, selection haptics, desktop immediate drag, and workspace-row secondary/touch menu. Project-row context menus and the provider medium-impact drag-intent feedback remain tracked as partial."
     },
     {
       "id": "source-unit:packages/app/src/components/sortable-inline-list.native.tsx",
@@ -8815,10 +8818,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/sidebar-gesture-arbitration.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/sidebar/sidebar_gesture_arbitration.dart",
+      "evidence": [
+        "packages/app/test/sidebar_gesture_arbitration_test.dart"
+      ],
+      "notes": "Matches the frozen movement classifier, default thresholds, directional precedence, drag-start gate, and context-menu press-out predicate."
     },
     {
       "id": "source-unit:packages/app/src/utils/sidebar-project-row-model.ts",

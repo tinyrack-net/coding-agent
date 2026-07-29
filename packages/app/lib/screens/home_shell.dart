@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,6 +12,7 @@ import '../core/theme.dart';
 import '../core/worktree_actions.dart';
 import '../layout/desktop_sidebar_layout.dart';
 import '../sidebar/sidebar_project_row_model.dart';
+import '../sidebar/sidebar_gesture_interaction.dart';
 import '../sidebar/sidebar_reorder.dart';
 import '../sidebar/workspace_agent_activity.dart';
 import '../state/agents_provider.dart';
@@ -547,15 +547,11 @@ class _SidebarState extends ConsumerState<_Sidebar> {
     required int index,
     required Widget child,
   }) {
-    return switch (defaultTargetPlatform) {
-      TargetPlatform.android ||
-      TargetPlatform.iOS => ReorderableDelayedDragStartListener(
-        key: key,
-        index: index,
-        child: child,
-      ),
-      _ => ReorderableDragStartListener(key: key, index: index, child: child),
-    };
+    return SidebarReorderDragStartListener(
+      key: key,
+      index: index,
+      child: child,
+    );
   }
 
   @override
@@ -787,7 +783,7 @@ WorkspaceStateBucket? _aggregateStateBucket(List<AgentSummary> agents) {
 /// row regardless of how many agent sessions share it). Always
 /// tappable/selectable — even with zero agents, selecting it opens
 /// [WorktreeTabbedPane], which seeds a draft composer tab.
-class _SidebarWorktreeRow extends ConsumerWidget {
+class _SidebarWorktreeRow extends ConsumerStatefulWidget {
   const _SidebarWorktreeRow({
     required this.row,
     required this.selected,
@@ -798,23 +794,32 @@ class _SidebarWorktreeRow extends ConsumerWidget {
   final bool selected;
   final VoidCallback onTap;
 
+  @override
+  ConsumerState<_SidebarWorktreeRow> createState() =>
+      _SidebarWorktreeRowState();
+}
+
+class _SidebarWorktreeRowState extends ConsumerState<_SidebarWorktreeRow> {
+  final _menuController = FlyoutController();
+  final _menuButtonKey = GlobalKey();
+
   String get _fallbackName {
     // A single session's own title is more informative than the branch name
     // (preserves the pre-unification per-agent row's look); branch/path is
     // only a fallback for empty or multi-session rows.
-    if (row.agents.length == 1) {
-      final agent = row.agents.single;
+    if (widget.row.agents.length == 1) {
+      final agent = widget.row.agents.single;
       return agent.title.isEmpty ? agent.agentId : agent.title;
     }
-    final worktree = row.worktree;
+    final worktree = widget.row.worktree;
     if (worktree != null) {
       return worktree.branch.isEmpty ? '(detached)' : worktree.branch;
     }
-    return row.key;
+    return widget.row.key;
   }
 
-  Future<void> _rename(BuildContext context, WidgetRef ref) async {
-    final current = ref.read(worktreeTitlesProvider)[row.key] ?? '';
+  Future<void> _rename() async {
+    final current = ref.read(worktreeTitlesProvider)[widget.row.key] ?? '';
     final controller = TextEditingController(text: current);
     final title = await showDialog<String>(
       context: context,
@@ -844,12 +849,115 @@ class _SidebarWorktreeRow extends ConsumerWidget {
     );
     controller.dispose();
     if (title == null) return;
-    await ref.read(worktreeTitlesProvider.notifier).setTitle(row.key, title);
+    await ref
+        .read(worktreeTitlesProvider.notifier)
+        .setTitle(widget.row.key, title);
+  }
+
+  List<MenuFlyoutItemBase> _menuItems({
+    required bool pinned,
+    required String? branch,
+    required bool canArchiveWorktree,
+  }) {
+    final row = widget.row;
+    final worktree = row.worktree;
+    return [
+      MenuFlyoutItem(
+        text: const Text('Copy path'),
+        leading: const Icon(FluentIcons.copy),
+        onPressed: () {
+          Clipboard.setData(ClipboardData(text: row.key));
+          AppToast.show(context, 'Path copied');
+        },
+      ),
+      if (branch != null && branch.isNotEmpty)
+        MenuFlyoutItem(
+          text: const Text('Copy branch'),
+          leading: const Icon(FluentIcons.branch_fork2),
+          onPressed: () {
+            Clipboard.setData(ClipboardData(text: branch));
+            AppToast.show(context, 'Branch copied');
+          },
+        ),
+      MenuFlyoutItem(
+        text: const Text('Rename'),
+        leading: const Icon(FluentIcons.rename),
+        onPressed: _rename,
+      ),
+      MenuFlyoutItem(
+        text: Text(pinned ? 'Unpin' : 'Pin'),
+        leading: Icon(pinned ? FluentIcons.unpin : FluentIcons.pin),
+        onPressed: () =>
+            ref.read(sidebarPinsProvider.notifier).togglePin(row.key),
+      ),
+      for (final agent in row.agents)
+        MenuFlyoutItem(
+          text: Text(
+            row.agents.length == 1
+                ? 'Archive'
+                : 'Archive ${agent.title.isEmpty ? agent.agentId : agent.title}',
+          ),
+          leading: const Icon(FluentIcons.archive),
+          onPressed: () => archiveAgentWithWorktreeConfirm(context, ref, agent),
+        ),
+      if (canArchiveWorktree && worktree != null)
+        MenuFlyoutItem(
+          text: const Text('Archive worktree'),
+          leading: const Icon(FluentIcons.archive),
+          onPressed: () => archiveWorktreeWithConfirm(
+            context,
+            ref,
+            worktree.projectPath,
+            worktree.path,
+          ),
+        ),
+    ];
+  }
+
+  Future<void> _showMenu(Offset? position) async {
+    if (!_menuController.isAttached || _menuController.isOpen) return;
+    await _menuController.showFlyout<void>(
+      position: position,
+      placementMode: FlyoutPlacementMode.bottomRight,
+      additionalOffset: position == null ? 2 : 0,
+      builder: (context) {
+        final row = widget.row;
+        final pinned = ref.read(sidebarPinsProvider).contains(row.key);
+        final worktree = row.worktree;
+        final branch =
+            worktree?.branch ??
+            (row.agents.length == 1 ? row.agents.single.branch : null);
+        final canArchiveWorktree =
+            worktree != null && !worktree.isMain && row.agents.isEmpty;
+        return MenuFlyout(
+          constraints: const BoxConstraints.tightFor(width: 200),
+          items: _menuItems(
+            pinned: pinned,
+            branch: branch,
+            canArchiveWorktree: canArchiveWorktree,
+          ),
+        );
+      },
+    );
+  }
+
+  void _showMenuFromButton() {
+    final box = _menuButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    final position = box?.localToGlobal(
+      Offset(box.size.width, box.size.height),
+    );
+    unawaited(_showMenu(position));
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final pinned = ref.watch(sidebarPinsProvider).contains(row.key);
+  void dispose() {
+    _menuController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final row = widget.row;
     final override = ref.watch(worktreeTitlesProvider)[row.key];
     final title = override ?? _fallbackName;
     final subtitle = switch (row.agents.length) {
@@ -868,93 +976,35 @@ class _SidebarWorktreeRow extends ConsumerWidget {
         activity?.status ??
         (hasWorkspaceIdentity ? null : _aggregateStateBucket(row.agents));
     final worktree = row.worktree;
-    final branch =
-        worktree?.branch ??
-        (row.agents.length == 1 ? row.agents.single.branch : null);
-    final canArchiveWorktree =
-        worktree != null && !worktree.isMain && row.agents.isEmpty;
 
-    return ListTile.selectable(
-      selected: selected,
-      leading: stateBucket == null
-          ? Icon(
-              worktree == null || worktree.isMain
-                  ? FluentIcons.home
-                  : FluentIcons.branch_fork2,
-              size: 16,
-            )
-          : _RunStateIndicator(stateBucket: stateBucket),
-      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-      trailing: DropDownButton(
-        // scaffoldBackgroundColor is a semi-transparent white overlay (not a
-        // solid color), so it only reads as near-black because nothing
-        // bright sits behind it elsewhere. MenuFlyout wraps its content in
-        // an Acrylic (blur+tint) layer — passing the same translucent color
-        // here would let that layer bleed through, so flatten it opaque
-        // first to fully occlude the acrylic tint underneath.
-        menuColor: Color.alphaBlend(
-          FluentTheme.of(context).scaffoldBackgroundColor,
-          Colors.black,
+    return FlyoutTarget(
+      controller: _menuController,
+      child: SidebarContextMenuRegion(
+        onOpen: (position) => unawaited(_showMenu(position)),
+        child: ListTile.selectable(
+          selected: widget.selected,
+          leading: stateBucket == null
+              ? Icon(
+                  worktree == null || worktree.isMain
+                      ? FluentIcons.home
+                      : FluentIcons.branch_fork2,
+                  size: 16,
+                )
+              : _RunStateIndicator(stateBucket: stateBucket),
+          title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: IconButton(
+            key: _menuButtonKey,
+            icon: const Icon(FluentIcons.more_vertical, size: 14),
+            onPressed: _showMenuFromButton,
+          ),
+          onPressed: widget.onTap,
         ),
-        buttonBuilder: (context, onOpen) => IconButton(
-          icon: const Icon(FluentIcons.more_vertical, size: 14),
-          onPressed: onOpen,
-        ),
-        items: [
-          MenuFlyoutItem(
-            text: const Text('Copy path'),
-            leading: const Icon(FluentIcons.copy),
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: row.key));
-              AppToast.show(context, 'Path copied');
-            },
-          ),
-          if (branch != null && branch.isNotEmpty)
-            MenuFlyoutItem(
-              text: const Text('Copy branch'),
-              leading: const Icon(FluentIcons.branch_fork2),
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: branch));
-                AppToast.show(context, 'Branch copied');
-              },
-            ),
-          MenuFlyoutItem(
-            text: const Text('Rename'),
-            leading: const Icon(FluentIcons.rename),
-            onPressed: () => _rename(context, ref),
-          ),
-          MenuFlyoutItem(
-            text: Text(pinned ? 'Unpin' : 'Pin'),
-            leading: Icon(pinned ? FluentIcons.unpin : FluentIcons.pin),
-            onPressed: () =>
-                ref.read(sidebarPinsProvider.notifier).togglePin(row.key),
-          ),
-          for (final agent in row.agents)
-            MenuFlyoutItem(
-              text: Text(
-                row.agents.length == 1
-                    ? 'Archive'
-                    : 'Archive ${agent.title.isEmpty ? agent.agentId : agent.title}',
-              ),
-              leading: const Icon(FluentIcons.archive),
-              onPressed: () =>
-                  archiveAgentWithWorktreeConfirm(context, ref, agent),
-            ),
-          if (canArchiveWorktree)
-            MenuFlyoutItem(
-              text: const Text('Archive worktree'),
-              leading: const Icon(FluentIcons.archive),
-              onPressed: () => archiveWorktreeWithConfirm(
-                context,
-                ref,
-                worktree.projectPath,
-                worktree.path,
-              ),
-            ),
-        ],
       ),
-      onPressed: onTap,
     );
   }
 }
