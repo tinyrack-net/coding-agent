@@ -72,14 +72,22 @@ class _WorkspaceExplorerState extends ConsumerState<WorkspaceExplorer> {
               _ExplorerTabButton(
                 label: 'Changes',
                 selected: _tab == WorkspaceExplorerTab.changes,
-                onPressed: () =>
-                    setState(() => _tab = WorkspaceExplorerTab.changes),
+                onPressed: () {
+                  ref
+                      .read(pullRequestPaneProvider(widget.cwd).notifier)
+                      .setTimelineEnabled(false);
+                  setState(() => _tab = WorkspaceExplorerTab.changes);
+                },
               ),
               _ExplorerTabButton(
                 label: 'Files',
                 selected: _tab == WorkspaceExplorerTab.files,
-                onPressed: () =>
-                    setState(() => _tab = WorkspaceExplorerTab.files),
+                onPressed: () {
+                  ref
+                      .read(pullRequestPaneProvider(widget.cwd).notifier)
+                      .setTimelineEnabled(false);
+                  setState(() => _tab = WorkspaceExplorerTab.files);
+                },
               ),
               if (status != null)
                 _ExplorerTabButton(
@@ -92,8 +100,12 @@ class _WorkspaceExplorerState extends ConsumerState<WorkspaceExplorer> {
                     color: color,
                   ),
                   selected: _tab == WorkspaceExplorerTab.pullRequest,
-                  onPressed: () =>
-                      setState(() => _tab = WorkspaceExplorerTab.pullRequest),
+                  onPressed: () {
+                    ref
+                        .read(pullRequestPaneProvider(widget.cwd).notifier)
+                        .setTimelineEnabled(true);
+                    setState(() => _tab = WorkspaceExplorerTab.pullRequest);
+                  },
                 ),
               const Spacer(),
               Tooltip(
@@ -118,6 +130,7 @@ class _WorkspaceExplorerState extends ConsumerState<WorkspaceExplorer> {
             ),
             WorkspaceExplorerTab.pullRequest => PullRequestPane(
               cwd: widget.cwd,
+              manageTimelineActivation: false,
             ),
           },
         ),

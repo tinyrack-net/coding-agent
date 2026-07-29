@@ -13,6 +13,62 @@ const pullRequestAvatarColors = <String>[
 
 enum PullRequestChangeState { open, draft, merged, closed }
 
+final class PullRequestRepoIdentity {
+  const PullRequestRepoIdentity({
+    required this.prNumber,
+    required this.repoOwner,
+    required this.repoName,
+  });
+
+  final num? prNumber;
+  final String? repoOwner;
+  final String? repoName;
+}
+
+PullRequestRepoIdentity extractPullRequestRepoIdentity(
+  CheckoutPrStatus? status,
+) => PullRequestRepoIdentity(
+  prNumber: status?.number,
+  repoOwner: _nonEmpty(status?.repoOwner),
+  repoName: _nonEmpty(status?.repoName),
+);
+
+String? _nonEmpty(String? value) =>
+    value != null && value.isNotEmpty ? value : null;
+
+bool shouldFetchPullRequestTimeline({
+  required bool hasClient,
+  required bool isConnected,
+  required bool timelineEnabled,
+  required bool githubFeaturesEnabled,
+  required String cwd,
+  required PullRequestRepoIdentity identity,
+  required bool timelineUnsupported,
+}) =>
+    hasClient &&
+    isConnected &&
+    timelineEnabled &&
+    githubFeaturesEnabled &&
+    cwd.isNotEmpty &&
+    identity.prNumber != null &&
+    identity.repoOwner != null &&
+    identity.repoName != null &&
+    !timelineUnsupported;
+
+String pullRequestTimelineUnsupportedKey({
+  required String serverId,
+  required String cwd,
+  required num prNumber,
+}) => '$serverId\u0000$cwd\u0000$prNumber';
+
+final class PullRequestTimelineUnsupportedRegistry {
+  final Set<String> _keys = {};
+
+  bool has(String key) => _keys.contains(key);
+
+  void add(String key) => _keys.add(key);
+}
+
 String derivePullRequestAvatarColor(String login) {
   var hash = 0;
   for (final rune in login.toLowerCase().runes) {

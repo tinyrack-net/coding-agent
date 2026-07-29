@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -8,12 +10,17 @@ import 'daemon_providers.dart';
 import 'gitlab_pipeline_query.dart';
 
 const _uuid = Uuid();
+final _unsupportedTimelineRegistry = PullRequestTimelineUnsupportedRegistry();
 
 final class PullRequestPaneData {
   const PullRequestPaneData({
     this.status,
     this.timeline = const [],
     this.timelineTruncated = false,
+    this.timelineResolved = false,
+    this.activityLoading = false,
+    this.isRefreshing = false,
+    this.githubFeaturesEnabled = true,
     this.pipelineCacheRevision = 0,
     this.statusError,
     this.timelineError,
@@ -22,6 +29,10 @@ final class PullRequestPaneData {
   final CheckoutPrStatus? status;
   final List<PullRequestTimelineItem> timeline;
   final bool timelineTruncated;
+  final bool timelineResolved;
+  final bool activityLoading;
+  final bool isRefreshing;
+  final bool githubFeaturesEnabled;
   final int pipelineCacheRevision;
   final String? statusError;
   final String? timelineError;
@@ -34,19 +45,30 @@ class PullRequestPaneNotifier extends AsyncNotifier<PullRequestPaneData> {
 
   final String cwd;
   final _gitlabPipelineCache = GitlabPipelineQueryCache();
+  final _timelineActivations = <Object>{};
   var _pipelineCacheRevision = 0;
+  var _loadGeneration = 0;
+  var _manualTimelineEnabled = false;
+
+  bool get _timelineEnabled =>
+      _manualTimelineEnabled || _timelineActivations.isNotEmpty;
 
   @override
   Future<PullRequestPaneData> build() async {
     final client = ref.watch(daemonClientProvider);
     ref.watch(connectionStateProvider);
-    if (client.currentState != DaemonConnectionState.connected) {
+    if (client.currentState != DaemonConnectionState.connected || cwd.isEmpty) {
       return const PullRequestPaneData();
     }
-    return _load(client);
+    final generation = ++_loadGeneration;
+    return _load(client, generation: generation);
   }
 
-  Future<PullRequestPaneData> _load(DaemonClient client) async {
+  Future<PullRequestPaneData> _load(
+    DaemonClient client, {
+    required int generation,
+    PullRequestPaneData? previous,
+  }) async {
     final statusRequest = CheckoutPrStatusRequest(
       cwd: cwd,
       requestId: _uuid.v4(),
@@ -57,64 +79,250 @@ class PullRequestPaneNotifier extends AsyncNotifier<PullRequestPaneData> {
     final rawStatus = statusResponse.status;
     if (rawStatus == null) {
       return PullRequestPaneData(
+        githubFeaturesEnabled: statusResponse.githubFeaturesEnabled,
         pipelineCacheRevision: _pipelineCacheRevision,
         statusError: statusResponse.error?.message,
       );
     }
     final status = normalizePullRequestStatus(rawStatus);
     if (status == null) {
-      return PullRequestPaneData(pipelineCacheRevision: _pipelineCacheRevision);
-    }
-    final number = status.number;
-    final owner = status.repoOwner;
-    final name = status.repoName;
-    if (number == null || owner == null || name == null) {
       return PullRequestPaneData(
-        status: status,
+        githubFeaturesEnabled: statusResponse.githubFeaturesEnabled,
         pipelineCacheRevision: _pipelineCacheRevision,
       );
     }
-
-    try {
-      final timelineRequest = PullRequestTimelineRequest(
-        cwd: cwd,
-        prNumber: number,
-        repoOwner: owner,
-        repoName: name,
-        requestId: _uuid.v4(),
-      );
-      final timelineResponse = PullRequestTimelineResponse.fromJson(
-        await client.requestSessionMessage(timelineRequest.toJson()),
-      );
-      final timelineMatchesStatus = timelineResponse.prNumber == number;
-      return PullRequestPaneData(
-        status: status,
-        timeline: normalizePullRequestTimeline(
-          statusNumber: number,
-          timelineNumber: timelineResponse.prNumber,
-          items: timelineResponse.items,
+    final identity = extractPullRequestRepoIdentity(status);
+    final unsupportedKey = pullRequestTimelineUnsupportedKey(
+      serverId: _serverId(client),
+      cwd: cwd,
+      prNumber: identity.prNumber!,
+    );
+    final shouldFetch = shouldFetchPullRequestTimeline(
+      hasClient: true,
+      isConnected: client.currentState == DaemonConnectionState.connected,
+      timelineEnabled: _timelineEnabled,
+      githubFeaturesEnabled: statusResponse.githubFeaturesEnabled,
+      cwd: cwd,
+      identity: identity,
+      timelineUnsupported: _unsupportedTimelineRegistry.has(unsupportedKey),
+    );
+    final keepPreviousTimeline =
+        previous?.status?.number == status.number &&
+        previous?.timelineResolved == true;
+    final pending = PullRequestPaneData(
+      status: status,
+      timeline: keepPreviousTimeline ? previous!.timeline : const [],
+      timelineTruncated: keepPreviousTimeline && previous!.timelineTruncated,
+      timelineResolved: keepPreviousTimeline,
+      activityLoading: shouldFetch && !keepPreviousTimeline,
+      isRefreshing: false,
+      githubFeaturesEnabled: statusResponse.githubFeaturesEnabled,
+      pipelineCacheRevision: _pipelineCacheRevision,
+      statusError: statusResponse.error?.message,
+    );
+    if (shouldFetch) {
+      unawaited(
+        Future<void>.delayed(
+          Duration.zero,
+          () => _loadTimeline(
+            client,
+            status: status,
+            identity: identity,
+            unsupportedKey: unsupportedKey,
+            generation: generation,
+            pending: pending,
+          ),
         ),
-        timelineTruncated: timelineMatchesStatus && timelineResponse.truncated,
-        pipelineCacheRevision: _pipelineCacheRevision,
-        timelineError: timelineMatchesStatus
-            ? timelineResponse.error?.message
-            : null,
-      );
-    } catch (error) {
-      return PullRequestPaneData(
-        status: status,
-        pipelineCacheRevision: _pipelineCacheRevision,
-        timelineError: '$error',
       );
     }
+    return pending;
+  }
+
+  void setTimelineEnabled(bool enabled) {
+    if (_manualTimelineEnabled == enabled) return;
+    _manualTimelineEnabled = enabled;
+    _timelineActivationChanged(_timelineEnabled);
+  }
+
+  void setTimelineActive(Object token, bool active) {
+    final changed = active
+        ? _timelineActivations.add(token)
+        : _timelineActivations.remove(token);
+    if (!changed) return;
+    _timelineActivationChanged(_timelineEnabled);
+  }
+
+  void _timelineActivationChanged(bool enabled) {
+    if (!enabled) {
+      _loadGeneration += 1;
+      return;
+    }
+    final current = state.value;
+    final status = current?.status;
+    if (current == null ||
+        status == null ||
+        current.timelineResolved ||
+        current.activityLoading) {
+      return;
+    }
+    final client = ref.read(daemonClientProvider);
+    final identity = extractPullRequestRepoIdentity(status);
+    final number = identity.prNumber;
+    if (number == null) return;
+    final unsupportedKey = pullRequestTimelineUnsupportedKey(
+      serverId: _serverId(client),
+      cwd: cwd,
+      prNumber: number,
+    );
+    if (!shouldFetchPullRequestTimeline(
+      hasClient: true,
+      isConnected: client.currentState == DaemonConnectionState.connected,
+      timelineEnabled: true,
+      githubFeaturesEnabled: current.githubFeaturesEnabled,
+      cwd: cwd,
+      identity: identity,
+      timelineUnsupported: _unsupportedTimelineRegistry.has(unsupportedKey),
+    )) {
+      return;
+    }
+    final generation = ++_loadGeneration;
+    final pending = PullRequestPaneData(
+      status: status,
+      timeline: current.timeline,
+      timelineTruncated: current.timelineTruncated,
+      timelineResolved: current.timelineResolved,
+      activityLoading: true,
+      githubFeaturesEnabled: current.githubFeaturesEnabled,
+      pipelineCacheRevision: current.pipelineCacheRevision,
+      statusError: current.statusError,
+      timelineError: current.timelineError,
+    );
+    state = AsyncData(pending);
+    unawaited(
+      _loadTimeline(
+        client,
+        status: status,
+        identity: identity,
+        unsupportedKey: unsupportedKey,
+        generation: generation,
+        pending: pending,
+      ),
+    );
   }
 
   Future<void> refresh() async {
     final client = ref.read(daemonClientProvider);
     _gitlabPipelineCache.invalidate(serverId: _serverId(client), cwd: cwd);
     _pipelineCacheRevision += 1;
-    if (!state.hasValue) state = const AsyncLoading<PullRequestPaneData>();
-    state = await AsyncValue.guard(() => _load(client));
+    final generation = ++_loadGeneration;
+    final previous = state.value;
+    if (previous == null) {
+      state = const AsyncLoading<PullRequestPaneData>();
+    } else {
+      state = AsyncData(
+        PullRequestPaneData(
+          status: previous.status,
+          timeline: previous.timeline,
+          timelineTruncated: previous.timelineTruncated,
+          timelineResolved: previous.timelineResolved,
+          activityLoading: previous.activityLoading,
+          isRefreshing: true,
+          githubFeaturesEnabled: previous.githubFeaturesEnabled,
+          pipelineCacheRevision: _pipelineCacheRevision,
+          statusError: previous.statusError,
+          timelineError: previous.timelineError,
+        ),
+      );
+    }
+    try {
+      final next = await _load(
+        client,
+        generation: generation,
+        previous: previous,
+      );
+      if (ref.mounted && generation == _loadGeneration) {
+        state = AsyncData(next);
+      }
+    } catch (error, stackTrace) {
+      if (!ref.mounted || generation != _loadGeneration) return;
+      if (previous == null) {
+        state = AsyncError(error, stackTrace);
+      } else {
+        state = AsyncData(
+          PullRequestPaneData(
+            status: previous.status,
+            timeline: previous.timeline,
+            timelineTruncated: previous.timelineTruncated,
+            timelineResolved: previous.timelineResolved,
+            githubFeaturesEnabled: previous.githubFeaturesEnabled,
+            pipelineCacheRevision: _pipelineCacheRevision,
+            statusError: '$error',
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadTimeline(
+    DaemonClient client, {
+    required CheckoutPrStatus status,
+    required PullRequestRepoIdentity identity,
+    required String unsupportedKey,
+    required int generation,
+    required PullRequestPaneData pending,
+  }) async {
+    try {
+      final timelineRequest = PullRequestTimelineRequest(
+        cwd: cwd,
+        prNumber: identity.prNumber!,
+        repoOwner: identity.repoOwner!,
+        repoName: identity.repoName!,
+        requestId: _uuid.v4(),
+      );
+      final timelineResponse = PullRequestTimelineResponse.fromJson(
+        await client.requestSessionMessage(timelineRequest.toJson()),
+      );
+      if (!ref.mounted || generation != _loadGeneration) return;
+      final timelineMatchesStatus =
+          timelineResponse.prNumber == identity.prNumber;
+      state = AsyncData(
+        PullRequestPaneData(
+          status: status,
+          timeline: normalizePullRequestTimeline(
+            statusNumber: identity.prNumber!,
+            timelineNumber: timelineResponse.prNumber,
+            items: timelineResponse.items,
+          ),
+          timelineTruncated:
+              timelineMatchesStatus && timelineResponse.truncated,
+          timelineResolved: true,
+          githubFeaturesEnabled: pending.githubFeaturesEnabled,
+          pipelineCacheRevision: pending.pipelineCacheRevision,
+          statusError: pending.statusError,
+          timelineError: timelineMatchesStatus
+              ? timelineResponse.error?.message
+              : null,
+        ),
+      );
+    } catch (error) {
+      if (!ref.mounted || generation != _loadGeneration) return;
+      final unsupported = isUnsupportedPullRequestTimelineError(error);
+      if (unsupported) {
+        _unsupportedTimelineRegistry.add(unsupportedKey);
+      }
+      state = AsyncData(
+        PullRequestPaneData(
+          status: status,
+          timeline: pending.timeline,
+          timelineTruncated: pending.timelineTruncated,
+          timelineResolved: pending.timelineResolved,
+          githubFeaturesEnabled: pending.githubFeaturesEnabled,
+          pipelineCacheRevision: pending.pipelineCacheRevision,
+          statusError: pending.statusError,
+          timelineError: unsupported ? null : '$error',
+        ),
+      );
+    }
   }
 
   Future<void> refreshCheckout() async {
@@ -243,3 +451,6 @@ final pullRequestPaneProvider =
 
 String _serverId(DaemonClient client) =>
     client.serverInfo?.serverId ?? client.uri.toString();
+
+bool isUnsupportedPullRequestTimelineError(Object error) =>
+    error is DaemonRpcException && error.error.code == 'unknown_schema';

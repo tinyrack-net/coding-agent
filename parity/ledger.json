@@ -5172,7 +5172,7 @@
         "packages/app/test/pull_request_pane_states_test.dart",
         "packages/app/test/goldens/pull_request_pane_skeleton_380x700.png"
       ],
-      "notes": "Ports the frozen three-row activity skeleton, 20px circular avatars, 70/45-percent text lines, 12px row gaps, surface2 fill, 0.4-to-0.8 two-second pulse cycle, and decorative accessibility exclusion."
+      "notes": "Ports the frozen three-row activity skeleton, 20px circular avatars, 70/45-percent text lines, 12px row gaps, surface2 fill, 0.4-to-0.8 two-second pulse cycle, and decorative accessibility exclusion. The same standalone skeleton is used while status is visible and only PR activity remains pending."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/activity-state.ts",
@@ -5331,12 +5331,13 @@
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/use-data.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/state/pull_request_provider.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/core/pull_request_data.dart; packages/app/lib/state/pull_request_provider.dart; packages/app/lib/widgets/pull_request_pane.dart; packages/app/lib/widgets/pull_request_pane_states.dart; packages/app/lib/widgets/workspace_explorer.dart",
       "evidence": [
+        "packages/app/test/pull_request_data_test.dart",
         "packages/app/test/pull_request_pane_test.dart"
       ],
-      "notes": "Core Windows explorer and PR checks/activity flow implemented; advanced attachment, entry grouping, and forge-specific polish remain."
+      "notes": "Ports the frozen split status and timeline query lifecycle: status renders before activity, only the Activity section skeletonizes, the timeline is gated by active tab, connection, feature support, cwd, PR number, and non-empty repository identity, unsupported unknown_schema tuples are remembered per server/cwd/PR and suppressed, stale payloads are rejected, previous timeline data survives refresh, and generic timeline errors resolve to the frozen empty activity presentation."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/use-pipeline.ts",

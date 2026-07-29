@@ -214,6 +214,45 @@ class _ActivitySkeleton extends StatelessWidget {
   );
 }
 
+class PullRequestActivitySkeleton extends StatefulWidget {
+  const PullRequestActivitySkeleton({super.key});
+
+  @override
+  State<PullRequestActivitySkeleton> createState() =>
+      _PullRequestActivitySkeletonState();
+}
+
+class _PullRequestActivitySkeletonState
+    extends State<PullRequestActivitySkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    )..repeat(reverse: true);
+    _pulse = Tween<double>(begin: 0.4, end: 0.8).animate(_controller);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: _ActivitySkeleton(pulse: _pulse),
+    ),
+  );
+}
+
 class _SkeletonPulse extends StatelessWidget {
   const _SkeletonPulse({
     super.key,

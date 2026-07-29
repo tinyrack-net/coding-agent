@@ -50,6 +50,7 @@ class _FakeDaemonClient extends DaemonClient {
     this.checkDetailsGate,
     this.checkoutRefreshGate,
     this.statusGate,
+    this.timelineGate,
     this.statusFailuresRemaining = 0,
   }) : super(uri: Uri.parse('ws://fake')) {
     serverInfo = ServerInfoStatus(
@@ -85,6 +86,7 @@ class _FakeDaemonClient extends DaemonClient {
   final Completer<void>? checkDetailsGate;
   final Completer<void>? checkoutRefreshGate;
   final Completer<void>? statusGate;
+  final Completer<void>? timelineGate;
   int statusFailuresRemaining;
   Completer<void>? pipelineDetailsGate;
   final nativeRequests = <Map<String, Object?>>[];
@@ -135,6 +137,9 @@ class _FakeDaemonClient extends DaemonClient {
         statusFailuresRemaining -= 1;
         throw StateError('status unavailable');
       }
+    }
+    if (message['type'] == PullRequestTimelineRequest.type) {
+      await timelineGate?.future;
     }
     if (message['type'] == CheckoutForgeGetCheckDetailsRequest.modernType) {
       final isGitlabPipeline = forge == 'gitlab';
@@ -2005,6 +2010,33 @@ void main() {
     expect(find.textContaining('Port the pull request panel'), findsOneWidget);
   });
 
+  testWidgets('status renders while only PR activity is still loading', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    await _pumpPane(tester, _FakeDaemonClient(timelineGate: gate));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('pr-pane-skeleton')), findsNothing);
+    expect(find.textContaining('Port the pull request panel'), findsOneWidget);
+    expect(find.text('Flutter tests'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('pr-pane-activity-skeleton')),
+      findsOneWidget,
+    );
+    expect(find.text('No activity yet'), findsNothing);
+
+    gate.complete();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(
+      find.byKey(const ValueKey('pr-pane-activity-skeleton')),
+      findsNothing,
+    );
+    expect(find.text('Looks good to me.'), findsOneWidget);
+  });
+
   testWidgets('fatal pull request load error retries through the notifier', (
     tester,
   ) async {
@@ -2086,7 +2118,9 @@ void main() {
     },
   );
 
-  testWidgets('renders empty and failed activity states', (tester) async {
+  testWidgets('renders empty activity for success and timeline errors', (
+    tester,
+  ) async {
     await _pumpExplorer(tester, _FakeDaemonClient(timelineMode: 'empty'));
     await _tapPullRequestTab(tester);
     await tester.pump(const Duration(milliseconds: 150));
@@ -2095,7 +2129,8 @@ void main() {
     await _pumpExplorer(tester, _FakeDaemonClient(timelineMode: 'error'));
     await _tapPullRequestTab(tester);
     await tester.pump(const Duration(milliseconds: 150));
-    expect(find.text('Timeline is unavailable'), findsOneWidget);
+    expect(find.text('Timeline is unavailable'), findsNothing);
+    expect(find.text('No activity yet'), findsOneWidget);
   });
 
   testWidgets('scopes expanded activity state to the pull request number', (

@@ -27,19 +27,42 @@ class PullRequestPane extends ConsumerStatefulWidget {
     super.key,
     required this.cwd,
     @visibleForTesting this.webOverride,
+    this.manageTimelineActivation = true,
   });
 
   final String cwd;
   final bool? webOverride;
+  final bool manageTimelineActivation;
 
   @override
   ConsumerState<PullRequestPane> createState() => _PullRequestPaneState();
 }
 
 class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
+  final _timelineActivation = Object();
+  late final PullRequestPaneNotifier _notifier;
   bool _checksOpen = true;
   bool _activityOpen = true;
   bool _refreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _notifier = ref.read(pullRequestPaneProvider(widget.cwd).notifier);
+    if (!widget.manageTimelineActivation) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _notifier.setTimelineActive(_timelineActivation, true);
+    });
+  }
+
+  @override
+  void dispose() {
+    if (widget.manageTimelineActivation) {
+      _notifier.setTimelineActive(_timelineActivation, false);
+    }
+    super.dispose();
+  }
 
   Future<void> _refreshCheckout() async {
     if (_refreshing) return;
@@ -151,7 +174,7 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
                       cwd: widget.cwd,
                       status: status,
                       items: data.timeline,
-                      error: data.timelineError,
+                      activityLoading: data.activityLoading,
                       truncated: data.timelineTruncated,
                     ),
                   ),
@@ -1086,14 +1109,14 @@ class _ActivitySection extends ConsumerStatefulWidget {
     required this.cwd,
     required this.status,
     required this.items,
-    required this.error,
+    required this.activityLoading,
     required this.truncated,
   });
 
   final String cwd;
   final CheckoutPrStatus status;
   final List<PullRequestTimelineItem> items;
-  final String? error;
+  final bool activityLoading;
   final bool truncated;
 
   @override
@@ -1159,15 +1182,7 @@ class _ActivitySectionState extends ConsumerState<_ActivitySection> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.error != null && widget.items.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Text(
-          widget.error!,
-          style: TextStyle(fontSize: 12, color: context.tokens.error),
-        ),
-      );
-    }
+    if (widget.activityLoading) return const PullRequestActivitySkeleton();
     if (widget.items.isEmpty) {
       return const PullRequestEmptyText('No activity yet');
     }
