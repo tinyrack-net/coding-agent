@@ -5,16 +5,19 @@ import '../core/provider_display.dart';
 import '../core/theme.dart';
 import '../state/provider_subagents_provider.dart';
 import '../widgets/timeline_item_tile.dart';
+import '../workspace/workspace_file_open.dart';
 
 class ProviderSubagentScreen extends ConsumerStatefulWidget {
   const ProviderSubagentScreen({
     super.key,
     required this.parentAgentId,
     required this.subagentId,
+    this.onOpenWorkspaceFile,
   });
 
   final String parentAgentId;
   final String subagentId;
+  final void Function(WorkspaceFileOpenRequest request)? onOpenWorkspaceFile;
 
   @override
   ConsumerState<ProviderSubagentScreen> createState() =>
@@ -97,6 +100,14 @@ class _ProviderSubagentScreenState
                       item: row.item,
                       providerLabel: providerDisplayName(descriptor?.provider),
                       cwd: descriptor?.cwd,
+                      onOpenFilePath: widget.onOpenWorkspaceFile == null
+                          ? null
+                          : (path) => widget.onOpenWorkspaceFile!(
+                              WorkspaceFileOpenRequest(
+                                location: WorkspaceFileLocation(path: path),
+                                disposition: OpenFileDisposition.main,
+                              ),
+                            ),
                     );
                   },
                 ),

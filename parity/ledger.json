@@ -8102,10 +8102,15 @@
     },
     {
       "id": "source-unit:packages/app/src/tool-calls/presentation.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/tool_calls/tool_call_presentation.dart; packages/app/lib/widgets/timeline_item_tile.dart; packages/app/lib/screens/agent_chat_screen.dart; packages/app/lib/screens/provider_subagent_screen.dart; packages/app/lib/widgets/worktree_tabbed_pane.dart",
+      "evidence": [
+        "packages/app/test/tool_call_presentation_test.dart",
+        "packages/app/test/timeline_item_tile_test.dart",
+        "packages/app/test/agent_chat_screen_test.dart",
+        "packages/app/test/worktree_tabbed_pane_test.dart"
+      ],
+      "notes": "Unifies display text, icon, loading/detail/open states, conservative file-open targets, and the dedicated non-expandable plan card. File actions are wired through agent and provider-subagent timelines into reusable workspace file tabs."
     },
     {
       "id": "source-unit:packages/app/src/types/agent-activity.ts",
@@ -8463,10 +8468,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/extract-tool-call-file-path.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/tool_calls/extract_tool_call_file_path.dart",
+      "evidence": [
+        "packages/app/test/tool_call_presentation_test.dart"
+      ],
+      "notes": "Matches the frozen direct read/edit/write path extraction and conservative shell read-command policy, rejecting operators, trailing flags, and ambiguous arguments."
     },
     {
       "id": "source-unit:packages/app/src/utils/file-mention-autocomplete.ts",
@@ -8915,10 +8922,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/tool-call-detail-state.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/tool_calls/tool_call_detail_state.dart",
+      "evidence": [
+        "packages/app/test/tool_call_presentation_test.dart"
+      ],
+      "notes": "Matches meaningful-detail detection for every frozen detail kind, recursively evaluates unknown payloads, and marks only running or executing calls without errors or meaningful content as pending."
     },
     {
       "id": "source-unit:packages/app/src/utils/tool-call-display.ts",

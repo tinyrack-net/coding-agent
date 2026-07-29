@@ -9,6 +9,7 @@ import '../core/diff_highlight.dart';
 import '../core/theme.dart';
 import '../core/tool_call_parsers.dart';
 import '../state/timeline_provider.dart';
+import '../tool_calls/tool_call_presentation.dart';
 import 'diff/diff_viewer.dart';
 
 /// Pure presentation of a single [TimelineItem]. Kept free of providers so it
@@ -23,6 +24,7 @@ class TimelineItemTile extends StatelessWidget {
     this.userMessage,
     this.imageAttachmentService,
     this.cwd,
+    this.onOpenFilePath,
   });
 
   final TimelineItem item;
@@ -35,6 +37,7 @@ class TimelineItemTile extends StatelessWidget {
   final OptimisticUserMessage? userMessage;
   final ComposerImageAttachmentService? imageAttachmentService;
   final String? cwd;
+  final void Function(String path)? onOpenFilePath;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +54,11 @@ class TimelineItemTile extends StatelessWidget {
         complete: complete,
       ),
       ReasoningItem(:final text) => _ReasoningTile(text: text),
-      final ToolCallItem tool => _ToolCallCard(item: tool, cwd: cwd),
+      final ToolCallItem tool => _ToolCallCard(
+        item: tool,
+        cwd: cwd,
+        onOpenFilePath: onOpenFilePath,
+      ),
       final PermissionItem permission => _PermissionCard(
         item: permission,
         onDecision: onPermissionDecision,
@@ -387,45 +394,38 @@ class _ReasoningTile extends StatelessWidget {
   }
 }
 
-IconData _toolIcon(ToolCallDetail detail) {
-  return switch (detail) {
-    ShellDetail() => FluentIcons.command_prompt,
-    ReadDetail() => FluentIcons.open_file,
-    EditDetail() => FluentIcons.edit,
-    WriteDetail() => FluentIcons.save,
-    SearchDetail() => FluentIcons.search,
-    FetchDetail() => FluentIcons.link,
-    SubAgentDetail() => FluentIcons.branch_fork,
-    WorktreeSetupToolDetail() => FluentIcons.branch_fork2,
-    PlainTextDetail() => FluentIcons.info,
-    PlanDetail() => FluentIcons.processing,
-    GenericDetail() => FluentIcons.build,
-  };
-}
-
 class _ToolCallCard extends StatelessWidget {
-  const _ToolCallCard({required this.item, this.cwd});
+  const _ToolCallCard({required this.item, this.cwd, this.onOpenFilePath});
 
   final ToolCallItem item;
   final String? cwd;
+  final void Function(String path)? onOpenFilePath;
 
   @override
   Widget build(BuildContext context) {
-    final icon = _toolIcon(item.detail);
-    final display = buildToolCallDisplayModel(
-      ToolCallDisplayInput.fromItem(item, cwd: cwd),
+    final presentation = buildToolCallPresentation(
+      toolName: item.toolName,
+      status: item.status,
+      error: item.errorMessage,
+      detail: item.detail,
+      metadata: item.metadata,
+      cwd: cwd,
+      resolveIcon: resolveToolCallIcon,
     );
-    final displayName = tinyrackToolCallDisplayName(
-      item.toolName,
-      display.displayName,
-    );
+    if (presentation.isPlan && item.detail is PlanDetail) {
+      final text = (item.detail as PlanDetail).text;
+      return _PlanToolCard(text: text);
+    }
     final detailBody = _toolBody(context, item.detail);
-    final error = display.errorText;
-    final Widget? body = switch ((detailBody, error)) {
-      (null, final String message) when message.isNotEmpty => _ToolErrorBlock(
-        message,
-      ),
-      (final Widget detail, final String message) when message.isNotEmpty =>
+    final Widget? body = switch ((
+      detailBody,
+      presentation.errorText,
+      presentation.isLoadingDetails,
+    )) {
+      (_, _, true) => const _ToolLoadingBlock(),
+      (null, final String message, _) when message.isNotEmpty =>
+        _ToolErrorBlock(message),
+      (final Widget detail, final String message, _) when message.isNotEmpty =>
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -434,28 +434,35 @@ class _ToolCallCard extends StatelessWidget {
             _ToolErrorBlock(message),
           ],
         ),
-      (final Widget detail, _) => detail,
+      (final Widget detail, _, _) => detail,
       _ => null,
     };
+    final openFile = presentation.openFilePath == null || onOpenFilePath == null
+        ? null
+        : () => onOpenFilePath!(presentation.openFilePath!);
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
-      child: body == null
+      child: !presentation.canOpenDetails || body == null
           ? ListTile(
-              leading: Icon(icon, size: 20),
+              leading: Icon(presentation.icon, size: 20),
               title: _ToolTitle(
-                toolName: displayName,
-                summary: display.summary,
+                toolName: presentation.displayName,
+                summary: presentation.summary,
                 statusChip: _ToolStatusChip(status: item.status),
+                onOpenFile: openFile,
+                openFileKey: ValueKey('tool-open-file-${item.id}'),
               ),
             )
           : Expander(
               headerBackgroundColor: WidgetStateColor.transparent,
               contentBackgroundColor: Colors.transparent,
-              leading: Icon(icon, size: 20),
+              leading: Icon(presentation.icon, size: 20),
               header: _ToolTitle(
-                toolName: displayName,
-                summary: display.summary,
+                toolName: presentation.displayName,
+                summary: presentation.summary,
                 statusChip: _ToolStatusChip(status: item.status),
+                onOpenFile: openFile,
+                openFileKey: ValueKey('tool-open-file-${item.id}'),
               ),
               content: body,
             ),
@@ -466,6 +473,10 @@ class _ToolCallCard extends StatelessWidget {
     return switch (detail) {
       ShellDetail(:final output) when output != null && output.isNotEmpty =>
         _MonoBlock(text: output),
+      ShellDetail(:final command) => _MonoBlock(text: command),
+      ReadDetail(:final content) when content != null && content.isNotEmpty =>
+        _MonoBlock(text: content),
+      ReadDetail(:final path) => _MonoBlock(text: path),
       EditDetail(
         :final path,
         :final diff,
@@ -484,18 +495,35 @@ class _ToolCallCard extends StatelessWidget {
       WriteDetail(:final contentPreview)
           when contentPreview != null && contentPreview.isNotEmpty =>
         _MonoBlock(text: contentPreview),
+      WriteDetail(:final path) => _MonoBlock(text: path),
       GenericDetail(:final input) when input.isNotEmpty => _MonoBlock(
         text: input.toString(),
+      ),
+      GenericDetail(:final output) when output != null => _MonoBlock(
+        text: output.toString(),
       ),
       WorktreeSetupToolDetail(:final log) when log.isNotEmpty => _MonoBlock(
         text: log,
       ),
       FetchDetail(:final result) when result != null && result.isNotEmpty =>
         _MonoBlock(text: result),
+      FetchDetail(:final codeText)
+          when codeText != null && codeText.isNotEmpty =>
+        _MonoBlock(text: codeText),
+      FetchDetail(:final url) => _MonoBlock(text: url),
       SubAgentDetail(:final log) when log.isNotEmpty => _MonoBlock(text: log),
+      SubAgentDetail(:final description)
+          when description != null && description.isNotEmpty =>
+        _MonoBlock(text: description),
       PlainTextDetail(:final text) when text != null && text.isNotEmpty => Text(
         text,
       ),
+      SearchDetail(:final content) when content != null && content.isNotEmpty =>
+        _MonoBlock(text: content),
+      SearchDetail(:final filePaths) when filePaths.isNotEmpty => _MonoBlock(
+        text: filePaths.join('\n'),
+      ),
+      SearchDetail(:final query) => _MonoBlock(text: query),
       PlanDetail(:final text) when text.isNotEmpty => _MonoBlock(text: text),
       _ => null,
     };
@@ -521,11 +549,15 @@ class _ToolTitle extends StatelessWidget {
     required this.toolName,
     required this.summary,
     required this.statusChip,
+    this.onOpenFile,
+    this.openFileKey,
   });
 
   final String toolName;
   final String? summary;
   final Widget statusChip;
+  final VoidCallback? onOpenFile;
+  final Key? openFileKey;
 
   @override
   Widget build(BuildContext context) {
@@ -549,6 +581,15 @@ class _ToolTitle extends StatelessWidget {
           ),
         ] else
           const Spacer(),
+        if (onOpenFile != null)
+          Tooltip(
+            message: 'Open file',
+            child: IconButton(
+              key: openFileKey,
+              icon: const Icon(FluentIcons.open_file, size: 16),
+              onPressed: onOpenFile,
+            ),
+          ),
         const SizedBox(width: 8),
         statusChip,
       ],
@@ -603,6 +644,43 @@ class _MonoBlock extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ToolLoadingBlock extends StatelessWidget {
+  const _ToolLoadingBlock();
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: 'Loading tool details',
+    child: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: SizedBox(width: 18, height: 18, child: ProgressRing()),
+      ),
+    ),
+  );
+}
+
+class _PlanToolCard extends StatelessWidget {
+  const _PlanToolCard({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Plan', style: context.textStyles.labelLarge),
+          const SizedBox(height: 8),
+          MarkdownBody(data: text),
+        ],
+      ),
+    ),
+  );
 }
 
 class _PermissionCard extends StatelessWidget {

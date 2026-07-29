@@ -17,6 +17,7 @@ import '../state/subagents_provider.dart';
 import '../state/timeline_provider.dart';
 import '../state/worktree_tabs_provider.dart';
 import '../workspace/workspace_tab_model.dart';
+import '../workspace/workspace_file_open.dart';
 import '../widgets/composer.dart';
 import '../widgets/fluent/toast.dart';
 import '../widgets/subagents_track.dart';
@@ -30,10 +31,12 @@ class AgentChatScreen extends ConsumerStatefulWidget {
     super.key,
     required this.agentId,
     this.isScreenFocused = true,
+    this.onOpenWorkspaceFile,
   });
 
   final String agentId;
   final bool isScreenFocused;
+  final void Function(WorkspaceFileOpenRequest request)? onOpenWorkspaceFile;
 
   @override
   ConsumerState<AgentChatScreen> createState() => _AgentChatScreenState();
@@ -478,8 +481,11 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     itemCount: count,
-                    itemBuilder: (context, index) =>
-                        _TimelineRow(agentId: widget.agentId, index: index),
+                    itemBuilder: (context, index) => _TimelineRow(
+                      agentId: widget.agentId,
+                      index: index,
+                      onOpenWorkspaceFile: widget.onOpenWorkspaceFile,
+                    ),
                   ),
                   if (loadingOlder)
                     const Align(
@@ -534,10 +540,15 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
 
 /// One timeline row: only rebuilds when its own item changes.
 class _TimelineRow extends ConsumerWidget {
-  const _TimelineRow({required this.agentId, required this.index});
+  const _TimelineRow({
+    required this.agentId,
+    required this.index,
+    this.onOpenWorkspaceFile,
+  });
 
   final String agentId;
   final int index;
+  final void Function(WorkspaceFileOpenRequest request)? onOpenWorkspaceFile;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -554,6 +565,14 @@ class _TimelineRow extends ConsumerWidget {
       userMessage: item.userMessage,
       providerLabel: providerDisplayName(agent?.provider),
       cwd: agent?.cwd,
+      onOpenFilePath: onOpenWorkspaceFile == null
+          ? null
+          : (path) => onOpenWorkspaceFile!(
+              WorkspaceFileOpenRequest(
+                location: WorkspaceFileLocation(path: path),
+                disposition: OpenFileDisposition.main,
+              ),
+            ),
       onPermissionDecision: (permissionId, decision) async {
         try {
           await ref

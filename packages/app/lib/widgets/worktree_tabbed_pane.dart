@@ -270,10 +270,12 @@ class WorktreeTabbedPane extends ConsumerWidget {
     WorktreeTabKind.agent => AgentChatScreen(
       agentId: tab.agentId!,
       isScreenFocused: isActive,
+      onOpenWorkspaceFile: onOpenWorkspaceFile,
     ),
     WorktreeTabKind.providerSubagent => ProviderSubagentScreen(
       parentAgentId: tab.parentAgentId!,
       subagentId: tab.subagentId!,
+      onOpenWorkspaceFile: onOpenWorkspaceFile,
     ),
     WorktreeTabKind.file => WorkspaceFilePane(
       cwd: worktreePath,

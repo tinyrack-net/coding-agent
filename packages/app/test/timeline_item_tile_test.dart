@@ -72,6 +72,7 @@ void main() {
   testWidgets('tool and permission cards share canonical display mapping', (
     tester,
   ) async {
+    final openedFiles = <String>[];
     const tool = ToolCallItem(
       id: 'read',
       toolName: 'read_file',
@@ -86,12 +87,16 @@ void main() {
       detail: GenericDetail(input: {}),
     );
     await tester.pumpWidget(
-      const FluentApp(
+      FluentApp(
         home: ScaffoldPage(
           content: Column(
             children: [
-              TimelineItemTile(item: tool, cwd: r'C:\repo'),
-              TimelineItemTile(item: permission),
+              TimelineItemTile(
+                item: tool,
+                cwd: r'C:\repo',
+                onOpenFilePath: openedFiles.add,
+              ),
+              const TimelineItemTile(item: permission),
             ],
           ),
         ),
@@ -100,8 +105,10 @@ void main() {
 
     expect(find.text('Read'), findsOneWidget);
     expect(find.text('lib/main.dart'), findsOneWidget);
-    expect(find.text(r'C:\repo\lib\main.dart'), findsNothing);
     expect(find.text('The agent wants to use Create Agent'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('tool-open-file-read')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(openedFiles, [r'C:\repo\lib\main.dart']);
   });
 
   testWidgets('edit tool renders old/new text through the diff viewer', (
@@ -345,83 +352,121 @@ void main() {
     expect(find.byType(ProgressRing), findsOneWidget);
   });
 
-  testWidgets('read/write/search/generic tool details render their icons and '
-      'summaries, and a null-body detail (Read) collapses to a plain '
-      'ListTile', (tester) async {
-    const items = <TimelineItem>[
-      ToolCallItem(
-        id: 't-read',
-        toolName: 'Read',
-        status: ToolCallStatus.success,
-        detail: ReadDetail(path: 'lib/main.dart'),
-      ),
-      ToolCallItem(
-        id: 't-write',
-        toolName: 'Write',
-        status: ToolCallStatus.running,
-        detail: WriteDetail(
-          path: 'lib/new.dart',
-          contentPreview: 'void main() {}',
-        ),
-      ),
-      ToolCallItem(
-        id: 't-search-with-path',
-        toolName: 'Grep',
-        status: ToolCallStatus.pending,
-        detail: SearchDetail(query: 'TODO', path: 'lib'),
-      ),
-      ToolCallItem(
-        id: 't-search-no-path',
-        toolName: 'Grep',
-        status: ToolCallStatus.error,
-        detail: SearchDetail(query: 'TODO'),
-      ),
-      ToolCallItem(
-        id: 't-generic',
-        toolName: 'Custom',
-        status: ToolCallStatus.success,
-        detail: GenericDetail(input: {'key': 'value'}),
-      ),
-    ];
+  testWidgets('running empty tools expose loading details', (tester) async {
+    const item = ToolCallItem(
+      id: 'loading-tool',
+      toolName: 'exec_command',
+      status: ToolCallStatus.running,
+      detail: GenericDetail(input: {}),
+    );
     await tester.pumpWidget(
-      FluentApp(
-        home: ScaffoldPage(
-          content: ListView(
-            children: [for (final item in items) TimelineItemTile(item: item)],
-          ),
-        ),
+      const FluentApp(
+        home: ScaffoldPage(content: TimelineItemTile(item: item)),
       ),
     );
 
-    // Read: no expandable body (ReadDetail has no output/preview), so it's a
-    // plain ListTile with the path as its summary.
-    expect(find.text('lib/main.dart'), findsOneWidget);
-    expect(find.byIcon(FluentIcons.open_file), findsOneWidget);
-
-    // Write: content preview is rendered once expanded.
-    expect(find.text('lib/new.dart'), findsOneWidget);
-    expect(find.byIcon(FluentIcons.save), findsOneWidget);
-    await tester.tap(find.text('Write'));
-    await tester.pumpAndSettle(const Duration(milliseconds: 100));
-    expect(find.text('void main() {}'), findsOneWidget);
-
-    // Canonical Paseo search summaries show the query, independently of the
-    // provider-specific search path metadata.
-    expect(find.text('TODO'), findsNWidgets(2));
-    expect(find.byIcon(FluentIcons.search), findsNWidgets(2));
-
-    // Unknown details do not infer summaries from raw provider input.
-    expect(find.text('Custom'), findsOneWidget);
-    expect(find.byIcon(FluentIcons.build), findsOneWidget);
-    expect(find.text('error'), findsOneWidget);
-    expect(find.text('running'), findsOneWidget);
-    expect(find.text('pending'), findsOneWidget);
-
-    // Generic body (non-empty input) renders once expanded.
-    await tester.tap(find.text('Custom'));
-    await tester.pumpAndSettle(const Duration(milliseconds: 100));
-    expect(find.textContaining('key'), findsOneWidget);
+    expect(find.text('Exec Command'), findsOneWidget);
+    expect(find.bySemanticsLabel('Loading tool details'), findsOneWidget);
+    expect(find.byType(Expander), findsOneWidget);
   });
+
+  testWidgets('plan tools render as non-expandable plan cards', (tester) async {
+    const item = ToolCallItem(
+      id: 'plan-tool',
+      toolName: 'ExitPlanMode',
+      status: ToolCallStatus.success,
+      detail: PlanDetail(text: '1. Implement the feature'),
+    );
+    await tester.pumpWidget(
+      const FluentApp(
+        home: ScaffoldPage(content: TimelineItemTile(item: item)),
+      ),
+    );
+
+    expect(find.text('Plan'), findsOneWidget);
+    expect(find.textContaining('Implement the feature'), findsOneWidget);
+    expect(find.byType(Expander), findsNothing);
+  });
+
+  testWidgets(
+    'read/write/search/generic tool details render canonical badges and bodies',
+    (tester) async {
+      const items = <TimelineItem>[
+        ToolCallItem(
+          id: 't-read',
+          toolName: 'Read',
+          status: ToolCallStatus.success,
+          detail: ReadDetail(path: 'lib/main.dart'),
+        ),
+        ToolCallItem(
+          id: 't-write',
+          toolName: 'Write',
+          status: ToolCallStatus.running,
+          detail: WriteDetail(
+            path: 'lib/new.dart',
+            contentPreview: 'void main() {}',
+          ),
+        ),
+        ToolCallItem(
+          id: 't-search-with-path',
+          toolName: 'Grep',
+          status: ToolCallStatus.pending,
+          detail: SearchDetail(query: 'TODO', path: 'lib'),
+        ),
+        ToolCallItem(
+          id: 't-search-no-path',
+          toolName: 'Grep',
+          status: ToolCallStatus.error,
+          detail: SearchDetail(query: 'TODO'),
+        ),
+        ToolCallItem(
+          id: 't-generic',
+          toolName: 'Custom',
+          status: ToolCallStatus.success,
+          detail: GenericDetail(input: {'key': 'value'}),
+        ),
+      ];
+      await tester.pumpWidget(
+        FluentApp(
+          home: ScaffoldPage(
+            content: ListView(
+              children: [
+                for (final item in items) TimelineItemTile(item: item),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      // Read: the canonical path appears in the badge and mounted detail body.
+      expect(find.text('lib/main.dart'), findsNWidgets(2));
+      expect(find.byIcon(FluentIcons.open_file), findsOneWidget);
+
+      // Write: content preview is rendered once expanded.
+      expect(find.text('lib/new.dart'), findsOneWidget);
+      expect(find.byIcon(FluentIcons.save), findsOneWidget);
+      await tester.tap(find.text('Write'));
+      await tester.pumpAndSettle(const Duration(milliseconds: 100));
+      expect(find.text('void main() {}'), findsOneWidget);
+
+      // Canonical Paseo search summaries show the query, independently of the
+      // provider-specific search path metadata.
+      expect(find.text('TODO'), findsNWidgets(4));
+      expect(find.byIcon(FluentIcons.search), findsNWidgets(2));
+
+      // Unknown details do not infer summaries from raw provider input.
+      expect(find.text('Custom'), findsOneWidget);
+      expect(find.byIcon(FluentIcons.build), findsOneWidget);
+      expect(find.text('error'), findsOneWidget);
+      expect(find.text('running'), findsOneWidget);
+      expect(find.text('pending'), findsOneWidget);
+
+      // Generic body (non-empty input) renders once expanded.
+      await tester.tap(find.text('Custom'));
+      await tester.pumpAndSettle(const Duration(milliseconds: 100));
+      expect(find.textContaining('key'), findsOneWidget);
+    },
+  );
 
   testWidgets('an EditDetail tool call with a diff renders the tinted diff '
       'view once expanded', (tester) async {
@@ -585,11 +630,10 @@ void main() {
 
     await tester.tap(find.text('Fetch'));
     await tester.tap(find.text('Note'));
-    await tester.tap(find.text('Plan'));
     await tester.pumpAndSettle();
     expect(find.text('Fetched content'), findsOneWidget);
     expect(find.text('Plain content'), findsOneWidget);
-    expect(find.text('1. Implement'), findsOneWidget);
+    expect(find.textContaining('Implement'), findsOneWidget);
   });
 
   testWidgets('turn divider: started renders nothing, failed shows the '
