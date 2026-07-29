@@ -848,29 +848,29 @@
     {
       "id": "cli-command:workspace-archive",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
       ],
-      "notes": "Frozen workspace-id archive RPC, timestamp requirement, structured errors, and archive result output are implemented."
+      "notes": "Frozen workspace-id archive RPC, timestamp requirement, archive schema, shared result/error formats, and Commander option forms are implemented."
     },
     {
       "id": "cli-command:workspace-create",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
       ],
-      "notes": "Frozen local/worktree isolation, branch-off, checkout-branch, checkout-pr/forge, project/path/title options, typed workspace.create RPC, and table/JSON/YAML/quiet output are implemented."
+      "notes": "Frozen local/worktree isolation, branch-off, checkout-branch, checkout-pr/forge, project/path/title options, typed workspace.create RPC, shared single-result formats, and Commander option forms are implemented."
     },
     {
       "id": "cli-command:workspace-ls",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
       ],
-      "notes": "Frozen active-workspace listing follows 200-entry cursor pages in response order and renders the exact workspace row projection."
+      "notes": "Frozen active-workspace listing follows 200-entry cursor pages in response order and renders the exact shared list-result workspace schema in every output mode."
     },
     {
       "id": "cli-command:worktree-archive",
@@ -10129,47 +10129,47 @@
     {
       "id": "source-unit:packages/cli/src/commands/workspace/archive.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
       ],
-      "notes": "Frozen workspace-id archive RPC, timestamp requirement, structured errors, and archive result output are implemented."
+      "notes": "Frozen workspace-id archive RPC, timestamp requirement, archive schema, shared result/error formats, and Commander option forms are implemented."
     },
     {
       "id": "source-unit:packages/cli/src/commands/workspace/create.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
       ],
-      "notes": "Frozen local/worktree isolation, branch-off, checkout-branch, checkout-pr/forge, project/path/title options, typed workspace.create RPC, and table/JSON/YAML/quiet output are implemented."
+      "notes": "Frozen local/worktree isolation, branch-off, checkout-branch, checkout-pr/forge, project/path/title options, typed workspace.create RPC, shared single-result formats, and Commander option forms are implemented."
     },
     {
       "id": "source-unit:packages/cli/src/commands/workspace/index.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
       ],
-      "notes": "The coding-agent workspace command exposes create, ls, and archive with frozen options and help routing."
+      "notes": "The coding-agent workspace command exposes create, ls, and archive with frozen options, shared output forwarding, and help routing."
     },
     {
       "id": "source-unit:packages/cli/src/commands/workspace/ls.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
       ],
-      "notes": "Frozen active-workspace listing follows 200-entry cursor pages in response order and renders the exact workspace row projection."
+      "notes": "Frozen active-workspace listing follows 200-entry cursor pages in response order and renders the exact shared list-result workspace schema in every output mode."
     },
     {
       "id": "source-unit:packages/cli/src/commands/workspace/shared.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/workspace_command_test.dart; packages/protocol/test/workspace_v2_test.dart; packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
       ],
-      "notes": "Frozen workspace row projection and WORKSPACE ID, PROJECT, NAME, ISOLATION, CWD schema are implemented."
+      "notes": "Frozen workspace row projection and WORKSPACE ID, PROJECT, NAME, ISOLATION, CWD shared schema are implemented."
     },
     {
       "id": "source-unit:packages/cli/src/commands/worktree/archive.ts",
@@ -10242,9 +10242,10 @@
         "packages/daemon/test/cli/schedule_command_test.dart",
         "packages/daemon/test/cli/script_command_test.dart",
         "packages/daemon/test/terminal_command_test.dart",
+        "packages/daemon/test/cli/workspace_command_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart"
       ],
-      "notes": "The shared Dart output entrypoint exports typed result, schema, custom serialization, JSON, YAML, quiet, table, and error rendering used by agent import/run, chat, clone, heartbeat, Hub, permit, provider, schedule, script, terminal result actions, non-streaming loop actions, and daemon result actions; remaining CLI families still need migration."
+      "notes": "The shared Dart output entrypoint exports typed result, schema, custom serialization, JSON, YAML, quiet, table, and error rendering used by agent import/run, chat, clone, heartbeat, Hub, permit, provider, schedule, script, workspace, terminal result actions, non-streaming loop actions, and daemon result actions; remaining CLI families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/json.ts",
@@ -10260,6 +10261,7 @@
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/workspace_command_test.dart",
         "packages/daemon/test/daemon_chat_e2e_test.dart"
       ],
       "notes": "Pretty two-space single-object/list JSON, schema custom serializers with identical-list collapse, and structured errors are ported; remaining CLI consumers still need migration."
@@ -10286,7 +10288,8 @@
         "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/workspace_command_test.dart"
       ],
       "notes": "Frozen single and list ID projection, empty-list behavior, and quiet precedence over structured formats are ported."
     },
@@ -10303,7 +10306,8 @@
         "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/workspace_command_test.dart"
       ],
       "notes": "Quiet precedence, JSON/YAML/table dispatch, schema serialization, custom human rendering, and structured errors are ported; ANSI color behavior and remaining consumers are pending."
     },
@@ -10320,14 +10324,15 @@
         "packages/daemon/test/cli/daemon_command_test.dart",
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
-        "packages/daemon/test/cli/schedule_command_test.dart"
+        "packages/daemon/test/cli/schedule_command_test.dart",
+        "packages/daemon/test/cli/workspace_command_test.dart"
       ],
       "notes": "Frozen content-derived minimum widths, left/right/center alignment, header suppression, single/list rows, bold headers, named ANSI column colors, TTY/NO_COLOR/FORCE_COLOR gates, ANSI-aware measurement, and no clipping are ported."
     },
     {
       "id": "source-unit:packages/cli/src/output/types.ts",
       "status": "verified",
-      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/agent_output_schemas.dart; packages/daemon/lib/src/cli/agent_import_command.dart; packages/daemon/lib/src/cli/agent_run_command.dart; packages/daemon/lib/src/cli/clone_command.dart; packages/daemon/lib/src/cli/provider_command.dart",
+      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/agent_output_schemas.dart; packages/daemon/lib/src/cli/agent_import_command.dart; packages/daemon/lib/src/cli/agent_run_command.dart; packages/daemon/lib/src/cli/clone_command.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/workspace_command.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_invocation_test.dart",
         "packages/daemon/test/cli/cli_output_test.dart",
@@ -10339,14 +10344,15 @@
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
-        "packages/daemon/test/cli/provider_command_test.dart"
+        "packages/daemon/test/cli/provider_command_test.dart",
+        "packages/daemon/test/cli/workspace_command_test.dart"
       ],
       "notes": "Root options, single/list results, schemas, columns, alignment, column color callbacks, schema serializers, custom human renderers, and output options are typed."
     },
     {
       "id": "source-unit:packages/cli/src/output/with-output.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/agent_output_schemas.dart; packages/daemon/lib/src/cli/agent_import_command.dart; packages/daemon/lib/src/cli/agent_run_command.dart; packages/daemon/lib/src/cli/clone_command.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/hub_command.dart; packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/script_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/terminal_command.dart; packages/daemon/bin/coding_agent.dart",
+      "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart; packages/daemon/lib/src/cli/cli_output.dart; packages/daemon/lib/src/cli/agent_output_schemas.dart; packages/daemon/lib/src/cli/agent_import_command.dart; packages/daemon/lib/src/cli/agent_run_command.dart; packages/daemon/lib/src/cli/clone_command.dart; packages/daemon/lib/src/cli/provider_command.dart; packages/daemon/lib/src/cli/workspace_command.dart; packages/daemon/lib/src/cli/chat_command.dart; packages/daemon/lib/src/cli/daemon_command.dart; packages/daemon/lib/src/cli/heartbeat_command.dart; packages/daemon/lib/src/cli/hub_command.dart; packages/daemon/lib/src/cli/permit_command.dart; packages/daemon/lib/src/cli/schedule_command.dart; packages/daemon/lib/src/cli/script_command.dart; packages/daemon/lib/src/cli/loop_command.dart; packages/daemon/lib/src/cli/terminal_command.dart; packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_invocation_test.dart",
         "packages/daemon/test/cli/cli_root_output_process_test.dart",
@@ -10365,9 +10371,10 @@
         "packages/daemon/test/terminal_command_test.dart",
         "packages/daemon/test/daemon_chat_e2e_test.dart",
         "packages/daemon/test/daemon_schedule_e2e_test.dart",
-        "packages/daemon/test/cli/provider_command_test.dart"
+        "packages/daemon/test/cli/provider_command_test.dart",
+        "packages/daemon/test/cli/workspace_command_test.dart"
       ],
-      "notes": "Global and local options feed shared result and error rendering for agent import/run, chat, clone, heartbeat, Hub, permit, provider, schedule, script, terminal result actions, non-streaming loop actions, and daemon result actions while capture/send-keys and other direct or streaming actions retain their frozen boundaries; remaining JSON-only command families still need migration."
+      "notes": "Global and local options feed shared result and error rendering for agent import/run, chat, clone, heartbeat, Hub, permit, provider, schedule, script, workspace, terminal result actions, non-streaming loop actions, and daemon result actions while capture/send-keys and other direct or streaming actions retain their frozen boundaries; remaining JSON-only command families still need migration."
     },
     {
       "id": "source-unit:packages/cli/src/output/yaml.ts",
@@ -10383,7 +10390,8 @@
         "packages/daemon/test/cli/heartbeat_command_test.dart",
         "packages/daemon/test/cli/loop_command_test.dart",
         "packages/daemon/test/cli/schedule_command_test.dart",
-        "packages/daemon/test/terminal_command_test.dart"
+        "packages/daemon/test/terminal_command_test.dart",
+        "packages/daemon/test/cli/workspace_command_test.dart"
       ],
       "notes": "Recursive maps/lists, empty collections, YAML-ambiguous numeric/date string quoting, single/list results, schema custom serializers with identical-list collapse, and structured errors are ported; document streaming remains."
     },

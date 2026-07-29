@@ -1,9 +1,9 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_protocol/agent_protocol.dart';
 
 import '../server/daemon_config.dart';
+import 'cli_output.dart';
 import 'terminal_command.dart';
 
 typedef WorkspaceRpcRequester =
@@ -24,8 +24,9 @@ Future<int> runWorkspaceCommand({
     output(_workspaceHelp(arguments.firstOrNull));
     return 0;
   }
+  WorkspaceCliInvocation? invocation;
   try {
-    final invocation = WorkspaceCliInvocation.parse(arguments);
+    invocation = WorkspaceCliInvocation.parse(arguments);
     final env = environment ?? Platform.environment;
     var send = request;
     if (send == null) {
@@ -50,19 +51,28 @@ Future<int> runWorkspaceCommand({
       send,
       currentDirectory ?? Directory.current.path,
     );
-    output(_render(result, invocation));
+    final schema = result.archive ? _workspaceArchiveSchema : _workspaceSchema;
+    final cliResult = result.single
+        ? CliOutputResult.single(row: result.rows.single, schema: schema)
+        : CliOutputResult.list(rows: result.rows, schema: schema);
+    final rendered = renderCliOutput(cliResult, invocation.output);
+    if (rendered.isNotEmpty) output('$rendered\n');
     return 0;
   } on FormatException catch (error) {
     errorOutput('${error.message}\n$workspaceUsage\n');
     return 64;
   } on WorkspaceCommandException catch (error) {
-    _writeCommandError(errorOutput, error, arguments);
+    _writeCommandError(
+      errorOutput,
+      error,
+      invocation?.output ?? _recoverWorkspaceOutputOptions(arguments),
+    );
     return 1;
   } on Object catch (error) {
     _writeCommandError(
       errorOutput,
       WorkspaceCommandException('WORKSPACE_ERROR', _errorText(error)),
-      arguments,
+      invocation?.output ?? _recoverWorkspaceOutputOptions(arguments),
     );
     return 1;
   } finally {
@@ -75,18 +85,14 @@ final class WorkspaceCliInvocation {
     required this.action,
     required this.positionals,
     required this.values,
-    required this.format,
-    required this.quiet,
-    required this.headers,
+    required this.output,
     required this.host,
   });
 
   final String action;
   final List<String> positionals;
   final Map<String, String> values;
-  final String format;
-  final bool quiet;
-  final bool headers;
+  final CliOutputOptions output;
   final String? host;
 
   static WorkspaceCliInvocation parse(List<String> arguments) {
@@ -113,27 +119,61 @@ final class WorkspaceCliInvocation {
     final positionals = <String>[];
     final values = <String, String>{};
     var format = 'table';
+    var json = false;
     var quiet = false;
     var headers = true;
+    var color = true;
+    var positionalOnly = false;
     String? host;
     for (var index = 1; index < arguments.length; index++) {
       final argument = arguments[index];
+      if (!positionalOnly) {
+        final longOption = _splitLongOption(argument);
+        if (longOption != null) {
+          final (option, value) = longOption;
+          switch (option) {
+            case '--host':
+              host = value;
+              continue;
+            case '--format':
+              format = normalizeCliOutputFormat(value);
+              continue;
+            default:
+              if (createOptions.contains(option)) {
+                if (action != 'create') {
+                  throw FormatException(
+                    '$option is only valid for workspace create',
+                  );
+                }
+                values[option] = value;
+                continue;
+              }
+          }
+        }
+      }
+      if (!positionalOnly && argument == '--') {
+        positionalOnly = true;
+        continue;
+      }
+      if (positionalOnly) {
+        positionals.add(argument);
+        continue;
+      }
       switch (argument) {
         case '--host':
           host = _requiredValue(arguments, ++index, argument);
         case '--json':
-          format = 'json';
+          json = true;
         case '-o' || '--format':
-          format = _requiredValue(arguments, ++index, argument);
-          if (!const {'table', 'json', 'yaml'}.contains(format)) {
-            throw FormatException('Unknown output format: $format');
-          }
+          format = normalizeCliOutputFormat(
+            _requiredValue(arguments, ++index, argument),
+          );
         case '-q' || '--quiet':
           quiet = true;
         case '--no-headers':
           headers = false;
         case '--no-color':
-          break;
+          color = false;
         default:
           if (createOptions.contains(argument)) {
             if (action != 'create') {
@@ -142,6 +182,8 @@ final class WorkspaceCliInvocation {
               );
             }
             values[argument] = _requiredValue(arguments, ++index, argument);
+          } else if (argument.startsWith('-o') && argument.length > 2) {
+            format = normalizeCliOutputFormat(argument.substring(2));
           } else if (argument.startsWith('-')) {
             throw FormatException('Unknown option: $argument');
           } else {
@@ -171,9 +213,12 @@ final class WorkspaceCliInvocation {
       action: action,
       positionals: List.unmodifiable(positionals),
       values: Map.unmodifiable(values),
-      format: format,
-      quiet: quiet,
-      headers: headers,
+      output: CliOutputOptions(
+        format: json ? 'json' : format,
+        quiet: quiet,
+        noHeaders: !headers,
+        noColor: !color,
+      ),
       host: host,
     );
   }
@@ -441,80 +486,45 @@ final class _WorkspaceCommandResult {
   final bool archive;
 }
 
-String _render(
-  _WorkspaceCommandResult result,
-  WorkspaceCliInvocation invocation,
-) {
-  final idField = result.archive ? 'workspaceId' : 'workspaceId';
-  if (invocation.quiet) {
-    return result.rows.map((row) => '${row[idField]}').join('\n') +
-        (result.rows.isEmpty ? '' : '\n');
-  }
-  final value = result.single ? result.rows.single : result.rows;
-  if (invocation.format == 'json') {
-    return '${const JsonEncoder.withIndent('  ').convert(value)}\n';
-  }
-  if (invocation.format == 'yaml') {
-    return result.single
-        ? _yamlMap(result.rows.single)
-        : _yamlList(result.rows);
-  }
-  final columns = result.archive
-      ? const [
-          ('WORKSPACE ID', 'workspaceId', 20),
-          ('STATUS', 'status', 10),
-          ('ARCHIVED AT', 'archivedAt', 26),
-        ]
-      : const [
-          ('WORKSPACE ID', 'workspaceId', 20),
-          ('PROJECT', 'project', 20),
-          ('NAME', 'name', 22),
-          ('ISOLATION', 'isolation', 10),
-          ('CWD', 'cwd', 42),
-        ];
-  final widths = [
-    for (final column in columns)
-      [
-        column.$1.length,
-        column.$3,
-        for (final row in result.rows) '${row[column.$2] ?? ''}'.length,
-      ].reduce((a, b) => a > b ? a : b),
-  ];
-  String line(List<String> cells) => [
-    for (var index = 0; index < cells.length; index++)
-      cells[index].padRight(widths[index]),
-  ].join('  ').trimRight();
-  return [
-        if (invocation.headers) line([for (final column in columns) column.$1]),
-        for (final row in result.rows)
-          line([for (final column in columns) '${row[column.$2] ?? ''}']),
-      ].join('\n') +
-      (invocation.headers || result.rows.isNotEmpty ? '\n' : '');
-}
+final _workspaceSchema = CliOutputSchema(
+  idField: (row) => '${row['workspaceId']}',
+  columns: [
+    CliOutputColumn(
+      header: 'WORKSPACE ID',
+      field: (row) => row['workspaceId'],
+      width: 20,
+    ),
+    CliOutputColumn(
+      header: 'PROJECT',
+      field: (row) => row['project'],
+      width: 20,
+    ),
+    CliOutputColumn(header: 'NAME', field: (row) => row['name'], width: 22),
+    CliOutputColumn(
+      header: 'ISOLATION',
+      field: (row) => row['isolation'],
+      width: 10,
+    ),
+    CliOutputColumn(header: 'CWD', field: (row) => row['cwd'], width: 42),
+  ],
+);
 
-String _yamlList(List<Map<String, Object?>> rows) {
-  if (rows.isEmpty) return '[]\n';
-  return '${[
-    for (final row in rows) ['- ${row.entries.first.key}: ${_yamlScalar(row.entries.first.value)}', for (final entry in row.entries.skip(1)) '  ${entry.key}: ${_yamlScalar(entry.value)}'].join('\n'),
-  ].join('\n')}\n';
-}
-
-String _yamlMap(Map<String, Object?> row) =>
-    '${[for (final entry in row.entries) '${entry.key}: ${_yamlScalar(entry.value)}'].join('\n')}\n';
-
-String _yamlScalar(Object? value) {
-  if (value == null) return 'null';
-  if (value is num || value is bool) return '$value';
-  final text = '$value';
-  if (text.isNotEmpty &&
-      !RegExp(
-        r'''[:#\[\]{},&*!|>'"%@`]|^\s|\s$|^(null|true|false|~)$''',
-        caseSensitive: false,
-      ).hasMatch(text)) {
-    return text;
-  }
-  return jsonEncode(text);
-}
+final _workspaceArchiveSchema = CliOutputSchema(
+  idField: (row) => '${row['workspaceId']}',
+  columns: [
+    CliOutputColumn(
+      header: 'WORKSPACE ID',
+      field: (row) => row['workspaceId'],
+      width: 20,
+    ),
+    CliOutputColumn(header: 'STATUS', field: (row) => row['status'], width: 10),
+    CliOutputColumn(
+      header: 'ARCHIVED AT',
+      field: (row) => row['archivedAt'],
+      width: 26,
+    ),
+  ],
+);
 
 void _assertAbsent(
   Map<String, String> values,
@@ -527,17 +537,11 @@ void _assertAbsent(
 void _writeCommandError(
   void Function(String value) write,
   WorkspaceCommandException error,
-  List<String> arguments,
+  CliOutputOptions options,
 ) {
-  if (arguments.contains('--json')) {
-    write(
-      '${const JsonEncoder.withIndent('  ').convert({
-        'error': {'code': error.code, 'message': error.message},
-      })}\n',
-    );
-  } else {
-    write('Error: ${error.message}\n');
-  }
+  write(
+    '${renderCliError(code: error.code, message: error.message, options: options)}\n',
+  );
 }
 
 String _requiredValue(List<String> arguments, int index, String option) {
@@ -545,6 +549,60 @@ String _requiredValue(List<String> arguments, int index, String option) {
     throw FormatException('$option requires a value');
   }
   return arguments[index];
+}
+
+(String, String)? _splitLongOption(String argument) {
+  if (!argument.startsWith('--')) return null;
+  final separator = argument.indexOf('=');
+  if (separator < 3) return null;
+  return (argument.substring(0, separator), argument.substring(separator + 1));
+}
+
+CliOutputOptions _recoverWorkspaceOutputOptions(List<String> arguments) {
+  var format = 'table';
+  var json = false;
+  var quiet = false;
+  var noHeaders = false;
+  var noColor = false;
+  for (var index = 1; index < arguments.length; index++) {
+    final argument = arguments[index];
+    if (argument == '--') {
+      break;
+    } else if (argument == '--json') {
+      json = true;
+    } else if (argument == '-q' || argument == '--quiet') {
+      quiet = true;
+    } else if (argument == '--no-headers') {
+      noHeaders = true;
+    } else if (argument == '--no-color') {
+      noColor = true;
+    } else if (argument == '-o' || argument == '--format') {
+      if (index + 1 < arguments.length) {
+        format = _safeWorkspaceOutputFormat(arguments[++index], format);
+      }
+    } else if (argument.startsWith('--format=')) {
+      format = _safeWorkspaceOutputFormat(
+        argument.substring('--format='.length),
+        format,
+      );
+    } else if (argument.startsWith('-o') && argument.length > 2) {
+      format = _safeWorkspaceOutputFormat(argument.substring(2), format);
+    }
+  }
+  return CliOutputOptions(
+    format: json ? 'json' : format,
+    quiet: quiet,
+    noHeaders: noHeaders,
+    noColor: noColor,
+  );
+}
+
+String _safeWorkspaceOutputFormat(String value, String fallback) {
+  try {
+    return normalizeCliOutputFormat(value);
+  } on FormatException {
+    return fallback;
+  }
 }
 
 String? _nonEmpty(String? value) {

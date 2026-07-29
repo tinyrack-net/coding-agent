@@ -179,6 +179,77 @@ void main() {
     });
   });
 
+  test('supports shared output aliases and frozen option forms', () async {
+    final parsed = WorkspaceCliInvocation.parse(const [
+      'create',
+      '--isolation=worktree',
+      '--mode=branch-off',
+      '--new-branch=feature/x',
+      '--host=ws://127.0.0.1:7777',
+      '--format=yaml',
+      '--json',
+      '--no-color',
+    ]);
+    expect(parsed.values['--isolation'], 'worktree');
+    expect(parsed.values['--new-branch'], 'feature/x');
+    expect(parsed.host, 'ws://127.0.0.1:7777');
+    expect(parsed.output.format, 'json');
+    expect(parsed.output.noColor, isTrue);
+
+    Map<String, Object?>? sent;
+    final output = StringBuffer();
+    expect(
+      await runWorkspaceCommand(
+        arguments: const [
+          'archive',
+          '-ocli',
+          '--no-headers',
+          '--',
+          '-workspace-1',
+        ],
+        request: (message) async {
+          sent = message;
+          return {
+            'requestId': message['requestId'],
+            'workspaceId': '-workspace-1',
+            'archivedAt': '2026-07-29T00:00:00.000Z',
+            'error': null,
+          };
+        },
+        writeOutput: output.write,
+      ),
+      0,
+    );
+    expect(sent?['workspaceId'], '-workspace-1');
+    expect(output.toString(), isNot(contains('WORKSPACE ID')));
+    expect(output.toString(), contains('archived'));
+  });
+
+  test('shared yaml renders workspace command errors', () async {
+    final error = StringBuffer();
+    expect(
+      await runWorkspaceCommand(
+        arguments: const [
+          'create',
+          '--isolation',
+          'local',
+          '--mode',
+          'branch-off',
+          '--format=yaml',
+        ],
+        request: (_) async => fail('request must not run'),
+        writeError: error.write,
+      ),
+      1,
+    );
+    expect(error.toString(), contains('error:'));
+    expect(error.toString(), contains('code: WORKSPACE_CREATE_FAILED'));
+    expect(
+      error.toString(),
+      contains('message: Worktree options require --isolation worktree'),
+    );
+  });
+
   test('help and binary dispatch expose all workspace commands', () async {
     for (final arguments in const [
       ['--help'],
