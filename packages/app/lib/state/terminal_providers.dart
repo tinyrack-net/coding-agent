@@ -81,6 +81,9 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
   final TerminalInputModeTracker _inputModeTracker = TerminalInputModeTracker();
   final List<String> _pendingEncodedKeyInputs = [];
   int _generation = 0;
+  bool _resizeClaimEnabled = false;
+  int? _lastSentCols;
+  int? _lastSentRows;
 
   @override
   TerminalSessionState build() {
@@ -88,6 +91,9 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
     _slotId = null;
     _pendingEncodedKeyInputs.clear();
     _inputModeTracker.reset();
+    _resizeClaimEnabled = false;
+    _lastSentCols = null;
+    _lastSentRows = null;
     final client = ref.watch(daemonClientProvider);
     final generation = ++_generation;
     final terminal = Terminal(maxLines: 10000);
@@ -299,19 +305,10 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
       };
       terminal.onResize = (cols, rows, pixelWidth, pixelHeight) {
         if (generation != _generation || _slotId != slotId) return;
-        client.sendTerminalFrame(
-          TerminalFrame.resize(slotId, cols: cols, rows: rows),
-        );
+        if (_resizeClaimEnabled) {
+          _sendTerminalSize(cols: cols, rows: rows);
+        }
       };
-      // TerminalView may already have resized the emulator while we were
-      // subscribing; sync the PTY to the actual view size.
-      client.sendTerminalFrame(
-        TerminalFrame.resize(
-          slotId,
-          cols: terminal.viewWidth,
-          rows: terminal.viewHeight,
-        ),
-      );
 
       state = state.copyWith(
         status: TerminalSessionStatus.running,
@@ -331,6 +328,43 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
   void restart() => ref.invalidateSelf();
 
   bool get enhancedInputActive => _inputModeTracker.supportsModifiedEnter();
+
+  /// Grants this rendered pane ownership of daemon-side PTY sizing. Retained
+  /// inactive renderers may still reflow locally, but cannot steal the PTY
+  /// dimensions from the focused pane.
+  void setResizeClaimEnabled(bool enabled) {
+    _resizeClaimEnabled = enabled;
+  }
+
+  /// Sends the current renderer size when this pane acquires a focus claim.
+  /// A fresh claim deliberately bypasses deduplication so blur/refocus and
+  /// visibility recovery restore the authoritative size.
+  bool claimCurrentSize() {
+    final terminal = state.terminal;
+    return _sendTerminalSize(
+      cols: terminal.viewWidth,
+      rows: terminal.viewHeight,
+      force: true,
+    );
+  }
+
+  bool _sendTerminalSize({
+    required int cols,
+    required int rows,
+    bool force = false,
+  }) {
+    final slotId = _slotId;
+    if (slotId == null || cols <= 0 || rows <= 0) return false;
+    if (!force && _lastSentCols == cols && _lastSentRows == rows) return true;
+    ref
+        .read(daemonClientProvider)
+        .sendTerminalFrame(
+          TerminalFrame.resize(slotId, cols: cols, rows: rows),
+        );
+    _lastSentCols = cols;
+    _lastSentRows = rows;
+    return true;
+  }
 
   void togglePendingModifier(TerminalModifier modifier) {
     final pending = state.pendingModifiers;
@@ -423,6 +457,9 @@ class TerminalSessionNotifier extends Notifier<TerminalSessionState> {
     final terminalId = _terminalId;
     _terminalId = null;
     _slotId = null;
+    _resizeClaimEnabled = false;
+    _lastSentCols = null;
+    _lastSentRows = null;
     _pendingEncodedKeyInputs.clear();
     if (terminalId == null) return;
     final workspaceSessionScope =

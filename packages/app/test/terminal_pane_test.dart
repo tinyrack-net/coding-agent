@@ -720,6 +720,77 @@ void main() {
     expect(find.byKey(const ValueKey('terminal-attach-loading')), findsNothing);
   });
 
+  testWidgets('only the focused visible renderer owns daemon-side PTY resize', (
+    tester,
+  ) async {
+    final fake = FakeDaemonClient();
+    final container = ProviderContainer(
+      overrides: [daemonClientProvider.overrideWithValue(fake)],
+    );
+    addTearDown(container.dispose);
+
+    Widget app({required bool focused}) => UncontrolledProviderScope(
+      container: container,
+      child: FluentApp(
+        home: ScaffoldPage(
+          content: TerminalPane(
+            worktreePath: _worktreePath,
+            tabId: _tabId,
+            isWorkspaceFocused: focused,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(app(focused: false));
+    await tester.pump();
+    await tester.pump();
+    expect(
+      container.read(terminalSessionProvider(_key)).status,
+      TerminalSessionStatus.running,
+    );
+    fake.sentFrames.clear();
+
+    final terminal = container.read(terminalSessionProvider(_key)).terminal;
+    terminal.resize(120, 30);
+    expect(
+      fake.sentFrames.where((f) => f.opcode == TerminalOpcode.resize),
+      isEmpty,
+    );
+
+    await tester.pumpWidget(app(focused: true));
+    await tester.pump();
+    final claimed = fake.sentFrames
+        .where((f) => f.opcode == TerminalOpcode.resize)
+        .toList();
+    expect(claimed, hasLength(1));
+    expect(claimed.single.resizeSize, (120, 30));
+
+    fake.sentFrames.clear();
+    terminal.resize(121, 31);
+    final activeResize = fake.sentFrames
+        .where((f) => f.opcode == TerminalOpcode.resize)
+        .toList();
+    expect(activeResize, hasLength(1));
+    expect(activeResize.single.resizeSize, (121, 31));
+
+    await tester.pumpWidget(app(focused: false));
+    fake.sentFrames.clear();
+    terminal.resize(122, 32);
+    expect(
+      fake.sentFrames.where((f) => f.opcode == TerminalOpcode.resize),
+      isEmpty,
+    );
+
+    await tester.pumpWidget(app(focused: true));
+    await tester.pump();
+    final reclaimed = fake.sentFrames
+        .where((f) => f.opcode == TerminalOpcode.resize)
+        .toList();
+    expect(reclaimed, hasLength(1));
+    expect(reclaimed.single.resizeSize, (122, 32));
+  });
+
   testWidgets(
     'mobile virtual keyboard consumes one-shot modifiers and sends keys',
     (tester) async {

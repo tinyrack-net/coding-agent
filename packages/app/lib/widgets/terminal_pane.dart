@@ -8,6 +8,8 @@ import 'package:uuid/uuid.dart';
 import 'package:xterm/xterm.dart';
 
 import '../core/theme.dart';
+import '../core/daemon_client.dart';
+import '../core/desktop/desktop_shell.dart';
 import '../state/daemon_providers.dart';
 import '../state/terminal_providers.dart';
 import '../terminal/terminal_file_drop.dart';
@@ -15,6 +17,7 @@ import '../terminal/terminal_flutter_keys.dart';
 import '../terminal/terminal_keys.dart';
 import '../terminal/terminal_local_link_provider.dart';
 import '../terminal/terminal_platform.dart';
+import '../terminal/terminal_pane_focus_claim.dart';
 import '../terminal/terminal_renderer_readiness.dart';
 import '../terminal/to_xterm_theme.dart';
 import '../workspace/workspace_file_open.dart';
@@ -43,7 +46,8 @@ class TerminalPane extends ConsumerStatefulWidget {
   ConsumerState<TerminalPane> createState() => _TerminalPaneState();
 }
 
-class _TerminalPaneState extends ConsumerState<TerminalPane> {
+class _TerminalPaneState extends ConsumerState<TerminalPane>
+    with WidgetsBindingObserver {
   final _focusNode = FocusNode(debugLabel: 'TerminalPane');
   GlobalKey<TerminalViewState> _terminalViewKey =
       GlobalKey<TerminalViewState>();
@@ -57,12 +61,101 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   int _hoverRequest = 0;
   String? _rendererReadyStreamKey;
   String? _scheduledRendererStreamKey;
+  late bool _isAppActivelyVisible;
+  TerminalPaneFocusClaimState _focusClaim = TerminalPaneFocusClaimState.empty;
+  String? _scheduledFocusClaimKey;
+  TerminalSessionNotifier? _terminalNotifier;
 
   TerminalSessionKey get _key => (
     worktreePath: widget.worktreePath,
     tabId: widget.tabId,
     workspaceId: widget.workspaceId,
   );
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    windowFocusedNotifier.addListener(_onWindowFocusChanged);
+    _isAppActivelyVisible = _computeAppVisibility();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _updateAppVisibility();
+  }
+
+  bool _computeAppVisibility() {
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    final lifecycleVisible =
+        lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    final windowVisible = !isDesktopShell || windowFocusedNotifier.value;
+    return lifecycleVisible && windowVisible;
+  }
+
+  void _onWindowFocusChanged() => _updateAppVisibility();
+
+  void _updateAppVisibility() {
+    final next = _computeAppVisibility();
+    if (next == _isAppActivelyVisible || !mounted) return;
+    setState(() => _isAppActivelyVisible = next);
+  }
+
+  void _reconcileFocusClaim({
+    required TerminalSessionState session,
+    required String terminalStreamKey,
+  }) {
+    final notifier = ref.read(terminalSessionProvider(_key).notifier);
+    _terminalNotifier = notifier;
+    final key = widget.isWorkspaceFocused && session.terminalId != null
+        ? terminalStreamKey
+        : null;
+    final canRequest = canRequestTerminalPaneFocusClaim(
+      isWorkspaceFocused: widget.isWorkspaceFocused,
+      isAppActivelyVisible: _isAppActivelyVisible,
+      isClientReady: session.status == TerminalSessionStatus.running,
+      isConnected:
+          ref.read(daemonClientProvider).currentState ==
+          DaemonConnectionState.connected,
+      isRendererReady: _rendererReadyStreamKey == terminalStreamKey,
+    );
+    final step = reconcileTerminalPaneFocusClaim(
+      state: _focusClaim,
+      key: key,
+      canRequest: canRequest,
+    );
+    _focusClaim = step.state;
+    notifier.setResizeClaimEnabled(key != null && canRequest);
+    if (!step.shouldRequest || key == null || _scheduledFocusClaimKey == key) {
+      return;
+    }
+    _scheduledFocusClaimKey = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _scheduledFocusClaimKey != key) return;
+      _scheduledFocusClaimKey = null;
+      final current = ref.read(terminalSessionProvider(_key));
+      final stillCurrent =
+          widget.isWorkspaceFocused &&
+          _isAppActivelyVisible &&
+          current.status == TerminalSessionStatus.running &&
+          current.terminalId != null &&
+          '${widget.workspaceId ?? widget.worktreePath}:'
+                  '${current.terminalId}' ==
+              key &&
+          _rendererReadyStreamKey == key &&
+          ref.read(daemonClientProvider).currentState ==
+              DaemonConnectionState.connected;
+      final sent = stillCurrent
+          ? ref.read(terminalSessionProvider(_key).notifier).claimCurrentSize()
+          : false;
+      _focusClaim = settleTerminalPaneFocusClaim(
+        state: _focusClaim,
+        key: key,
+        sent: sent,
+      );
+      if (!sent && mounted) setState(() {});
+    });
+  }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
@@ -163,6 +256,9 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    windowFocusedNotifier.removeListener(_onWindowFocusChanged);
+    _terminalNotifier?.setResizeClaimEnabled(false);
     _hoverRequest++;
     _scheduledRendererStreamKey = null;
     _focusNode.dispose();
@@ -295,6 +391,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(terminalSessionProvider(_key));
+    ref.watch(connectionStateProvider);
     final xtermTheme = toFlutterTerminalTheme(
       toXtermTheme(context.paseoTerminalPalette),
     );
@@ -310,6 +407,10 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
         '${widget.workspaceId ?? widget.worktreePath}:'
         '${session.terminalId ?? 'pending:${widget.tabId}'}';
     _scheduleRendererReady(terminalStreamKey);
+    _reconcileFocusClaim(
+      session: session,
+      terminalStreamKey: terminalStreamKey,
+    );
     final showLoadingOverlay = shouldShowTerminalLoadingOverlay(
       isWorkspaceFocused: widget.isWorkspaceFocused,
       hasStreamError:
@@ -388,7 +489,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
                         mouseCursor: _hoveredLink == null
                             ? SystemMouseCursors.text
                             : SystemMouseCursors.click,
-                        autofocus: true,
+                        autofocus: widget.isWorkspaceFocused,
                         backgroundOpacity: 0,
                         padding: const EdgeInsets.all(4),
                         textStyle: const TerminalStyle(fontSize: 13),

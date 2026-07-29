@@ -3635,10 +3635,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/terminal-pane-focus-claim.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/terminal/terminal_pane_focus_claim.dart; packages/app/lib/widgets/terminal_pane.dart; packages/app/lib/state/terminal_providers.dart",
+      "evidence": [
+        "packages/app/test/terminal_pane_focus_claim_test.dart",
+        "packages/app/test/terminal_pane_test.dart"
+      ],
+      "notes": "Ports Paseo's focus-claim eligibility, reconciliation, settlement, retry, blur, and terminal-change contract. TerminalPane gates claims on workspace focus, active app visibility, daemon connection, subscription, and current renderer readiness; only the claimed renderer may resize the daemon PTY, while refocus restores its authoritative size."
     },
     {
       "id": "source-unit:packages/app/src/components/terminal-pane.tsx",
@@ -3650,7 +3653,7 @@
         "packages/app/test/to_xterm_theme_test.dart",
         "packages/app/test/worktree_tabbed_pane_test.dart"
       ],
-      "notes": "TerminalPane composes the daemon terminal with renderer-and-subscription readiness loading, focused-pane gating, frozen theme projection, asynchronous local-file resolution, hover decoration, and main/side workspace-file activation. Flutter xterm still lacks cursor-accent and selection-foreground hooks; upstream focus claims, visibility/refit coordination, browser/mobile bridges, and remaining context actions are also incomplete."
+      "notes": "TerminalPane composes the daemon terminal with renderer-and-subscription readiness loading, focus and active-app visibility claims, focused-only PTY resize ownership, frozen theme projection, asynchronous local-file resolution, hover decoration, and main/side workspace-file activation. Flutter xterm still lacks cursor-accent and selection-foreground hooks; browser/mobile bridges, richer refit coordination, and remaining context actions are incomplete."
     },
     {
       "id": "source-unit:packages/app/src/components/toast-host.tsx",
