@@ -8378,13 +8378,15 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/prepare-workspace-tab.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/state/worktree_tabs_provider.dart;packages/app/lib/workspace/workspace_tab_model.dart;packages/app/lib/screens/host_workspace_route_screen.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/prepare_workspace_tab.dart;packages/app/lib/workspace/workspace_tab_model.dart;packages/app/lib/state/worktree_tabs_provider.dart;packages/app/lib/screens/host_workspace_route_screen.dart",
       "evidence": [
+        "packages/app/test/prepare_workspace_tab_test.dart",
+        "packages/app/test/workspace_tab_model_test.dart",
         "packages/app/test/worktree_tabs_provider_test.dart",
         "packages/app/test/host_workspace_route_screen_test.dart"
       ],
-      "notes": "Agent, file, restored terminal, generated/new draft, and setup targets focus by stable identity, and route agent targets persist a recovery-safe pin. Migration from directory-keyed layout persistence to the canonical serverId:workspaceId key remains."
+      "notes": "Ports the frozen prepareWorkspaceTab contract: canonical trimmed serverId:workspaceId keys, focused target opening, draft:new id generation, and optional agent-only pinning. Layout persistence now resolves authoritative host/workspace identities from the workspace catalog or agent replica, migrates legacy directory keys without losing hydrated in-memory tabs, removes the legacy entry, and keeps the directory key only until identity hydration."
     },
     {
       "id": "source-unit:packages/app/src/utils/project-config-form.ts",

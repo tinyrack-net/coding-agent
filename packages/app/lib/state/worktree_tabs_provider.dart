@@ -8,7 +8,9 @@ import 'package:uuid/uuid.dart';
 
 import 'agents_provider.dart';
 import 'daemon_providers.dart';
+import 'host_registry_provider.dart';
 import 'subagents_provider.dart';
+import 'workspace_catalog_provider.dart';
 import '../workspace/workspace_file_open.dart';
 import '../workspace/workspace_pane_layout.dart';
 import '../workspace/workspace_pane_state.dart';
@@ -336,15 +338,26 @@ class WorktreeTabLayoutsNotifier
     }
   }
 
-  Future<void> setLayout(String worktreePath, WorktreeTabLayout layout) async {
+  Future<void> setLayout(
+    String persistenceKey,
+    WorktreeTabLayout layout, {
+    String? removeKey,
+  }) async {
     // No-op if unchanged: a new Map is never `==` its predecessor by
     // reference, so an unconditional assignment here would make any watcher
     // that both reads and writes this provider (as WorktreeTabsNotifier
     // does) rebuild-and-rewrite itself forever in a self-sustaining chain of
-    // microtasks. Comparing the per-worktree value (which does have real
+    // microtasks. Comparing the per-workspace value (which does have real
     // equality) breaks that chain once the layout stabilizes.
-    if (state[worktreePath] == layout) return;
-    state = {...state, worktreePath: layout};
+    final normalizedRemoveKey = removeKey == persistenceKey ? null : removeKey;
+    if (state[persistenceKey] == layout &&
+        (normalizedRemoveKey == null ||
+            !state.containsKey(normalizedRemoveKey))) {
+      return;
+    }
+    final next = {...state, persistenceKey: layout};
+    if (normalizedRemoveKey != null) next.remove(normalizedRemoveKey);
+    state = Map.unmodifiable(next);
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
@@ -363,6 +376,44 @@ final worktreeTabLayoutsProvider =
       Map<String, WorktreeTabLayout>
     >(WorktreeTabLayoutsNotifier.new);
 
+/// Resolves the frozen Paseo workspace-layout key (`serverId:workspaceId`)
+/// while keeping the worktree path as a temporary fallback until the
+/// authoritative workspace catalog has hydrated.
+///
+/// The fallback is also the legacy Tinyrack key. [WorktreeTabsNotifier]
+/// migrates it atomically once this provider can resolve a canonical
+/// identity.
+final worktreeTabPersistenceKeyProvider = Provider.family<String, String>((
+  ref,
+  worktreePath,
+) {
+  final serverId = ref.watch(activeHostProvider)?.serverId;
+  if (serverId == null || serverId.trim().isEmpty) return worktreePath;
+
+  final cachedWorkspaces =
+      ref.watch(workspaceCatalogCacheProvider)[serverId] ?? const [];
+  for (final workspace in cachedWorkspaces) {
+    if (workspace.workspaceDirectory != worktreePath) continue;
+    return buildWorkspaceTabPersistenceKey(
+          serverId: serverId,
+          workspaceId: workspace.id,
+        ) ??
+        worktreePath;
+  }
+
+  for (final agent in ref.watch(agentsProvider).values) {
+    if (resolveWorktreeKey(agent) != worktreePath) continue;
+    final workspaceId = agent.workspaceId;
+    if (workspaceId == null) continue;
+    final key = buildWorkspaceTabPersistenceKey(
+      serverId: serverId,
+      workspaceId: workspaceId,
+    );
+    if (key != null) return key;
+  }
+  return worktreePath;
+});
+
 /// One worktree's tab strip state, reconciled against server truth
 /// (`agentsProvider` synchronously, `terminal.list.request` asynchronously)
 /// on every rebuild. Family argument: the worktree's path (== its `cwd`;
@@ -378,15 +429,37 @@ class WorktreeTabsNotifier extends Notifier<WorktreeTabLayoutState> {
   /// dependency-change (e.g. `agentsProvider`) can force a rebuild before
   /// that write has flushed.
   WorktreeTabLayout? _cachedLayout;
+  String? _persistenceKey;
+  String? _legacyKeyToRemove;
   final Set<String> _focusRestorationTokens = {};
   String? _focusRestorePaneId;
 
   @override
   WorktreeTabLayoutState build() {
+    final persistenceKey = ref.watch(
+      worktreeTabPersistenceKeyProvider(worktreePath),
+    );
+    final layouts = ref.read(worktreeTabLayoutsProvider);
+    final previousPersistenceKey = _persistenceKey;
+    if (previousPersistenceKey != persistenceKey) {
+      final canonicalLayout = layouts[persistenceKey];
+      final mayMigrateLegacy =
+          persistenceKey != worktreePath &&
+          (previousPersistenceKey == null ||
+              previousPersistenceKey == worktreePath);
+      final legacyLayout = mayMigrateLegacy ? layouts[worktreePath] : null;
+      final inMemoryLegacyLayout =
+          mayMigrateLegacy && previousPersistenceKey == worktreePath
+          ? _cachedLayout
+          : null;
+      _cachedLayout = canonicalLayout ?? inMemoryLegacyLayout ?? legacyLayout;
+      _legacyKeyToRemove = legacyLayout == null && inMemoryLegacyLayout == null
+          ? null
+          : worktreePath;
+      _persistenceKey = persistenceKey;
+    }
     final persisted =
-        _cachedLayout ??
-        (ref.read(worktreeTabLayoutsProvider)[worktreePath] ??
-            WorktreeTabLayout.empty);
+        _cachedLayout ?? (layouts[persistenceKey] ?? WorktreeTabLayout.empty);
 
     final liveAgents = ref
         .watch(agentsProvider)
@@ -555,9 +628,12 @@ class WorktreeTabsNotifier extends Notifier<WorktreeTabLayoutState> {
     // corrupting/racing the state it just set.
     Future.microtask(() {
       if (ref.mounted) {
+        final persistenceKey = _persistenceKey ?? worktreePath;
+        final removeKey = _legacyKeyToRemove;
+        _legacyKeyToRemove = null;
         ref
             .read(worktreeTabLayoutsProvider.notifier)
-            .setLayout(worktreePath, layout);
+            .setLayout(persistenceKey, layout, removeKey: removeKey);
       }
     });
   }

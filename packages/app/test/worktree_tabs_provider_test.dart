@@ -5,7 +5,9 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
+import 'package:coding_agent_app/state/host_registry_provider.dart';
 import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
+import 'package:coding_agent_app/state/workspace_catalog_provider.dart';
 import 'package:coding_agent_app/workspace/workspace_file_open.dart';
 import 'package:coding_agent_app/workspace/workspace_pane_layout.dart';
 import 'package:coding_agent_app/workspace/workspace_tab_model.dart';
@@ -125,14 +127,58 @@ class FakeDaemonClient extends DaemonClient {
   }
 }
 
+final class _ActiveRegistry extends HostRegistryNotifier {
+  @override
+  HostRegistryState build() => const HostRegistryState(
+    hosts: [
+      HostProfile(
+        serverId: 'server-a',
+        label: 'Host A',
+        connections: [
+          DirectTcpHostConnection(
+            id: 'direct:host.example:6868',
+            endpoint: 'host.example:6868',
+          ),
+        ],
+        preferredConnectionId: 'direct:host.example:6868',
+        createdAt: '2026-07-29T00:00:00.000Z',
+        updatedAt: '2026-07-29T00:00:00.000Z',
+      ),
+    ],
+    activeServerId: 'server-a',
+    loaded: true,
+  );
+}
+
+WorkspaceDescriptor _workspace(String id, String directory) =>
+    WorkspaceDescriptor(
+      id: id,
+      projectId: 'project-a',
+      projectDisplayName: 'Project A',
+      projectRootPath: '/repo-a',
+      workspaceDirectory: directory,
+      projectKind: WorkspaceProjectKind.git,
+      workspaceKind: WorkspaceKind.worktree,
+      name: id,
+      status: WorkspaceStateBucket.done,
+      activityAt: null,
+    );
+
 /// Creates a container and waits for `worktreeTabLayoutsProvider`'s own
 /// async `SharedPreferences` load to finish, so the family provider's very
 /// first `build()` sees whatever was persisted rather than a still-empty
 /// blob.
-Future<ProviderContainer> makeContainer({FakeDaemonClient? client}) async {
+Future<ProviderContainer> makeContainer({
+  FakeDaemonClient? client,
+  String? persistenceKey,
+}) async {
   final container = ProviderContainer(
     overrides: [
       daemonClientProvider.overrideWithValue(client ?? FakeDaemonClient()),
+      if (persistenceKey != null)
+        worktreeTabPersistenceKeyProvider.overrideWith(
+          (ref, worktreePath) => persistenceKey,
+        ),
     ],
   );
   addTearDown(container.dispose);
@@ -156,6 +202,87 @@ void main() {
     expect(state.layout.tabs, hasLength(1));
     expect(state.layout.tabs.single.kind, WorktreeTabKind.draft);
     expect(state.layout.activeTabId, state.layout.tabs.single.tabId);
+  });
+
+  test('workspace catalog resolves the canonical server/workspace key', () {
+    final container = ProviderContainer(
+      overrides: [hostRegistryProvider.overrideWith(_ActiveRegistry.new)],
+    );
+    addTearDown(container.dispose);
+    container.read(workspaceCatalogCacheProvider.notifier).replace('server-a', [
+      _workspace('workspace-a', _worktreePath),
+    ]);
+
+    expect(
+      container.read(worktreeTabPersistenceKeyProvider(_worktreePath)),
+      'server-a:workspace-a',
+    );
+  });
+
+  test(
+    'canonical persistence migrates and removes the directory key',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'worktree.tabLayouts': jsonEncode({
+          _worktreePath: {
+            'tabs': [
+              {'tabId': 'legacy-draft', 'kind': 'draft'},
+            ],
+            'activeTabId': 'legacy-draft',
+          },
+        }),
+      });
+      final container = await makeContainer(
+        persistenceKey: 'server-a:workspace-a',
+      );
+
+      final state = container.read(worktreeTabsProvider(_worktreePath));
+      expect(state.layout.tabs.single.tabId, 'legacy-draft');
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      final stored =
+          jsonDecode(
+                (await SharedPreferences.getInstance()).getString(
+                  'worktree.tabLayouts',
+                )!,
+              )
+              as Map<String, Object?>;
+      expect(stored, contains('server-a:workspace-a'));
+      expect(stored, isNot(contains(_worktreePath)));
+    },
+  );
+
+  test('late catalog hydration preserves the in-memory layout while switching '
+      'to the canonical key', () async {
+    final container = ProviderContainer(
+      overrides: [
+        daemonClientProvider.overrideWithValue(FakeDaemonClient()),
+        hostRegistryProvider.overrideWith(_ActiveRegistry.new),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.read(worktreeTabLayoutsProvider);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    final before = container.read(worktreeTabsProvider(_worktreePath));
+    final draftId = before.layout.tabs.single.tabId;
+
+    container.read(workspaceCatalogCacheProvider.notifier).replace('server-a', [
+      _workspace('workspace-a', _worktreePath),
+    ]);
+
+    final after = container.read(worktreeTabsProvider(_worktreePath));
+    expect(after.layout.tabs.single.tabId, draftId);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    final stored =
+        jsonDecode(
+              (await SharedPreferences.getInstance()).getString(
+                'worktree.tabLayouts',
+              )!,
+            )
+            as Map<String, Object?>;
+    expect(stored, contains('server-a:workspace-a'));
+    expect(stored, isNot(contains(_worktreePath)));
   });
 
   test('refocusing the already active pane is a no-op', () async {

@@ -13,7 +13,7 @@ import '../state/host_registry_provider.dart';
 import '../state/workspace_catalog_provider.dart';
 import '../state/workspace_recovery_provider.dart';
 import '../state/worktree_tabs_provider.dart';
-import '../workspace/workspace_file_open.dart';
+import '../workspace/prepare_workspace_tab.dart';
 import '../workspace/workspace_tab_model.dart';
 import 'home_shell.dart';
 
@@ -84,24 +84,33 @@ class _HostWorkspaceRouteScreenState
     _appliedOpenIntentKey = key;
     scheduleMicrotask(() {
       final tabs = ref.read(worktreeTabsProvider(directory).notifier);
-      switch (intent) {
-        case AgentWorkspaceOpenIntent():
-          tabs.focusAgent(intent.agentId, pin: true);
-        case FileWorkspaceOpenIntent():
-          tabs.openFile(WorkspaceFileLocation(path: intent.path));
-        case TerminalWorkspaceOpenIntent():
-          tabs.focusOpenIntentTarget(
-            WorkspaceTerminalTabTarget(terminalId: intent.terminalId),
-          );
-        case DraftWorkspaceOpenIntent():
-          tabs.focusOpenIntentTarget(
-            WorkspaceDraftTabTarget(draftId: intent.draftId),
-          );
-        case SetupWorkspaceOpenIntent():
-          tabs.focusOpenIntentTarget(
-            WorkspaceSetupTabTarget(workspaceId: intent.workspaceId),
-          );
-      }
+      final target = switch (intent) {
+        AgentWorkspaceOpenIntent() => WorkspaceAgentTabTarget(
+          agentId: intent.agentId,
+        ),
+        FileWorkspaceOpenIntent() => WorkspaceFileTabTarget(path: intent.path),
+        TerminalWorkspaceOpenIntent() => WorkspaceTerminalTabTarget(
+          terminalId: intent.terminalId,
+        ),
+        DraftWorkspaceOpenIntent() => WorkspaceDraftTabTarget(
+          draftId: intent.draftId,
+        ),
+        SetupWorkspaceOpenIntent() => WorkspaceSetupTabTarget(
+          workspaceId: intent.workspaceId,
+        ),
+      };
+      prepareWorkspaceTab(
+        PrepareWorkspaceTabInput(
+          serverId: widget.serverId,
+          workspaceId: widget.workspaceId,
+          target: target,
+          pin: target is WorkspaceAgentTabTarget,
+        ),
+        PrepareWorkspaceTabDependencies(
+          openTabFocused: (_, target) => tabs.focusOpenIntentTarget(target),
+          pinAgent: (_, agentId) => tabs.pinAgent(agentId),
+        ),
+      );
       widget.onOpenIntentConsumed?.call();
     });
   }
