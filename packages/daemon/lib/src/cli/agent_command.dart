@@ -8,6 +8,7 @@ import '../server/daemon_config.dart';
 import 'agent_logs_command.dart';
 import 'cli_duration.dart';
 import 'cli_output.dart';
+import 'cli_paths.dart';
 import 'desktop_launch.dart';
 import 'terminal_command.dart';
 
@@ -1417,7 +1418,7 @@ Future<_AgentCommandResult> _stopAgents(
           .where(
             (agent) =>
                 agent['archivedAt'] == null &&
-                _isSameOrDescendantPath(invocation.cwd!, _string(agent, 'cwd')),
+                isSameOrDescendantPath(invocation.cwd!, _string(agent, 'cwd')),
           )
           .toList(growable: false);
     } else {
@@ -1499,7 +1500,7 @@ Future<_AgentCommandResult> _deleteAgents(
           .where(
             (agent) =>
                 agent['archivedAt'] == null &&
-                _isSameOrDescendantPath(invocation.cwd!, _string(agent, 'cwd')),
+                isSameOrDescendantPath(invocation.cwd!, _string(agent, 'cwd')),
           )
           .toList(growable: false);
     } else {
@@ -1645,21 +1646,6 @@ Future<({String id, bool stopped, String? error})> _stopOneAgent(
   } on Object catch (error) {
     return (id: id, stopped: false, error: _errorText(error));
   }
-}
-
-bool _isSameOrDescendantPath(String basePath, String candidatePath) {
-  var base = basePath.replaceAll(r'\', '/').replaceFirst(RegExp(r'/$'), '');
-  var candidate = candidatePath
-      .replaceAll(r'\', '/')
-      .replaceFirst(RegExp(r'/$'), '');
-  final windowsPath =
-      RegExp(r'^[a-zA-Z]:/').hasMatch(base) ||
-      RegExp(r'^[a-zA-Z]:/').hasMatch(candidate);
-  if (windowsPath) {
-    base = base.toLowerCase();
-    candidate = candidate.toLowerCase();
-  }
-  return candidate == base || candidate.startsWith('$base/');
 }
 
 String _shortAgentId(String id) => id.substring(0, id.length.clamp(0, 7));

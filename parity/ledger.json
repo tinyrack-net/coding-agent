@@ -10470,10 +10470,13 @@
     },
     {
       "id": "source-unit:packages/cli/src/utils/paths.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/cli_paths.dart; packages/daemon/lib/src/cli/agent_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/cli_paths_test.dart",
+        "packages/daemon/test/cli/agent_command_test.dart"
+      ],
+      "notes": "Frozen mixed-separator normalization, one trailing separator removal, Windows drive case folding, exact/descendant boundary matching, and stop/delete cwd consumers are ported."
     },
     {
       "id": "source-unit:packages/cli/src/utils/provider-model.ts",
