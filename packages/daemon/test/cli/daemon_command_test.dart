@@ -9,6 +9,31 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 void main() {
+  test('top-level daemon shortcuts expose command help', () async {
+    for (final command in const ['start', 'status', 'restart']) {
+      final output = StringBuffer();
+      expect(
+        await runDaemonCommand(
+          arguments: [command, '--help'],
+          topLevel: true,
+          writeOutput: output.write,
+        ),
+        0,
+      );
+      expect(output.toString(), contains('coding-agent $command'));
+    }
+
+    final nested = StringBuffer();
+    expect(
+      await runDaemonCommand(
+        arguments: const ['--help'],
+        writeOutput: nested.write,
+      ),
+      0,
+    );
+    expect(nested.toString(), contains('coding-agent daemon <'));
+  });
+
   late Directory home;
 
   setUp(() async {

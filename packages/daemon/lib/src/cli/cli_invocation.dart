@@ -6,6 +6,9 @@ sealed class CliInvocation {
   const CliInvocation();
 }
 
+List<String> defaultEmptyCliArguments(List<String> arguments) =>
+    arguments.isEmpty ? const ['onboard'] : arguments;
+
 final class CommandCliInvocation extends CliInvocation {
   const CommandCliInvocation(this.arguments);
 

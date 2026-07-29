@@ -130,19 +130,31 @@ Future<String?> resolveDaemonRuntimeExecutable(int processId) async {
 Future<int> runDaemonCommand({
   required List<String> arguments,
   DaemonCommandRuntime runtime = const DaemonCommandRuntime(),
+  bool topLevel = false,
   void Function(String value)? writeOutput,
   void Function(String value)? writeError,
 }) async {
   final out = writeOutput ?? stdout.write;
   final err = writeError ?? stderr.write;
+  if (arguments.length == 1 &&
+      (arguments.first == '--help' || arguments.first == '-h')) {
+    out('${_usage(topLevel: topLevel)}\n');
+    return 0;
+  }
   if (arguments.isEmpty) {
-    err('${_usage()}\n');
+    err('${_usage(topLevel: topLevel)}\n');
     return 64;
   }
   final command = arguments.first;
+  if (arguments
+      .sublist(1)
+      .any((argument) => argument == '--help' || argument == '-h')) {
+    out('${_usage(command: command, topLevel: topLevel)}\n');
+    return 0;
+  }
   final parsed = _parse(arguments.sublist(1));
   if (parsed case _ParseFailure(:final message)) {
-    err('$message\n${_usage(command)}\n');
+    err('$message\n${_usage(command: command, topLevel: topLevel)}\n');
     return 64;
   }
   final options = parsed as _DaemonOptions;
@@ -160,7 +172,7 @@ Future<int> runDaemonCommand({
         writeError: err,
         terminalColumns: stdout.hasTerminal ? stdout.terminalColumns : null,
       ),
-      _ => _unknown(command, err),
+      _ => _unknown(command, err, topLevel: topLevel),
     };
   } on FormatException catch (error) {
     err('${error.message}\n');
@@ -171,8 +183,15 @@ Future<int> runDaemonCommand({
   }
 }
 
-int _unknown(String command, void Function(String) err) {
-  err('Unknown daemon command: $command\n${_usage()}\n');
+int _unknown(
+  String command,
+  void Function(String) err, {
+  required bool topLevel,
+}) {
+  err(
+    'Unknown daemon command: $command\n'
+    '${_usage(topLevel: topLevel)}\n',
+  );
   return 64;
 }
 
@@ -679,17 +698,18 @@ final class _Launch {
   ];
 }
 
-String _usage([String? command]) => switch (command) {
-  'start' =>
-    'Usage: coding-agent daemon start [--home <path>] [--listen <target> | --port <port>] [--foreground]',
-  'status' => 'Usage: coding-agent daemon status [--home <path>] [--json]',
-  'stop' =>
-    'Usage: coding-agent daemon stop [--home <path>] [--timeout <seconds>] [--kill-timeout <seconds>] [--force] [--json]',
-  'restart' =>
-    'Usage: coding-agent daemon restart [start options] [--timeout <seconds>] [--force] [--json]',
-  'set-password' =>
-    'Usage: coding-agent daemon set-password [--home <path>] [--json]',
-  'pair' => 'Usage: coding-agent daemon pair [--home <path>] [--json]',
-  _ =>
-    'Usage: coding-agent daemon <start|status|stop|restart|set-password|pair> ...',
-};
+String _usage({String? command, bool topLevel = false}) {
+  final root = topLevel ? 'coding-agent' : 'coding-agent daemon';
+  return switch (command) {
+    'start' =>
+      'Usage: $root start [--home <path>] [--listen <target> | --port <port>] [--foreground]',
+    'status' => 'Usage: $root status [--home <path>] [--json]',
+    'stop' =>
+      'Usage: $root stop [--home <path>] [--timeout <seconds>] [--kill-timeout <seconds>] [--force] [--json]',
+    'restart' =>
+      'Usage: $root restart [start options] [--timeout <seconds>] [--force] [--json]',
+    'set-password' => 'Usage: $root set-password [--home <path>] [--json]',
+    'pair' => 'Usage: $root pair [--home <path>] [--json]',
+    _ => 'Usage: $root <start|status|stop|restart|set-password|pair> ...',
+  };
+}

@@ -29,6 +29,12 @@ void main() {
     }
   });
 
+  test('empty CLI argv defaults to the frozen onboard command', () {
+    expect(defaultEmptyCliArguments(const []), const ['onboard']);
+    final arguments = <String>['daemon', 'status'];
+    expect(defaultEmptyCliArguments(arguments), same(arguments));
+  });
+
   test('classifies every frozen directory shape and resolves paths', () {
     final root = Directory.systemTemp.createTempSync('cli-invocation-');
     addTearDown(() => root.deleteSync(recursive: true));

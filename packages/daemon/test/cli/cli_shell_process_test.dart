@@ -23,6 +23,26 @@ void main() {
       expect(hooks.stdout, contains('Record agent hook activity'));
       expect(hooks.stderr, isEmpty);
 
+      final onboard = await Process.run(Platform.resolvedExecutable, const [
+        'run',
+        'agent_daemon:coding_agent',
+        'onboard',
+        '--help',
+      ], workingDirectory: packageRoot);
+      expect(onboard.exitCode, 0);
+      expect(onboard.stdout, contains('Run first-time setup'));
+      expect(onboard.stderr, isEmpty);
+
+      final status = await Process.run(Platform.resolvedExecutable, const [
+        'run',
+        'agent_daemon:coding_agent',
+        'status',
+        '--help',
+      ], workingDirectory: packageRoot);
+      expect(status.exitCode, 0);
+      expect(status.stdout, contains('coding-agent status'));
+      expect(status.stderr, isEmpty);
+
       final project = Directory.systemTemp.createTempSync('cli-open-shell-');
       try {
         final opened = await Process.run(
@@ -48,6 +68,6 @@ void main() {
         project.deleteSync(recursive: true);
       }
     },
-    timeout: const Timeout(Duration(seconds: 30)),
+    timeout: const Timeout(Duration(seconds: 45)),
   );
 }

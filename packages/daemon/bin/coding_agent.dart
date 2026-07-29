@@ -6,6 +6,7 @@ import 'package:agent_daemon/src/cli/clone_command.dart';
 import 'package:agent_daemon/src/cli/cli_invocation.dart';
 import 'package:agent_daemon/src/cli/hooks_command.dart';
 import 'package:agent_daemon/src/cli/open_command.dart';
+import 'package:agent_daemon/src/cli/onboard_command.dart';
 import 'package:agent_daemon/src/cli/agent_attach_command.dart';
 import 'package:agent_daemon/src/cli/agent_import_command.dart';
 import 'package:agent_daemon/src/cli/agent_command.dart';
@@ -30,6 +31,11 @@ Future<void> main(List<String> arguments) async {
   );
   if (invocation case OpenProjectCliInvocation(:final resolvedPath)) {
     exitCode = await runOpenProjectInvocation(projectPath: resolvedPath);
+    return;
+  }
+  arguments = defaultEmptyCliArguments(arguments);
+  if (arguments.first == 'onboard') {
+    exitCode = await runOnboardCommand(arguments: arguments.sublist(1));
     return;
   }
   if (arguments.isNotEmpty && arguments.first == 'hooks') {
@@ -93,6 +99,10 @@ Future<void> main(List<String> arguments) async {
     exitCode = await runAgentCommand(arguments: arguments);
     return;
   }
+  if (const {'start', 'status', 'restart'}.contains(arguments.first)) {
+    exitCode = await runDaemonCommand(arguments: arguments, topLevel: true);
+    return;
+  }
   if (arguments.isNotEmpty && arguments[0] == 'daemon') {
     exitCode = await runDaemonCommand(arguments: arguments.sublist(1));
     return;
@@ -146,7 +156,9 @@ Future<void> main(List<String> arguments) async {
     return;
   }
   stderr.writeln(
-    'Usage: coding-agent daemon '
+    'Usage: coding-agent onboard [options]\n'
+    '       coding-agent <start|status|restart> ...\n'
+    '       coding-agent daemon '
     '<start|status|stop|restart|set-password|pair> ...\n'
     '       coding-agent chat '
     '<create|ls|inspect|delete|post|read|wait> ...\n'

@@ -578,10 +578,14 @@
     },
     {
       "id": "cli-command:onboard",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/onboard_command.dart;packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon/lib/src/cli/pair_command.dart;packages/daemon/bin/coding_agent.dart",
+      "evidence": [
+        "packages/daemon/test/cli/onboard_command_test.dart",
+        "packages/daemon/test/daemon_onboard_e2e_test.dart",
+        "packages/daemon/test/cli/cli_shell_process_test.dart"
+      ],
+      "notes": "Frozen first-run option validation, persisted voice setup, daemon reuse/start, bounded API readiness with model progress and logs, relay pairing, next steps, cancellation, and binary dispatch verified."
     },
     {
       "id": "cli-command:open",
@@ -9713,10 +9717,13 @@
     },
     {
       "id": "source-unit:packages/cli/src/commands/onboard.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/onboard_command.dart;packages/daemon/lib/src/cli/daemon_command.dart;packages/daemon/lib/src/cli/pair_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/onboard_command_test.dart",
+        "packages/daemon/test/daemon_onboard_e2e_test.dart"
+      ],
+      "notes": "Tinyrack-branded onboarding preserves the frozen config, voice, lifecycle, readiness, pairing, progress, timeout, and recovery semantics."
     },
     {
       "id": "source-unit:packages/cli/src/commands/open.ts",
@@ -10224,13 +10231,14 @@
     },
     {
       "id": "source-unit:packages/cli/src/run.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/daemon/lib/src/cli/cli_invocation.dart;packages/daemon/lib/src/cli/open_command.dart;packages/daemon/bin/coding_agent.dart",
       "evidence": [
         "packages/daemon/test/cli/cli_invocation_test.dart",
-        "packages/daemon/test/cli/cli_shell_process_test.dart"
+        "packages/daemon/test/cli/cli_shell_process_test.dart",
+        "packages/daemon/test/cli/onboard_command_test.dart"
       ],
-      "notes": "Known CLI argv and existing-directory open-project routing are ported; empty argv still needs the frozen onboard default."
+      "notes": "Known command argv, existing-directory open-project routing, and empty-argv onboarding default match the frozen CLI runner."
     },
     {
       "id": "source-unit:packages/cli/src/utils/client-id.ts",
