@@ -1246,6 +1246,35 @@ void main() {
     );
   });
 
+  testWidgets('PR pane uses the frozen sidebar surface and full divider', (
+    tester,
+  ) async {
+    await _pumpPane(tester, _FakeDaemonClient());
+    await tester.pumpAndSettle();
+
+    final root = tester.widget<ColoredBox>(
+      find.byKey(const ValueKey('pr-pane-root')),
+    );
+    final palette = paseoPaletteFor(AppThemeName.dark);
+    expect(root.color, palette.surfaceSidebar);
+    expect(root.color, isNot(palette.surface0));
+
+    final scroll = find.byKey(const ValueKey('pr-pane-scroll'));
+    final divider = find.byKey(const ValueKey('pr-pane-activity-divider'));
+    final dividerWidget = tester.widget<Container>(divider);
+    expect(tester.getSize(divider).height, 1);
+    expect(tester.getSize(divider).width, tester.getSize(scroll).width);
+    expect(dividerWidget.color, palette.border);
+    expect(find.byType(Divider), findsNothing);
+
+    final scrollContext = tester.element(scroll);
+    const marker = SizedBox(key: ValueKey('scrollbar-marker'));
+    final decorated = ScrollConfiguration.of(
+      scrollContext,
+    ).buildScrollbar(scrollContext, marker, const ScrollableDetails.vertical());
+    expect(identical(decorated, marker), isTrue);
+  });
+
   testWidgets('refresh disables duplicate actions while checkout is pending', (
     tester,
   ) async {

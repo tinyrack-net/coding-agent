@@ -71,7 +71,8 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
         daemonFeatures['forgeCheckDetails'] == true;
     final refreshSupported = daemonFeatures['checkoutRefresh'] == true;
     return ColoredBox(
-      color: FluentTheme.of(context).scaffoldBackgroundColor,
+      key: const ValueKey('pr-pane-root'),
+      color: context.paseoPalette.surfaceSidebar,
       child: async.when(
         loading: () => const PullRequestPaneSkeleton(),
         error: (_, _) => PullRequestPaneError(
@@ -91,60 +92,71 @@ class _PullRequestPaneState extends ConsumerState<PullRequestPane> {
           final gitlabPipeline = gitlabFacts == null
               ? null
               : deriveGitlabPipelineSummary(gitlabFacts);
-          return ListView(
-            children: [
-              _Toolbar(
-                forge: status.forge,
-                onOpen: () => _openExternalUrl(context, ref, status.url),
-                refreshSupported: refreshSupported,
-                refreshing: _refreshing,
-                onRefresh: _refreshCheckout,
-              ),
-              _PullRequestHeader(
-                status: status,
-                onOpen: () => _openExternalUrl(context, ref, status.url),
-              ),
-              if (gitlabPipeline != null && forgeProvidersEnabled)
-                _GitLabPipelineSection(
-                  key: const ValueKey('gitlab-pipeline'),
-                  cwd: widget.cwd,
+          return ScrollConfiguration(
+            behavior: ScrollConfiguration.of(
+              context,
+            ).copyWith(scrollbars: false),
+            child: ListView(
+              key: const ValueKey('pr-pane-scroll'),
+              children: [
+                _Toolbar(
+                  forge: status.forge,
+                  onOpen: () => _openExternalUrl(context, ref, status.url),
+                  refreshSupported: refreshSupported,
+                  refreshing: _refreshing,
+                  onRefresh: _refreshCheckout,
+                ),
+                _PullRequestHeader(
                   status: status,
-                  summary: gitlabPipeline,
-                  cacheRevision: data.pipelineCacheRevision,
-                  canFetchCheckDetails: canFetchForgeCheckDetails,
-                  open: _checksOpen,
-                  onToggle: () => setState(() => _checksOpen = !_checksOpen),
-                )
-              else
+                  onOpen: () => _openExternalUrl(context, ref, status.url),
+                ),
+                if (gitlabPipeline != null && forgeProvidersEnabled)
+                  _GitLabPipelineSection(
+                    key: const ValueKey('gitlab-pipeline'),
+                    cwd: widget.cwd,
+                    status: status,
+                    summary: gitlabPipeline,
+                    cacheRevision: data.pipelineCacheRevision,
+                    canFetchCheckDetails: canFetchForgeCheckDetails,
+                    open: _checksOpen,
+                    onToggle: () => setState(() => _checksOpen = !_checksOpen),
+                  )
+                else
+                  PullRequestSection(
+                    title: 'Checks',
+                    open: _checksOpen,
+                    summary: _CheckSummary(checks: checks),
+                    onToggle: () => setState(() => _checksOpen = !_checksOpen),
+                    child: _ChecksSection(
+                      cwd: widget.cwd,
+                      status: status,
+                      checks: checks,
+                    ),
+                  ),
+                Container(
+                  key: const ValueKey('pr-pane-activity-divider'),
+                  height: 1,
+                  color: context.paseoPalette.border,
+                ),
                 PullRequestSection(
-                  title: 'Checks',
-                  open: _checksOpen,
-                  summary: _CheckSummary(checks: checks),
-                  onToggle: () => setState(() => _checksOpen = !_checksOpen),
-                  child: _ChecksSection(
-                    cwd: widget.cwd,
-                    status: status,
-                    checks: checks,
+                  title: 'Activity',
+                  open: _activityOpen,
+                  summary: _ActivitySummary(items: data.timeline),
+                  onToggle: () =>
+                      setState(() => _activityOpen = !_activityOpen),
+                  child: _PrActionsPlatformScope(
+                    isWeb: widget.webOverride ?? kIsWeb,
+                    child: _ActivitySection(
+                      cwd: widget.cwd,
+                      status: status,
+                      items: data.timeline,
+                      error: data.timelineError,
+                      truncated: data.timelineTruncated,
+                    ),
                   ),
                 ),
-              const Divider(),
-              PullRequestSection(
-                title: 'Activity',
-                open: _activityOpen,
-                summary: _ActivitySummary(items: data.timeline),
-                onToggle: () => setState(() => _activityOpen = !_activityOpen),
-                child: _PrActionsPlatformScope(
-                  isWeb: widget.webOverride ?? kIsWeb,
-                  child: _ActivitySection(
-                    cwd: widget.cwd,
-                    status: status,
-                    items: data.timeline,
-                    error: data.timelineError,
-                    truncated: data.timelineTruncated,
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           );
         },
       ),
