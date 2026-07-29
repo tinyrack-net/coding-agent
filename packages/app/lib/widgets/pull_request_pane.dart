@@ -4,6 +4,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../core/external_url_launcher.dart';
 import '../core/forge.dart';
@@ -933,6 +934,9 @@ class _ActivitySectionState extends ConsumerState<_ActivitySection> {
       return const PullRequestEmptyText('No activity yet');
     }
     final entries = buildPullRequestTimeline(widget.items);
+    final brandLabel = getForgePresentation(
+      widget.status.forge.toLowerCase(),
+    ).brandLabel;
     return Column(
       children: [
         Align(
@@ -955,6 +959,7 @@ class _ActivitySectionState extends ConsumerState<_ActivitySection> {
             onAddActivity: _addActivity,
             onAddThread: _addThread,
             onOpen: (url) => _openExternalUrl(context, ref, url),
+            brandLabel: brandLabel,
           ),
         if (widget.truncated)
           Padding(
@@ -982,6 +987,7 @@ class _TimelineEntryCard extends StatelessWidget {
     required this.onAddActivity,
     required this.onAddThread,
     required this.onOpen,
+    required this.brandLabel,
   });
 
   final PullRequestTimelineEntry entry;
@@ -991,6 +997,7 @@ class _TimelineEntryCard extends StatelessWidget {
   final ValueChanged<PullRequestTimelineItem> onAddActivity;
   final ValueChanged<PullRequestThreadEntry> onAddThread;
   final ValueChanged<String> onOpen;
+  final String brandLabel;
 
   @override
   Widget build(BuildContext context) => switch (entry) {
@@ -1002,6 +1009,7 @@ class _TimelineEntryCard extends StatelessWidget {
           ? () => onAddActivity(activity)
           : null,
       onOpen: () => onOpen(activity.url),
+      brandLabel: brandLabel,
     ),
     PullRequestThreadEntry() => _ThreadCard(
       thread: entry as PullRequestThreadEntry,
@@ -1010,6 +1018,7 @@ class _TimelineEntryCard extends StatelessWidget {
       onAddActivity: onAddActivity,
       onAddThread: () => onAddThread(entry as PullRequestThreadEntry),
       onOpen: onOpen,
+      brandLabel: brandLabel,
     ),
     PullRequestReviewEntry(review: final review, threads: final threads) =>
       _ReviewCard(
@@ -1022,6 +1031,7 @@ class _TimelineEntryCard extends StatelessWidget {
         onAddActivity: onAddActivity,
         onAddThread: onAddThread,
         onOpen: onOpen,
+        brandLabel: brandLabel,
       ),
   };
 }
@@ -1033,6 +1043,7 @@ class _ActivityCard extends StatelessWidget {
     required this.onToggle,
     required this.onAddToChat,
     required this.onOpen,
+    required this.brandLabel,
     this.embedded = false,
   });
 
@@ -1041,6 +1052,7 @@ class _ActivityCard extends StatelessWidget {
   final VoidCallback onToggle;
   final VoidCallback? onAddToChat;
   final VoidCallback onOpen;
+  final String brandLabel;
   final bool embedded;
 
   @override
@@ -1112,10 +1124,11 @@ class _ActivityCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 2),
-                  IconButton(
-                    key: ValueKey('open-activity-${item.id}'),
-                    icon: const Icon(FluentIcons.open_in_new_window, size: 10),
-                    onPressed: onOpen,
+                  _ActivityActionsMenu(
+                    item: item,
+                    brandLabel: brandLabel,
+                    onAddToChat: onAddToChat,
+                    onOpen: onOpen,
                   ),
                 ],
               ),
@@ -1170,6 +1183,7 @@ class _ReviewCard extends StatelessWidget {
     required this.onAddActivity,
     required this.onAddThread,
     required this.onOpen,
+    required this.brandLabel,
   });
 
   final PullRequestTimelineReview review;
@@ -1181,6 +1195,7 @@ class _ReviewCard extends StatelessWidget {
   final ValueChanged<PullRequestTimelineItem> onAddActivity;
   final ValueChanged<PullRequestThreadEntry> onAddThread;
   final ValueChanged<String> onOpen;
+  final String brandLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -1201,6 +1216,7 @@ class _ReviewCard extends StatelessWidget {
                 ? () => onAddActivity(review)
                 : null,
             onOpen: () => onOpen(review.url),
+            brandLabel: brandLabel,
             embedded: true,
           ),
           if (!collapsed)
@@ -1214,6 +1230,7 @@ class _ReviewCard extends StatelessWidget {
                   onAddActivity: onAddActivity,
                   onAddThread: () => onAddThread(thread),
                   onOpen: onOpen,
+                  brandLabel: brandLabel,
                   nested: true,
                 ),
               ),
@@ -1231,6 +1248,7 @@ class _ThreadCard extends StatelessWidget {
     required this.onAddActivity,
     required this.onAddThread,
     required this.onOpen,
+    required this.brandLabel,
     this.nested = false,
   });
 
@@ -1240,6 +1258,7 @@ class _ThreadCard extends StatelessWidget {
   final ValueChanged<PullRequestTimelineItem> onAddActivity;
   final VoidCallback onAddThread;
   final ValueChanged<String> onOpen;
+  final String brandLabel;
   final bool nested;
 
   @override
@@ -1297,15 +1316,10 @@ class _ThreadCard extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(width: 4),
-                  Tooltip(
-                    message: 'Open on forge',
-                    child: IconButton(
-                      icon: const Icon(
-                        FluentIcons.open_in_new_window,
-                        size: 11,
-                      ),
-                      onPressed: () => onOpen(root.url),
-                    ),
+                  _ThreadActionsMenu(
+                    threadId: thread.id,
+                    brandLabel: brandLabel,
+                    onOpen: () => onOpen(root.url),
                   ),
                 ],
               ),
@@ -1319,6 +1333,7 @@ class _ThreadCard extends StatelessWidget {
                     ? null
                     : () => onAddActivity(comment),
                 onOpen: () => onOpen(comment.url),
+                brandLabel: brandLabel,
               ),
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 0, 8, 8),
@@ -1339,11 +1354,13 @@ class _ThreadComment extends StatelessWidget {
     required this.comment,
     required this.onAddToChat,
     required this.onOpen,
+    required this.brandLabel,
   });
 
   final PullRequestTimelineComment comment;
   final VoidCallback? onAddToChat;
   final VoidCallback onOpen;
+  final String brandLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -1370,9 +1387,11 @@ class _ThreadComment extends StatelessWidget {
                   color: context.tokens.onSurfaceVariant,
                 ),
               ),
-              IconButton(
-                icon: const Icon(FluentIcons.open_in_new_window, size: 10),
-                onPressed: onOpen,
+              _ActivityActionsMenu(
+                item: comment,
+                brandLabel: brandLabel,
+                onAddToChat: onAddToChat,
+                onOpen: onOpen,
               ),
             ],
           ),
@@ -1384,9 +1403,136 @@ class _ThreadComment extends StatelessWidget {
                 p: const TextStyle(fontSize: 12, height: 1.4),
               ),
             ),
-          if (onAddToChat != null)
-            _GhostChatButton(onPressed: onAddToChat, label: 'Add to chat'),
         ],
+      ),
+    );
+  }
+}
+
+class _ActivityActionsMenu extends StatelessWidget {
+  const _ActivityActionsMenu({
+    required this.item,
+    required this.brandLabel,
+    required this.onAddToChat,
+    required this.onOpen,
+  });
+
+  final PullRequestTimelineItem item;
+  final String brandLabel;
+  final VoidCallback? onAddToChat;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return _PrActionsMenuButton(
+      triggerKey: ValueKey('activity-actions-${item.id}'),
+      semanticLabel: 'Comment actions',
+      items: [
+        if (onAddToChat != null)
+          MenuFlyoutItem(
+            key: ValueKey('activity-action-add-${item.id}'),
+            leading: const Icon(FluentIcons.comment_add, size: 14),
+            text: const Text('Add to chat'),
+            onPressed: onAddToChat,
+          ),
+        if (item.body.trim().isNotEmpty)
+          MenuFlyoutItem(
+            key: ValueKey('activity-action-copy-${item.id}'),
+            leading: const Icon(FluentIcons.copy, size: 14),
+            text: const Text('Copy'),
+            onPressed: () {
+              unawaited(Clipboard.setData(ClipboardData(text: item.body)));
+            },
+          ),
+        MenuFlyoutItem(
+          key: ValueKey('activity-action-open-${item.id}'),
+          leading: const Icon(FluentIcons.open_in_new_window, size: 14),
+          text: Text('Open on $brandLabel'),
+          onPressed: onOpen,
+        ),
+      ],
+    );
+  }
+}
+
+class _ThreadActionsMenu extends StatelessWidget {
+  const _ThreadActionsMenu({
+    required this.threadId,
+    required this.brandLabel,
+    required this.onOpen,
+  });
+
+  final String threadId;
+  final String brandLabel;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return _PrActionsMenuButton(
+      triggerKey: ValueKey('thread-actions-$threadId'),
+      semanticLabel: 'Thread actions',
+      items: [
+        MenuFlyoutItem(
+          key: ValueKey('thread-action-open-$threadId'),
+          leading: const Icon(FluentIcons.open_in_new_window, size: 14),
+          text: Text('Open on $brandLabel'),
+          onPressed: onOpen,
+        ),
+      ],
+    );
+  }
+}
+
+class _PrActionsMenuButton extends StatefulWidget {
+  const _PrActionsMenuButton({
+    required this.triggerKey,
+    required this.semanticLabel,
+    required this.items,
+  });
+
+  final Key triggerKey;
+  final String semanticLabel;
+  final List<MenuFlyoutItemBase> items;
+
+  @override
+  State<_PrActionsMenuButton> createState() => _PrActionsMenuButtonState();
+}
+
+class _PrActionsMenuButtonState extends State<_PrActionsMenuButton> {
+  final _controller = FlyoutController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _openMenu() {
+    unawaited(
+      _controller.showFlyout<void>(
+        placementMode: FlyoutPlacementMode.bottomRight,
+        additionalOffset: 2,
+        builder: (context) => MenuFlyout(
+          constraints: const BoxConstraints.tightFor(width: 200),
+          items: widget.items,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: true,
+      label: widget.semanticLabel,
+      child: FlyoutTarget(
+        controller: _controller,
+        child: IconButton(
+          key: widget.triggerKey,
+          icon: const Icon(FluentIcons.more_vertical, size: 12),
+          onPressed: _openMenu,
+        ),
       ),
     );
   }

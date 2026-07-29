@@ -5262,7 +5262,7 @@
         "packages/app/test/pull_request_pane_test.dart",
         "packages/app/test/goldens/workspace_pr_explorer.png"
       ],
-      "notes": "PR checks fetch details with loading and metadata fallback; activity supports Add all while skipping resolved threads and now uses the frozen PR-scoped collapse/expand state machine including nested defaults and restoration across PR switches. Compact ghost actions are golden-covered; the full pane remains partial pending exact activity action menus and remaining forge/platform states."
+      "notes": "PR checks fetch details with loading and metadata fallback; activity supports Add all while skipping resolved threads and uses the frozen PR-scoped collapse/expand state machine including nested defaults and restoration across PR switches. Activity, review, and comment kebabs now expose the frozen Add to chat, Copy, and brand-specific Open actions in exact 200px menus, while thread kebabs expose only brand-specific Open; native-visible triggers, accessibility labels, clipboard output, attachment deduplication, external launch, and compact geometry are test- and golden-covered. The full pane remains partial pending remaining forge/platform states."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/query-keys.ts",

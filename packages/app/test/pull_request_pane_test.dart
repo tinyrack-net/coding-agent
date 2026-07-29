@@ -13,6 +13,7 @@ import 'package:coding_agent_app/widgets/pull_request_tab.dart';
 import 'package:coding_agent_app/widgets/workspace_explorer.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _cwd = '/repo/worktree';
@@ -964,14 +965,106 @@ void main() {
 
     await tester.tap(find.text('View'));
     await tester.tap(find.text('Flutter tests'));
-    await tester.tap(find.byKey(const ValueKey('open-activity-review-1')));
-    await tester.pump(const Duration(milliseconds: 150));
+    await tester.tap(find.byKey(const ValueKey('activity-actions-review-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('activity-action-open-review-1')),
+    );
+    await tester.pumpAndSettle();
 
     expect(launcher.opened, [
       'https://example.test/pr/42',
       'https://example.test/check/1',
       'https://example.test/review/1',
     ]);
+  });
+
+  testWidgets('activity menu matches Paseo add, copy, and forge-open actions', (
+    tester,
+  ) async {
+    String? copiedText;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copiedText =
+                (call.arguments as Map<Object?, Object?>)['text'] as String?;
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    final container = await _pumpExplorer(tester, _FakeDaemonClient());
+    await _tapPullRequestTab(tester);
+    await tester.pump(const Duration(milliseconds: 150));
+
+    await tester.tap(find.byKey(const ValueKey('activity-actions-review-1')));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(MenuFlyout)).width, 200);
+    expect(
+      find.byKey(const ValueKey('activity-action-add-review-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('activity-action-copy-review-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('activity-action-open-review-1')),
+      findsOneWidget,
+    );
+    expect(find.text('Open on GitHub'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('activity-action-copy-review-1')),
+    );
+    await tester.pumpAndSettle();
+    expect(copiedText, 'Looks good to me.');
+
+    await tester.tap(find.byKey(const ValueKey('activity-actions-review-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('activity-action-add-review-1')),
+    );
+    await tester.pumpAndSettle();
+    expect(container.read(workspaceAttachmentsProvider(_cwd)), hasLength(1));
+  });
+
+  testWidgets('thread menu only opens the thread on the active forge', (
+    tester,
+  ) async {
+    final launcher = _FakeExternalUrlLauncher();
+    await _pumpExplorer(
+      tester,
+      _FakeDaemonClient(timelineMode: 'edge', forge: 'gitlab'),
+      launcher: launcher,
+    );
+    await _tapPullRequestTab(tester);
+    await tester.pump(const Duration(milliseconds: 150));
+    const threadId = 'thread:PRRT_1';
+    final trigger = find.byKey(const ValueKey('thread-actions-$threadId'));
+    await tester.scrollUntilVisible(
+      trigger,
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(trigger);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('thread-action-open-$threadId')),
+      findsOneWidget,
+    );
+    expect(find.text('Open on GitLab'), findsOneWidget);
+    expect(find.text('Copy'), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey('thread-action-open-$threadId')),
+    );
+    await tester.pumpAndSettle();
+    expect(launcher.opened, ['https://example.test/comment/2']);
   });
 
   testWidgets('Add to chat publishes a deduplicated composer attachment', (
