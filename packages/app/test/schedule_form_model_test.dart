@@ -3,6 +3,76 @@ import 'package:coding_agent_app/state/schedule_form_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('readiness follows frozen progressive disclosure and submit gate', () {
+    ScheduleFormReadiness resolve({
+      bool agentTarget = false,
+      bool editing = false,
+      bool submitting = false,
+      String? serverId,
+      String prompt = '',
+      String cwd = '',
+      bool hasMatchedProject = false,
+      bool providerSelectionValid = false,
+      String cron = '0 * * * *',
+    }) => resolveScheduleFormReadiness(
+      agentTarget: agentTarget,
+      editing: editing,
+      submitting: submitting,
+      serverId: serverId,
+      prompt: prompt,
+      cwd: cwd,
+      hasMatchedProject: hasMatchedProject,
+      providerSelectionValid: providerSelectionValid,
+      cronExpression: cron,
+    );
+
+    final noHost = resolve();
+    expect(noHost.showProject, isFalse);
+    expect(noHost.showModel, isFalse);
+    expect(noHost.canSubmit, isFalse);
+
+    final host = resolve(serverId: 'server-a');
+    expect(host.showProject, isTrue);
+    expect(host.showModel, isFalse);
+
+    final ready = resolve(
+      serverId: 'server-a',
+      prompt: 'Run tests',
+      cwd: 'C:/repo',
+      hasMatchedProject: true,
+      providerSelectionValid: true,
+    );
+    expect(ready.showModel, isTrue);
+    expect(ready.canSubmit, isTrue);
+    expect(
+      resolve(
+        editing: true,
+        serverId: 'server-a',
+        prompt: 'Run tests',
+        cwd: 'C:/stored',
+        providerSelectionValid: true,
+      ).canSubmit,
+      isTrue,
+    );
+    expect(
+      resolve(agentTarget: true, editing: true, cron: 'invalid').canSubmit,
+      isFalse,
+    );
+    expect(
+      resolve(agentTarget: true, editing: true, submitting: true).canSubmit,
+      isFalse,
+    );
+  });
+
+  test('max runs uses frozen parseInt semantics', () {
+    expect(parseScheduleMaxRuns('2'), 2);
+    expect(parseScheduleMaxRuns(' 2 runs'), 2);
+    expect(parseScheduleMaxRuns('0'), isNull);
+    expect(parseScheduleMaxRuns('-2'), isNull);
+    expect(parseScheduleMaxRuns('runs 2'), isNull);
+    expect(parseScheduleMaxRuns(''), isNull);
+  });
+
   test('workspace lifecycle follows host and project capabilities', () {
     final git = resolveScheduleWorkspaceLifecycle(
       supportsWorkspaceMultiplicity: true,

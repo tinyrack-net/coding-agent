@@ -2,6 +2,59 @@ import 'package:agent_protocol/agent_protocol.dart';
 
 const customCronPresetId = 'custom';
 
+final class ScheduleFormReadiness {
+  const ScheduleFormReadiness({
+    required this.showProject,
+    required this.showModel,
+    required this.canSubmit,
+  });
+
+  final bool showProject;
+  final bool showModel;
+  final bool canSubmit;
+}
+
+ScheduleFormReadiness resolveScheduleFormReadiness({
+  required bool agentTarget,
+  required bool editing,
+  required bool submitting,
+  required String? serverId,
+  required String prompt,
+  required String cwd,
+  required bool hasMatchedProject,
+  required bool providerSelectionValid,
+  required String cronExpression,
+}) {
+  final hasServer = serverId?.trim().isNotEmpty == true;
+  final hasProject = cwd.trim().isNotEmpty;
+  final cadenceValid = validateScheduleCron(cronExpression) == null;
+  if (agentTarget) {
+    return ScheduleFormReadiness(
+      showProject: false,
+      showModel: false,
+      canSubmit: cadenceValid && !submitting,
+    );
+  }
+  return ScheduleFormReadiness(
+    showProject: editing || hasServer,
+    showModel: hasProject,
+    canSubmit:
+        !submitting &&
+        cadenceValid &&
+        prompt.trim().isNotEmpty &&
+        hasProject &&
+        (editing || hasMatchedProject) &&
+        providerSelectionValid,
+  );
+}
+
+int? parseScheduleMaxRuns(String raw) {
+  final match = RegExp(r'^[+-]?\d+').firstMatch(raw.trim());
+  if (match == null) return null;
+  final parsed = int.tryParse(match.group(0)!);
+  return parsed != null && parsed > 0 ? parsed : null;
+}
+
 final class ScheduleWorkspaceLifecycle {
   const ScheduleWorkspaceLifecycle({
     required this.showIsolation,

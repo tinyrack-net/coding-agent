@@ -3277,7 +3277,7 @@
       "evidence": [
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": null
+      "notes": "The form now uses frozen host-project-model progressive disclosure, leaves multi-host create unselected until the user chooses a host, disables submit until the derived state and cadence are valid, and uses JavaScript parseInt-compatible maxRuns normalization. Remaining sheet parity includes the exact single combined model trigger and adaptive modal geometry."
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/schedule-row.tsx",
@@ -6578,7 +6578,7 @@
         "packages/app/test/schedule_form_model_test.dart",
         "packages/app/test/schedules_screen_test.dart"
       ],
-      "notes": "Provider/model/mode/thinking selection resolves only ready enabled providers from the selected host and project snapshot, resets incompatible values on scope or model changes, and submits the resolved option ids. Agent-target edit state exposes only the frozen read-only target and cadence. Workspace lifecycle disclosure and payload omission follow workspaceMultiplicity and Git-project capabilities. Create preferences initialize and persist without overriding edit values. Remaining form-model parity includes the exact pending provider-resolution state and derived canSubmit/disclosure transitions."
+      "notes": "Provider/model/mode/thinking selection resolves enabled providers from the selected host/project snapshot, resets incompatible values on scope or model changes, and submits resolved option ids. Agent-target edit, workspace lifecycle disclosure, create preferences, progressive field disclosure, parseInt maxRuns normalization, and derived canSubmit state match the frozen model. Remaining parity is the exact pending provider-resolution behavior while a preferred provider is still loading."
     },
     {
       "id": "source-unit:packages/app/src/schedules/schedule-project-targets.ts",

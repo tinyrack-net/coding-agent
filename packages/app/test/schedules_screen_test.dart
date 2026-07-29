@@ -29,8 +29,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Prompt'), findsOneWidget);
     expect(find.text('Cadence'), findsOneWidget);
+    expect(find.text('Project'), findsOneWidget);
+    expect(find.text('Model'), findsNothing);
     expect(find.text('Isolation'), findsNothing);
     expect(find.text('Archive on finish'), findsNothing);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey('schedule-form-submit')),
+          )
+          .onPressed,
+      isNull,
+    );
   });
 
   testWidgets('active and ended filters partition schedule rows', (
@@ -127,9 +137,14 @@ void main() {
     await tester.tap(find.text('New schedule').last);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Create schedule'));
-    await tester.pumpAndSettle();
-    expect(find.text('Prompt is required.'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey('schedule-form-submit')),
+          )
+          .onPressed,
+      isNull,
+    );
 
     final fields = find.byType(TextBox);
     await tester.enterText(fields.at(1), 'Run tests');
@@ -157,7 +172,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Medium').last);
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextBox).at(3), '2');
+    await tester.enterText(find.byType(TextBox).at(3), '2 runs');
     await tester.tap(find.text('Create schedule'));
     await tester.pumpAndSettle();
 
@@ -627,6 +642,8 @@ void main() {
     await tester.tap(find.text('New schedule'));
     await tester.pumpAndSettle();
     expect(find.text('Host'), findsOneWidget);
+    expect(find.text('Project'), findsNothing);
+    expect(find.text('Model'), findsNothing);
     await tester.tap(find.byType(ComboBox<String>).first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Remote').last);

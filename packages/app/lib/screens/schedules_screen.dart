@@ -606,10 +606,9 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     _thinkingOptionId = config?.thinkingOptionId;
     _cwd = TextEditingController(text: config?.cwd ?? '');
     _maxRuns = TextEditingController(text: schedule?.maxRuns?.toString() ?? '');
+    final hosts = ref.read(hostRegistryProvider).hosts;
     _serverId =
-        widget.serverId ??
-        ref.read(activeHostProvider)?.serverId ??
-        ref.read(hostRegistryProvider).hosts.firstOrNull?.serverId;
+        widget.serverId ?? (hosts.length == 1 ? hosts.first.serverId : null);
     _isolation = config?.isolation ?? 'local';
     _archiveOnFinish = config?.archiveOnFinish ?? true;
     _preferencesService =
@@ -719,6 +718,17 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
           ? null
           : providerSelection.thinkingOptionId;
     }
+    final readiness = resolveScheduleFormReadiness(
+      agentTarget: agentTarget,
+      editing: editing,
+      submitting: _submitting,
+      serverId: _serverId,
+      prompt: _prompt.text,
+      cwd: _cwd.text,
+      hasMatchedProject: selectedProject != null,
+      providerSelectionValid: providerSelection.isAvailable,
+      cronExpression: _cron.text,
+    );
     return ContentDialog(
       constraints: const BoxConstraints(maxWidth: 560),
       title: Text(
@@ -764,14 +774,16 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
                   _prompt,
                   placeholder: 'What should the agent do each run?',
                   maxLines: 4,
+                  onChanged: (_) => setState(() {}),
                 ),
-                _projectSelector(projectTargets),
-                _providerEditor(
-                  snapshot: snapshot,
-                  scope: snapshotScope,
-                  selection: providerSelection,
-                  hasClient: client != null,
-                ),
+                if (readiness.showProject) _projectSelector(projectTargets),
+                if (readiness.showModel)
+                  _providerEditor(
+                    snapshot: snapshot,
+                    scope: snapshotScope,
+                    selection: providerSelection,
+                    hasClient: client != null,
+                  ),
                 if (workspaceLifecycle.showIsolation) ...[
                   const SizedBox(height: 12),
                   const Text('Isolation'),
@@ -823,7 +835,8 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _submitting ? null : _submit,
+          key: const ValueKey('schedule-form-submit'),
+          onPressed: readiness.canSubmit ? _submit : null,
           child: Text(editing ? 'Save changes' : 'Create schedule'),
         ),
       ],
@@ -869,6 +882,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     String? placeholder,
     String? helper,
     int maxLines = 1,
+    ValueChanged<String>? onChanged,
   }) => Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: Column(
@@ -880,6 +894,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
           controller: controller,
           placeholder: placeholder,
           maxLines: maxLines,
+          onChanged: onChanged,
         ),
         if (helper != null) ...[
           const SizedBox(height: 4),
@@ -1195,9 +1210,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     final cron = _cron.text.trim();
     final provider = _provider?.trim() ?? '';
     final cwd = _cwd.text.trim();
-    final maxRuns = _maxRuns.text.trim().isEmpty
-        ? null
-        : int.tryParse(_maxRuns.text.trim());
+    final maxRuns = parseScheduleMaxRuns(_maxRuns.text);
     final cronError = validateScheduleCron(cron);
     final agentTarget = widget.schedule?.target is AgentScheduleTarget;
     if (!agentTarget && prompt.isEmpty) {
@@ -1210,12 +1223,6 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
     }
     if (!agentTarget && (provider.isEmpty || cwd.isEmpty)) {
       setState(() => _error = 'Provider and project are required.');
-      return;
-    }
-    if (!agentTarget &&
-        _maxRuns.text.trim().isNotEmpty &&
-        (maxRuns == null || maxRuns <= 0)) {
-      setState(() => _error = 'Max runs must be a positive integer.');
       return;
     }
     final serverId = _serverId;
