@@ -80,6 +80,7 @@ $packages = [ordered]@{
         Core = @(
             'test/daemon_v2_workspace_e2e_test.dart'
             'test/daemon_project_conversation_vertical_e2e_test.dart'
+            'test/daemon_workspace_directory_subscription_e2e_test.dart'
             'test/daemon_agent_run_e2e_test.dart'
             'test/daemon_agent_send_e2e_test.dart'
         )
@@ -107,6 +108,8 @@ $packages = [ordered]@{
             'test/agents_provider_test.dart'
             'test/draft_session_composer_test.dart'
             'test/agent_chat_screen_test.dart'
+            'test/app_router_test.dart'
+            'test/host_index_route_screen_test.dart'
             'test/worktree_tabbed_pane_test.dart'
         )
     }

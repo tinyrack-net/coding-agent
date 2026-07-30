@@ -264,9 +264,6 @@ filterKeyboardShortcutHelp(
   Map<String, String> overrideValues = const {},
 }) {
   final normalized = query.trim().toLowerCase();
-  final aliases = isMac
-      ? const ['command', 'cmd', 'option', 'alt']
-      : const ['ctrl', 'control', 'win', 'windows'];
   final result = <KeyboardShortcutSection, List<KeyboardShortcutHelpRow>>{};
   for (final section in KeyboardShortcutSection.values) {
     final sectionMatches = section.title.toLowerCase().contains(normalized);
@@ -280,14 +277,34 @@ filterKeyboardShortcutHelp(
         row.keys.join(' '),
         row.keys.join('+'),
         keys,
+        _shortcutSearchAliases(row.keys, isMac: isMac),
         overrideValues[row.id] ?? '',
-        ...aliases,
       ].join(' ').toLowerCase();
       return haystack.contains(normalized);
     }).toList();
     if (rows.isNotEmpty) result[section] = rows;
   }
   return result;
+}
+
+String _shortcutSearchAliases(List<String> keys, {required bool isMac}) {
+  var combinations = <List<String>>[const []];
+  for (final key in keys) {
+    final choices = switch ((isMac, key)) {
+      (true, 'mod') || (true, 'meta') => const ['cmd', 'command'],
+      (true, 'alt') => const ['alt', 'option'],
+      (false, 'mod') || (false, 'ctrl') => const ['ctrl', 'control'],
+      (false, 'meta') => const ['win', 'windows'],
+      _ => [key],
+    };
+    combinations = [
+      for (final prefix in combinations)
+        for (final choice in choices) [...prefix, choice],
+    ];
+  }
+  return combinations
+      .expand((combination) => [combination.join(' '), combination.join('+')])
+      .join(' ');
 }
 
 String formatShortcutKeys(List<String> keys, {required bool isMac}) {

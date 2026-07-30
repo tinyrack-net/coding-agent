@@ -1192,13 +1192,14 @@ void main() {
           broadcast: (message, ids) => broadcasts.add((message, ids)),
         );
 
-        await service.handle(
+        await _subscribe(
+          service,
           connection,
           const FetchWorkspacesRequest(
             requestId: 'git',
             hasSubscription: true,
             subscriptionId: 'git-subscription',
-          ).toJson(),
+          ),
         );
         await backend.refreshNow(projectDirectory.path);
         await _waitFor(
@@ -1621,13 +1622,14 @@ void main() {
         await registries.projects.upsert(project());
         await registries.workspaces.upsert(workspace(id: 'wks_1'));
         agents = [agent('a1', 'wks_1', AgentRunState.running)];
-        await service.handle(
+        await _subscribe(
+          service,
           connection,
           const FetchWorkspacesRequest(
             requestId: 'subscribe',
             subscriptionId: 'sub',
             hasSubscription: true,
-          ).toJson(),
+          ),
         );
         broadcasts.clear();
 
@@ -1662,13 +1664,14 @@ void main() {
             ),
           ),
         ];
-        await service.handle(
+        await _subscribe(
+          service,
           connection,
           const FetchWorkspacesRequest(
             requestId: 'subscribe-terminal',
             subscriptionId: 'sub-terminal',
             hasSubscription: true,
-          ).toJson(),
+          ),
         );
         broadcasts.clear();
 
@@ -1763,13 +1766,14 @@ void main() {
     );
 
     test('subscribers receive workspace and project updates', () async {
-      await service.handle(
+      await _subscribe(
+        service,
         connection,
         const FetchWorkspacesRequest(
           requestId: 'sub',
           hasSubscription: true,
           subscriptionId: 'subscription',
-        ).toJson(),
+        ),
       );
       await registries.projects.upsert(project());
       await registries.workspaces.upsert(workspace());
@@ -1789,6 +1793,36 @@ void main() {
       service.onConnectionClosed('connection-1');
       await registries.projects.remove('prj_empty');
       expect(broadcasts, hasLength(beforeClose));
+    });
+
+    test('subscription buffers mutations until its snapshot is sent', () async {
+      final response = FetchWorkspacesResponse.fromJson(
+        (await service.handle(
+          connection,
+          const FetchWorkspacesRequest(
+            requestId: 'bootstrap',
+            hasSubscription: true,
+            subscriptionId: 'bootstrap-epoch',
+          ).toJson(),
+        ))!,
+      );
+
+      await registries.projects.upsert(project());
+      await registries.workspaces.upsert(workspace());
+      expect(broadcasts, isEmpty);
+
+      service.afterFetchResponseSent(connection.id, response.subscriptionId!);
+
+      expect(broadcasts.map((entry) => entry.$1['type']), [
+        'project.update',
+        'workspace_update',
+      ]);
+      expect(
+        broadcasts.every(
+          (entry) => entry.$2.length == 1 && entry.$2.contains('connection-1'),
+        ),
+        isTrue,
+      );
     });
 
     test('unknown messages fall through to the v1 adapter', () async {
@@ -1860,12 +1894,10 @@ void main() {
     test(
       'project.rename trims, clears, and refreshes child descriptors',
       () async {
-        await service.handle(
+        await _subscribe(
+          service,
           connection,
-          const FetchWorkspacesRequest(
-            requestId: 'sub',
-            hasSubscription: true,
-          ).toJson(),
+          const FetchWorkspacesRequest(requestId: 'sub', hasSubscription: true),
         );
         await registries.projects.upsert(project());
         await registries.workspaces.upsert(workspace());
@@ -1928,12 +1960,10 @@ void main() {
     test(
       'project.remove archives active children and removes project',
       () async {
-        await service.handle(
+        await _subscribe(
+          service,
           connection,
-          const FetchWorkspacesRequest(
-            requestId: 'sub',
-            hasSubscription: true,
-          ).toJson(),
+          const FetchWorkspacesRequest(requestId: 'sub', hasSubscription: true),
         );
         await registries.projects.upsert(project());
         await registries.workspaces.upsert(workspace(id: 'wks_1'));
@@ -2435,6 +2465,21 @@ Future<void> _runGit(String cwd, List<String> args) async {
   if (result.exitCode != 0) {
     throw StateError('git ${args.join(' ')} failed: ${result.stderr}');
   }
+}
+
+Future<Map<String, Object?>> _subscribe(
+  WorkspaceV2Service service,
+  Connection connection,
+  FetchWorkspacesRequest request,
+) async {
+  final response = (await service.handle(connection, request.toJson()))!;
+  final subscriptionId = FetchWorkspacesResponse.fromJson(
+    response,
+  ).subscriptionId;
+  if (subscriptionId != null) {
+    service.afterFetchResponseSent(connection.id, subscriptionId);
+  }
+  return response;
 }
 
 Future<void> _waitFor(bool Function() predicate) async {

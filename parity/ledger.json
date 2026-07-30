@@ -11,24 +11,31 @@
     },
     {
       "id": "app-route:/h/[serverid]-1",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/screens/host_index_route_screen.dart; packages/app/lib/state/last_workspace_route_selection.dart",
+      "evidence": [
+        "packages/app/test/app_router_test.dart",
+        "packages/app/test/host_index_route_screen_test.dart"
+      ],
+      "notes": "Waits for host and persisted-selection hydration, restores a same-host workspace while the catalog is unknown or confirms it exists, and falls back only after a hydrated catalog proves it missing. Workspace routes persist the opaque host/workspace selection for cold restore."
     },
     {
       "id": "app-route:/h/[serverid]/agent/[agentid]",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/screens/host_agent_route_screen.dart; packages/app/lib/core/host_routes.dart",
+      "evidence": [
+        "packages/app/test/app_router_test.dart"
+      ],
+      "notes": "Custom-scheme cold starts select the host, fetch the authoritative agent workspace, preserve encoded identifiers, and redirect through the workspace open intent with lookup retry/back recovery. Remaining parity is the cached-agent fast path and the frozen offline manage-host recovery presentation."
     },
     {
       "id": "app-route:/h/[serverid]/open-project",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/screens/host_open_project_route_screen.dart",
+      "evidence": [
+        "packages/app/test/app_router_test.dart"
+      ],
+      "notes": "The host-scoped compatibility route waits for host-registry hydration and then replaces itself with the canonical global open-project route."
     },
     {
       "id": "app-route:/h/[serverid]/sessions",
@@ -1397,9 +1404,11 @@
         "packages/app/test/workspace_providers_test.dart",
         "packages/app/test/worktree_tabbed_pane_test.dart",
         "packages/daemon/test/daemon_v2_workspace_e2e_test.dart",
-        "packages/daemon/test/daemon_project_conversation_vertical_e2e_test.dart"
+        "packages/daemon/test/daemon_project_conversation_vertical_e2e_test.dart",
+        "packages/daemon/test/daemon_workspace_directory_subscription_e2e_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart"
       ],
-      "notes": "Project/workspace replicas and agent directory hydration now preserve local project and agent creation across stale in-flight snapshots; deterministic vertical tests cover project registration through the first streamed conversation. Remaining parity includes the frozen release's complete subscription filtering, archived/history synchronization, and all multi-host efficiency behavior."
+      "notes": "Project/workspace replicas and agent directory hydration preserve local creation across stale snapshots. Workspace subscriptions now use replaceable connection-local epochs, apply query/project/id-prefix filters to snapshots and live mutations, buffer bootstrap races until the response frame is sent, and retain only visible removals. Remaining parity includes archived/history synchronization and the frozen multi-host efficiency behavior."
     },
     {
       "id": "release-feature:018-cli-and-mcp-tools-manage-workspaces-agents-and-schedules-more-consistently",
@@ -1478,10 +1487,12 @@
     },
     {
       "id": "release-feature:028-agent-history-errors-now-appear-immediately-instead-of-after-a-timeout",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/timeline_provider.dart; packages/app/lib/screens/agent_chat_screen.dart",
+      "evidence": [
+        "packages/app/test/agent_chat_screen_test.dart"
+      ],
+      "notes": "A cold authoritative-history failure immediately replaces the whole conversation body with retry recovery and keeps the composer blocked; retry remains blocked until a successful page arrives. A hydrated catch-up failure retains the conversation and composer with a sync-error callout. Real daemon error-timing conformance and the complete reconnect/catch-up state machine remain."
     },
     {
       "id": "release-feature:029-terminal-pairing-qr-codes-remain-scannable-in-narrow-terminals",
@@ -2020,24 +2031,31 @@
     },
     {
       "id": "source-unit:packages/app/src/app/h/[serverid]/agent/[agentid].tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/screens/host_agent_route_screen.dart; packages/app/lib/core/host_routes.dart",
+      "evidence": [
+        "packages/app/test/app_router_test.dart"
+      ],
+      "notes": "Host bootstrap, authoritative lookup, workspace open intent, encoded deep-link identifiers, missing-agent fallback, and lookup retry/back are implemented. Cached-agent immediate resolution and exact offline recovery controls remain."
     },
     {
       "id": "source-unit:packages/app/src/app/h/[serverid]/index.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/screens/host_index_route_screen.dart; packages/app/lib/state/last_workspace_route_selection.dart",
+      "evidence": [
+        "packages/app/test/app_router_test.dart",
+        "packages/app/test/host_index_route_screen_test.dart"
+      ],
+      "notes": "Matches the frozen last-workspace selection hydration, same-host validation, unknown/exists restore, hydrated-missing fallback, and cold persisted restore behavior."
     },
     {
       "id": "source-unit:packages/app/src/app/h/[serverid]/open-project.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/screens/host_open_project_route_screen.dart",
+      "evidence": [
+        "packages/app/test/app_router_test.dart"
+      ],
+      "notes": "Matches the frozen host-boundary bootstrap followed by replacement with the global open-project route."
     },
     {
       "id": "source-unit:packages/app/src/app/h/[serverid]/sessions.tsx",
@@ -5835,17 +5853,21 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-agent-initialization.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/timeline_provider.dart; packages/app/lib/screens/agent_chat_screen.dart",
+      "evidence": [
+        "packages/app/test/agent_chat_screen_test.dart"
+      ],
+      "notes": "Initial authoritative timeline loading, immediate blocking failure, retry, and hydrated-history retention are implemented. Full visibility catch-up policy and provider/connection initialization overlap remain."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-agent-screen-state-machine.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/timeline_provider.dart; packages/app/lib/screens/agent_chat_screen.dart",
+      "evidence": [
+        "packages/app/test/agent_chat_screen_test.dart"
+      ],
+      "notes": "Cold loading/error and retained ready sync-error states match the frozen behavior. Route-scoped stale-agent memory, persistent reconnect toast, and silent-versus-overlay catch-up policy remain."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-aggregated-agents.ts",

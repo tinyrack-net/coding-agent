@@ -42,8 +42,30 @@ void main() {
   });
 
   test('supports platform modifier aliases', () {
-    expect(filterKeyboardShortcutHelp('command', isMac: true), isNotEmpty);
-    expect(filterKeyboardShortcutHelp('control', isMac: false), isNotEmpty);
+    Iterable<String> matchingIds(String query, {required bool isMac}) =>
+        filterKeyboardShortcutHelp(
+          query,
+          isMac: isMac,
+        ).values.expand((rows) => rows).map((row) => row.id);
+
+    expect(matchingIds('command+n', isMac: true), contains('new-workspace'));
+    expect(matchingIds('cmd n', isMac: true), contains('new-workspace'));
+    expect(
+      matchingIds('option shift [', isMac: true),
+      contains('workspace-tab-prev'),
+    );
+    expect(
+      matchingIds('control+k', isMac: false),
+      contains('toggle-command-center'),
+    );
+    expect(
+      matchingIds('command+n', isMac: true),
+      isNot(contains('toggle-command-center')),
+    );
+    expect(
+      matchingIds('control+k', isMac: false),
+      isNot(contains('new-workspace')),
+    );
   });
 
   test('search includes customized shortcut values', () {

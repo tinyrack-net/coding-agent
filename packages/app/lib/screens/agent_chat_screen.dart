@@ -466,6 +466,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
         ..._chatChildren(
           context,
           projectedRows,
+          timeline,
           timeline.loading,
           timeline.loadingOlder,
         ),
@@ -476,15 +477,32 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
   List<Widget> _chatChildren(
     BuildContext context,
     List<_ProjectedTimelineRow> rows,
+    TimelineState timeline,
     bool loading,
     bool loadingOlder,
   ) {
     final count = rows.length;
+    final isColdOpenFailure =
+        timeline.error != null && timeline.epoch == null && count == 0;
+    final hasRetainedHistory = timeline.epoch != null || count > 0;
+    if (isColdOpenFailure) {
+      return [
+        Expanded(
+          child: _TimelineColdOpenFailure(
+            message: timeline.error!,
+            onRetry: () => unawaited(
+              ref.read(timelineProvider(widget.agentId).notifier).retry(),
+            ),
+          ),
+        ),
+      ];
+    }
+    if (loading && count == 0) {
+      return const [Expanded(child: Center(child: ProgressRing()))];
+    }
     return [
       Expanded(
-        child: loading && count == 0
-            ? const Center(child: ProgressRing())
-            : count == 0
+        child: count == 0
             ? Center(
                 child: Text(
                   'No messages yet. Say something below.',
@@ -539,6 +557,14 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
             ),
           ),
         ),
+      if (hasRetainedHistory && timeline.error != null)
+        const Padding(
+          padding: EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: InfoBar(
+            title: Text('Timeline sync failed'),
+            severity: InfoBarSeverity.error,
+          ),
+        ),
       const Divider(),
       Composer(
         agentId: widget.agentId,
@@ -553,6 +579,32 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
       ),
     ];
   }
+}
+
+class _TimelineColdOpenFailure extends StatelessWidget {
+  const _TimelineColdOpenFailure({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: InfoBar(
+          title: const Text('Failed to load conversation'),
+          content: Text(message),
+          severity: InfoBarSeverity.error,
+          action: Button(onPressed: onRetry, child: const Text('Retry')),
+        ),
+      ),
+    ),
+  );
 }
 
 final class _ProjectedTimelineRow {

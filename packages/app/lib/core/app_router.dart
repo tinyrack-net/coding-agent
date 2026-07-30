@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'host_routes.dart';
 import '../screens/home_shell.dart';
 import '../screens/host_agent_route_screen.dart';
+import '../screens/host_index_route_screen.dart';
+import '../screens/host_open_project_route_screen.dart';
 import '../screens/host_workspace_route_screen.dart';
 import '../screens/host_settings_route_screen.dart';
 import '../screens/new_workspace_screen.dart';
@@ -13,10 +15,12 @@ import '../screens/sessions_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/settings_shell.dart';
 import '../screens/status_screen.dart';
+import '../state/last_workspace_route_selection.dart';
 
 GoRouter buildAppRouter({String initialLocation = '/'}) {
+  final deepLinkRoute = routeFromCodingAgentDeepLink(initialLocation);
   return GoRouter(
-    initialLocation: initialLocation,
+    initialLocation: deepLinkRoute ?? initialLocation,
     routes: [
       ShellRoute(
         builder: (context, state, child) =>
@@ -24,11 +28,21 @@ GoRouter buildAppRouter({String initialLocation = '/'}) {
         routes: [
           GoRoute(path: '/', builder: (context, state) => const HomeChatPane()),
           GoRoute(
+            path: '/h/:serverId',
+            builder: (context, state) => HostIndexRouteScreen(
+              serverId: state.pathParameters['serverId']!,
+            ),
+          ),
+          GoRoute(
             path: '/h/:serverId/agent/:agentId',
             builder: (context, state) => HostAgentRouteScreen(
               serverId: state.pathParameters['serverId']!,
               agentId: state.pathParameters['agentId']!,
             ),
+          ),
+          GoRoute(
+            path: '/h/:serverId/open-project',
+            builder: (context, state) => const HostOpenProjectRouteScreen(),
           ),
           GoRoute(
             path: '/h/:serverId/workspace/:workspaceId',
@@ -39,21 +53,23 @@ GoRouter buildAppRouter({String initialLocation = '/'}) {
               if (workspaceId == null) {
                 return const HomeChatPane();
               }
-              return HostWorkspaceRouteScreen(
-                serverId: state.pathParameters['serverId']!,
+              final serverId = state.pathParameters['serverId']!;
+              return LastWorkspaceRouteSelectionRecorder(
+                serverId: serverId,
                 workspaceId: workspaceId,
-                openIntent: parseWorkspaceOpenIntent(
-                  state.uri.queryParameters['open'],
+                child: HostWorkspaceRouteScreen(
+                  serverId: serverId,
+                  workspaceId: workspaceId,
+                  openIntent: parseWorkspaceOpenIntent(
+                    state.uri.queryParameters['open'],
+                  ),
+                  onOpenIntentConsumed:
+                      state.uri.queryParameters.containsKey('open')
+                      ? () => context.replace(
+                          buildHostWorkspaceRoute(serverId, workspaceId),
+                        )
+                      : null,
                 ),
-                onOpenIntentConsumed:
-                    state.uri.queryParameters.containsKey('open')
-                    ? () => context.replace(
-                        buildHostWorkspaceRoute(
-                          state.pathParameters['serverId']!,
-                          workspaceId,
-                        ),
-                      )
-                    : null,
               );
             },
           ),

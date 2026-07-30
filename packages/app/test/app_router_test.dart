@@ -5,6 +5,7 @@ import 'package:coding_agent_app/core/host_routes.dart';
 import 'package:coding_agent_app/state/daemon_lifecycle_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/host_registry_provider.dart';
+import 'package:coding_agent_app/state/last_workspace_route_selection.dart';
 import 'package:coding_agent_app/state/workspace_catalog_provider.dart';
 import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
 import 'package:fluent_ui/fluent_ui.dart';
@@ -57,6 +58,19 @@ void main() {
       router.routeInformationProvider.value.uri.toString(),
       '/h/server-a/workspace/workspace-1',
     );
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      parseLastWorkspaceRouteSelection(
+        preferences.getString(lastWorkspaceRouteSelectionStorageKey),
+      ),
+      isA<HostWorkspaceRoute>()
+          .having((selection) => selection.serverId, 'serverId', 'server-a')
+          .having(
+            (selection) => selection.workspaceId,
+            'workspaceId',
+            'workspace-1',
+          ),
+    );
     final provider = worktreeTabsProvider(r'C:\repo\worktree');
     expect(
       container
@@ -89,7 +103,9 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final client = _RouterDaemonClient();
     addTearDown(client.dispose);
-    final router = buildAppRouter(initialLocation: '/h/server-a/agent/agent-1');
+    final router = buildAppRouter(
+      initialLocation: 'coding-agent://h/server-a/agent/agent-1',
+    );
     addTearDown(router.dispose);
 
     await tester.pumpWidget(
@@ -116,11 +132,138 @@ void main() {
       '/h/server-a/workspace/workspace-1',
     );
   });
+
+  testWidgets(
+    'host-scoped open-project deep link waits for registry then canonicalizes',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final client = _RouterDaemonClient();
+      addTearDown(client.dispose);
+      final router = buildAppRouter(
+        initialLocation: 'coding-agent://h/server-a/open-project',
+      );
+      addTearDown(router.dispose);
+      late ProviderContainer container;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            hostRegistryProvider.overrideWith(_DeferredRegistry.new),
+            daemonClientProvider.overrideWithValue(client),
+            connectionStateProvider.overrideWith(
+              (ref) => Stream.value(DaemonConnectionState.connected),
+            ),
+            desktopShellProvider.overrideWithValue(false),
+          ],
+          child: Builder(
+            builder: (context) {
+              container = ProviderScope.containerOf(context);
+              return FluentApp.router(routerConfig: router);
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey('host-open-project-loading')),
+        findsOneWidget,
+      );
+      expect(
+        router.routeInformationProvider.value.uri.toString(),
+        '/h/server-a/open-project',
+      );
+
+      (container.read(hostRegistryProvider.notifier) as _DeferredRegistry)
+          .completeLoading();
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        router.routeInformationProvider.value.uri.toString(),
+        '/open-project',
+      );
+    },
+  );
+
+  testWidgets(
+    'agent without a workspace falls back through host open-project',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final client = _RouterDaemonClient(workspaceId: null);
+      addTearDown(client.dispose);
+      final router = buildAppRouter(
+        initialLocation: '/h/server-a/agent/agent-1',
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            hostRegistryProvider.overrideWith(_ActiveRegistry.new),
+            daemonClientProvider.overrideWithValue(client),
+            connectionStateProvider.overrideWith(
+              (ref) => Stream.value(DaemonConnectionState.connected),
+            ),
+            desktopShellProvider.overrideWithValue(false),
+          ],
+          child: FluentApp.router(routerConfig: router),
+        ),
+      );
+      for (var index = 0; index < 10; index++) {
+        await tester.pump(const Duration(milliseconds: 5));
+      }
+
+      expect(
+        router.routeInformationProvider.value.uri.toString(),
+        '/open-project',
+      );
+    },
+  );
+
+  testWidgets('encoded host and agent IDs survive a custom-scheme cold start', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final client = _RouterDaemonClient();
+    addTearDown(client.dispose);
+    final router = buildAppRouter(
+      initialLocation: 'coding-agent://h/server%2Fmain/agent/agent%20one',
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          hostRegistryProvider.overrideWith(_EncodedActiveRegistry.new),
+          daemonClientProvider.overrideWithValue(client),
+          connectionStateProvider.overrideWith(
+            (ref) => Stream.value(DaemonConnectionState.connected),
+          ),
+          desktopShellProvider.overrideWithValue(false),
+          worktreeTabLayoutsHydratedProvider.overrideWith(_HydratedLayouts.new),
+          workspaceCatalogProvider.overrideWithValue(AsyncData([_workspace()])),
+        ],
+        child: FluentApp.router(routerConfig: router),
+      ),
+    );
+    for (var index = 0; index < 12; index++) {
+      await tester.pump(const Duration(milliseconds: 5));
+    }
+
+    expect(
+      router.routeInformationProvider.value.uri.toString(),
+      '/h/server%2Fmain/workspace/workspace-1',
+    );
+  });
 }
 
 final class _RouterDaemonClient extends DaemonClient
     with LegacyAgentListFetchMixin {
-  _RouterDaemonClient() : super(uri: Uri.parse('ws://fake'));
+  _RouterDaemonClient({this.workspaceId = 'workspace-1'})
+    : super(uri: Uri.parse('ws://fake'));
+
+  final String? workspaceId;
 
   @override
   DaemonConnectionState get currentState => DaemonConnectionState.connected;
@@ -146,7 +289,7 @@ final class _RouterDaemonClient extends DaemonClient
       mode: AgentMode.normal,
       runState: AgentRunState.idle,
       createdAtMs: 1,
-      workspaceId: 'workspace-1',
+      workspaceId: workspaceId,
     ),
     project: null,
   );
@@ -183,6 +326,56 @@ final class _ActiveRegistry extends HostRegistryNotifier {
       ),
     ],
     activeServerId: 'server-a',
+    loaded: true,
+  );
+}
+
+final class _DeferredRegistry extends HostRegistryNotifier {
+  @override
+  HostRegistryState build() => const HostRegistryState();
+
+  void completeLoading() {
+    state = const HostRegistryState(
+      hosts: [
+        HostProfile(
+          serverId: 'server-a',
+          label: 'Host A',
+          connections: [
+            DirectTcpHostConnection(
+              id: 'direct:host.example:6868',
+              endpoint: 'host.example:6868',
+            ),
+          ],
+          preferredConnectionId: 'direct:host.example:6868',
+          createdAt: '2026-07-27T00:00:00.000Z',
+          updatedAt: '2026-07-27T00:00:00.000Z',
+        ),
+      ],
+      activeServerId: 'server-a',
+      loaded: true,
+    );
+  }
+}
+
+final class _EncodedActiveRegistry extends HostRegistryNotifier {
+  @override
+  HostRegistryState build() => const HostRegistryState(
+    hosts: [
+      HostProfile(
+        serverId: 'server/main',
+        label: 'Encoded host',
+        connections: [
+          DirectTcpHostConnection(
+            id: 'direct:host.example:6868',
+            endpoint: 'host.example:6868',
+          ),
+        ],
+        preferredConnectionId: 'direct:host.example:6868',
+        createdAt: '2026-07-27T00:00:00.000Z',
+        updatedAt: '2026-07-27T00:00:00.000Z',
+      ),
+    ],
+    activeServerId: 'server/main',
     loaded: true,
   );
 }

@@ -463,6 +463,17 @@ class TimelineNotifier extends Notifier<TimelineState> {
     }
   }
 
+  /// Re-runs the authoritative tail sync after an initial or catch-up failure.
+  ///
+  /// Paseo keeps an already rendered timeline visible while retrying, but a
+  /// cold open returns to its blocking loading state until the first
+  /// authoritative page arrives.
+  Future<void> retry() async {
+    final isColdOpen = state.epoch == null;
+    _publish(state.copyWith(loading: isColdOpen, clearError: true));
+    await _fetch(full: true);
+  }
+
   Future<void> _fetch({bool full = false}) async {
     final generation = _generation;
     if (_fetching) {

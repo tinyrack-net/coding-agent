@@ -1758,9 +1758,26 @@ Future<DaemonServerHandle> startDaemonServer({
     final forgeResponse = await forgeSearch.handle(message);
     if (forgeResponse != null) return forgeResponse;
     final timelineResponse = await pullRequestTimeline.handle(message);
-    return timelineResponse ??
-        workspaceSetup.handle(message) ??
-        workspaceV2.handle(connection, message);
+    if (timelineResponse != null) return timelineResponse;
+    final setupResponse = workspaceSetup.handle(message);
+    if (setupResponse != null) return setupResponse;
+    final workspaceResponse = await workspaceV2.handle(connection, message);
+    if (workspaceResponse == null) return null;
+    if (message['type'] == 'fetch_workspaces_request') {
+      final request = FetchWorkspacesRequest.fromJson(message);
+      final payload = workspaceResponse['payload'];
+      final subscriptionId = payload is Map
+          ? payload['subscriptionId'] as String?
+          : null;
+      if (request.hasSubscription && subscriptionId != null) {
+        return V2SessionResponse(
+          message: workspaceResponse,
+          afterSend: () =>
+              workspaceV2.afterFetchResponseSent(connection.id, subscriptionId),
+        );
+      }
+    }
+    return workspaceResponse;
   };
   server.onBinaryFrame = (connection, frame) =>
       terminals.handleFrame(connection.id, frame);

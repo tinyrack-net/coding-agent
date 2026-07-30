@@ -98,19 +98,26 @@ class _HostAgentRouteScreenState extends ConsumerState<HostAgentRouteScreen> {
           return _AgentRouteFailure(
             title: 'Could not load agent',
             detail: '${snapshot.error}',
+            onRetry: () => setState(() {
+              _requestKey = null;
+              _request = null;
+            }),
+            onBack: () =>
+                context.go(buildHostOpenProjectRoute(widget.serverId)),
           );
         }
         final agent = snapshot.data?.agent;
-        if (agent == null) {
-          return const _AgentRouteFailure(
-            title: 'Agent not found',
-            detail: 'The requested agent is not available on this host.',
-          );
+        final workspaceId = agent?.workspaceId?.trim();
+        if (agent == null || workspaceId == null || workspaceId.isEmpty) {
+          // The frozen route returns to the host index. Until the separate
+          // host-index restoration unit lands, use its no-restorable-workspace
+          // branch through the compatible host-scoped open-project route.
+          _redirect(buildHostOpenProjectRoute(widget.serverId));
+          return const _AgentRouteProgress('Opening host…');
         }
-        final workspaceId = agent.workspaceId?.trim();
         final target = buildHostWorkspaceOpenRoute(
           widget.serverId,
-          workspaceId == null || workspaceId.isEmpty ? agent.cwd : workspaceId,
+          workspaceId,
           'agent:${agent.agentId}',
         );
         _redirect(target);
@@ -135,10 +142,17 @@ class _AgentRouteProgress extends StatelessWidget {
 }
 
 class _AgentRouteFailure extends StatelessWidget {
-  const _AgentRouteFailure({required this.title, required this.detail});
+  const _AgentRouteFailure({
+    required this.title,
+    required this.detail,
+    required this.onRetry,
+    required this.onBack,
+  });
 
   final String title;
   final String detail;
+  final VoidCallback onRetry;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) => Center(
@@ -148,6 +162,15 @@ class _AgentRouteFailure extends StatelessWidget {
         Text(title, style: FluentTheme.of(context).typography.subtitle),
         const SizedBox(height: 8),
         Text(detail, textAlign: TextAlign.center),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FilledButton(onPressed: onRetry, child: const Text('Retry')),
+            const SizedBox(width: 8),
+            Button(onPressed: onBack, child: const Text('Back')),
+          ],
+        ),
       ],
     ),
   );

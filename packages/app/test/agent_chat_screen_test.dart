@@ -94,6 +94,8 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
   final eventsController = StreamController<RpcEvent>.broadcast();
   final requests = <(String, Map<String, Object?>)>[];
   final timelinePages = <AgentTimelinePage>[];
+  final timelineErrors = <Object>[];
+  Completer<AgentTimelinePage>? nextTimelinePage;
   final timelineDirections = <AgentTimelineDirection>[];
   Object? olderTimelineError;
 
@@ -143,6 +145,14 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
     Duration timeout = const Duration(seconds: 30),
   }) async {
     timelineDirections.add(direction);
+    if (timelineErrors.isNotEmpty) {
+      throw timelineErrors.removeAt(0);
+    }
+    final pendingPage = nextTimelinePage;
+    if (pendingPage != null) {
+      nextTimelinePage = null;
+      return pendingPage.future;
+    }
     final olderError = olderTimelineError;
     if (direction == AgentTimelineDirection.before && olderError != null) {
       throw olderError;
@@ -290,6 +300,56 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('No messages yet. Say something below.'), findsOneWidget);
+  });
+
+  testWidgets(
+    'cold-open timeline failure blocks the empty composer state and retries',
+    (tester) async {
+      final client = FakeDaemonClient()
+        ..timelineErrors.add(StateError('history unavailable'));
+      await pumpChatScreen(tester, client: client);
+
+      expect(find.text('Failed to load conversation'), findsOneWidget);
+      expect(find.textContaining('history unavailable'), findsOneWidget);
+      expect(find.text('No messages yet. Say something below.'), findsNothing);
+      expect(find.byType(TextBox), findsNothing);
+
+      final retryPage = Completer<AgentTimelinePage>();
+      client.nextTimelinePage = retryPage;
+      await tester.tap(find.widgetWithText(Button, 'Retry'));
+      await tester.pump();
+      expect(find.byType(TextBox), findsNothing);
+      expect(find.byType(ProgressRing), findsOneWidget);
+      retryPage.complete(timelinePage(start: 1, end: 1, hasOlder: false));
+      await tester.pump(const Duration(milliseconds: 150));
+
+      expect(client.timelineDirections, [
+        AgentTimelineDirection.tail,
+        AgentTimelineDirection.tail,
+      ]);
+      expect(find.text('Failed to load conversation'), findsNothing);
+      expect(find.text('timeline message 1'), findsOneWidget);
+      expect(find.byType(TextBox), findsOneWidget);
+    },
+  );
+
+  testWidgets('failed catch-up retains rendered conversation and composer', (
+    tester,
+  ) async {
+    final client = FakeDaemonClient()
+      ..timelinePages.add(timelinePage(start: 1, end: 1, hasOlder: false));
+    final container = await pumpChatScreen(tester, client: client);
+    expect(find.text('timeline message 1'), findsOneWidget);
+
+    client.timelineErrors.add(StateError('catch-up unavailable'));
+    await container.read(timelineProvider('a1').notifier).retry();
+    await tester.pump();
+
+    expect(find.text('timeline message 1'), findsOneWidget);
+    expect(find.text('Timeline sync failed'), findsOneWidget);
+    expect(find.textContaining('catch-up unavailable'), findsNothing);
+    expect(find.widgetWithText(Button, 'Retry'), findsNothing);
+    expect(find.byType(TextBox), findsOneWidget);
   });
 
   testWidgets(

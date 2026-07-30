@@ -7,6 +7,7 @@ import 'dart:io';
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 
 import '../agent/create_agent_title.dart';
 import '../agent/structured_generation.dart';
@@ -98,7 +99,8 @@ final class WorkspaceV2Service {
   final String Function() _workspaceIdFactory;
   final String Function() _worktreeSlugFactory;
   final DateTime Function() _now;
-  final Set<String> _workspaceSubscribers = {};
+  final Map<String, _WorkspaceDirectorySubscription> _workspaceSubscriptions =
+      {};
   final Map<String, _WorkspaceBucketHistoryEntry> _bucketHistory = {};
   final Map<String, WorkspaceGitSubscription> _gitSubscriptions = {};
   final Map<String, _PendingAgentBootstrap> _pendingAgentBootstraps = {};
@@ -382,7 +384,19 @@ final class WorkspaceV2Service {
   }
 
   void onConnectionClosed(String connectionId) {
-    _workspaceSubscribers.remove(connectionId);
+    _workspaceSubscriptions.remove(connectionId);
+  }
+
+  /// Flushes updates that raced the initial directory snapshot.
+  ///
+  /// The WebSocket assembly calls this only after the corresponding
+  /// `fetch_workspaces_response` frame has been written. The subscription id
+  /// check is the reconnect/replacement epoch: a late response from an older
+  /// fetch can never flush into the newer subscription on the same connection.
+  void afterFetchResponseSent(String connectionId, String subscriptionId) {
+    final subscription = _workspaceSubscriptions[connectionId];
+    if (subscription?.subscriptionId != subscriptionId) return;
+    subscription!.flush(emit: (message) => _broadcast(message, {connectionId}));
   }
 
   /// Creates the per-run workspace used by Paseo-compatible unattended
@@ -430,8 +444,18 @@ final class WorkspaceV2Service {
     Connection connection,
     FetchWorkspacesRequest request,
   ) async {
+    String? subscriptionId;
     if (request.hasSubscription) {
-      _workspaceSubscribers.add(connection.id);
+      final requested = request.subscriptionId?.trim();
+      subscriptionId = requested != null && requested.isNotEmpty
+          ? requested
+          : const Uuid().v4();
+      _workspaceSubscriptions[connection.id] = _WorkspaceDirectorySubscription(
+        subscriptionId: subscriptionId,
+        query: request.query,
+        projectId: request.projectId,
+        idPrefix: request.idPrefix,
+      );
     }
     final projects = {
       for (final project in await registries.projects.list())
@@ -454,23 +478,16 @@ final class WorkspaceV2Service {
             terminals,
           ),
     ];
-    final query = request.query?.trim().toLowerCase();
-    final projectId = request.projectId?.trim();
-    entries = entries.where((workspace) {
-      if (projectId != null &&
-          projectId.isNotEmpty &&
-          workspace.projectId != projectId) {
-        return false;
-      }
-      if (query != null && query.isNotEmpty) {
-        return [
-          workspace.name,
-          workspace.projectId,
-          workspace.id,
-        ].any((value) => value.toLowerCase().contains(query));
-      }
-      return true;
-    }).toList();
+    entries = entries
+        .where(
+          (workspace) => _matchesWorkspaceFilter(
+            workspace,
+            query: request.query,
+            projectId: request.projectId,
+            idPrefix: request.idPrefix,
+          ),
+        )
+        .toList();
     final sort = _normalizeSort(request.sort);
     _sort(entries, sort);
 
@@ -490,6 +507,7 @@ final class WorkspaceV2Service {
       for (final workspace in workspaceRecords)
         if (workspace.archivedAt == null) workspace.projectId,
     };
+    final projectId = request.projectId?.trim();
     final emptyProjects = request.cursor == null
         ? [
             for (final project in projects.values)
@@ -501,9 +519,9 @@ final class WorkspaceV2Service {
           ]
         : const <WorkspaceProjectDescriptor>[];
 
-    return FetchWorkspacesResponse(
+    final response = FetchWorkspacesResponse(
       requestId: request.requestId,
-      subscriptionId: request.hasSubscription ? request.subscriptionId : null,
+      subscriptionId: subscriptionId,
       entries: pageEntries,
       emptyProjects: emptyProjects,
       pageInfo: WorkspacePageInfo(
@@ -512,6 +530,13 @@ final class WorkspaceV2Service {
         hasMore: hasMore,
       ),
     ).toJson();
+    if (subscriptionId != null) {
+      final subscription = _workspaceSubscriptions[connection.id];
+      if (subscription?.subscriptionId == subscriptionId) {
+        subscription!.seedSnapshot(pageEntries, emptyProjects);
+      }
+    }
+    return response;
   }
 
   Future<Map<String, Object?>> _create(
@@ -1716,7 +1741,7 @@ final class WorkspaceV2Service {
   }
 
   Future<void> _emitGitSnapshotUpdate(String cwd) async {
-    if (_workspaceSubscribers.isEmpty) return;
+    if (_workspaceSubscriptions.isEmpty) return;
     final snapshot = gitSnapshots?.peekSnapshot(cwd);
     final forgeSnapshot = gitSnapshots?.peekForgeSnapshot(cwd);
     final projects = {
@@ -1733,11 +1758,8 @@ final class WorkspaceV2Service {
           !p.equals(p.normalize(p.absolute(workspace.cwd)), cwd)) {
         continue;
       }
-      _broadcast(
-        WorkspaceUpsertUpdate(
-          _descriptor(workspace, project, agents, terminals),
-        ).toJson(),
-        Set.unmodifiable(_workspaceSubscribers),
+      _emitWorkspaceCandidate(
+        _descriptor(workspace, project, agents, terminals),
       );
       if (!emittedCheckoutStatus && snapshot != null) {
         emittedCheckoutStatus = true;
@@ -1757,7 +1779,7 @@ final class WorkspaceV2Service {
                     snapshot: forgeSnapshot,
                   ),
           ).toJson(),
-          Set.unmodifiable(_workspaceSubscribers),
+          Set.unmodifiable(_workspaceSubscriptions.keys),
         );
       }
     }
@@ -1783,24 +1805,20 @@ final class WorkspaceV2Service {
     if (mutation.workspace != null) {
       _ensureGitSnapshot(mutation.workspace!);
     }
-    if (_workspaceSubscribers.isEmpty) return;
+    if (_workspaceSubscriptions.isEmpty) return;
     if (mutation.kind == RegistryMutationKind.upsert &&
         mutation.workspace != null) {
       final project = await registries.projects.get(
         mutation.workspace!.projectId,
       );
       if (project == null || project.archivedAt != null) return;
-      _broadcast(
-        WorkspaceUpsertUpdate(
-          _descriptor(
-            mutation.workspace!,
-            project,
-            _listAgents(),
-            _listTerminalContributions(),
-          ),
-        ).toJson(),
-        Set.unmodifiable(_workspaceSubscribers),
+      final descriptor = _descriptor(
+        mutation.workspace!,
+        project,
+        _listAgents(),
+        _listTerminalContributions(),
       );
+      _emitWorkspaceCandidate(descriptor);
       return;
     }
     if (mutation.kind != RegistryMutationKind.upsert) {
@@ -1815,44 +1833,45 @@ final class WorkspaceV2Service {
                     workspace.archivedAt == null)
                   workspace,
             ];
-      _broadcast(
-        WorkspaceRemoveUpdate(
-          id: mutation.workspaceId,
-          emptyProject:
-              project != null &&
-                  project.archivedAt == null &&
-                  activeForProject.isEmpty
-              ? _projectDescriptor(project)
-              : null,
-          removedProjectId: mutation.removedProjectId,
-        ).toJson(),
-        Set.unmodifiable(_workspaceSubscribers),
+      final emptyProject =
+          project != null &&
+              project.archivedAt == null &&
+              activeForProject.isEmpty
+          ? _projectDescriptor(project)
+          : null;
+      _emitWorkspaceRemoval(
+        mutation.workspaceId,
+        emptyProject: emptyProject,
+        removedProjectId: mutation.removedProjectId,
       );
     }
   }
 
   Future<void> _onProjectMutation(ProjectMutation mutation) async {
-    if (_workspaceSubscribers.isEmpty) return;
+    if (_workspaceSubscriptions.isEmpty) return;
     final update =
         mutation.kind == RegistryMutationKind.upsert && mutation.project != null
         ? ProjectUpsertUpdate(_projectDescriptor(mutation.project!))
         : ProjectRemoveUpdate(mutation.projectId);
-    _broadcast(update.toJson(), Set.unmodifiable(_workspaceSubscribers));
+    for (final entry in _workspaceSubscriptions.entries) {
+      if (!entry.value.matchesProject(mutation.projectId)) continue;
+      entry.value.addProject(
+        update,
+        emit: (message) => _broadcast(message, {entry.key}),
+      );
+    }
     if (mutation.kind == RegistryMutationKind.upsert &&
         mutation.project != null) {
       for (final workspace in await registries.workspaces.list()) {
         if (workspace.projectId == mutation.projectId &&
             workspace.archivedAt == null) {
-          _broadcast(
-            WorkspaceUpsertUpdate(
-              _descriptor(
-                workspace,
-                mutation.project!,
-                _listAgents(),
-                _listTerminalContributions(),
-              ),
-            ).toJson(),
-            Set.unmodifiable(_workspaceSubscribers),
+          _emitWorkspaceCandidate(
+            _descriptor(
+              workspace,
+              mutation.project!,
+              _listAgents(),
+              _listTerminalContributions(),
+            ),
           );
         }
       }
@@ -1863,22 +1882,59 @@ final class WorkspaceV2Service {
   /// ownership is per workspace id, so same-directory sibling workspaces are
   /// deliberately unaffected.
   Future<void> onAgentStateChanged(String? workspaceId) async {
-    if (workspaceId == null || _workspaceSubscribers.isEmpty) return;
+    if (workspaceId == null || _workspaceSubscriptions.isEmpty) return;
     final workspace = await registries.workspaces.get(workspaceId);
     if (workspace == null || workspace.archivedAt != null) return;
     final project = await registries.projects.get(workspace.projectId);
     if (project == null || project.archivedAt != null) return;
-    _broadcast(
-      WorkspaceUpsertUpdate(
-        _descriptor(
-          workspace,
-          project,
-          _listAgents(),
-          _listTerminalContributions(),
-        ),
-      ).toJson(),
-      Set.unmodifiable(_workspaceSubscribers),
+    _emitWorkspaceCandidate(
+      _descriptor(
+        workspace,
+        project,
+        _listAgents(),
+        _listTerminalContributions(),
+      ),
     );
+  }
+
+  void _emitWorkspaceCandidate(WorkspaceDescriptor workspace) {
+    for (final entry in _workspaceSubscriptions.entries) {
+      final subscription = entry.value;
+      if (subscription.matches(workspace)) {
+        subscription.add(
+          WorkspaceUpsertUpdate(workspace),
+          emit: (message) => _broadcast(message, {entry.key}),
+        );
+      } else {
+        subscription.removeIfVisible(
+          workspace.id,
+          emit: (message) => _broadcast(message, {entry.key}),
+        );
+      }
+    }
+  }
+
+  void _emitWorkspaceRemoval(
+    String workspaceId, {
+    WorkspaceProjectDescriptor? emptyProject,
+    String? removedProjectId,
+  }) {
+    for (final entry in _workspaceSubscriptions.entries) {
+      final subscription = entry.value;
+      if (!subscription.isVisible(workspaceId)) continue;
+      subscription.add(
+        WorkspaceRemoveUpdate(
+          id: workspaceId,
+          emptyProject:
+              emptyProject != null &&
+                  subscription.matchesProject(emptyProject.projectId)
+              ? emptyProject
+              : null,
+          removedProjectId: removedProjectId,
+        ),
+        emit: (message) => _broadcast(message, {entry.key}),
+      );
+    }
   }
 
   Future<void> onTerminalStateChanged(String? workspaceId) =>
@@ -1892,6 +1948,172 @@ final class WorkspaceV2Service {
   }
 
   String _timestamp() => _now().toUtc().toIso8601String();
+}
+
+bool _matchesWorkspaceFilter(
+  WorkspaceDescriptor workspace, {
+  String? query,
+  String? projectId,
+  String? idPrefix,
+}) {
+  final normalizedProjectId = projectId?.trim();
+  if (normalizedProjectId != null &&
+      normalizedProjectId.isNotEmpty &&
+      workspace.projectId != normalizedProjectId) {
+    return false;
+  }
+  final normalizedIdPrefix = idPrefix?.trim();
+  if (normalizedIdPrefix != null &&
+      normalizedIdPrefix.isNotEmpty &&
+      !workspace.id.startsWith(normalizedIdPrefix)) {
+    return false;
+  }
+  final normalizedQuery = query?.trim().toLowerCase();
+  if (normalizedQuery != null && normalizedQuery.isNotEmpty) {
+    return [
+      workspace.name,
+      workspace.projectId,
+      workspace.id,
+    ].any((value) => value.toLowerCase().contains(normalizedQuery));
+  }
+  return true;
+}
+
+typedef _DirectoryMessageEmitter = void Function(Map<String, Object?> message);
+
+/// One replaceable workspace-directory subscription for a WebSocket session.
+///
+/// A new fetch on the same connection replaces this object. Consequently its
+/// subscription id acts as a connection-local epoch and a delayed bootstrap
+/// completion from the old fetch cannot leak updates into the new replica.
+final class _WorkspaceDirectorySubscription {
+  _WorkspaceDirectorySubscription({
+    required this.subscriptionId,
+    required this.query,
+    required this.projectId,
+    required this.idPrefix,
+  });
+
+  final String subscriptionId;
+  final String? query;
+  final String? projectId;
+  final String? idPrefix;
+
+  bool _isBootstrapping = true;
+  final Set<String> _visibleWorkspaceIds = {};
+  final Set<String> _visibleProjectIds = {};
+  final Map<String, WorkspaceDescriptor> _snapshotByWorkspaceId = {};
+  final Map<String, WorkspaceUpdate> _pendingByWorkspaceId = {};
+  final List<ProjectUpdate> _pendingProjectUpdates = [];
+
+  bool matches(WorkspaceDescriptor workspace) => _matchesWorkspaceFilter(
+    workspace,
+    query: query,
+    projectId: projectId,
+    idPrefix: idPrefix,
+  );
+
+  bool matchesProject(String candidateProjectId) {
+    final expected = projectId?.trim();
+    return expected == null ||
+        expected.isEmpty ||
+        expected == candidateProjectId;
+  }
+
+  bool isVisible(String workspaceId) =>
+      _visibleWorkspaceIds.contains(workspaceId);
+
+  void seedSnapshot(
+    Iterable<WorkspaceDescriptor> workspaces,
+    Iterable<WorkspaceProjectDescriptor> emptyProjects,
+  ) {
+    for (final workspace in workspaces) {
+      _visibleWorkspaceIds.add(workspace.id);
+      _visibleProjectIds.add(workspace.projectId);
+      _snapshotByWorkspaceId[workspace.id] = workspace;
+    }
+    for (final project in emptyProjects) {
+      _visibleProjectIds.add(project.projectId);
+    }
+  }
+
+  void add(WorkspaceUpdate update, {required _DirectoryMessageEmitter emit}) {
+    final workspaceId = switch (update) {
+      WorkspaceUpsertUpdate(:final workspace) => workspace.id,
+      WorkspaceRemoveUpdate(:final id) => id,
+    };
+    switch (update) {
+      case WorkspaceUpsertUpdate(:final workspace):
+        _visibleWorkspaceIds.add(workspace.id);
+        _visibleProjectIds.add(workspace.projectId);
+      case WorkspaceRemoveUpdate(:final emptyProject, :final removedProjectId):
+        _visibleWorkspaceIds.remove(workspaceId);
+        if (emptyProject != null) {
+          _visibleProjectIds.add(emptyProject.projectId);
+        }
+        if (removedProjectId != null) {
+          _visibleProjectIds.remove(removedProjectId);
+        }
+    }
+    if (_isBootstrapping) {
+      _pendingByWorkspaceId[workspaceId] = update;
+    } else {
+      emit(update.toJson());
+    }
+  }
+
+  void removeIfVisible(
+    String workspaceId, {
+    required _DirectoryMessageEmitter emit,
+  }) {
+    if (!_visibleWorkspaceIds.contains(workspaceId)) return;
+    add(WorkspaceRemoveUpdate(id: workspaceId), emit: emit);
+  }
+
+  void addProject(
+    ProjectUpdate update, {
+    required _DirectoryMessageEmitter emit,
+  }) {
+    switch (update) {
+      case ProjectUpsertUpdate(:final project):
+        _visibleProjectIds.add(project.projectId);
+      case ProjectRemoveUpdate(:final projectId):
+        _visibleProjectIds.remove(projectId);
+    }
+    if (_isBootstrapping) {
+      _pendingProjectUpdates.add(update);
+    } else {
+      emit(update.toJson());
+    }
+  }
+
+  void flush({required _DirectoryMessageEmitter emit}) {
+    if (!_isBootstrapping) return;
+    _isBootstrapping = false;
+    final projectUpdates = List<ProjectUpdate>.of(_pendingProjectUpdates);
+    final workspaceUpdates = List<WorkspaceUpdate>.of(
+      _pendingByWorkspaceId.values,
+    );
+    _pendingProjectUpdates.clear();
+    _pendingByWorkspaceId.clear();
+
+    for (final update in projectUpdates) {
+      emit(update.toJson());
+    }
+    for (final update in workspaceUpdates) {
+      if (update case WorkspaceUpsertUpdate(:final workspace)) {
+        final snapshot = _snapshotByWorkspaceId[workspace.id];
+        if (snapshot != null &&
+            snapshot.status == workspace.status &&
+            snapshot.statusEnteredAt == workspace.statusEnteredAt &&
+            snapshot.activityAt == workspace.activityAt) {
+          continue;
+        }
+      }
+      emit(update.toJson());
+    }
+    _snapshotByWorkspaceId.clear();
+  }
 }
 
 Iterable<AgentSummary> _noAgents() => const <AgentSummary>[];
