@@ -6,7 +6,10 @@ import 'package:go_router/go_router.dart';
 import '../core/host_routes.dart';
 import '../core/theme.dart';
 import '../state/agent_history_provider.dart';
+import '../state/daemon_providers.dart';
 import '../state/host_registry_provider.dart';
+import '../widgets/adaptive_modal_sheet.dart';
+import '../widgets/agent_list.dart';
 
 const _allHosts = '__all_hosts__';
 
@@ -31,8 +34,16 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
     return ScaffoldPage(
       header: PageHeader(
         title: const Text('Sessions'),
-        commandBar: hosts.length > 1
-            ? SizedBox(
+        commandBar: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(FluentIcons.refresh),
+              onPressed: () => ref.read(agentHistoryProvider.notifier).reload(),
+            ),
+            if (hosts.length > 1) ...[
+              const SizedBox(width: 8),
+              SizedBox(
                 width: 220,
                 child: ComboBox<String>(
                   value: _selectedHost,
@@ -51,8 +62,10 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
                     if (value != null) setState(() => _selectedHost = value);
                   },
                 ),
-              )
-            : null,
+              ),
+            ],
+          ],
+        ),
       ),
       content: history.when(
         loading: () => const Center(child: ProgressRing()),
@@ -71,95 +84,100 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
               onBack: () => context.go('/projects'),
             );
           }
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-            children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: context.tokens.surfaceContainerHighest,
-                  border: Border.all(color: context.tokens.outlineVariant),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  children: [
-                    for (var index = 0; index < entries.length; index++)
-                      _SessionRow(
-                        entry: entries[index],
-                        showDivider: index > 0,
-                      ),
-                  ],
-                ),
+          return AgentList(
+            agents: entries,
+            showHostColumn: _selectedHost == _allHosts && hosts.length > 1,
+            onRefresh: () => ref.read(agentHistoryProvider.notifier).reload(),
+            onAgentPressed: (entry) => context.go(
+              buildHostAgentDetailRoute(
+                entry.serverId,
+                entry.agent.agentId,
+                workspaceId: entry.agent.workspaceId,
               ),
-              if (state.hasMore) ...[
-                const SizedBox(height: 16),
-                Center(
-                  child: Button(
-                    onPressed: state.loadingMore
-                        ? null
-                        : () => ref
-                              .read(agentHistoryProvider.notifier)
-                              .loadMore(),
-                    child: state.loadingMore
-                        ? const SizedBox.square(
-                            dimension: 16,
-                            child: ProgressRing(strokeWidth: 2),
-                          )
-                        : const Text('Load more'),
-                  ),
-                ),
-              ],
-            ],
+            ),
+            onAgentLongPressed: _archiveEntry,
+            footer: state.hasMore
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Center(
+                      child: Button(
+                        onPressed: state.loadingMore
+                            ? null
+                            : () => ref
+                                  .read(agentHistoryProvider.notifier)
+                                  .loadMore(),
+                        child: state.loadingMore
+                            ? const SizedBox.square(
+                                dimension: 16,
+                                child: ProgressRing(strokeWidth: 2),
+                              )
+                            : const Text('Load more'),
+                      ),
+                    ),
+                  )
+                : null,
           );
         },
       ),
     );
   }
-}
 
-class _SessionRow extends StatelessWidget {
-  const _SessionRow({required this.entry, required this.showDivider});
-
-  final AgentHistoryEntry entry;
-  final bool showDivider;
-
-  @override
-  Widget build(BuildContext context) {
-    final title = entry.agent.title.trim().isEmpty
-        ? entry.agent.agentId
-        : entry.agent.title;
-    return Column(
-      children: [
-        if (showDivider)
-          Divider(
-            style: DividerThemeData(
-              decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(color: context.tokens.outlineVariant),
-                ),
+  Future<void> _archiveEntry(AgentHistoryEntry entry) async {
+    final client = ref.read(hostRuntimeClientsProvider)[entry.serverId];
+    if (client == null ||
+        entry.agent.runState == AgentRunState.running ||
+        entry.agent.runState == AgentRunState.awaitingPermission) {
+      await showAdaptiveModalSheet<void>(
+        context: context,
+        builder: (sheetContext) {
+          final unavailable = client == null;
+          return AdaptiveModalSheet(
+            title: unavailable
+                ? 'Host offline'
+                : 'This agent is still running. Archiving it will stop the agent.',
+            content: const SizedBox.shrink(),
+            contentScrollable: false,
+            sizeContentToCurrentSnapPoint: true,
+            onClose: () => Navigator.of(sheetContext).pop(),
+            actions: [
+              Button(
+                key: const ValueKey('agent-action-cancel'),
+                onPressed: () => Navigator.of(sheetContext).pop(),
+                child: const Text('Cancel'),
               ),
-            ),
-          ),
-        ListTile(
-          leading: const Icon(FluentIcons.history),
-          title: Text(title),
-          subtitle: Text('${entry.serverLabel} · ${entry.agent.cwd}'),
-          trailing: Text(
-            entry.agent.runState == AgentRunState.closed
-                ? 'Archived'
-                : entry.agent.runState.name,
-            style: TextStyle(color: context.tokens.onSurfaceVariant),
-          ),
-          onPressed: entry.agent.workspaceId == null
-              ? null
-              : () => context.go(
-                  buildHostWorkspaceRoute(
-                    entry.serverId,
-                    entry.agent.workspaceId!,
-                  ),
-                ),
-        ),
-      ],
-    );
+              FilledButton(
+                key: const ValueKey('agent-action-archive'),
+                onPressed: unavailable
+                    ? null
+                    : () {
+                        Navigator.of(sheetContext).pop();
+                        _sendArchive(entry);
+                      },
+                child: const Text('Archive'),
+              ),
+            ],
+          );
+        },
+      );
+      return;
+    }
+    await _sendArchive(entry);
+  }
+
+  Future<void> _sendArchive(AgentHistoryEntry entry) async {
+    final client = ref.read(hostRuntimeClientsProvider)[entry.serverId];
+    if (client == null) return;
+    try {
+      await client.request(MessageTypes.agentArchiveRequest, {
+        'agentId': entry.agent.agentId,
+      });
+    } on Object {
+      // Paseo deliberately swallows archive timeouts: the daemon may still
+      // process the mutation after the client-side deadline.
+    }
+    if (mounted) {
+      await ref.read(agentHistoryProvider.notifier).reload();
+    }
   }
 }
 

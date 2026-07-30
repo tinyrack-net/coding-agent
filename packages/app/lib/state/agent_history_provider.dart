@@ -11,12 +11,14 @@ final class AgentHistoryEntry {
     required this.serverLabel,
     required this.agent,
     required this.project,
+    this.pendingPermissionCount = 0,
   });
 
   final String serverId;
   final String serverLabel;
   final AgentSummary agent;
   final Map<String, Object?> project;
+  final int pendingPermissionCount;
 
   DateTime get activityAt =>
       DateTime.tryParse(agent.updatedAt ?? '') ??
@@ -160,6 +162,7 @@ Future<AgentHistoryState> fetchAgentHistoryBatch(
           serverLabel: host.serverLabel,
           agent: entry.agent,
           project: entry.project,
+          pendingPermissionCount: entry.pendingPermissions.length,
         ),
   ]..sort(_compareHistoryEntries);
   final next = <String, String>{

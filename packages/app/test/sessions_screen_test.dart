@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:agent_protocol/agent_protocol.dart';
+import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/core/theme.dart';
 import 'package:coding_agent_app/screens/sessions_screen.dart';
 import 'package:coding_agent_app/state/agent_history_provider.dart';
+import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/host_registry_provider.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,7 +31,9 @@ void main() {
 
     expect(find.text('Sessions'), findsOneWidget);
     expect(find.text('Archived session'), findsOneWidget);
-    expect(find.text('Local · /repo'), findsOneWidget);
+    expect(find.text('Project'), findsOneWidget);
+    expect(find.text('Workspace'), findsOneWidget);
+    expect(find.text('main'), findsOneWidget);
     expect(find.text('Archived'), findsOneWidget);
     expect(find.text('Load more'), findsOneWidget);
 
@@ -86,8 +90,7 @@ void main() {
 
     expect(find.text('All hosts'), findsOneWidget);
     expect(find.text('Archived session'), findsOneWidget);
-    expect(find.text('active-id'), findsOneWidget);
-    expect(find.text('running'), findsOneWidget);
+    expect(find.text('New session'), findsOneWidget);
 
     await tester.tap(find.byType(ComboBox<String>));
     await tester.pumpAndSettle();
@@ -95,8 +98,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Archived session'), findsNothing);
-    expect(find.text('active-id'), findsOneWidget);
-    expect(find.text('Remote · /repo'), findsOneWidget);
+    expect(find.text('New session'), findsOneWidget);
+    expect(find.text('Remote'), findsWidgets);
   });
 
   testWidgets('shows the retry state and dispatches retry', (tester) async {
@@ -141,6 +144,109 @@ void main() {
     expect(button.onPressed, isNull);
     expect(find.byType(ProgressRing), findsOneWidget);
   });
+
+  testWidgets('long press archives a non-running session immediately', (
+    tester,
+  ) async {
+    final notifier = _HistoryNotifier(
+      AgentHistoryState(
+        entries: [_entry(runState: AgentRunState.idle, archived: false)],
+      ),
+    );
+    final client = _ArchiveClient();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          agentHistoryProvider.overrideWith(() => notifier),
+          hostRuntimeClientsProvider.overrideWithValue({'server-a': client}),
+        ],
+        child: FluentApp(theme: buildAppTheme(), home: const SessionsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.longPress(
+      find.byKey(const ValueKey('agent-row-server-a-archived')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(client.requests.single.$1, MessageTypes.agentArchiveRequest);
+    expect(client.requests.single.$2, {'agentId': 'archived'});
+    expect(notifier.reloadCount, 1);
+    expect(find.text('Archive'), findsNothing);
+  });
+
+  testWidgets('offline long press shows a disabled host-offline sheet', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          agentHistoryProvider.overrideWith(
+            () => _HistoryNotifier(
+              AgentHistoryState(
+                entries: [
+                  _entry(runState: AgentRunState.idle, archived: false),
+                ],
+              ),
+            ),
+          ),
+          hostRuntimeClientsProvider.overrideWithValue(const {}),
+        ],
+        child: FluentApp(theme: buildAppTheme(), home: const SessionsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.longPress(
+      find.byKey(const ValueKey('agent-row-server-a-archived')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Host offline'), findsOneWidget);
+    final archive = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('agent-action-archive')),
+    );
+    expect(archive.onPressed, isNull);
+  });
+
+  testWidgets('running session requires confirmation before archive', (
+    tester,
+  ) async {
+    final notifier = _HistoryNotifier(
+      AgentHistoryState(
+        entries: [_entry(runState: AgentRunState.running, archived: false)],
+      ),
+    );
+    final client = _ArchiveClient();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          agentHistoryProvider.overrideWith(() => notifier),
+          hostRuntimeClientsProvider.overrideWithValue({'server-a': client}),
+        ],
+        child: FluentApp(theme: buildAppTheme(), home: const SessionsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.longPress(
+      find.byKey(const ValueKey('agent-row-server-a-archived')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'This agent is still running. Archiving it will stop the agent.',
+      ),
+      findsOneWidget,
+    );
+    expect(client.requests, isEmpty);
+
+    await tester.tap(find.byKey(const ValueKey('agent-action-archive')));
+    await tester.pumpAndSettle();
+    expect(client.requests.single.$1, MessageTypes.agentArchiveRequest);
+    expect(notifier.reloadCount, 1);
+  });
 }
 
 final class _HistoryNotifier extends AgentHistoryNotifier {
@@ -148,6 +254,7 @@ final class _HistoryNotifier extends AgentHistoryNotifier {
 
   final AgentHistoryState initial;
   int loadMoreCount = 0;
+  int reloadCount = 0;
 
   @override
   Future<AgentHistoryState> build() async => initial;
@@ -155,6 +262,11 @@ final class _HistoryNotifier extends AgentHistoryNotifier {
   @override
   Future<void> loadMore() async {
     loadMoreCount++;
+  }
+
+  @override
+  Future<void> reload() async {
+    reloadCount++;
   }
 }
 
@@ -209,6 +321,7 @@ AgentHistoryEntry _entry({
   String agentId = 'archived',
   String title = 'Archived session',
   AgentRunState runState = AgentRunState.closed,
+  bool archived = true,
 }) => AgentHistoryEntry(
   serverId: serverId,
   serverLabel: serverLabel,
@@ -221,7 +334,28 @@ AgentHistoryEntry _entry({
     mode: AgentMode.normal,
     runState: runState,
     createdAtMs: 1,
-    archivedAt: '2026-07-28T00:00:00.000Z',
+    archivedAt: archived ? '2026-07-28T00:00:00.000Z' : null,
   ),
-  project: const {'projectKey': '/repo'},
+  project: const {
+    'projectKey': '/repo',
+    'projectName': 'Project',
+    'workspaceName': 'Workspace',
+    'checkout': {'currentBranch': 'main'},
+  },
 );
+
+final class _ArchiveClient extends DaemonClient {
+  _ArchiveClient() : super(uri: Uri.parse('ws://archive-test'));
+
+  final List<(String, Map<String, Object?>)> requests = [];
+
+  @override
+  Future<Map<String, Object?>> request(
+    String type,
+    Map<String, Object?> payload, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    requests.add((type, payload));
+    return const {};
+  }
+}

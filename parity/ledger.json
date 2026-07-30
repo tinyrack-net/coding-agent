@@ -2492,10 +2492,14 @@
     },
     {
       "id": "source-unit:packages/app/src/components/agent-list.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/agent_list.dart;packages/app/lib/screens/sessions_screen.dart;packages/app/lib/state/agent_history_provider.dart",
+      "evidence": [
+        "packages/app/test/agent_list_test.dart",
+        "packages/app/test/sessions_screen_test.dart",
+        "packages/app/test/agent_history_provider_test.dart"
+      ],
+      "notes": "Ports frozen local-calendar section bucketing, relative activity labels, provider and workspace title rows, desktop project/host/branch/time columns, compact wrapped metadata, selected/hover/pressed states, archived/pending/attention badges, refresh/footer composition, agent navigation, and long-press archive behavior including running confirmation, offline disabled action, and swallowed daemon timeout."
     },
     {
       "id": "source-unit:packages/app/src/components/agent-status-dot.tsx",
@@ -9002,10 +9006,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/time.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/widgets/agent_list.dart",
+      "evidence": [
+        "packages/app/test/agent_list_test.dart"
+      ],
+      "notes": "The frozen formatTimeAgo contract is ported and boundary-tested for seconds, minutes, hours, days, and abbreviated month/day. Message timestamp and compact duration formatting remain."
     },
     {
       "id": "source-unit:packages/app/src/utils/to-xterm-theme.ts",

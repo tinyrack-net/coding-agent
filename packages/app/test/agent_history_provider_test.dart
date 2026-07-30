@@ -32,6 +32,7 @@ void main() {
     ]);
     expect(page.entries.single.agent.agentId, 'older');
     expect(page.entries.single.serverLabel, 'Local');
+    expect(page.entries.single.pendingPermissionCount, 2);
     expect(page.nextCursorByServerId, {'server-a': 'next-a'});
     expect(good.cursors, [null]);
 
@@ -268,6 +269,10 @@ FetchAgentHistoryResponse _page({
         archivedAt: '2026-07-28T00:00:00.000Z',
       ),
       project: const {'projectKey': '/repo'},
+      pendingPermissions: const [
+        {'id': 'permission-1'},
+        {'id': 'permission-2'},
+      ],
     ),
   ],
   pageInfo: AgentDirectoryPageInfo(
