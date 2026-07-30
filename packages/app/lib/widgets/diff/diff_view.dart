@@ -97,6 +97,7 @@ class DiffView extends ConsumerStatefulWidget {
     this.reviewDraftKey,
     this.layout = ChangesLayout.unified,
     this.viewMode = ChangesViewMode.flat,
+    this.wrapLines = false,
     this.controller,
   });
 
@@ -104,6 +105,7 @@ class DiffView extends ConsumerStatefulWidget {
   final String? reviewDraftKey;
   final ChangesLayout layout;
   final ChangesViewMode viewMode;
+  final bool wrapLines;
   final DiffViewController? controller;
 
   @override
@@ -249,6 +251,7 @@ class _DiffViewState extends ConsumerState<DiffView> {
                 file: body.file,
                 review: review,
                 layout: layout,
+                wrapLines: widget.wrapLines,
               ),
             ),
           },
@@ -398,10 +401,16 @@ String _treeFileLabel(DiffFile file) {
 
 /// Unified diff for a single file: hunk headers + numbered, tinted lines.
 class _FileDiffBody extends StatelessWidget {
-  const _FileDiffBody({required this.file, required this.layout, this.review});
+  const _FileDiffBody({
+    required this.file,
+    required this.layout,
+    required this.wrapLines,
+    this.review,
+  });
 
   final DiffFile file;
   final ChangesLayout layout;
+  final bool wrapLines;
   final _ReviewViewModel? review;
 
   @override
@@ -415,7 +424,7 @@ class _FileDiffBody extends StatelessWidget {
           children: [
             Icon(FluentIcons.warning, size: 18, color: outline),
             const SizedBox(width: 8),
-            Text('Diff too large', style: TextStyle(color: outline)),
+            Text('Diff too large to display', style: TextStyle(color: outline)),
           ],
         ),
       );
@@ -442,24 +451,28 @@ class _FileDiffBody extends StatelessWidget {
       );
     }
     if (layout == ChangesLayout.split) {
-      return _SplitFileDiffBody(file: file, review: review);
+      return _SplitFileDiffBody(
+        file: file,
+        review: review,
+        wrapLines: wrapLines,
+      );
     }
-    return DiffScroll(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final hunk in file.hunks) ...[
-            _HunkHeader(header: hunk.header),
-            for (final line in hunk.lines)
-              _ReviewableDiffLine(
-                filePath: file.path,
-                line: line,
-                review: review,
-              ),
-          ],
+    final contents = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final hunk in file.hunks) ...[
+          _HunkHeader(header: hunk.header),
+          for (final line in hunk.lines)
+            _ReviewableDiffLine(
+              filePath: file.path,
+              line: line,
+              review: review,
+              wrapLines: wrapLines,
+            ),
         ],
-      ),
+      ],
     );
+    return wrapLines ? contents : DiffScroll(child: contents);
   }
 }
 
@@ -610,14 +623,22 @@ _ReviewThreadState? _reviewThreadState(
 }
 
 class _SplitFileDiffBody extends StatelessWidget {
-  const _SplitFileDiffBody({required this.file, required this.review});
+  const _SplitFileDiffBody({
+    required this.file,
+    required this.review,
+    required this.wrapLines,
+  });
 
   final DiffFile file;
   final _ReviewViewModel? review;
+  final bool wrapLines;
 
   @override
   Widget build(BuildContext context) {
     final rows = _buildSplitDiffRows(file);
+    if (wrapLines) {
+      return _WrappedSplitDiffBody(rows: rows, review: review);
+    }
     return Row(
       key: const ValueKey('split-diff'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -642,6 +663,184 @@ class _SplitFileDiffBody extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _WrappedSplitDiffBody extends StatelessWidget {
+  const _WrappedSplitDiffBody({required this.rows, required this.review});
+
+  final List<_SplitDiffRow> rows;
+  final _ReviewViewModel? review;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      key: const ValueKey('split-diff'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var index = 0; index < rows.length; index++)
+          switch (rows[index]) {
+            final _SplitDiffHeaderRow header => IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: _HunkHeader(
+                      key: ValueKey('split-left-header-$index'),
+                      header: header.header,
+                    ),
+                  ),
+                  Container(width: 1, color: context.paseoPalette.borderAccent),
+                  Expanded(
+                    child: _HunkHeader(
+                      key: ValueKey('split-right-header-$index'),
+                      header: header.header,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            final _SplitDiffPairRow pair => _WrappedSplitPairRow(
+              index: index,
+              pair: pair,
+              review: review,
+            ),
+          },
+      ],
+    );
+  }
+}
+
+class _WrappedSplitPairRow extends StatelessWidget {
+  const _WrappedSplitPairRow({
+    required this.index,
+    required this.pair,
+    required this.review,
+  });
+
+  final int index;
+  final _SplitDiffPairRow pair;
+  final _ReviewViewModel? review;
+
+  @override
+  Widget build(BuildContext context) {
+    final leftState = _reviewThreadState(pair.left?.target, review);
+    final rightState = _reviewThreadState(pair.right?.target, review);
+    final reservedHeight = (leftState?.height ?? 0) > (rightState?.height ?? 0)
+        ? leftState?.height ?? 0
+        : rightState?.height ?? 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: _WrappedSplitLineCell(
+                  key: ValueKey('split-wrapped-left-row-$index'),
+                  cell: pair.left,
+                  side: ReviewAttachmentSide.old,
+                  review: review,
+                ),
+              ),
+              Container(width: 1, color: context.paseoPalette.borderAccent),
+              Expanded(
+                child: _WrappedSplitLineCell(
+                  key: ValueKey('split-wrapped-right-row-$index'),
+                  cell: pair.right,
+                  side: ReviewAttachmentSide.newLine,
+                  review: review,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (reservedHeight > 0)
+          SizedBox(
+            height: reservedHeight,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _SplitReviewSlot(
+                    cell: pair.left,
+                    state: leftState,
+                    review: review,
+                  ),
+                ),
+                Container(width: 1, color: context.paseoPalette.borderAccent),
+                Expanded(
+                  child: _SplitReviewSlot(
+                    cell: pair.right,
+                    state: rightState,
+                    review: review,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _WrappedSplitLineCell extends StatelessWidget {
+  const _WrappedSplitLineCell({
+    super.key,
+    required this.cell,
+    required this.side,
+    required this.review,
+  });
+
+  final _SplitDiffCell? cell;
+  final ReviewAttachmentSide side;
+  final _ReviewViewModel? review;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = cell;
+    if (value == null) {
+      return Container(
+        constraints: const BoxConstraints(minHeight: 24),
+        color: context.paseoPalette.surface1,
+      );
+    }
+    return _ReviewableDiffLine(
+      filePath: value.target.filePath,
+      line: value.line,
+      review: review,
+      reviewTarget: value.target,
+      splitSide: side,
+      showThread: false,
+      wrapLines: true,
+    );
+  }
+}
+
+class _SplitReviewSlot extends StatelessWidget {
+  const _SplitReviewSlot({
+    required this.cell,
+    required this.state,
+    required this.review,
+  });
+
+  final _SplitDiffCell? cell;
+  final _ReviewThreadState? state;
+  final _ReviewViewModel? review;
+
+  @override
+  Widget build(BuildContext context) {
+    if (cell == null || state == null || state!.height == 0 || review == null) {
+      return const SizedBox.expand();
+    }
+    return _InlineReviewThread(
+      target: cell!.target,
+      comments: state!.comments,
+      editor: state!.editor,
+      review: review!,
+      split: true,
     );
   }
 }
@@ -714,6 +913,7 @@ class _SplitDiffPairCell extends StatelessWidget {
             reviewTarget: value.target,
             splitSide: side,
             showThread: false,
+            wrapLines: false,
           )
         else
           Container(
@@ -801,6 +1001,7 @@ class _ReviewableDiffLine extends StatefulWidget {
     this.reviewTarget,
     this.splitSide,
     this.showThread = true,
+    this.wrapLines = false,
   });
 
   final String filePath;
@@ -809,6 +1010,7 @@ class _ReviewableDiffLine extends StatefulWidget {
   final _ReviewTarget? reviewTarget;
   final ReviewAttachmentSide? splitSide;
   final bool showThread;
+  final bool wrapLines;
 
   @override
   State<_ReviewableDiffLine> createState() => _ReviewableDiffLineState();
@@ -873,6 +1075,7 @@ class _ReviewableDiffLineState extends State<_ReviewableDiffLine> {
                 showReviewAction:
                     onStart != null && _hovered && !_dismissedAfterPress,
                 onAddReview: onStart,
+                wrapLines: widget.wrapLines,
               )
             : _SplitDiffLineRow(
                 line: widget.line,
@@ -882,6 +1085,7 @@ class _ReviewableDiffLineState extends State<_ReviewableDiffLine> {
                 showReviewAction:
                     onStart != null && _hovered && !_dismissedAfterPress,
                 onAddReview: onStart,
+                wrapLines: widget.wrapLines,
               ),
       ),
     );
@@ -1234,6 +1438,7 @@ class _SplitDiffLineRow extends StatelessWidget {
     required this.hasComments,
     required this.showReviewAction,
     required this.onAddReview,
+    required this.wrapLines,
   });
 
   final DiffLine line;
@@ -1242,6 +1447,7 @@ class _SplitDiffLineRow extends StatelessWidget {
   final bool hasComments;
   final bool showReviewAction;
   final VoidCallback? onAddReview;
+  final bool wrapLines;
 
   static const _monoStyle = TextStyle(fontFamily: 'monospace', fontSize: 12.5);
 
@@ -1269,7 +1475,8 @@ class _SplitDiffLineRow extends StatelessWidget {
         'split-line-${side == ReviewAttachmentSide.old ? 'left' : 'right'}-'
         '${reviewTarget?.key ?? 'empty'}',
       ),
-      height: 24,
+      height: wrapLines ? null : 24,
+      constraints: const BoxConstraints(minHeight: 24),
       color: background,
       padding: const EdgeInsets.only(right: 8),
       child: Row(
@@ -1306,11 +1513,21 @@ class _SplitDiffLineRow extends StatelessWidget {
             width: 12,
             child: Text(marker, style: _monoStyle.copyWith(color: textColor)),
           ),
-          Text(
-            formatDiffContentText(line.text),
-            softWrap: false,
-            style: _monoStyle.copyWith(color: textColor),
-          ),
+          if (wrapLines)
+            Expanded(
+              child: Text(
+                formatDiffContentText(line.text),
+                softWrap: true,
+                overflow: TextOverflow.visible,
+                style: _monoStyle.copyWith(color: textColor),
+              ),
+            )
+          else
+            Text(
+              formatDiffContentText(line.text),
+              softWrap: false,
+              style: _monoStyle.copyWith(color: textColor),
+            ),
         ],
       ),
     );
@@ -1324,6 +1541,7 @@ class _DiffLineRow extends StatelessWidget {
     this.hasComments = false,
     this.showReviewAction = false,
     this.onAddReview,
+    this.wrapLines = false,
   });
 
   final DiffLine line;
@@ -1331,6 +1549,7 @@ class _DiffLineRow extends StatelessWidget {
   final bool hasComments;
   final bool showReviewAction;
   final VoidCallback? onAddReview;
+  final bool wrapLines;
 
   static const _monoStyle = TextStyle(fontFamily: 'monospace', fontSize: 12.5);
 
@@ -1355,6 +1574,7 @@ class _DiffLineRow extends StatelessWidget {
     final numberStyle = _monoStyle.copyWith(color: outline);
     return Container(
       color: background,
+      constraints: const BoxConstraints(minHeight: 24),
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1399,11 +1619,21 @@ class _DiffLineRow extends StatelessWidget {
             width: 12,
             child: Text(marker, style: _monoStyle.copyWith(color: textColor)),
           ),
-          Text(
-            formatDiffContentText(line.text),
-            softWrap: false,
-            style: _monoStyle.copyWith(color: textColor),
-          ),
+          if (wrapLines)
+            Expanded(
+              child: Text(
+                formatDiffContentText(line.text),
+                softWrap: true,
+                overflow: TextOverflow.visible,
+                style: _monoStyle.copyWith(color: textColor),
+              ),
+            )
+          else
+            Text(
+              formatDiffContentText(line.text),
+              softWrap: false,
+              style: _monoStyle.copyWith(color: textColor),
+            ),
         ],
       ),
     );

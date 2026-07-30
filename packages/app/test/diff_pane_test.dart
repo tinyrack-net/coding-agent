@@ -96,6 +96,7 @@ Future<ProviderContainer> pumpDiffPane(
   WidgetTester tester, {
   FakeDaemonClient? client,
   bool live = false,
+  bool compact = false,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -116,6 +117,7 @@ Future<ProviderContainer> pumpDiffPane(
             cwd: _cwd,
             serverId: live ? 'server-1' : null,
             workspaceId: live ? 'workspace-1' : null,
+            compact: compact,
           ),
         ),
       ),
@@ -140,11 +142,9 @@ void main() {
     expect(container.read(daemonClientProvider), same(client));
 
     client.requests.clear();
-    await tester.tap(
-      find.byWidgetPredicate(
-        (w) => w is Tooltip && w.message == 'Refresh diff',
-      ),
-    );
+    await tester.tap(find.byKey(const ValueKey('changes-options-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Refresh'));
     await tester.pump(const Duration(milliseconds: 150));
 
     expect(
@@ -168,7 +168,8 @@ void main() {
     expect(
       find.byWidgetPredicate(
         (widget) =>
-            widget is Tooltip && widget.message == 'Switch to split diff',
+            widget is Tooltip &&
+            widget.message == 'Switch to side-by-side diff',
       ),
       findsOneWidget,
     );
@@ -221,15 +222,23 @@ void main() {
     expect(find.text('added line'), findsNothing);
     expect(
       find.byWidgetPredicate(
-        (widget) => widget is Tooltip && widget.message == 'Show tree view',
+        (widget) => widget is Tooltip && widget.message == 'Show folder tree',
       ),
       findsOneWidget,
     );
     expect(
       find.byWidgetPredicate(
-        (widget) => widget is Tooltip && widget.message == 'Expand all',
+        (widget) => widget is Tooltip && widget.message == 'Expand all files',
       ),
       findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('changes-options-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Wrap long lines'));
+    await tester.pumpAndSettle();
+    expect(
+      container.read(changesPreferencesProvider).requireValue.wrapLines,
+      isTrue,
     );
 
     await tester.tap(find.byKey(const ValueKey('changes-toggle-expand-all')));
@@ -237,7 +246,7 @@ void main() {
     expect(find.text('added line'), findsOneWidget);
     expect(
       find.byWidgetPredicate(
-        (widget) => widget is Tooltip && widget.message == 'Collapse all',
+        (widget) => widget is Tooltip && widget.message == 'Collapse all files',
       ),
       findsOneWidget,
     );
@@ -252,7 +261,8 @@ void main() {
     expect(find.text('change.dart'), findsOneWidget);
     expect(
       find.byWidgetPredicate(
-        (widget) => widget is Tooltip && widget.message == 'Show flat view',
+        (widget) =>
+            widget is Tooltip && widget.message == 'Show flat file list',
       ),
       findsOneWidget,
     );
@@ -271,7 +281,6 @@ void main() {
     await pumpDiffPane(tester, client: client, live: true);
 
     expect(find.text('Against main'), findsOneWidget);
-    expect(find.text('−WS'), findsOneWidget);
     expect(
       client.sessionRequests
           .where(
@@ -281,7 +290,9 @@ void main() {
       {'mode': 'base', 'baseRef': 'main'},
     );
 
-    await tester.tap(find.text('−WS'));
+    await tester.tap(find.byKey(const ValueKey('changes-options-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Hide whitespace'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 150));
 
@@ -296,6 +307,36 @@ void main() {
       'baseRef': 'main',
       'ignoreWhitespace': true,
     });
+  });
+
+  testWidgets('compact diff keeps view, expand, and options controls', (
+    tester,
+  ) async {
+    const diff = DiffResponse(
+      files: [
+        DiffFile(
+          path: 'lib/change.dart',
+          status: DiffFileStatus.modified,
+          additions: 1,
+        ),
+      ],
+    );
+    await pumpDiffPane(
+      tester,
+      client: FakeDaemonClient(diff: diff),
+      compact: true,
+    );
+
+    expect(
+      find.byKey(const ValueKey('changes-toggle-view-mode')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('changes-toggle-expand-all')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('changes-options-menu')), findsOneWidget);
+    expect(find.byKey(const ValueKey('changes-toggle-layout')), findsNothing);
   });
 }
 

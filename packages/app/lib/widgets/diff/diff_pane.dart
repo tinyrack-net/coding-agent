@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -124,31 +126,77 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
                     ),
                   ),
                 ],
-                Tooltip(
-                  message: 'Refresh diff',
-                  child: IconButton(
-                    icon: const Icon(FluentIcons.refresh, size: 20),
-                    onPressed: () =>
-                        ref.read(diffProvider(widget.cwd).notifier).refresh(),
-                  ),
+                _DiffOptionsMenu(
+                  hideWhitespace: changesPreferences.hideWhitespace,
+                  wrapLines: changesPreferences.wrapLines,
+                  onToggleHideWhitespace: () => ref
+                      .read(changesPreferencesProvider.notifier)
+                      .updatePreferences(
+                        hideWhitespace: !changesPreferences.hideWhitespace,
+                      ),
+                  onToggleWrapLines: () => ref
+                      .read(changesPreferencesProvider.notifier)
+                      .updatePreferences(
+                        wrapLines: !changesPreferences.wrapLines,
+                      ),
+                  onRefresh: () =>
+                      ref.read(diffProvider(widget.cwd).notifier).refresh(),
                 ),
               ],
             ),
           ),
           const Divider(),
         ] else
-          Align(
-            alignment: Alignment.centerRight,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: Tooltip(
-                message: 'Refresh diff',
-                child: IconButton(
-                  icon: const Icon(FluentIcons.refresh, size: 14),
-                  onPressed: () =>
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (files.isNotEmpty) ...[
+                  _DiffViewModeToggle(
+                    viewMode: changesPreferences.viewMode,
+                    onToggle: () {
+                      final next =
+                          changesPreferences.viewMode == ChangesViewMode.flat
+                          ? ChangesViewMode.tree
+                          : ChangesViewMode.flat;
+                      if (next == ChangesViewMode.tree) {
+                        _diffViewController.enterTreeView();
+                      }
+                      ref
+                          .read(changesPreferencesProvider.notifier)
+                          .updatePreferences(viewMode: next);
+                    },
+                  ),
+                  _DiffExpandAllToggle(
+                    allExpanded: _diffViewController.allExpanded(
+                      files,
+                      changesPreferences.viewMode,
+                    ),
+                    onToggle: () => _diffViewController.toggleExpandAll(
+                      files,
+                      changesPreferences.viewMode,
+                    ),
+                  ),
+                ],
+                _DiffOptionsMenu(
+                  compact: true,
+                  hideWhitespace: changesPreferences.hideWhitespace,
+                  wrapLines: changesPreferences.wrapLines,
+                  onToggleHideWhitespace: () => ref
+                      .read(changesPreferencesProvider.notifier)
+                      .updatePreferences(
+                        hideWhitespace: !changesPreferences.hideWhitespace,
+                      ),
+                  onToggleWrapLines: () => ref
+                      .read(changesPreferencesProvider.notifier)
+                      .updatePreferences(
+                        wrapLines: !changesPreferences.wrapLines,
+                      ),
+                  onRefresh: () =>
                       ref.read(diffProvider(widget.cwd).notifier).refresh(),
                 ),
-              ),
+              ],
             ),
           ),
         Expanded(
@@ -159,6 +207,7 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
               diff: diff,
               layout: changesPreferences.layout,
               viewMode: changesPreferences.viewMode,
+              wrapLines: changesPreferences.wrapLines,
               controller: _diffViewController,
             ),
           ),
@@ -322,24 +371,17 @@ class _LiveDiffPane extends ConsumerWidget {
               ),
             ),
           ],
-          Tooltip(
-            message: ignoreWhitespace
-                ? 'Show whitespace changes'
-                : 'Hide whitespace changes',
-            child: ToggleButton(
-              checked: ignoreWhitespace,
-              onChanged: (_) => ref
-                  .read(changesPreferencesProvider.notifier)
-                  .updatePreferences(hideWhitespace: !ignoreWhitespace),
-              child: const Text('−WS'),
-            ),
-          ),
-          Tooltip(
-            message: 'Refresh diff',
-            child: IconButton(
-              icon: Icon(FluentIcons.refresh, size: compact ? 14 : 20),
-              onPressed: () => ref.invalidate(checkoutDiffProvider(query)),
-            ),
+          _DiffOptionsMenu(
+            compact: compact,
+            hideWhitespace: ignoreWhitespace,
+            wrapLines: changesPreferences.wrapLines,
+            onToggleHideWhitespace: () => ref
+                .read(changesPreferencesProvider.notifier)
+                .updatePreferences(hideWhitespace: !ignoreWhitespace),
+            onToggleWrapLines: () => ref
+                .read(changesPreferencesProvider.notifier)
+                .updatePreferences(wrapLines: !changesPreferences.wrapLines),
+            onRefresh: () => ref.invalidate(checkoutDiffProvider(query)),
           ),
         ],
       ),
@@ -397,6 +439,7 @@ class _LiveDiffPane extends ConsumerWidget {
                 reviewDraftKey: reviewDraftKey,
                 layout: changesPreferences.layout,
                 viewMode: changesPreferences.viewMode,
+                wrapLines: changesPreferences.wrapLines,
                 controller: diffViewController,
               );
             },
@@ -416,7 +459,9 @@ class _DiffLayoutToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final split = layout == ChangesLayout.split;
-    final label = split ? 'Switch to unified diff' : 'Switch to split diff';
+    final label = split
+        ? 'Switch to unified diff'
+        : 'Switch to side-by-side diff';
     return Tooltip(
       message: label,
       child: IconButton(
@@ -440,7 +485,7 @@ class _DiffViewModeToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tree = viewMode == ChangesViewMode.tree;
-    final label = tree ? 'Show flat view' : 'Show tree view';
+    final label = tree ? 'Show flat file list' : 'Show folder tree';
     return Tooltip(
       message: label,
       child: IconButton(
@@ -463,7 +508,7 @@ class _DiffExpandAllToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = allExpanded ? 'Collapse all' : 'Expand all';
+    final label = allExpanded ? 'Collapse all files' : 'Expand all files';
     return Tooltip(
       message: label,
       child: IconButton(
@@ -473,6 +518,85 @@ class _DiffExpandAllToggle extends StatelessWidget {
           size: 16,
         ),
         onPressed: onToggle,
+      ),
+    );
+  }
+}
+
+class _DiffOptionsMenu extends StatefulWidget {
+  const _DiffOptionsMenu({
+    required this.hideWhitespace,
+    required this.wrapLines,
+    required this.onToggleHideWhitespace,
+    required this.onToggleWrapLines,
+    required this.onRefresh,
+    this.compact = false,
+  });
+
+  final bool hideWhitespace;
+  final bool wrapLines;
+  final VoidCallback onToggleHideWhitespace;
+  final VoidCallback onToggleWrapLines;
+  final VoidCallback onRefresh;
+  final bool compact;
+
+  @override
+  State<_DiffOptionsMenu> createState() => _DiffOptionsMenuState();
+}
+
+class _DiffOptionsMenuState extends State<_DiffOptionsMenu> {
+  final _controller = FlyoutController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _showMenu() async {
+    if (!_controller.isAttached || _controller.isOpen) return;
+    await _controller.showFlyout<void>(
+      placementMode: FlyoutPlacementMode.bottomRight,
+      builder: (context) => MenuFlyout(
+        constraints: const BoxConstraints.tightFor(width: 240),
+        items: [
+          ToggleMenuFlyoutItem(
+            value: widget.hideWhitespace,
+            text: Text(
+              widget.hideWhitespace ? 'Show whitespace' : 'Hide whitespace',
+            ),
+            onChanged: (_) => widget.onToggleHideWhitespace(),
+          ),
+          ToggleMenuFlyoutItem(
+            value: widget.wrapLines,
+            text: Text(
+              widget.wrapLines ? 'Scroll long lines' : 'Wrap long lines',
+            ),
+            onChanged: (_) => widget.onToggleWrapLines(),
+          ),
+          const MenuFlyoutSeparator(),
+          MenuFlyoutItem(
+            key: const ValueKey('changes-refresh'),
+            leading: const Icon(FluentIcons.refresh, size: 14),
+            text: const Text('Refresh'),
+            onPressed: widget.onRefresh,
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FlyoutTarget(
+      controller: _controller,
+      child: Tooltip(
+        message: 'Diff options',
+        child: IconButton(
+          key: const ValueKey('changes-options-menu'),
+          icon: Icon(FluentIcons.chevron_down, size: widget.compact ? 14 : 16),
+          onPressed: () => unawaited(_showMenu()),
+        ),
       ),
     );
   }

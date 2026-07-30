@@ -130,7 +130,7 @@ void main() {
     await tester.tap(find.text('generated.js'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Diff too large'), findsOneWidget);
+    expect(find.text('Diff too large to display'), findsOneWidget);
     expect(find.text('No textual changes'), findsNothing);
   });
 
@@ -584,6 +584,89 @@ void main() {
     await tester.drag(scrollFinder, const Offset(-160, 0));
     await tester.pumpAndSettle();
     expect(scrollable.position.pixels, greaterThan(0));
+  });
+
+  testWidgets('wrapLines grows unified rows without horizontal scrolling', (
+    tester,
+  ) async {
+    final longLine = List.filled(80, 'wrapped-content').join('-');
+    final diff = DiffResponse(
+      files: [
+        DiffFile(
+          path: 'lib/wrapped.dart',
+          status: DiffFileStatus.modified,
+          additions: 1,
+          hunks: [
+            DiffHunk(
+              header: '@@ -1 +1 @@',
+              lines: [
+                DiffLine(type: DiffLineType.add, text: longLine, newLineNo: 1),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.binding.setSurfaceSize(const Size(480, 500));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _wrap(DiffView(diff: diff, wrapLines: true), size: const Size(480, 500)),
+    );
+    await tester.tap(find.text('lib/wrapped.dart'));
+    await tester.pumpAndSettle();
+
+    final text = tester.widget<Text>(find.text(longLine));
+    expect(text.softWrap, isTrue);
+    expect(tester.getSize(find.text(longLine)).height, greaterThan(24));
+    expect(find.byKey(const ValueKey('diff-horizontal-scroll')), findsNothing);
+  });
+
+  testWidgets('wrapped split rows synchronize unequal code heights', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final longLine = List.filled(80, 'removed-content').join('-');
+    final diff = DiffResponse(
+      files: [
+        DiffFile(
+          path: 'lib/split_wrapped.dart',
+          status: DiffFileStatus.modified,
+          additions: 1,
+          deletions: 1,
+          hunks: [
+            DiffHunk(
+              header: '@@ -1 +1 @@',
+              lines: [
+                DiffLine(type: DiffLineType.del, text: longLine, oldLineNo: 1),
+                DiffLine(
+                  type: DiffLineType.add,
+                  text: 'short replacement',
+                  newLineNo: 1,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.binding.setSurfaceSize(const Size(1000, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _wrap(
+        DiffView(diff: diff, layout: ChangesLayout.split, wrapLines: true),
+        size: const Size(1000, 700),
+      ),
+    );
+    await tester.tap(find.text('lib/split_wrapped.dart'));
+    await tester.pumpAndSettle();
+
+    final left = find.byKey(const ValueKey('split-wrapped-left-row-1'));
+    final right = find.byKey(const ValueKey('split-wrapped-right-row-1'));
+    expect(tester.getSize(left).height, tester.getSize(right).height);
+    expect(tester.getSize(left).height, greaterThan(24));
+    expect(find.byKey(const ValueKey('diff-horizontal-scroll')), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('didUpdateWidget prunes expansion state for removed files', (
