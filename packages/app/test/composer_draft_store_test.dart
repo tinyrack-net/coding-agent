@@ -59,8 +59,42 @@ void main() {
 
     expect(restored?.text, 'keep this');
     expect(restored?.images.single.toJson(), draft.images.single.toJson());
+    expect(restored?.workspaceFiles, isEmpty);
     expect(restored?.lifecycle, ComposerDraftLifecycle.active);
   });
+
+  test(
+    'attaches normalized workspace files atomically and deduplicates',
+    () async {
+      final store = PreferencesComposerDraftStore();
+      await store.save(
+        'agent:host:a1',
+        ComposerDraft(text: 'keep this', images: const [], updatedAt: 10),
+      );
+
+      await Future.wait([
+        store.attachWorkspaceFile(
+          'agent:host:a1',
+          ComposerWorkspaceFileAttachment(path: r'.\lib\one.dart'),
+        ),
+        store.attachWorkspaceFile(
+          'agent:host:a1',
+          ComposerWorkspaceFileAttachment(path: 'lib/one.dart'),
+        ),
+        store.attachWorkspaceFile(
+          'agent:host:a1',
+          ComposerWorkspaceFileAttachment(path: 'lib/two.dart'),
+        ),
+      ]);
+
+      final restored = await store.load('agent:host:a1');
+      expect(restored?.text, 'keep this');
+      expect(restored?.workspaceFiles.map((attachment) => attachment.path), [
+        'lib/one.dart',
+        'lib/two.dart',
+      ]);
+    },
+  );
 
   test('finalized drafts are hidden and pruned after the frozen TTL', () async {
     var now = DateTime.fromMillisecondsSinceEpoch(1000);

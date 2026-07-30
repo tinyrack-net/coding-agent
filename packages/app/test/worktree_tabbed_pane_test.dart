@@ -7,6 +7,7 @@ import 'package:coding_agent_app/state/appearance_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
 import 'package:coding_agent_app/state/workspace_focus_mode_provider.dart';
+import 'package:coding_agent_app/state/workspace_attachments_provider.dart';
 import 'package:coding_agent_app/state/workspace_setup_provider.dart';
 import 'package:coding_agent_app/state/workspace_tab_keyboard_drag_provider.dart';
 import 'package:coding_agent_app/widgets/workspace_explorer.dart';
@@ -21,6 +22,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'support/legacy_agent_list_fetch_mixin.dart';
 
 const _worktreePath = '/repo-wt/lucky-otter';
@@ -367,6 +369,8 @@ Future<ProviderContainer> pumpPane(
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   testWidgets('setup tab renders cached commands and carriage-return log', (
     tester,
   ) async {
@@ -1419,6 +1423,122 @@ void main() {
         .toList();
     expect(fileTabs, hasLength(1));
     expect(fileTabs.single.filePath, 'README.md');
+  });
+
+  testWidgets(
+    'Files adds a file only to the focused chat draft and deduplicates it',
+    (tester) async {
+      final container = await pumpPane(
+        tester,
+        agents: [_idleAgent],
+        projectPath: '/repo',
+      );
+      await tester.tap(find.text('Files'));
+      await tester.pumpAndSettle();
+
+      Future<void> addReadme() async {
+        await tester.tap(
+          find.byKey(const ValueKey('file-explorer-README.md-actions')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Add to chat…'));
+        await tester.pumpAndSettle();
+      }
+
+      await addReadme();
+      await addReadme();
+
+      const draftKey = 'agent:fake:a1';
+      final attachments = container.read(
+        workspaceAttachmentsProvider(draftKey),
+      );
+      expect(attachments, hasLength(1));
+      expect(attachments.single.id, 'README.md');
+      expect(attachments.single.text, 'Workspace file: README.md');
+      expect(
+        attachments.single.toAgentAttachment(),
+        isA<TextAgentAttachment>()
+            .having((value) => value.title, 'title', 'README.md')
+            .having((value) => value.text, 'text', 'Workspace file: README.md'),
+      );
+      expect(
+        container.read(worktreeTabsProvider(_worktreePath)).layout.activeTabId,
+        'agent_a1',
+      );
+    },
+  );
+
+  testWidgets('Files hides Add to chat when the focused tab is not a chat', (
+    tester,
+  ) async {
+    await pumpPane(tester, agents: [_idleAgent], projectPath: '/repo');
+    await tester.tap(find.text('Files'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('README.md'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('file-explorer-README.md-actions')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Open file'), findsOneWidget);
+    expect(find.text('Copy path'), findsOneWidget);
+    expect(find.text('Download'), findsOneWidget);
+    expect(find.text('Add to chat…'), findsNothing);
+  });
+
+  testWidgets('Changes adds its file to the same focused chat draft', (
+    tester,
+  ) async {
+    final client = FakeDaemonClient(
+      checkoutDiffFiles: const [
+        CheckoutDiffFile(
+          path: 'lib/change.dart',
+          isNew: false,
+          isDeleted: false,
+          additions: 1,
+          deletions: 0,
+          hunks: [
+            CheckoutDiffHunk(
+              oldStart: 1,
+              oldCount: 0,
+              newStart: 1,
+              newCount: 1,
+              lines: [
+                CheckoutDiffLine(
+                  type: CheckoutDiffLineType.add,
+                  content: 'new line',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    final container = await pumpPane(
+      tester,
+      client: client,
+      agents: [_idleAgent],
+      projectPath: '/repo',
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(WorkspaceExplorer),
+        matching: find.byKey(const ValueKey('diff-file-0-actions')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add to chat…'));
+    await tester.pumpAndSettle();
+
+    final attachment = container
+        .read(workspaceAttachmentsProvider('agent:fake:a1'))
+        .single;
+    expect(attachment.id, 'lib/change.dart');
+    expect(attachment.text, 'Workspace file: lib/change.dart');
   });
 
   testWidgets('changes and files live in the workspace explorer instead of '

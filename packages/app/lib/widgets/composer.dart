@@ -62,6 +62,7 @@ class Composer extends ConsumerStatefulWidget {
   const Composer({
     super.key,
     required this.agentId,
+    this.serverId = 'local',
     this.onInputFocus,
     this.onPromptSend,
     this.keyboardActionsEnabled = true,
@@ -72,6 +73,7 @@ class Composer extends ConsumerStatefulWidget {
   });
 
   final String agentId;
+  final String serverId;
   final VoidCallback? onInputFocus;
   final VoidCallback? onPromptSend;
   final bool keyboardActionsEnabled;
@@ -103,7 +105,7 @@ class _ComposerState extends ConsumerState<Composer> {
   Future<void> _draftWrite = Future.value();
 
   String get _draftKey =>
-      buildComposerDraftKey(serverId: 'local', agentId: widget.agentId);
+      buildComposerDraftKey(serverId: widget.serverId, agentId: widget.agentId);
 
   @override
   void initState() {
@@ -183,6 +185,12 @@ class _ComposerState extends ConsumerState<Composer> {
     }
     final images = await _imageAttachmentService.restore(draft.images);
     if (!mounted || revision != _draftRevision) return;
+    final attachmentNotifier = ref.read(
+      workspaceAttachmentsProvider(_draftKey).notifier,
+    );
+    for (final file in draft.workspaceFiles) {
+      attachmentNotifier.add(workspaceFileContextAttachment(file.path));
+    }
     _suspendDraftPersistence = true;
     _controller.text = draft.text;
     _suspendDraftPersistence = false;
@@ -198,6 +206,13 @@ class _ComposerState extends ConsumerState<Composer> {
     final draft = ComposerDraft(
       text: _controller.text,
       images: metadata,
+      workspaceFiles: [
+        for (final attachment in ref.read(
+          workspaceAttachmentsProvider(_draftKey),
+        ))
+          if (attachment.kind == 'file')
+            ComposerWorkspaceFileAttachment(path: attachment.id),
+      ],
       updatedAt: DateTime.now().millisecondsSinceEpoch,
     );
     _draftWrite = _draftWrite
@@ -265,16 +280,19 @@ class _ComposerState extends ConsumerState<Composer> {
     final text = _controller.text.trim();
     final agent = ref.read(agentSummaryProvider(widget.agentId));
     final cwd = agent?.cwd;
-    final attachments = cwd == null
-        ? const <WorkspaceContextAttachment>[]
-        : ref.read(workspaceAttachmentsProvider(cwd));
+    final attachments = mergeWorkspaceContextAttachments(
+      cwd == null
+          ? const <WorkspaceContextAttachment>[]
+          : ref.read(workspaceAttachmentsProvider(cwd)),
+      ref.read(workspaceAttachmentsProvider(_draftKey)),
+    );
     if (text.isEmpty && attachments.isEmpty && _images.isEmpty) return;
     final images = List<PendingComposerImage>.of(_images);
     if (agent?.runState == AgentRunState.running) {
       final queued = ref
           .read(queuedMessagesProvider.notifier)
           .enqueue(
-            serverId: 'local',
+            serverId: widget.serverId,
             agentId: widget.agentId,
             text: text,
             images: images,
@@ -287,6 +305,7 @@ class _ComposerState extends ConsumerState<Composer> {
         _clearReviewDrafts(attachments);
         ref.read(workspaceAttachmentsProvider(cwd).notifier).clear();
       }
+      ref.read(workspaceAttachmentsProvider(_draftKey).notifier).clear();
       _draftWrite = _draftWrite
           .then(
             (_) => _draftStore.clear(
@@ -346,6 +365,7 @@ class _ComposerState extends ConsumerState<Composer> {
         _clearReviewDrafts(attachments);
         ref.read(workspaceAttachmentsProvider(cwd).notifier).clear();
       }
+      ref.read(workspaceAttachmentsProvider(_draftKey).notifier).clear();
       _draftWrite = _draftWrite
           .then(
             (_) => _draftStore.clear(
@@ -529,7 +549,11 @@ class _ComposerState extends ConsumerState<Composer> {
   Future<void> _editQueued(String messageId) async {
     final message = ref
         .read(queuedMessagesProvider.notifier)
-        .take(serverId: 'local', agentId: widget.agentId, messageId: messageId);
+        .take(
+          serverId: widget.serverId,
+          agentId: widget.agentId,
+          messageId: messageId,
+        );
     if (message == null) return;
     final cwd = ref.read(agentSummaryProvider(widget.agentId))?.cwd;
     _suspendDraftPersistence = true;
@@ -540,10 +564,10 @@ class _ComposerState extends ConsumerState<Composer> {
         ..clear()
         ..addAll(message.images);
     });
-    if (cwd != null) {
-      final attachments = ref.read(workspaceAttachmentsProvider(cwd).notifier);
-      for (final attachment in message.attachments) {
-        attachments.add(attachment);
+    for (final attachment in message.attachments) {
+      final scope = attachment.kind == 'file' ? _draftKey : cwd;
+      if (scope != null) {
+        ref.read(workspaceAttachmentsProvider(scope).notifier).add(attachment);
       }
     }
     _persistDraft();
@@ -552,7 +576,11 @@ class _ComposerState extends ConsumerState<Composer> {
   Future<void> _sendQueuedNow(String messageId) async {
     final message = ref
         .read(queuedMessagesProvider.notifier)
-        .take(serverId: 'local', agentId: widget.agentId, messageId: messageId);
+        .take(
+          serverId: widget.serverId,
+          agentId: widget.agentId,
+          messageId: messageId,
+        );
     if (message == null) return;
     await _submitQueuedMessage(message);
   }
@@ -562,7 +590,7 @@ class _ComposerState extends ConsumerState<Composer> {
       ref
           .read(queuedMessagesProvider.notifier)
           .restoreFirst(
-            serverId: 'local',
+            serverId: widget.serverId,
             agentId: widget.agentId,
             message: message,
           );
@@ -615,7 +643,7 @@ class _ComposerState extends ConsumerState<Composer> {
       ref
           .read(queuedMessagesProvider.notifier)
           .restoreFirst(
-            serverId: 'local',
+            serverId: widget.serverId,
             agentId: widget.agentId,
             message: message,
           );
@@ -643,7 +671,7 @@ class _ComposerState extends ConsumerState<Composer> {
       if (runState == AgentRunState.running) return;
       final message = ref
           .read(queuedMessagesProvider.notifier)
-          .takeFirst(serverId: 'local', agentId: widget.agentId);
+          .takeFirst(serverId: widget.serverId, agentId: widget.agentId);
       if (message != null) unawaited(_submitQueuedMessage(message));
     });
   }
@@ -878,11 +906,24 @@ class _ComposerState extends ConsumerState<Composer> {
     final cwd = ref.watch(
       agentSummaryProvider(widget.agentId).select((agent) => agent?.cwd),
     );
-    final attachments = cwd == null
-        ? const <WorkspaceContextAttachment>[]
-        : ref.watch(workspaceAttachmentsProvider(cwd));
+    final attachments = mergeWorkspaceContextAttachments(
+      cwd == null
+          ? const <WorkspaceContextAttachment>[]
+          : ref.watch(workspaceAttachmentsProvider(cwd)),
+      ref.watch(workspaceAttachmentsProvider(_draftKey)),
+    );
+    ref.listen<int>(composerAttachmentFocusRequestProvider(_draftKey), (
+      previous,
+      next,
+    ) {
+      if (previous == null || previous == next) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusNode.requestFocus();
+      });
+    });
     final queuedMessages =
-        ref.watch(queuedMessagesProvider)['local']?[widget.agentId] ?? const [];
+        ref.watch(queuedMessagesProvider)[widget.serverId]?[widget.agentId] ??
+        const [];
     final selection = _controller.selection;
     final fileMentionRange = findActiveFileMention(
       text: _controller.text,
@@ -987,17 +1028,22 @@ class _ComposerState extends ConsumerState<Composer> {
                       runSpacing: 6,
                       children: [
                         for (final attachment in attachments)
-                          _ContextAttachmentPill(
+                          ContextAttachmentPill(
                             attachment: attachment,
-                            onRemove: cwd == null
-                                ? null
-                                : () => ref
-                                      .read(
-                                        workspaceAttachmentsProvider(
-                                          cwd,
-                                        ).notifier,
-                                      )
-                                      .remove(attachment.kind, attachment.id),
+                            onRemove: () {
+                              final scope = attachment.kind == 'file'
+                                  ? _draftKey
+                                  : cwd;
+                              if (scope == null) return;
+                              ref
+                                  .read(
+                                    workspaceAttachmentsProvider(
+                                      scope,
+                                    ).notifier,
+                                  )
+                                  .remove(attachment.kind, attachment.id);
+                              _persistDraft();
+                            },
                           ),
                       ],
                     ),
@@ -1377,8 +1423,9 @@ class _ImageAttachmentPreview extends StatelessWidget {
   }
 }
 
-class _ContextAttachmentPill extends StatelessWidget {
-  const _ContextAttachmentPill({
+class ContextAttachmentPill extends StatelessWidget {
+  const ContextAttachmentPill({
+    super.key,
     required this.attachment,
     required this.onRemove,
   });

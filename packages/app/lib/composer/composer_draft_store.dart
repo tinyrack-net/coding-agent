@@ -9,6 +9,43 @@ const composerDraftStoreVersion = 1;
 const composerFinalizedDraftTtl = Duration(minutes: 5);
 const newWorkspaceComposerDraftKey = 'new-workspace';
 
+final class ComposerWorkspaceFileAttachment {
+  const ComposerWorkspaceFileAttachment._({required this.path});
+
+  factory ComposerWorkspaceFileAttachment({required String path}) {
+    final normalized = path
+        .trim()
+        .replaceAll(r'\', '/')
+        .replaceFirst(RegExp(r'^\./'), '');
+    if (normalized.isEmpty) {
+      throw ArgumentError.value(path, 'path', 'must not be empty');
+    }
+    return ComposerWorkspaceFileAttachment._(path: normalized);
+  }
+
+  final String path;
+
+  Map<String, Object?> toJson() => {'path': path, 'selection': 'whole_file'};
+
+  factory ComposerWorkspaceFileAttachment.fromJson(Map<String, Object?> json) =>
+      ComposerWorkspaceFileAttachment(path: json['path'] as String);
+
+  @override
+  bool operator ==(Object other) =>
+      other is ComposerWorkspaceFileAttachment && other.path == path;
+
+  @override
+  int get hashCode => path.hashCode;
+}
+
+List<ComposerWorkspaceFileAttachment> appendComposerWorkspaceFile(
+  List<ComposerWorkspaceFileAttachment> current,
+  ComposerWorkspaceFileAttachment attachment,
+) {
+  if (current.contains(attachment)) return current;
+  return List.unmodifiable([...current, attachment]);
+}
+
 String buildComposerDraftKey({
   required String serverId,
   required String agentId,
@@ -42,6 +79,7 @@ final class ComposerDraft {
   const ComposerDraft({
     required this.text,
     required this.images,
+    this.workspaceFiles = const [],
     this.lifecycle = ComposerDraftLifecycle.active,
     required this.updatedAt,
     this.version = composerDraftStoreVersion,
@@ -49,15 +87,20 @@ final class ComposerDraft {
 
   final String text;
   final List<AttachmentMetadata> images;
+  final List<ComposerWorkspaceFileAttachment> workspaceFiles;
   final ComposerDraftLifecycle lifecycle;
   final int updatedAt;
   final int version;
 
-  bool get hasContent => text.trim().isNotEmpty || images.isNotEmpty;
+  bool get hasContent =>
+      text.trim().isNotEmpty || images.isNotEmpty || workspaceFiles.isNotEmpty;
 
   Map<String, Object?> toJson() => {
     'text': text,
     'images': images.map((image) => image.toJson()).toList(growable: false),
+    'workspaceFiles': workspaceFiles
+        .map((attachment) => attachment.toJson())
+        .toList(growable: false),
     'lifecycle': lifecycle.name,
     'updatedAt': updatedAt,
     'version': version,
@@ -69,6 +112,13 @@ final class ComposerDraft {
         .map(
           (image) => AttachmentMetadata.fromJson(
             (image as Map).cast<String, Object?>(),
+          ),
+        )
+        .toList(growable: false),
+    workspaceFiles: ((json['workspaceFiles'] as List<Object?>?) ?? const [])
+        .map(
+          (attachment) => ComposerWorkspaceFileAttachment.fromJson(
+            (attachment as Map).cast<String, Object?>(),
           ),
         )
         .toList(growable: false),
@@ -84,6 +134,11 @@ abstract interface class ComposerDraftStore {
   Future<ComposerDraft?> load(String draftKey);
 
   Future<void> save(String draftKey, ComposerDraft draft);
+
+  Future<ComposerDraft> attachWorkspaceFile(
+    String draftKey,
+    ComposerWorkspaceFileAttachment attachment,
+  );
 
   Future<void> clear(
     String draftKey, {
@@ -149,6 +204,47 @@ final class PreferencesComposerDraftStore implements ComposerDraftStore {
   }
 
   @override
+  Future<ComposerDraft> attachWorkspaceFile(
+    String draftKey,
+    ComposerWorkspaceFileAttachment attachment,
+  ) {
+    return _serialize(() async {
+      final preferences = await _preferences();
+      final key = _storageKey(draftKey);
+      ComposerDraft? existing;
+      final encoded = preferences.getString(key);
+      if (encoded != null) {
+        try {
+          final candidate = ComposerDraft.fromJson(
+            (jsonDecode(encoded) as Map).cast<String, Object?>(),
+          );
+          if (candidate.version == composerDraftStoreVersion &&
+              candidate.lifecycle == ComposerDraftLifecycle.active) {
+            existing = candidate;
+          }
+        } catch (_) {
+          // Replace malformed or obsolete draft data with a valid record.
+        }
+      }
+      final draft = ComposerDraft(
+        text: existing?.text ?? '',
+        images: existing?.images ?? const [],
+        workspaceFiles: appendComposerWorkspaceFile(
+          existing?.workspaceFiles ?? const [],
+          attachment,
+        ),
+        updatedAt: _clock().millisecondsSinceEpoch,
+      );
+      await preferences.setString(key, jsonEncode(draft));
+      final index = preferences.getStringList(_indexKey)?.toSet() ?? {};
+      if (index.add(key)) {
+        await preferences.setStringList(_indexKey, index.toList()..sort());
+      }
+      return draft;
+    });
+  }
+
+  @override
   Future<void> clear(
     String draftKey, {
     required ComposerDraftLifecycle lifecycle,
@@ -158,6 +254,7 @@ final class PreferencesComposerDraftStore implements ComposerDraftStore {
       ComposerDraft(
         text: '',
         images: const [],
+        workspaceFiles: const [],
         lifecycle: lifecycle,
         updatedAt: _clock().millisecondsSinceEpoch,
       ),

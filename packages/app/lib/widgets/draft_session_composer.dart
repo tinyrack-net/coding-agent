@@ -60,6 +60,7 @@ class DraftSessionComposer extends ConsumerStatefulWidget {
     super.key,
     required this.worktreePath,
     required this.tabId,
+    this.serverId = 'local',
     this.workspaceId,
     this.projectPath,
     this.branch,
@@ -75,6 +76,7 @@ class DraftSessionComposer extends ConsumerStatefulWidget {
 
   /// The draft tab converting to an agent tab on submit.
   final String tabId;
+  final String serverId;
   final String? workspaceId;
 
   /// Set when [isWorktree] is true: the owning repo the worktree was
@@ -127,7 +129,7 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
   String? _commandCenterSignature;
 
   String get _draftKey => buildComposerDraftKey(
-    serverId: 'local',
+    serverId: widget.serverId,
     agentId: widget.tabId,
     draftId: widget.tabId,
   );
@@ -388,6 +390,12 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
     }
     final images = await _imageAttachmentService.restore(draft.images);
     if (!mounted || revision != _draftRevision) return;
+    final attachmentNotifier = ref.read(
+      workspaceAttachmentsProvider(_draftKey).notifier,
+    );
+    for (final file in draft.workspaceFiles) {
+      attachmentNotifier.add(workspaceFileContextAttachment(file.path));
+    }
     _suspendDraftPersistence = true;
     _promptController.text = draft.text;
     _suspendDraftPersistence = false;
@@ -402,6 +410,13 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
           .map((image) => image.metadata)
           .whereType<AttachmentMetadata>()
           .toList(growable: false),
+      workspaceFiles: [
+        for (final attachment in ref.read(
+          workspaceAttachmentsProvider(_draftKey),
+        ))
+          if (attachment.kind == 'file')
+            ComposerWorkspaceFileAttachment(path: attachment.id),
+      ],
       updatedAt: DateTime.now().millisecondsSinceEpoch,
     );
     _draftWrite = _draftWrite
@@ -499,11 +514,14 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
     final provider = _provider;
     final model = _model ?? '';
     final text = _promptController.text.trim();
+    final contextAttachments = ref.read(
+      workspaceAttachmentsProvider(_draftKey),
+    );
     final readinessError = validateDraftSubmission(
       text: text,
       allowsEmptyAutoSubmit: shouldAllowEmptyDraftText(
         allowsEmptyAutoSubmit: false,
-        attachments: _images,
+        attachments: [..._images, ...contextAttachments],
       ),
       providerCount: providerCount,
       selectedProvider: provider,
@@ -522,7 +540,7 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
     final featureValues = _resolvedFeatureValues();
     final attempt = PendingCreateAttempt(
       draftId: widget.tabId,
-      serverId: 'local',
+      serverId: widget.serverId,
       workspaceId: widget.workspaceId,
       agentId: null,
       clientMessageId: clientMessageId,
@@ -532,6 +550,9 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
       images: _images
           .map((image) => image.metadata)
           .whereType<AttachmentMetadata>()
+          .toList(growable: false),
+      attachments: contextAttachments
+          .map((attachment) => attachment.toAgentAttachment())
           .toList(growable: false),
     );
     ref.read(createFlowProvider.notifier).setPending(attempt);
@@ -602,6 +623,7 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
         lifecycle: CreateFlowLifecycle.sent,
       );
       tabs.retarget(widget.tabId, agent.agentId);
+      ref.read(workspaceAttachmentsProvider(_draftKey).notifier).clear();
       try {
         await _draftStore.clear(
           _draftKey,
@@ -867,7 +889,19 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
   @override
   Widget build(BuildContext context) {
     final client = ref.watch(daemonClientProvider);
-    final serverId = client.serverInfo?.serverId ?? 'local';
+    final serverId = widget.serverId;
+    final contextAttachments = ref.watch(
+      workspaceAttachmentsProvider(_draftKey),
+    );
+    ref.listen<int>(composerAttachmentFocusRequestProvider(_draftKey), (
+      previous,
+      next,
+    ) {
+      if (previous == null || previous == next) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _promptFocusNode.requestFocus();
+      });
+    });
     final snapshotScope = ProvidersSnapshotScope(
       client: client,
       serverId: serverId,
@@ -1231,6 +1265,31 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
                           onRemove: isSubmitting
                               ? null
                               : () => _removeImage(image),
+                        ),
+                    ],
+                  ),
+                ],
+                if (contextAttachments.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final attachment in contextAttachments)
+                        ContextAttachmentPill(
+                          attachment: attachment,
+                          onRemove: isSubmitting
+                              ? null
+                              : () {
+                                  ref
+                                      .read(
+                                        workspaceAttachmentsProvider(
+                                          _draftKey,
+                                        ).notifier,
+                                      )
+                                      .remove(attachment.kind, attachment.id);
+                                  _persistDraft();
+                                },
                         ),
                     ],
                   ),

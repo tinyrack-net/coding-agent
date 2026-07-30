@@ -4,6 +4,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../attachments/attachment_store.dart';
+import '../composer/composer_draft_store.dart';
 
 final class WorkspaceContextAttachment {
   const WorkspaceContextAttachment({
@@ -30,6 +31,42 @@ final class WorkspaceContextAttachment {
 
   AgentAttachment toAgentAttachment() =>
       semanticAttachment ?? TextAgentAttachment(title: title, text: text);
+}
+
+WorkspaceContextAttachment workspaceFileContextAttachment(String path) {
+  final attachment = ComposerWorkspaceFileAttachment(path: path);
+  final title = attachment.path.split('/').last;
+  return WorkspaceContextAttachment(
+    kind: 'file',
+    id: attachment.path,
+    title: title,
+    subtitle: attachment.path,
+    text: 'Workspace file: ${attachment.path}',
+    url: null,
+    semanticAttachment: TextAgentAttachment(
+      title: title,
+      text: 'Workspace file: ${attachment.path}',
+    ),
+  );
+}
+
+List<WorkspaceContextAttachment> mergeWorkspaceContextAttachments(
+  Iterable<WorkspaceContextAttachment> first,
+  Iterable<WorkspaceContextAttachment> second,
+) {
+  final result = <WorkspaceContextAttachment>[];
+  final indices = <String, int>{};
+  for (final attachment in [...first, ...second]) {
+    final key = '${attachment.kind}\u0000${attachment.id}';
+    final existing = indices[key];
+    if (existing == null) {
+      indices[key] = result.length;
+      result.add(attachment);
+    } else {
+      result[existing] = attachment;
+    }
+  }
+  return List.unmodifiable(result);
 }
 
 class WorkspaceAttachmentsNotifier
@@ -92,6 +129,24 @@ final workspaceAttachmentsProvider =
       List<WorkspaceContextAttachment>,
       String
     >(WorkspaceAttachmentsNotifier.new);
+
+class ComposerAttachmentFocusRequestNotifier extends Notifier<int> {
+  ComposerAttachmentFocusRequestNotifier(this.draftKey);
+
+  final String draftKey;
+
+  @override
+  int build() => 0;
+
+  void request() => state += 1;
+}
+
+final composerAttachmentFocusRequestProvider =
+    NotifierProvider.family<
+      ComposerAttachmentFocusRequestNotifier,
+      int,
+      String
+    >(ComposerAttachmentFocusRequestNotifier.new);
 
 class WorkspaceScreenshotOwnersNotifier
     extends Notifier<Map<String, Set<String>>> {

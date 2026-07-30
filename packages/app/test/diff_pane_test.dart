@@ -4,7 +4,6 @@ import 'package:coding_agent_app/core/external_url_launcher.dart';
 import 'package:coding_agent_app/core/theme.dart';
 import 'package:coding_agent_app/state/changes_preferences_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
-import 'package:coding_agent_app/state/workspace_attachments_provider.dart';
 import 'package:coding_agent_app/widgets/diff/diff_pane.dart';
 import 'package:coding_agent_app/workspace/workspace_file_open.dart';
 import 'package:fluent_ui/fluent_ui.dart';
@@ -118,6 +117,7 @@ Future<ProviderContainer> pumpDiffPane(
   VoidCallback? onToggleChangesTab,
   ValueChanged<String>? onChangesFilePress,
   ValueChanged<WorkspaceFileOpenRequest>? onOpenWorkspaceFile,
+  ValueChanged<String>? onAddToChat,
   ExternalUrlLauncher? launcher,
 }) async {
   final container = ProviderContainer(
@@ -148,6 +148,7 @@ Future<ProviderContainer> pumpDiffPane(
             onToggleChangesTab: onToggleChangesTab,
             onChangesFilePress: onChangesFilePress,
             onOpenWorkspaceFile: onOpenWorkspaceFile,
+            onAddToChat: onAddToChat,
           ),
         ),
       ),
@@ -459,11 +460,13 @@ void main() {
       final client = FakeDaemonClient(diff: diff);
       final launcher = _FakeExternalUrlLauncher();
       WorkspaceFileOpenRequest? opened;
-      final container = await pumpDiffPane(
+      final attached = <String>[];
+      await pumpDiffPane(
         tester,
         client: client,
         launcher: launcher,
         onOpenWorkspaceFile: (request) => opened = request,
+        onAddToChat: attached.add,
       );
 
       Future<void> choose(String label) async {
@@ -477,13 +480,8 @@ void main() {
       expect(opened?.location.path, 'lib/change.dart');
       expect(opened?.disposition, OpenFileDisposition.main);
 
-      await choose('Add to chat');
-      final attachment = container
-          .read(workspaceAttachmentsProvider(_cwd))
-          .single;
-      expect(attachment.kind, 'file');
-      expect(attachment.id, 'lib/change.dart');
-      expect(attachment.title, 'change.dart');
+      await choose('Add to chat…');
+      expect(attached, ['lib/change.dart']);
 
       await choose('Download');
       expect(client.downloadRequests, [(_cwd, 'lib/change.dart')]);

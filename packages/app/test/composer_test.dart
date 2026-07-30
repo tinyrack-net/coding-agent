@@ -196,6 +196,25 @@ final class _MemoryDraftStore implements ComposerDraftStore {
   }
 
   @override
+  Future<ComposerDraft> attachWorkspaceFile(
+    String draftKey,
+    ComposerWorkspaceFileAttachment attachment,
+  ) async {
+    final current = drafts[draftKey];
+    final draft = ComposerDraft(
+      text: current?.text ?? '',
+      images: current?.images ?? const [],
+      workspaceFiles: appendComposerWorkspaceFile(
+        current?.workspaceFiles ?? const [],
+        attachment,
+      ),
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    drafts[draftKey] = draft;
+    return draft;
+  }
+
+  @override
   Future<void> clear(
     String draftKey, {
     required ComposerDraftLifecycle lifecycle,
@@ -954,6 +973,46 @@ void main() {
       ]);
       expect(container.read(workspaceAttachmentsProvider(_agent.cwd)), isEmpty);
       expect(find.text('reviewer'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'draft-scoped workspace files focus, submit, and stay isolated from cwd',
+    (tester) async {
+      final client = FakeDaemonClient();
+      final container = await pumpComposer(tester, client);
+      const draftKey = 'agent:local:a1';
+      container
+          .read(workspaceAttachmentsProvider(draftKey).notifier)
+          .add(workspaceFileContextAttachment(r'.\lib\example.dart'));
+      container
+          .read(composerAttachmentFocusRequestProvider(draftKey).notifier)
+          .request();
+      await tester.pumpAndSettle();
+
+      expect(find.text('example.dart'), findsOneWidget);
+      expect(
+        tester
+            .widget<EditableText>(find.byType(EditableText))
+            .focusNode
+            .hasFocus,
+        isTrue,
+      );
+      expect(container.read(workspaceAttachmentsProvider(_agent.cwd)), isEmpty);
+
+      await tester.tap(find.byIcon(FluentIcons.send));
+      await tester.pump(const Duration(milliseconds: 150));
+
+      final (_, payload) = client.requests.single;
+      expect(payload['attachments'], [
+        {
+          'type': 'text',
+          'mimeType': 'text/plain',
+          'title': 'example.dart',
+          'text': 'Workspace file: lib/example.dart',
+        },
+      ]);
+      expect(container.read(workspaceAttachmentsProvider(draftKey)), isEmpty);
     },
   );
 

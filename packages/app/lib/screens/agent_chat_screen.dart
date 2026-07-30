@@ -34,11 +34,13 @@ class AgentChatScreen extends ConsumerStatefulWidget {
   const AgentChatScreen({
     super.key,
     required this.agentId,
+    this.serverId = 'local',
     this.isScreenFocused = true,
     this.onOpenWorkspaceFile,
   });
 
   final String agentId;
+  final String serverId;
   final bool isScreenFocused;
   final void Function(WorkspaceFileOpenRequest request)? onOpenWorkspaceFile;
 
@@ -540,6 +542,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
       const Divider(),
       Composer(
         agentId: widget.agentId,
+        serverId: widget.serverId,
         keyboardActionsEnabled: widget.isScreenFocused,
         onClientSlashCommand: (command) =>
             unawaited(_handleClientSlashCommand(command)),

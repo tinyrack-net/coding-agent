@@ -74,7 +74,7 @@ final class FileActionsMenuState extends State<FileActionsMenu> {
             MenuFlyoutItem(
               key: ValueKey('${widget.testIdPrefix}-add-to-chat'),
               leading: const Icon(FluentIcons.chat, size: 14),
-              text: const Text('Add to chat'),
+              text: const Text('Add to chat…'),
               onPressed: () => widget.onAddToChat!(widget.path),
             ),
         ],

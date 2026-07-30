@@ -1133,7 +1133,7 @@ void main() {
     expect(find.text('Open file'), findsOneWidget);
     expect(find.text('Copy path'), findsOneWidget);
     expect(find.text('Download'), findsOneWidget);
-    expect(find.text('Add to chat'), findsOneWidget);
+    expect(find.text('Add to chat…'), findsOneWidget);
     await tester.tap(find.text('Open file'));
     await tester.pumpAndSettle();
 
@@ -1142,7 +1142,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('diff-file-1-actions')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Add to chat'));
+    await tester.tap(find.text('Add to chat…'));
     await tester.pumpAndSettle();
     expect(actions.last, 'chat:lib/changed.dart');
     expect(find.text('new line'), findsNothing);
@@ -1167,7 +1167,7 @@ void main() {
     expect(find.text('Copy path'), findsOneWidget);
     expect(find.text('Open file'), findsNothing);
     expect(find.text('Download'), findsNothing);
-    expect(find.text('Add to chat'), findsNothing);
+    expect(find.text('Add to chat…'), findsNothing);
   });
 
   testWidgets('secondary click opens actions without toggling the file', (

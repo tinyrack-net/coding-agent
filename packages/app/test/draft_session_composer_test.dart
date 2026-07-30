@@ -10,6 +10,7 @@ import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/state/create_flow_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
+import 'package:coding_agent_app/state/workspace_attachments_provider.dart';
 import 'package:coding_agent_app/widgets/draft_session_composer.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -200,6 +201,25 @@ final class _MemoryDraftStore implements ComposerDraftStore {
   }
 
   @override
+  Future<ComposerDraft> attachWorkspaceFile(
+    String draftKey,
+    ComposerWorkspaceFileAttachment attachment,
+  ) async {
+    final current = drafts[draftKey];
+    final draft = ComposerDraft(
+      text: current?.text ?? '',
+      images: current?.images ?? const [],
+      workspaceFiles: appendComposerWorkspaceFile(
+        current?.workspaceFiles ?? const [],
+        attachment,
+      ),
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    drafts[draftKey] = draft;
+    return draft;
+  }
+
+  @override
   Future<void> clear(
     String draftKey, {
     required ComposerDraftLifecycle lifecycle,
@@ -383,6 +403,48 @@ void main() {
       final pending = container.read(createFlowProvider).values.single;
       expect(pending.lifecycle, CreateFlowLifecycle.sent);
       expect(pending.agentId, 'new-1');
+    },
+  );
+
+  testWidgets(
+    'a draft-scoped workspace file renders and creates an agent without text',
+    (tester) async {
+      final client = FakeDaemonClient()
+        ..onRequest = (type, payload) {
+          if (type == MessageTypes.agentCreateRequest) {
+            return {'agent': _createdAgent.toJson()};
+          }
+          return const {};
+        };
+      late String draftKey;
+      final container = await pumpComposer(
+        tester,
+        client,
+        onContainerReady: (current, tabId) {
+          draftKey = 'draft:local:$tabId';
+          current
+              .read(workspaceAttachmentsProvider(draftKey).notifier)
+              .add(workspaceFileContextAttachment('lib/example.dart'));
+        },
+      );
+
+      expect(find.text('example.dart'), findsOneWidget);
+      await tester.tap(find.text('Create'));
+      await tester.pumpAndSettle();
+
+      final request = client.requests.singleWhere(
+        (entry) => entry.$1 == MessageTypes.agentCreateRequest,
+      );
+      expect(request.$2.containsKey('initialPrompt'), isFalse);
+      expect(request.$2['attachments'], [
+        {
+          'type': 'text',
+          'mimeType': 'text/plain',
+          'title': 'example.dart',
+          'text': 'Workspace file: lib/example.dart',
+        },
+      ]);
+      expect(container.read(workspaceAttachmentsProvider(draftKey)), isEmpty);
     },
   );
 

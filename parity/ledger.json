@@ -1290,10 +1290,18 @@
     },
     {
       "id": "release-feature:005-add-files-to-chat-directly-from-files-and-changes",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/composer/focused_chat_target.dart; packages/app/lib/composer/composer_draft_store.dart; packages/app/lib/state/workspace_attachments_provider.dart; packages/app/lib/widgets/worktree_tabbed_pane.dart; packages/app/lib/widgets/workspace_explorer.dart; packages/app/lib/widgets/diff/diff_pane.dart; packages/app/lib/widgets/file_actions_menu.dart; packages/app/lib/widgets/composer.dart; packages/app/lib/widgets/draft_session_composer.dart",
+      "evidence": [
+        "packages/app/test/focused_chat_target_test.dart",
+        "packages/app/test/composer_draft_store_test.dart",
+        "packages/app/test/worktree_tabbed_pane_test.dart",
+        "packages/app/test/diff_pane_test.dart",
+        "packages/app/test/diff_view_test.dart",
+        "packages/app/test/composer_test.dart",
+        "packages/app/test/draft_session_composer_test.dart"
+      ],
+      "notes": "Files and compact Changes expose the frozen shared file-actions menu and exact Add to chat… label only when the focused pane owns an agent or draft chat. Whole-file attachments normalize and deduplicate by path, persist in the server-scoped chat draft, refocus that tab and composer, render in both existing-agent and draft composers, preserve Workspace file wire text, submit without prompt text, clear after handoff, and never leak into another chat; deleted files and non-chat focus suppress the action."
     },
     {
       "id": "release-feature:006-browse-workspace-commit-history-and-open-individual-commit-diffs-from-changes",

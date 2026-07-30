@@ -34,6 +34,7 @@ class DiffPane extends ConsumerStatefulWidget {
     this.onToggleChangesTab,
     this.onChangesFilePress,
     this.onOpenWorkspaceFile,
+    this.onAddToChat,
   });
 
   final String cwd;
@@ -46,6 +47,7 @@ class DiffPane extends ConsumerStatefulWidget {
   final VoidCallback? onToggleChangesTab;
   final ValueChanged<String>? onChangesFilePress;
   final ValueChanged<WorkspaceFileOpenRequest>? onOpenWorkspaceFile;
+  final ValueChanged<String>? onAddToChat;
 
   @override
   ConsumerState<DiffPane> createState() => _DiffPaneState();
@@ -88,6 +90,7 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
         onChangesFilePress: widget.onChangesFilePress,
         diffViewController: _diffViewController,
         onOpenWorkspaceFile: widget.onOpenWorkspaceFile,
+        onAddToChat: widget.onAddToChat,
       );
     }
     final diffAsync = ref.watch(diffProvider(widget.cwd));
@@ -250,7 +253,7 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
               onOpenFile: widget.onOpenWorkspaceFile == null ? null : _openFile,
               onCopyPath: _copyPath,
               onDownload: _download,
-              onAddToChat: _addToChat,
+              onAddToChat: widget.onAddToChat,
             ),
           ),
         ),
@@ -271,12 +274,6 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
       workspaceRoot: widget.cwd,
     );
     Clipboard.setData(ClipboardData(text: resolved?.absolutePath ?? path));
-  }
-
-  void _addToChat(String path) {
-    ref
-        .read(workspaceAttachmentsProvider(widget.cwd).notifier)
-        .add(_workspaceFileAttachment(path));
   }
 
   void _download(String path) {
@@ -304,6 +301,7 @@ class _LiveDiffPane extends ConsumerWidget {
     required this.onChangesFilePress,
     required this.diffViewController,
     required this.onOpenWorkspaceFile,
+    required this.onAddToChat,
   });
 
   final String serverId;
@@ -317,6 +315,7 @@ class _LiveDiffPane extends ConsumerWidget {
   final ValueChanged<String>? onChangesFilePress;
   final DiffViewController diffViewController;
   final ValueChanged<WorkspaceFileOpenRequest>? onOpenWorkspaceFile;
+  final ValueChanged<String>? onAddToChat;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -566,9 +565,7 @@ class _LiveDiffPane extends ConsumerWidget {
                             .open(uri.toString()),
                       ),
                 ),
-                onAddToChat: (path) => ref
-                    .read(workspaceAttachmentsProvider(cwd).notifier)
-                    .add(_workspaceFileAttachment(path)),
+                onAddToChat: onAddToChat,
               );
             },
           ),
@@ -576,20 +573,6 @@ class _LiveDiffPane extends ConsumerWidget {
       ],
     );
   }
-}
-
-WorkspaceContextAttachment _workspaceFileAttachment(String path) {
-  final normalized = path.replaceAll(r'\', '/');
-  final title = normalized.split('/').last;
-  return WorkspaceContextAttachment(
-    kind: 'file',
-    id: normalized,
-    title: title,
-    subtitle: normalized,
-    text: normalized,
-    url: null,
-    semanticAttachment: TextAgentAttachment(title: title, text: normalized),
-  );
 }
 
 class _ChangesTabToggle extends StatelessWidget {

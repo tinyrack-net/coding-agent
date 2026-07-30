@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/daemon_client.dart';
+import '../core/external_url_launcher.dart';
 import '../core/theme.dart';
 import '../state/daemon_providers.dart';
 import '../state/explorer_checkout_context.dart';
@@ -10,6 +14,7 @@ import '../state/explorer_tab_memory_provider.dart';
 import '../state/pull_request_provider.dart';
 import '../workspace/workspace_file_open.dart';
 import 'diff/diff_pane.dart';
+import 'file_actions_menu.dart';
 import 'pull_request_pane.dart';
 import 'pull_request_tab.dart';
 
@@ -43,6 +48,7 @@ class WorkspaceExplorer extends ConsumerStatefulWidget {
     this.onToggleChangesTab,
     this.onChangesFilePress,
     this.onOpenFile,
+    this.onAddFileToChat,
   });
 
   final String serverId;
@@ -54,6 +60,7 @@ class WorkspaceExplorer extends ConsumerStatefulWidget {
   final VoidCallback? onToggleChangesTab;
   final ValueChanged<String>? onChangesFilePress;
   final void Function(WorkspaceFileOpenRequest request)? onOpenFile;
+  final ValueChanged<String>? onAddFileToChat;
 
   @override
   ConsumerState<WorkspaceExplorer> createState() => _WorkspaceExplorerState();
@@ -178,10 +185,12 @@ class _WorkspaceExplorerState extends ConsumerState<WorkspaceExplorer> {
               changesTabOpen: widget.changesTabOpen,
               onToggleChangesTab: widget.onToggleChangesTab,
               onChangesFilePress: widget.onChangesFilePress,
+              onAddToChat: widget.onAddFileToChat,
             ),
             WorkspaceExplorerTab.files => _FilesPane(
               cwd: widget.cwd,
               onOpenFile: widget.onOpenFile,
+              onAddFileToChat: widget.onAddFileToChat,
             ),
             WorkspaceExplorerTab.pullRequest => PullRequestPane(
               cwd: widget.cwd,
@@ -298,10 +307,11 @@ class _ExplorerEntry {
 }
 
 class _FilesPane extends ConsumerStatefulWidget {
-  const _FilesPane({required this.cwd, this.onOpenFile});
+  const _FilesPane({required this.cwd, this.onOpenFile, this.onAddFileToChat});
 
   final String cwd;
   final void Function(WorkspaceFileOpenRequest request)? onOpenFile;
+  final ValueChanged<String>? onAddFileToChat;
 
   @override
   ConsumerState<_FilesPane> createState() => _FilesPaneState();
@@ -369,6 +379,7 @@ class _FilesPaneState extends ConsumerState<_FilesPane> {
                     itemBuilder: (context, index) {
                       final item = items[index];
                       return ListTile(
+                        key: ValueKey('file-explorer-row-${item.path}'),
                         leading: Icon(
                           item.directory
                               ? FluentIcons.folder
@@ -390,6 +401,49 @@ class _FilesPaneState extends ConsumerState<_FilesPane> {
                                   color: context.tokens.onSurfaceVariant,
                                 ),
                               ),
+                        trailing: FileActionsMenu(
+                          path: item.path,
+                          fileExists: !item.directory,
+                          testIdPrefix: 'file-explorer-${item.path}',
+                          onOpenFile:
+                              item.directory || widget.onOpenFile == null
+                              ? null
+                              : (path) => widget.onOpenFile!(
+                                  WorkspaceFileOpenRequest(
+                                    location: WorkspaceFileLocation(path: path),
+                                    disposition: OpenFileDisposition.main,
+                                  ),
+                                ),
+                          onCopyPath: (path) {
+                            final resolved = resolveWorkspaceFilePaths(
+                              path: path,
+                              workspaceRoot: widget.cwd,
+                            );
+                            Clipboard.setData(
+                              ClipboardData(
+                                text: resolved?.absolutePath ?? path,
+                              ),
+                            );
+                          },
+                          onDownload: item.directory
+                              ? null
+                              : (path) => unawaited(
+                                  ref
+                                      .read(daemonClientProvider)
+                                      .requestFileDownloadUri(
+                                        cwd: widget.cwd,
+                                        path: path,
+                                      )
+                                      .then(
+                                        (uri) => ref
+                                            .read(externalUrlLauncherProvider)
+                                            .open(uri.toString()),
+                                      ),
+                                ),
+                          onAddToChat: item.directory
+                              ? null
+                              : widget.onAddFileToChat,
+                        ),
                         onPressed: item.directory
                             ? () => setState(() => _path = item.path)
                             : () => widget.onOpenFile?.call(

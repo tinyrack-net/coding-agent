@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme.dart';
 import '../core/worktree_actions.dart';
+import '../composer/composer_draft_store.dart';
+import '../composer/focused_chat_target.dart';
 import '../import_sessions/import_session_dialog.dart';
 import '../keyboard/keyboard_action_dispatcher.dart';
 import '../screens/agent_chat_screen.dart';
@@ -25,6 +27,7 @@ import '../state/workspace_focus_mode_provider.dart';
 import '../state/workspace_catalog_provider.dart';
 import '../state/workspace_tab_keyboard_drag_provider.dart';
 import '../state/workspace_setup_provider.dart';
+import '../state/workspace_attachments_provider.dart';
 import '../workspace/workspace_file_open.dart';
 import '../workspace/workspace_distance_draggable.dart';
 import '../workspace/workspace_pane_layout.dart';
@@ -36,6 +39,13 @@ import 'draft_session_composer.dart';
 import 'terminal_pane.dart';
 import 'workspace_file_pane.dart';
 import 'workspace_explorer.dart';
+
+String _workspaceServerId(WidgetRef ref) {
+  final active = ref.watch(activeHostProvider)?.serverId.trim();
+  if (active?.isNotEmpty == true) return active!;
+  final handshake = ref.watch(daemonClientProvider).serverInfo?.serverId.trim();
+  return handshake?.isNotEmpty == true ? handshake! : 'local';
+}
 
 /// One worktree's tab strip — Paseo parity: a session opens in a tab by
 /// default, and the user can freely add more agent sessions, terminals, or
@@ -254,6 +264,7 @@ class WorktreeTabbedPane extends ConsumerWidget {
     WorktreeTabKind.draft => DraftSessionComposer(
       worktreePath: worktreePath,
       tabId: tab.tabId,
+      serverId: _workspaceServerId(ref),
       workspaceId: workspaceId,
       projectPath: projectPath,
       branch: branch,
@@ -279,6 +290,7 @@ class WorktreeTabbedPane extends ConsumerWidget {
     ),
     WorktreeTabKind.agent => AgentChatScreen(
       agentId: tab.agentId!,
+      serverId: _workspaceServerId(ref),
       isScreenFocused: isActive,
       onOpenWorkspaceFile: onOpenWorkspaceFile,
     ),
@@ -317,14 +329,7 @@ class WorktreeTabbedPane extends ConsumerWidget {
       workspaceExplorerVisibilityProvider(worktreePath),
     );
     final focusMode = ref.watch(workspaceFocusModeProvider);
-    final daemonClient = ref.watch(daemonClientProvider);
-    final activeServerId = ref.watch(activeHostProvider)?.serverId.trim();
-    final helloServerId = daemonClient.serverInfo?.serverId.trim();
-    final serverId = activeServerId?.isNotEmpty == true
-        ? activeServerId!
-        : helloServerId?.isNotEmpty == true
-        ? helloServerId!
-        : 'local';
+    final serverId = _workspaceServerId(ref);
     final catalog =
         ref.watch(workspaceCatalogCacheProvider)[serverId] ?? const [];
     final workspace = catalog
@@ -337,6 +342,10 @@ class WorktreeTabbedPane extends ConsumerWidget {
     final explorerIsGit = workspace != null
         ? workspace.projectKind == WorkspaceProjectKind.git
         : projectPath != null || isWorktree;
+    final focusedChat = resolveFocusedChatTarget(
+      serverId: serverId,
+      layout: tabsState.layout,
+    );
 
     return _WorkspacePaneShortcutHost(
       worktreePath: worktreePath,
@@ -407,6 +416,44 @@ class WorktreeTabbedPane extends ConsumerWidget {
                 .closeTab(tab.tabId);
           }
 
+          void addFileToChat(String path) {
+            final target = focusedChat;
+            if (target == null) return;
+            final attachment = workspaceFileContextAttachment(path);
+            ref
+                .read(workspaceAttachmentsProvider(target.draftKey).notifier)
+                .add(attachment);
+            ref
+                .read(
+                  composerAttachmentFocusRequestProvider(
+                    target.draftKey,
+                  ).notifier,
+                )
+                .request();
+            ref
+                .read(worktreeTabsProvider(worktreePath).notifier)
+                .setActiveTab(target.tabId);
+            unawaited(
+              PreferencesComposerDraftStore()
+                  .attachWorkspaceFile(
+                    target.draftKey,
+                    ComposerWorkspaceFileAttachment(path: path),
+                  )
+                  .catchError((_) {
+                    // Runtime attachment remains usable when persistence is
+                    // temporarily unavailable.
+                    return ComposerDraft(
+                      text: '',
+                      images: const [],
+                      workspaceFiles: [
+                        ComposerWorkspaceFileAttachment(path: path),
+                      ],
+                      updatedAt: DateTime.now().millisecondsSinceEpoch,
+                    );
+                  }),
+            );
+          }
+
           final focusedPane = findWorkspacePane(
             paneLayout.root,
             paneLayout.focusedPaneId,
@@ -445,6 +492,7 @@ class WorktreeTabbedPane extends ConsumerWidget {
                   onToggleChangesTab: toggleChanges,
                   onChangesFilePress: changesTab == null ? null : openChanges,
                   onOpenFile: openWorkspaceFile,
+                  onAddFileToChat: focusedChat == null ? null : addFileToChat,
                   onClose: () => ref
                       .read(
                         workspaceExplorerVisibilityProvider(

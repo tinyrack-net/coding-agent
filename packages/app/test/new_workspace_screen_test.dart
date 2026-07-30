@@ -302,6 +302,25 @@ final class _MemoryDraftStore implements ComposerDraftStore {
   }
 
   @override
+  Future<ComposerDraft> attachWorkspaceFile(
+    String draftKey,
+    ComposerWorkspaceFileAttachment attachment,
+  ) async {
+    final current = drafts[draftKey];
+    final draft = ComposerDraft(
+      text: current?.text ?? '',
+      images: current?.images ?? const [],
+      workspaceFiles: appendComposerWorkspaceFile(
+        current?.workspaceFiles ?? const [],
+        attachment,
+      ),
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    drafts[draftKey] = draft;
+    return draft;
+  }
+
+  @override
   Future<void> clear(
     String draftKey, {
     required ComposerDraftLifecycle lifecycle,
