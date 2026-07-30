@@ -1332,7 +1332,7 @@
     {
       "id": "release-feature:008-open-existing-agents-from-paseo-links-or-the-cli",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/lib/src/cli/desktop_launch.dart; packages/app/lib/core/app_router.dart; packages/app/lib/core/agent_hot_route_controller.dart; packages/app/lib/core/desktop/agent_navigation_inbox.dart; packages/app/lib/core/desktop/agent_hot_route_binding.dart; packages/app/windows/runner/protocol_registration.cpp; packages/app/windows/runner/main.cpp",
+      "implementation": "packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/lib/src/cli/desktop_launch.dart; packages/app/lib/core/app_router.dart; packages/app/lib/core/agent_hot_route_controller.dart; packages/app/lib/core/desktop/agent_navigation_inbox.dart; packages/app/lib/core/desktop/agent_hot_route_binding.dart; packages/app/lib/core/desktop/agent_hot_route_startup.dart; packages/app/lib/core/desktop/windows_agent_deep_link_source.dart; packages/app/windows/runner/protocol_registration.cpp; packages/app/windows/runner/agent_navigation.cpp; packages/app/windows/runner/flutter_window.cpp; packages/app/windows/runner/main.cpp",
       "evidence": [
         "packages/daemon/test/cli/agent_command_test.dart",
         "packages/daemon/test/cli/desktop_launch_test.dart",
@@ -1340,9 +1340,12 @@
         "packages/app/test/agent_navigation_inbox_test.dart",
         "packages/app/test/agent_hot_route_controller_test.dart",
         "packages/app/test/core/desktop/agent_hot_route_binding_test.dart",
-        "packages/app/windows/runner/protocol_registration_test.cpp"
+        "packages/app/test/core/desktop/agent_hot_route_startup_test.dart",
+        "packages/app/test/core/desktop/windows_agent_deep_link_source_test.dart",
+        "packages/app/windows/runner/protocol_registration_test.cpp",
+        "packages/app/windows/runner/agent_navigation_test.cpp"
       ],
-      "notes": "The CLI emits opaque host/agent deep links, cold starts restore them, the app owns newest-wins hot-route inbox/controller/binding semantics, and Windows registers the user-scoped coding-agent scheme with a quoted executable and URI. Remaining parity is the native single-instance relay/platform event adapter wired into the running Flutter app, foreground activation, packaged activation E2E, and non-Windows registration."
+      "notes": "The CLI emits opaque host/agent deep links, cold starts restore them, and Windows registers the user-scoped scheme. Subsequent activations use a named-instance check, startup-race-safe WM_COPYDATA acknowledgement, newest-wins native/Flutter inboxes, window restore/foreground/flash recovery, and listener-first MethodChannel routing into the existing app; malformed native payloads are rejected without losing percent-encoded opaque ids. Remaining parity is packaged activation E2E and registration/relay on the other desktop platforms."
     },
     {
       "id": "release-feature:009-configure-workspace-service-ports-with-a-fixed-range-or-external-allocator",
@@ -1427,10 +1430,13 @@
     },
     {
       "id": "release-feature:019-pasted-pr/mr-links-in-the-composer-become-auto-selected-as-a-checkout-option",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/composer/checkout_link_selection.dart; packages/app/lib/screens/new_workspace_screen.dart",
+      "evidence": [
+        "packages/app/test/checkout_link_selection_test.dart",
+        "packages/app/test/new_workspace_screen_test.dart"
+      ],
+      "notes": "New GitHub pull-request URLs in composer text trigger the frozen forge lookup and auto-select the matching checkout target. Typed completion has the same text-change semantics as paste, the first new link wins, explicit branch selection and host/cwd or text changes invalidate late results, lookup blocks Create, the checkout request carries head ref plus generalized source and githubPrNumber, and the first prompt is preserved. Paseo 0.2.0 does not auto-parse GitLab MR URLs in this release feature."
     },
     {
       "id": "release-feature:020-make-project-creation-more-explicit",
@@ -1503,7 +1509,7 @@
         "packages/app/test/agent_screen_sync_state_test.dart",
         "packages/app/test/fluent_toast_test.dart"
       ],
-      "notes": "A cold authoritative-history failure immediately replaces the whole conversation body with retry recovery and keeps the composer blocked; retry remains blocked until a successful page arrives. Hydrated history survives failed catch-up, sync errors persist across live events until authoritative recovery, and a disconnected ready conversation shows an ownership-safe persistent reconnect toast ahead of the sync-error callout. Real daemon error-timing conformance and the exact visibility-triggered catch-up overlay remain."
+      "notes": "A cold authoritative-history failure immediately replaces the whole conversation body with retry recovery and keeps the composer blocked; retry remains blocked until a successful page arrives. Hydrated history survives failed catch-up, sync errors persist across live events until authoritative recovery, and a disconnected ready conversation shows an ownership-safe persistent reconnect toast ahead of the sync-error callout. Visibility return within the 30-second grace does not refetch; later return performs authoritative tail catch-up silently for retained history and overlays only an unhydrated route. Real daemon error-timing conformance remains."
     },
     {
       "id": "release-feature:029-terminal-pairing-qr-codes-remain-scannable-in-narrow-terminals",
@@ -2548,9 +2554,11 @@
         "packages/app/test/add_project_flow_host_test.dart",
         "packages/app/test/add_project_flow_model_test.dart",
         "packages/app/test/new_workspace_screen_test.dart",
-        "packages/daemon/test/ws_server_test.dart"
+        "packages/app/test/project_conversation_vertical_e2e_test.dart",
+        "packages/daemon/test/ws_server_test.dart",
+        "packages/daemon/test/daemon_project_conversation_vertical_e2e_test.dart"
       ],
-      "notes": "Global multi-host flow, capability-gated methods, page history, keyboard selection, debounced directory and GitHub-account search, direct path registration, desktop Browse wiring, URL/owner-repo clone, per-host last clone-parent preference, atomic create-directory, Add Host routing, path shortening, progress/error/empty states, result adoption, and frozen 640px/92%/80% responsive panel geometry are implemented. Exact platform-adaptive presentation, full accessibility-tree parity, and visual golden evidence remain."
+      "notes": "Global multi-host flow, capability-gated methods, page history, keyboard selection, debounced directory and GitHub-account search, direct path registration, desktop Browse wiring, URL/owner-repo clone, per-host last clone-parent preference, atomic create-directory, Add Host routing, path shortening, progress/error/empty states, result adoption, and frozen 640px/92%/80% responsive panel geometry are implemented. A real Flutter DaemonClient to Dart daemon vertical test proves project registration, local workspace creation, first prompt, assistant stream, idle transition, and timeline recovery through one socket. Exact platform-adaptive presentation, full accessibility-tree parity, and visual golden evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/components/agent-list.tsx",
@@ -4385,10 +4393,13 @@
     },
     {
       "id": "source-unit:packages/app/src/composer/github/auto-attach.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/composer/checkout_link_selection.dart; packages/app/lib/screens/new_workspace_screen.dart",
+      "evidence": [
+        "packages/app/test/checkout_link_selection_test.dart",
+        "packages/app/test/new_workspace_screen_test.dart"
+      ],
+      "notes": "The Dart lifecycle matches the frozen GitHub PR URL extraction, deduplication, carried-link suppression, generation-based stale lookup rejection, exact forge result matching, explicit selection priority, checkout request construction, and prompt preservation."
     },
     {
       "id": "source-unit:packages/app/src/composer/index.tsx",
@@ -4664,15 +4675,17 @@
     },
     {
       "id": "source-unit:packages/app/src/desktop/agent-navigation.tsx",
-      "status": "partial",
-      "implementation": "packages/app/lib/core/agent_hot_route_controller.dart; packages/app/lib/core/desktop/agent_navigation_inbox.dart; packages/app/lib/core/desktop/agent_hot_route_binding.dart; packages/app/lib/core/app_router.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/core/agent_hot_route_controller.dart; packages/app/lib/core/desktop/agent_navigation_inbox.dart; packages/app/lib/core/desktop/agent_hot_route_binding.dart; packages/app/lib/core/desktop/agent_hot_route_startup.dart; packages/app/lib/core/desktop/windows_agent_deep_link_source.dart; packages/app/lib/core/app_router.dart; packages/app/lib/main.dart",
       "evidence": [
         "packages/app/test/agent_navigation_inbox_test.dart",
         "packages/app/test/agent_hot_route_controller_test.dart",
         "packages/app/test/core/desktop/agent_hot_route_binding_test.dart",
+        "packages/app/test/core/desktop/agent_hot_route_startup_test.dart",
+        "packages/app/test/core/desktop/windows_agent_deep_link_source_test.dart",
         "packages/app/test/app_router_test.dart"
       ],
-      "notes": "The Flutter-side bridge registers before first-frame readiness, buffers the newest valid encoded host/agent target per window, retries source registration without overlap, and prevents async activation reordering. Remaining parity is wiring a real native platform source into app startup and multi-window foreground activation."
+      "notes": "The Flutter bridge registers its native listener before first-frame readiness, buffers the newest valid encoded host/agent target, retries registration without overlap, prevents async activation reordering, binds the platform source at app startup, and routes running-app activations through the same authoritative host/agent router as cold starts."
     },
     {
       "id": "source-unit:packages/app/src/desktop/attachments/desktop-attachment-bridge.ts",
@@ -5884,7 +5897,7 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-agent-screen-state-machine.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/state/timeline_provider.dart; packages/app/lib/screens/agent_chat_screen.dart",
       "evidence": [
         "packages/app/test/agent_chat_screen_test.dart",
@@ -5892,7 +5905,7 @@
         "packages/app/test/agent_screen_sync_state_test.dart",
         "packages/app/test/fluent_toast_test.dart"
       ],
-      "notes": "Cold loading/error, retained ready sync-error, route-scoped ready memory, state priority, persistent ownership-safe reconnect toast, and optimistic/hydrated silent catch-up policy match the frozen behavior. The exact visibility-triggered catch-up overlay path, final panel placement, and stale-agent presentation remain."
+      "notes": "Cold loading/error, retained ready sync-error, route-scoped last-ready agent memory, stale-agent eviction on authoritative removal or route change, state priority, persistent ownership-safe reconnect toast, 30-second visibility grace, authoritative resumed tail catch-up, and silent-versus-overlay presentation match the frozen state machine."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-aggregated-agents.ts",
@@ -6640,13 +6653,13 @@
     },
     {
       "id": "source-unit:packages/app/src/panels/agent-panel-load-state.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/screens/agent_screen_sync_state.dart; packages/app/lib/state/timeline_provider.dart",
       "evidence": [
         "packages/app/test/agent_screen_sync_state_test.dart",
         "packages/app/test/timeline_provider_test.dart"
       ],
-      "notes": "The Dart state projection separates cold load, retained ready content, reconnecting, catch-up, and authoritative sync error with the frozen priority and overlay policy. The visibility-triggered catch-up input still needs to be connected to the panel lifecycle."
+      "notes": "The Dart state projection separates cold load, retained ready content, reconnecting, visibility catch-up, and authoritative sync error with the frozen priority and overlay policy, and the live panel lifecycle supplies the route/app visibility input with generation-safe cancellation."
     },
     {
       "id": "source-unit:packages/app/src/panels/agent-panel.tsx",
@@ -6657,7 +6670,7 @@
         "packages/app/test/agent_screen_sync_state_test.dart",
         "packages/app/test/fluent_toast_test.dart"
       ],
-      "notes": "The ready panel retains conversation/composer state through reconnect and catch-up failures, surfaces retryable cold failures, and owns the persistent reconnect toast safely across replacement and recovery. Remaining parity includes the exact catch-up overlay placement, stale-agent affordance, and other panel actions tracked by adjacent source units."
+      "notes": "The ready panel retains conversation/composer and last-ready agent presentation through reconnect and catch-up gaps, evicts stale presentation after authoritative removal or route change, surfaces retryable cold failures, owns the persistent reconnect toast safely, and applies the frozen visibility overlay policy. Other panel actions remain tracked by adjacent source units."
     },
     {
       "id": "source-unit:packages/app/src/panels/browser-panel.tsx",
@@ -10867,12 +10880,14 @@
     {
       "id": "source-unit:packages/desktop/src/agent-navigation.ts",
       "status": "partial",
-      "implementation": "packages/app/windows/runner/protocol_registration.cpp; packages/app/windows/runner/main.cpp; packages/app/lib/core/desktop/agent_navigation_inbox.dart",
+      "implementation": "packages/app/windows/runner/protocol_registration.cpp; packages/app/windows/runner/agent_navigation.cpp; packages/app/windows/runner/flutter_window.cpp; packages/app/windows/runner/main.cpp; packages/app/lib/core/desktop/windows_agent_deep_link_source.dart; packages/app/lib/core/desktop/agent_navigation_inbox.dart",
       "evidence": [
         "packages/app/windows/runner/protocol_registration_test.cpp",
+        "packages/app/windows/runner/agent_navigation_test.cpp",
+        "packages/app/test/core/desktop/windows_agent_deep_link_source_test.dart",
         "packages/app/test/agent_navigation_inbox_test.dart"
       ],
-      "notes": "Windows registers coding-agent under HKCU with the URL Protocol marker, icon, and a safely quoted open command, while cold argv parsing preserves opaque encoded identifiers. Remaining parity is forwarding subsequent activations to the existing process, focusing its window, platform-channel delivery, packaged activation E2E, and the other desktop platforms."
+      "notes": "Windows registers coding-agent under HKCU with a safely quoted open command, preserves cold encoded identifiers, and forwards later activations to the uniquely tagged existing window through an acknowledged, bounded, validated WM_COPYDATA payload. Startup races retry, the native inbox is newest-wins, the existing window restores/focuses or flashes, and MethodChannel delivers to Flutter. Remaining parity is packaged activation E2E and the macOS/Linux desktop adapters."
     },
     {
       "id": "source-unit:packages/desktop/src/daemon/cli/entrypoints.ts",

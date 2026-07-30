@@ -28,6 +28,8 @@ import '../widgets/subagents_track.dart';
 import '../widgets/timeline_item_tile.dart';
 import 'agent_screen_sync_state.dart';
 
+const _viewedTimelineUnsubscribeGrace = Duration(seconds: 30);
+
 /// Chat view for one agent: timeline list (auto-stick to bottom) + composer.
 /// Chat-only — diff and terminal are sibling top-level tabs at the worktree
 /// level (see `WorktreeTabbedPane`), not nested inside an agent's tab.
@@ -61,10 +63,19 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
   bool _historyEdgeReady = false;
   bool _loadingOlder = false;
   bool _reconnectToastArmed = false;
+  bool _timelineWasVisible = false;
+  bool _hasTimelineBeenVisible = false;
+  bool _visibilityCatchUpRequired = false;
+  bool _visibilityCatchUpScheduled = false;
+  bool _visibilityCatchUpPending = false;
+  bool _visibilityCatchUpError = false;
+  int _visibilityCatchUpGeneration = 0;
   late bool _isAppVisible;
   AgentSummary? _observedAgent;
   DaemonClient? _observedClient;
+  AgentSummary? _lastReadyAgent;
   AppToastHandle? _reconnectToastHandle;
+  Timer? _visibilityGraceTimer;
 
   @override
   void initState() {
@@ -72,6 +83,8 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     WidgetsBinding.instance.addObserver(this);
     windowFocusedNotifier.addListener(_onWindowFocusChanged);
     _isAppVisible = _computeAppVisibility();
+    _timelineWasVisible = _isAppVisible && widget.isScreenFocused;
+    _hasTimelineBeenVisible = _timelineWasVisible;
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _historyEdgeReady = true;
@@ -80,6 +93,8 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
 
   @override
   void dispose() {
+    _visibilityCatchUpGeneration++;
+    _visibilityGraceTimer?.cancel();
     _reconnectToastHandle?.dismiss();
     WidgetsBinding.instance.removeObserver(this);
     windowFocusedNotifier.removeListener(_onWindowFocusChanged);
@@ -121,6 +136,10 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
   @override
   void didUpdateWidget(covariant AgentChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.agentId != widget.agentId ||
+        oldWidget.serverId != widget.serverId) {
+      _resetVisibilityCatchUpForRoute();
+    }
     if (oldWidget.isScreenFocused && !widget.isScreenFocused) {
       unawaited(_clearAttentionOnBlur());
     } else if (!oldWidget.isScreenFocused &&
@@ -130,6 +149,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
         (_) => _clearAttention(AgentAttentionClearTrigger.focusEntry),
       );
     }
+    _updateTimelineVisibility();
   }
 
   @override
@@ -152,11 +172,87 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     if (next == _isAppVisible) return;
     final resumed = !_isAppVisible && next;
     _isAppVisible = next;
+    _updateTimelineVisibility();
     if (resumed && mounted && widget.isScreenFocused) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _clearAttention(AgentAttentionClearTrigger.focusEntry),
       );
     }
+  }
+
+  void _resetVisibilityCatchUpForRoute() {
+    _visibilityCatchUpGeneration++;
+    _visibilityGraceTimer?.cancel();
+    _visibilityGraceTimer = null;
+    _visibilityCatchUpRequired = false;
+    _visibilityCatchUpScheduled = false;
+    _visibilityCatchUpPending = false;
+    _visibilityCatchUpError = false;
+    _timelineWasVisible = false;
+    _hasTimelineBeenVisible = false;
+  }
+
+  void _updateTimelineVisibility() {
+    final visible = _isAppVisible && widget.isScreenFocused;
+    if (visible == _timelineWasVisible) return;
+    _timelineWasVisible = visible;
+    if (!visible) {
+      _visibilityGraceTimer?.cancel();
+      _visibilityGraceTimer = Timer(_viewedTimelineUnsubscribeGrace, () {
+        _visibilityGraceTimer = null;
+        _visibilityCatchUpRequired = true;
+      });
+      return;
+    }
+
+    final firstVisibleEntry = !_hasTimelineBeenVisible;
+    _hasTimelineBeenVisible = true;
+    final returnedWithinGrace = _visibilityGraceTimer != null;
+    _visibilityGraceTimer?.cancel();
+    _visibilityGraceTimer = null;
+    if (returnedWithinGrace && !firstVisibleEntry) return;
+    if (firstVisibleEntry || _visibilityCatchUpRequired) {
+      _visibilityCatchUpRequired = true;
+      _scheduleVisibilityCatchUp();
+    }
+  }
+
+  void _scheduleVisibilityCatchUp() {
+    if (_visibilityCatchUpScheduled || !_timelineWasVisible) return;
+    _visibilityCatchUpScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _visibilityCatchUpScheduled = false;
+      if (!mounted || !_timelineWasVisible || !_visibilityCatchUpRequired) {
+        return;
+      }
+      final client = ref.read(daemonClientProvider);
+      final timeline = ref.read(timelineProvider(widget.agentId));
+      if (client.currentState != DaemonConnectionState.connected ||
+          timeline.loading) {
+        return;
+      }
+      _visibilityCatchUpRequired = false;
+      _startVisibilityCatchUp();
+    });
+  }
+
+  void _startVisibilityCatchUp() {
+    if (_visibilityCatchUpPending) return;
+    final generation = ++_visibilityCatchUpGeneration;
+    setState(() {
+      _visibilityCatchUpPending = true;
+      _visibilityCatchUpError = false;
+    });
+    unawaited(() async {
+      await ref.read(timelineProvider(widget.agentId).notifier).retry();
+      if (!mounted || generation != _visibilityCatchUpGeneration) return;
+      final timeline = ref.read(timelineProvider(widget.agentId));
+      setState(() {
+        _visibilityCatchUpPending = false;
+        _visibilityCatchUpError =
+            timeline.error != null || timeline.syncError != null;
+      });
+    }());
   }
 
   void _onScroll() {
@@ -415,24 +511,37 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     final connection =
         ref.watch(connectionStateProvider).value ??
         _observedClient!.currentState;
-    _syncMemory.enterRoute('${widget.serverId}:${widget.agentId}');
+    final routeChanged = _syncMemory.enterRoute(
+      '${widget.serverId}:${widget.agentId}',
+    );
+    if (routeChanged) {
+      _lastReadyAgent = null;
+    }
     if (timeline.error != null && timeline.epoch == null) {
       _syncMemory.markInitialSyncFailure();
     }
     if (timeline.epoch != null) {
       _syncMemory.markReady();
     }
+    if (agent != null && _syncMemory.hasRenderedReady) {
+      _lastReadyAgent = agent;
+    }
+    final mayUseStaleAgent =
+        _syncMemory.hasRenderedReady &&
+        (connection != DaemonConnectionState.connected ||
+            timeline.catchUpPhase != TimelineCatchUpPhase.idle);
+    final displayAgent = agent ?? (mayUseStaleAgent ? _lastReadyAgent : null);
     final syncState = resolveAgentScreenSyncState(
       archived: agent?.archivedAt != null,
       connected: connection == DaemonConnectionState.connected,
-      catchUpPending: timeline.catchUpPhase == TimelineCatchUpPhase.syncing,
-      hasSyncError: timeline.syncError != null,
+      catchUpPending:
+          timeline.catchUpPhase == TimelineCatchUpPhase.syncing ||
+          _visibilityCatchUpPending,
+      hasSyncError: timeline.syncError != null || _visibilityCatchUpError,
       optimisticCreate:
           timeline.epoch == null && timeline.pendingUserMessages.isNotEmpty,
       hasHydratedTimeline: timeline.epoch != null,
-      visibilityCatchUpPending:
-          timeline.catchUpPhase == TimelineCatchUpPhase.syncing &&
-          timeline.epoch == null,
+      visibilityCatchUpPending: _visibilityCatchUpPending,
       hadInitialSyncFailure: _syncMemory.hadInitialSyncFailure,
     );
     final toolCallDetailLevel = ref.watch(toolCallDetailLevelProvider);
@@ -440,9 +549,9 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
       timeline,
       toolCallDetailLevel,
       isTurnActive:
-          agent?.runState == AgentRunState.initializing ||
-          agent?.runState == AgentRunState.running ||
-          agent?.runState == AgentRunState.awaitingPermission,
+          displayAgent?.runState == AgentRunState.initializing ||
+          displayAgent?.runState == AgentRunState.running ||
+          displayAgent?.runState == AgentRunState.awaitingPermission,
     );
     final subagents = ref.watch(subagentsForParentProvider(widget.agentId));
     _observeAttention(agent);
@@ -450,6 +559,10 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
       syncStatus: syncState.status,
       hasRenderedReady: _syncMemory.hasRenderedReady,
     );
+    if (_visibilityCatchUpRequired &&
+        connection == DaemonConnectionState.connected) {
+      _scheduleVisibilityCatchUp();
+    }
 
     // While stuck to bottom, follow new/updated content.
     ref.listen(timelineProvider(widget.agentId), (previous, next) {
@@ -464,18 +577,18 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
           color: context.tokens.surfaceContainerHighest,
           child: ListTile(
             title: Text(
-              agent == null || agent.title.isEmpty
+              displayAgent == null || displayAgent.title.isEmpty
                   ? widget.agentId
-                  : agent.title,
+                  : displayAgent.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            subtitle: agent == null
+            subtitle: displayAgent == null
                 ? null
                 : Text(
-                    agent.isWorktree
-                        ? '${agent.provider} · ${agent.model} · ${agent.mode.name} · ${agent.branch} · ${agent.cwd}'
-                        : '${agent.provider} · ${agent.model} · ${agent.mode.name} · ${agent.cwd}',
+                    displayAgent.isWorktree
+                        ? '${displayAgent.provider} · ${displayAgent.model} · ${displayAgent.mode.name} · ${displayAgent.branch} · ${displayAgent.cwd}'
+                        : '${displayAgent.provider} · ${displayAgent.model} · ${displayAgent.mode.name} · ${displayAgent.cwd}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -542,7 +655,10 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
   ) {
     final count = rows.length;
     final isColdOpenFailure =
-        timeline.error != null && timeline.epoch == null && count == 0;
+        timeline.error != null &&
+        timeline.epoch == null &&
+        count == 0 &&
+        !_visibilityCatchUpError;
     final hasRetainedHistory = timeline.epoch != null || count > 0;
     if (isColdOpenFailure) {
       return [
@@ -556,7 +672,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
         ),
       ];
     }
-    if (loading && count == 0) {
+    if (loading && count == 0 && !syncState.showsCatchUpOverlay) {
       return const [Expanded(child: Center(child: ProgressRing()))];
     }
     return [

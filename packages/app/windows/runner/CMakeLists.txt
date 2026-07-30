@@ -7,6 +7,7 @@ project(runner LANGUAGES CXX)
 #
 # Any new source files that you add to the application should be added here.
 add_executable(${BINARY_NAME} WIN32
+  "agent_navigation.cpp"
   "flutter_window.cpp"
   "main.cpp"
   "protocol_registration.cpp"
@@ -50,6 +51,20 @@ target_compile_definitions(coding_agent_protocol_registration_test PRIVATE
 )
 target_link_libraries(coding_agent_protocol_registration_test PRIVATE
   "advapi32.lib"
+)
+
+# Native contract test for single-instance agent link forwarding and inbox
+# behavior. It is excluded from normal app builds and built explicitly in CI.
+add_executable(coding_agent_agent_navigation_test EXCLUDE_FROM_ALL
+  "agent_navigation.cpp"
+  "agent_navigation_test.cpp"
+)
+apply_standard_settings(coding_agent_agent_navigation_test)
+target_compile_definitions(coding_agent_agent_navigation_test PRIVATE
+  "NOMINMAX"
+)
+target_link_libraries(coding_agent_agent_navigation_test PRIVATE
+  "user32.lib"
 )
 
 # Run the Flutter tool portions of the build. This must not be removed.

@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/app_router.dart';
-import 'core/host_routes.dart';
+import 'core/desktop/agent_deep_link_source_platform.dart';
+import 'core/desktop/agent_hot_route_startup.dart';
 import 'core/desktop/desktop_shell.dart';
 import 'core/desktop/notification_service.dart';
 import 'core/desktop/title_bar.dart';
+import 'core/host_routes.dart';
 import 'core/theme.dart';
 import 'hosts/host_chooser.dart';
 import 'state/appearance_provider.dart';
@@ -25,11 +27,12 @@ Future<void> main(List<String> args) async {
       .map(routeFromCodingAgentDeepLink)
       .whereType<String>()
       .firstOrNull;
+  final router = buildAppRouter(initialLocation: initialLocation ?? '/');
   runApp(
-    ProviderScope(
-      child: CodingAgentApp(
-        router: buildAppRouter(initialLocation: initialLocation ?? '/'),
-      ),
+    bindAgentHotRoutes(
+      router: router,
+      source: createPlatformAgentDeepLinkSource(),
+      child: ProviderScope(child: CodingAgentApp(router: router)),
     ),
   );
 }

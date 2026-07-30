@@ -300,6 +300,27 @@ Future<ProviderContainer> pumpChatScreen(
   return container;
 }
 
+Future<void> pumpChatScreenFocus(
+  WidgetTester tester,
+  ProviderContainer container, {
+  required bool isScreenFocused,
+}) async {
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: FluentApp(
+        home: ScaffoldPage(
+          content: AgentChatScreen(
+            agentId: 'a1',
+            isScreenFocused: isScreenFocused,
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+}
+
 void main() {
   testWidgets('shows the agent header and empty-timeline placeholder', (
     tester,
@@ -382,6 +403,155 @@ void main() {
     await tester.pump(const Duration(milliseconds: 10));
     await tester.pump(const Duration(milliseconds: 10));
     expect(find.text('Timeline sync failed'), findsOneWidget);
+  });
+
+  testWidgets(
+    'temporary agent-directory gap retains the last ready agent presentation',
+    (tester) async {
+      addTearDown(AppToast.dismissCurrent);
+      final client = FakeDaemonClient()
+        ..timelinePages.add(timelinePage(start: 1, end: 1, hasOlder: false));
+      final container = await pumpChatScreen(tester, client: client);
+
+      expect(find.text('Demo agent'), findsOneWidget);
+      expect(find.text('timeline message 1'), findsOneWidget);
+      client.setConnectionState(DaemonConnectionState.disconnected);
+      await tester.pump();
+      container.read(agentsProvider.notifier).remove('a1');
+      await tester.pump();
+
+      expect(find.text('Demo agent'), findsOneWidget);
+      expect(
+        find.textContaining('claude · sonnet · normal · /work/demo'),
+        findsOneWidget,
+      );
+      expect(find.text('timeline message 1'), findsOneWidget);
+      expect(find.byType(TextBox), findsOneWidget);
+
+      client.setConnectionState(DaemonConnectionState.connected);
+      await tester.pump(const Duration(milliseconds: 10));
+      await tester.pump(const Duration(milliseconds: 10));
+      expect(find.text('Demo agent'), findsOneWidget);
+
+      container.read(agentsProvider.notifier).remove('a1');
+      await tester.pump();
+      expect(find.text('Demo agent'), findsNothing);
+      expect(find.text('a1'), findsOneWidget);
+    },
+  );
+
+  testWidgets('last ready agent presentation never leaks across route keys', (
+    tester,
+  ) async {
+    addTearDown(AppToast.dismissCurrent);
+    final client = FakeDaemonClient()
+      ..timelinePages.add(timelinePage(start: 1, end: 1, hasOlder: false));
+    final container = await pumpChatScreen(tester, client: client);
+    client.setConnectionState(DaemonConnectionState.disconnected);
+    await tester.pump();
+    container.read(agentsProvider.notifier).remove('a1');
+    await tester.pump();
+    expect(find.text('Demo agent'), findsOneWidget);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const FluentApp(
+          home: ScaffoldPage(
+            content: AgentChatScreen(agentId: 'missing-agent'),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(find.text('missing-agent'), findsOneWidget);
+    expect(find.text('Demo agent'), findsNothing);
+    expect(find.textContaining('/work/demo'), findsNothing);
+  });
+
+  testWidgets('foregrounding within visibility grace skips catch-up', (
+    tester,
+  ) async {
+    final client = FakeDaemonClient()
+      ..timelinePages.add(timelinePage(start: 1, end: 1, hasOlder: false));
+    final container = await pumpChatScreen(tester, client: client);
+    expect(client.timelineDirections, [AgentTimelineDirection.tail]);
+
+    await pumpChatScreenFocus(tester, container, isScreenFocused: false);
+    await tester.pump(const Duration(seconds: 29));
+    await pumpChatScreenFocus(tester, container, isScreenFocused: true);
+    await tester.pump();
+
+    expect(client.timelineDirections, [AgentTimelineDirection.tail]);
+    expect(find.text('timeline message 1'), findsOneWidget);
+  });
+
+  testWidgets('foregrounding after visibility grace catches up silently when '
+      'history is hydrated', (tester) async {
+    final client = FakeDaemonClient()
+      ..timelinePages.add(timelinePage(start: 1, end: 1, hasOlder: false));
+    final container = await pumpChatScreen(tester, client: client);
+
+    final resumedPage = Completer<AgentTimelinePage>();
+    client.nextTimelinePage = resumedPage;
+    await pumpChatScreenFocus(tester, container, isScreenFocused: false);
+    await tester.pump(const Duration(seconds: 31));
+    await pumpChatScreenFocus(tester, container, isScreenFocused: true);
+    await tester.pump();
+
+    expect(client.timelineDirections, [
+      AgentTimelineDirection.tail,
+      AgentTimelineDirection.tail,
+    ]);
+    expect(find.byKey(const ValueKey('agent-history-overlay')), findsNothing);
+    expect(find.text('timeline message 1'), findsOneWidget);
+    expect(find.byType(TextBox), findsOneWidget);
+
+    resumedPage.complete(timelinePage(start: 1, end: 1, hasOlder: false));
+    await tester.pump(const Duration(milliseconds: 150));
+  });
+
+  testWidgets('entering a newly visible unhydrated route shows catch-up '
+      'overlay until its authoritative page arrives', (tester) async {
+    final client = FakeDaemonClient()
+      ..timelineErrors.add(StateError('initial history unavailable'));
+    final container = await pumpChatScreen(
+      tester,
+      client: client,
+      isScreenFocused: false,
+    );
+    expect(find.text('Failed to load conversation'), findsOneWidget);
+
+    final visiblePage = Completer<AgentTimelinePage>();
+    client.nextTimelinePage = visiblePage;
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const FluentApp(
+          home: ScaffoldPage(content: AgentChatScreen(agentId: 'a1')),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('agent-history-overlay')), findsOneWidget);
+    expect(find.text('Failed to load conversation'), findsNothing);
+    expect(find.byType(TextBox), findsOneWidget);
+
+    visiblePage.complete(
+      AgentTimelinePage.empty(
+        agentId: 'a1',
+        direction: AgentTimelineDirection.tail,
+        projection: AgentTimelineProjection.projected,
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(find.byKey(const ValueKey('agent-history-overlay')), findsNothing);
+    expect(find.text('No messages yet. Say something below.'), findsOneWidget);
   });
 
   testWidgets('ready conversation keeps reconnect toast until online', (

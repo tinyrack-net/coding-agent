@@ -10,6 +10,7 @@ import '../attachments/attachment_store.dart';
 import '../composer/composer_draft_store.dart';
 import '../composer/composer_image_attachment_service.dart';
 import '../composer/composer_image_attachments.dart';
+import '../composer/checkout_link_selection.dart';
 import '../composer/create_agent_preferences.dart';
 import '../composer/draft_agent_selection.dart';
 import '../composer/draft_feature_values.dart';
@@ -88,6 +89,8 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
   var _suspendDraftPersistence = false;
   Future<void> _draftWrite = Future.value();
   bool _selectionTouched = false;
+  final _checkoutLinks = CheckoutLinkSelectionLifecycle();
+  var _checkoutLookupsInFlight = 0;
 
   @override
   void initState() {
@@ -258,6 +261,75 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
     if (_suspendDraftPersistence) return;
     _draftRevision += 1;
     _persistDraft();
+    _detectCheckoutLinks();
+  }
+
+  CheckoutLinkTarget? _checkoutTarget([String? projectPath]) {
+    final cwd = (projectPath ?? _projectChoice)?.trim();
+    if (cwd == null || cwd.isEmpty) return null;
+    final client = ref.read(daemonClientProvider);
+    return CheckoutLinkTarget(
+      serverId: client.serverInfo?.serverId ?? 'local',
+      cwd: cwd,
+    );
+  }
+
+  void _changeCheckoutTarget(String projectPath) {
+    final target = _checkoutTarget(projectPath);
+    if (target == null) return;
+    _checkoutLinks.changeTarget(target, text: _promptController.text);
+  }
+
+  void _detectCheckoutLinks() {
+    final target = _checkoutTarget();
+    if (target == null) return;
+    final lookups = _checkoutLinks.observe(
+      text: _promptController.text,
+      target: target,
+    );
+    if (lookups.isNotEmpty) unawaited(_resolveCheckoutLinks(lookups));
+  }
+
+  Future<void> _resolveCheckoutLinks(List<CheckoutLinkLookup> lookups) async {
+    if (mounted) {
+      setState(() => _checkoutLookupsInFlight += 1);
+    }
+    try {
+      final client = ref.read(daemonClientProvider);
+      for (final lookup in lookups) {
+        try {
+          final response = ForgeSearchResponse.fromJson(
+            await client.requestSessionMessage(
+              ForgeSearchRequest(
+                cwd: lookup.target.cwd,
+                query: '${lookup.reference.number}',
+                limit: 20,
+                kinds: const [ForgeSearchKind.changeRequest],
+                requestId: const Uuid().v4(),
+              ).toJson(),
+            ),
+          );
+          if (response.error != null) continue;
+          final match = response.items
+              .where(
+                (item) =>
+                    forgeItemMatchesGithubPullRequest(item, lookup.reference),
+              )
+              .firstOrNull;
+          if (match != null && mounted && _checkoutLinks.apply(lookup, match)) {
+            setState(() => _baseRef = null);
+            break;
+          }
+        } catch (_) {
+          // Paste detection is opportunistic; normal composer input remains
+          // usable when the forge CLI is unavailable or unauthenticated.
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _checkoutLookupsInFlight -= 1);
+      }
+    }
   }
 
   Future<void> _hydrateDraft() async {
@@ -274,6 +346,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
     _promptController.text = draft.text;
     _suspendDraftPersistence = false;
     setState(() => _images.addAll(images));
+    _detectCheckoutLinks();
     _scheduleAttachmentGc();
   }
 
@@ -373,6 +446,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
       ref.invalidate(projectsProvider);
     }
     ref.read(projectsProvider.notifier).upsert(result.project);
+    _changeCheckoutTarget(result.project.path);
     setState(() {
       _projectChoice = result.project.path;
       _baseRef = null;
@@ -404,6 +478,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
       return;
     }
     if (chosen is ProjectInfo) {
+      _changeCheckoutTarget(chosen.path);
       setState(() {
         _projectChoice = chosen.path;
         _baseRef = null;
@@ -457,7 +532,10 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
         itemIcon: (_) => FluentIcons.branch_fork2,
       ),
     );
-    if (chosen != null) setState(() => _baseRef = chosen);
+    if (chosen != null) {
+      _checkoutLinks.selectBranch(chosen);
+      setState(() => _baseRef = chosen);
+    }
   }
 
   DraftProviderFeaturesScope? _featureScope({
@@ -555,17 +633,31 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
       if (!isWorktree) {
         source = DirectoryWorkspaceCreateSource(path: projectPath);
       } else {
-        final branches = ref.read(branchesProvider(projectPath)).value;
-        final baseRef =
-            _baseRef ??
-            (branches != null && branches.currentBranch.isNotEmpty
-                ? branches.currentBranch
-                : 'main');
-        source = WorktreeWorkspaceCreateSource(
-          cwd: projectPath,
-          action: WorktreeCreateAction.branchOff,
-          refName: baseRef,
-        );
+        final selection = _checkoutLinks.selection;
+        if (selection is ChangeRequestCheckoutLinkSelection) {
+          final item = selection.item;
+          final headRefName = item.headRefName?.trim();
+          final forge = (item.forge ?? 'github').toLowerCase();
+          source = WorktreeWorkspaceCreateSource(
+            cwd: projectPath,
+            action: WorktreeCreateAction.checkout,
+            refName: headRefName?.isEmpty == false ? headRefName : null,
+            checkoutSource: checkoutSourceForChangeRequest(item),
+            githubPrNumber: forge == 'github' ? item.number : null,
+          );
+        } else {
+          final branches = ref.read(branchesProvider(projectPath)).value;
+          final baseRef =
+              _baseRef ??
+              (branches != null && branches.currentBranch.isNotEmpty
+                  ? branches.currentBranch
+                  : 'main');
+          source = WorktreeWorkspaceCreateSource(
+            cwd: projectPath,
+            action: WorktreeCreateAction.branchOff,
+            refName: baseRef,
+          );
+        }
       }
       final workspaceResponse = WorkspaceCreateResponse.fromJson(
         await client.requestSessionMessage(
@@ -727,7 +819,15 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
         ? requestedProject
         : (projects.isEmpty ? null : projects.first.path);
     _projectChoice = choice;
+    final checkoutTarget = _checkoutTarget(choice);
+    if (checkoutTarget != null && _checkoutLinks.target != checkoutTarget) {
+      _checkoutLinks.changeTarget(checkoutTarget, text: _promptController.text);
+    }
     final selectedProject = projects.where((p) => p.path == choice).firstOrNull;
+    final selectedChangeRequest =
+        _checkoutLinks.selection is ChangeRequestCheckoutLinkSelection
+        ? (_checkoutLinks.selection as ChangeRequestCheckoutLinkSelection).item
+        : null;
     final snapshotScope = ProvidersSnapshotScope(
       client: client,
       serverId: serverId,
@@ -895,7 +995,10 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
                                   if (_isolation == WorkspaceIsolation.worktree)
                                     _BaseRefBadge(
                                       projectPath: selectedProject.path,
-                                      baseRef: _baseRef,
+                                      baseRef: selectedChangeRequest == null
+                                          ? _baseRef
+                                          : '#${selectedChangeRequest.number} '
+                                                '${selectedChangeRequest.title}',
                                       onTap: () =>
                                           _pickBaseRef(selectedProject.path),
                                     ),
@@ -1106,6 +1209,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
                                 FilledButton(
                                   onPressed:
                                       _submitting ||
+                                          _checkoutLookupsInFlight > 0 ||
                                           selectedProvider.models == null ||
                                           choice == null
                                       ? null

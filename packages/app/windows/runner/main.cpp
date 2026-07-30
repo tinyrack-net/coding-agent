@@ -2,6 +2,7 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include "agent_navigation.h"
 #include "flutter_window.h"
 #include "protocol_registration.h"
 #include "utils.h"
@@ -29,6 +30,18 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   flutter::DartProject project(L"data");
 
   std::vector<std::string> command_line_arguments = GetCommandLineArguments();
+  HANDLE instance_mutex =
+      ::CreateMutexW(nullptr, FALSE, kCodingAgentInstanceMutexName);
+  const bool existing_instance =
+      instance_mutex != nullptr && ::GetLastError() == ERROR_ALREADY_EXISTS;
+  const auto agent_deep_link =
+      FindAgentDeepLinkArgument(command_line_arguments);
+  if (existing_instance && agent_deep_link.has_value() &&
+      RelayAgentDeepLinkToExistingWindow(agent_deep_link.value())) {
+    ::CloseHandle(instance_mutex);
+    ::CoUninitialize();
+    return EXIT_SUCCESS;
+  }
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
@@ -36,6 +49,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
   if (!window.Create(L"coding_agent_app", origin, size)) {
+    if (instance_mutex != nullptr) {
+      ::CloseHandle(instance_mutex);
+    }
+    ::CoUninitialize();
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
@@ -46,6 +63,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     ::DispatchMessage(&msg);
   }
 
+  if (instance_mutex != nullptr) {
+    ::CloseHandle(instance_mutex);
+  }
   ::CoUninitialize();
   return EXIT_SUCCESS;
 }

@@ -955,6 +955,87 @@ void main() {
     );
   });
 
+  testWidgets(
+    'a GitHub PR URL in the composer selects checkout and is preserved as '
+    'the first prompt',
+    (tester) async {
+      const pullRequest = ForgeSearchItem(
+        kind: ForgeSearchKind.changeRequest,
+        forge: 'github',
+        number: 42,
+        title: 'Ship checkout links',
+        url: 'https://github.com/acme/repo/pull/42',
+        state: 'open',
+        body: null,
+        labels: [],
+        baseRefName: 'main',
+        headRefName: 'feature/checkout-links',
+      );
+      final client = FakeDaemonClient()
+        ..onRequest = (type, payload) {
+          if (type == MessageTypes.projectListRequest) {
+            return {
+              'projects': [_gitProject.toJson()],
+            };
+          }
+          if (type == MessageTypes.branchListRequest) {
+            return const BranchListResponse(
+              branches: ['main'],
+              currentBranch: 'main',
+            ).toJson();
+          }
+          if (type == ForgeSearchRequest.type) {
+            return const ForgeSearchResponse(
+              items: [pullRequest],
+              authState: 'authenticated',
+              error: null,
+              requestId: 'forge-search',
+            ).toJson();
+          }
+          return const {};
+        };
+      await pumpNewWorkspaceScreen(tester, client);
+
+      await tester.tap(find.text('Local'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New worktree'));
+      await tester.pumpAndSettle();
+
+      const prompt =
+          'Please inspect https://github.com/acme/repo/pull/42/files first.';
+      await tester.enterText(find.byType(TextBox).last, prompt);
+      await tester.pumpAndSettle();
+
+      expect(find.text('#42 Ship checkout links'), findsOneWidget);
+      final search = client.requests.singleWhere(
+        (request) => request.$1 == ForgeSearchRequest.type,
+      );
+      expect(search.$2['cwd'], '/repo');
+      expect(search.$2['query'], '42');
+      expect(search.$2['kinds'], ['change_request']);
+
+      await tester.tap(find.text('Create'));
+      await tester.pumpAndSettle();
+
+      final created = client.requests.singleWhere(
+        (request) => request.$1 == 'workspace.create.request',
+      );
+      final source = created.$2['source'] as Map<String, Object?>;
+      expect(source['action'], 'checkout');
+      expect(source['refName'], 'feature/checkout-links');
+      expect(source['githubPrNumber'], 42);
+      expect(source['checkoutSource'], {
+        'kind': 'change_request',
+        'forge': 'github',
+        'number': 42,
+      });
+      expect(
+        (created.$2['firstAgentContext'] as Map<String, Object?>)['prompt'],
+        prompt,
+      );
+    },
+  );
+
   testWidgets('the project picker lists all projects and hides isolation '
       'for a non-git project', (tester) async {
     final client = FakeDaemonClient()

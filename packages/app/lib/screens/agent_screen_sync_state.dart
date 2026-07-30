@@ -77,11 +77,12 @@ final class AgentScreenRouteMemory {
   bool hasRenderedReady = false;
   bool hadInitialSyncFailure = false;
 
-  void enterRoute(String routeKey) {
-    if (_routeKey == routeKey) return;
+  bool enterRoute(String routeKey) {
+    if (_routeKey == routeKey) return false;
     _routeKey = routeKey;
     hasRenderedReady = false;
     hadInitialSyncFailure = false;
+    return true;
   }
 
   void markReady() {

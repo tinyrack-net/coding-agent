@@ -81,15 +81,16 @@ void main() {
   });
 
   test('route memory resets only when agent identity changes', () {
-    final memory = AgentScreenRouteMemory()..enterRoute('server-a:agent-a');
+    final memory = AgentScreenRouteMemory();
+    expect(memory.enterRoute('server-a:agent-a'), isTrue);
     memory.markInitialSyncFailure();
     memory.markReady();
 
-    memory.enterRoute('server-a:agent-a');
+    expect(memory.enterRoute('server-a:agent-a'), isFalse);
     expect(memory.hasRenderedReady, isTrue);
     expect(memory.hadInitialSyncFailure, isFalse);
 
-    memory.enterRoute('server-a:agent-b');
+    expect(memory.enterRoute('server-a:agent-b'), isTrue);
     expect(memory.hasRenderedReady, isFalse);
     expect(memory.hadInitialSyncFailure, isFalse);
     memory.markReady();
