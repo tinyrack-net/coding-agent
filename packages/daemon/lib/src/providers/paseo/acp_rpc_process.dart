@@ -3,6 +3,13 @@ import 'dart:convert';
 import 'dart:io';
 
 const acpRpcDefaultTimeout = Duration(seconds: 30);
+
+/// Wait for a response, process exit, or [AcpRpcProcess.close].
+///
+/// Long-running blocking provider work, such as Pi context compaction, must
+/// not use the control-plane wall-clock timeout: the provider can legitimately
+/// spend longer than 30 seconds generating and persisting its summary.
+const Duration? acpRpcNoTimeout = null;
 const _stderrBufferLimit = 8192;
 const _gracefulShutdownTimeout = Duration(seconds: 2);
 const _forceShutdownTimeout = Duration(seconds: 1);

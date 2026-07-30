@@ -96,6 +96,44 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('server-b page'), findsOneWidget);
   });
+
+  testWidgets(
+    'settings resolves a connected remote host when local daemon is stopped',
+    (tester) async {
+      final router = GoRouter(
+        initialLocation: '/settings/general',
+        routes: [
+          GoRoute(
+            path: '/settings/:section',
+            builder: (context, state) => SettingsShell(
+              child: Consumer(
+                builder: (context, ref, child) => Text(
+                  'Active host: '
+                  '${ref.watch(activeHostProvider)?.label ?? 'none'}',
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            hostRegistryProvider.overrideWith(
+              _RemoteWithStoppedLocalRegistry.new,
+            ),
+          ],
+          child: FluentApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Active host: Remote connected'), findsOneWidget);
+      expect(find.text('Host not found'), findsNothing);
+    },
+  );
 }
 
 class _TwoHostsRegistry extends HostRegistryNotifier {
@@ -103,6 +141,15 @@ class _TwoHostsRegistry extends HostRegistryNotifier {
   HostRegistryState build() => HostRegistryState(
     hosts: [_host('server-a', 'Local'), _host('server-b', 'Remote')],
     activeServerId: 'server-a',
+    loaded: true,
+  );
+}
+
+class _RemoteWithStoppedLocalRegistry extends HostRegistryNotifier {
+  @override
+  HostRegistryState build() => HostRegistryState(
+    hosts: [_host('server-remote', 'Remote connected')],
+    activeServerId: 'server-local-stopped',
     loaded: true,
   );
 }

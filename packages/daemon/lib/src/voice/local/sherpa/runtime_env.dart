@@ -100,11 +100,17 @@ String? resolveSherpaLibraryDirectory({
     return p.normalize(explicit);
   }
 
-  final executableDirectory = p.dirname(
+  final packagePaths = _pathContext(os);
+  final executableDirectory = packagePaths.dirname(
     resolvedExecutable ?? Platform.resolvedExecutable,
   );
-  if (exists(p.join(executableDirectory, library))) {
-    return executableDirectory;
+  for (final candidate in _packagedSherpaLibraryDirectories(
+    executableDirectory,
+    packagePaths,
+  )) {
+    if (exists(packagePaths.join(candidate, library))) {
+      return packagePaths.normalize(candidate);
+    }
   }
 
   final cacheRoot = _pubCacheRoot(env, os);
@@ -195,3 +201,36 @@ String _linuxArchitecture(Abi abi) {
   final value = abi.toString().toLowerCase();
   return value.contains('arm64') ? 'aarch64' : 'x64';
 }
+
+Iterable<String> _packagedSherpaLibraryDirectories(
+  String executableDirectory,
+  p.Context paths,
+) sync* {
+  yield executableDirectory;
+
+  final prefix = _installationPrefix(executableDirectory, paths);
+  if (prefix == null) return;
+  yield paths.join(prefix, 'lib', 'tinyrack');
+  yield paths.join(prefix, 'lib', 'coding-agent');
+  yield paths.join(prefix, 'lib');
+}
+
+String? _installationPrefix(String executableDirectory, p.Context paths) {
+  var cursor = paths.normalize(executableDirectory);
+  while (true) {
+    final name = paths.basename(cursor).toLowerCase();
+    if (name == 'bin' || name == 'libexec') {
+      return paths.dirname(cursor);
+    }
+    final parent = paths.dirname(cursor);
+    if (parent == cursor) return null;
+    if (paths.basename(parent).toLowerCase() == 'libexec') {
+      return paths.dirname(parent);
+    }
+    cursor = parent;
+  }
+}
+
+p.Context _pathContext(String operatingSystem) => p.Context(
+  style: operatingSystem == 'windows' ? p.Style.windows : p.Style.posix,
+);

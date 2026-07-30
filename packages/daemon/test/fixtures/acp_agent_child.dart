@@ -34,6 +34,9 @@ bool get requireSessionEnvironment =>
     Platform.environment['ACP_FIXTURE_REQUIRE_SESSION_ENV'] == 'true';
 bool get echoImagePrompt =>
     Platform.environment['ACP_FIXTURE_ECHO_IMAGE_PROMPT'] == 'true';
+int get compactDelayMs =>
+    int.tryParse(Platform.environment['ACP_FIXTURE_COMPACT_DELAY_MS'] ?? '') ??
+    0;
 
 List<Map<String, Object?>> configOnlyOptions() => [
   {
@@ -591,16 +594,27 @@ void main() {
         respond(id, const {});
       case 'session/prompt':
         pendingPromptId = id;
+        final promptSessionId = params['sessionId']! as String;
         final prompt = params['prompt'] as List;
         final text = prompt
             .map((item) => map(item)['text'])
             .whereType<String>()
             .join('|');
-        if (echoImagePrompt) {
-          final images = prompt
-              .map(map)
-              .where((item) => item['type'] == 'image')
-              .toList(growable: false);
+        if (text.startsWith('/compact') && compactDelayMs > 0) {
+          Future<void>.delayed(Duration(milliseconds: compactDelayMs), () {
+            respond(id, {
+              'stopReason': 'end_turn',
+              'summary': 'long summary completed',
+            });
+            pendingPromptId = null;
+          });
+          return;
+        }
+        final images = prompt
+            .map(map)
+            .where((item) => item['type'] == 'image')
+            .toList(growable: false);
+        if (echoImagePrompt && images.isNotEmpty) {
           if (text != 'see this' ||
               images.length != 1 ||
               images.single['data'] != 'AA==' ||
@@ -624,7 +638,7 @@ void main() {
               'jsonrpc': '2.0',
               'method': 'session/update',
               'params': {
-                'sessionId': 'session-1',
+                'sessionId': promptSessionId,
                 'update': {
                   'sessionUpdate': 'user_message_chunk',
                   'messageId': 'provider-owned-message-id',
@@ -637,7 +651,7 @@ void main() {
             'jsonrpc': '2.0',
             'method': 'session/update',
             'params': {
-              'sessionId': 'session-1',
+              'sessionId': promptSessionId,
               'update': {
                 'sessionUpdate': 'agent_message_chunk',
                 'messageId': 'image-reply',
@@ -654,7 +668,7 @@ void main() {
           'jsonrpc': '2.0',
           'method': 'session/update',
           'params': {
-            'sessionId': 'session-1',
+            'sessionId': promptSessionId,
             'update': {
               'sessionUpdate': 'agent_message_chunk',
               'messageId': 'message-1',
@@ -667,7 +681,7 @@ void main() {
           'jsonrpc': '2.0',
           'method': 'session/update',
           'params': {
-            'sessionId': 'session-1',
+            'sessionId': promptSessionId,
             'update': {
               'sessionUpdate': 'agent_thought_chunk',
               'messageId': 'thought-1',
@@ -679,7 +693,7 @@ void main() {
           'jsonrpc': '2.0',
           'method': 'session/update',
           'params': {
-            'sessionId': 'session-1',
+            'sessionId': promptSessionId,
             'update': {
               'sessionUpdate': 'tool_call',
               'toolCallId': 'tool-1',
@@ -695,7 +709,7 @@ void main() {
           'id': 500,
           'method': 'session/request_permission',
           'params': {
-            'sessionId': 'session-1',
+            'sessionId': promptSessionId,
             'toolCall': {
               'toolCallId': 'tool-1',
               'title': 'Run check',

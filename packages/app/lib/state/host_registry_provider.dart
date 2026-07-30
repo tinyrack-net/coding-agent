@@ -19,13 +19,18 @@ final class HostRegistryState {
   final bool loaded;
 
   HostProfile? get activeHost {
-    final active = activeServerId;
-    if (active != null) {
+    final resolved = resolveActiveHostServerId(
+      selectedServerId: activeServerId,
+      localServerId: null,
+      hosts: hosts,
+      orderedHosts: hosts,
+    );
+    if (resolved != null) {
       for (final host in hosts) {
-        if (host.serverId == active) return host;
+        if (host.serverId == resolved) return host;
       }
     }
-    return hosts.firstOrNull;
+    return null;
   }
 
   HostRegistryState copyWith({

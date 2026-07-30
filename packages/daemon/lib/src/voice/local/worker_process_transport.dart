@@ -29,26 +29,39 @@ LocalSpeechWorkerCommand resolveLocalSpeechWorkerCommand({
   Map<String, String>? environment,
   String? resolvedExecutable,
   bool? isWindows,
+  String? operatingSystem,
   bool Function(String path)? fileExists,
 }) {
   final env = environment ?? Platform.environment;
-  final os = (isWindows ?? Platform.isWindows)
-      ? 'windows'
-      : Platform.operatingSystem;
+  final os =
+      operatingSystem ??
+      ((isWindows ?? Platform.isWindows)
+          ? 'windows'
+          : Platform.operatingSystem);
+  final exists = fileExists ?? (path) => File(path).existsSync();
   final configured = env[localSpeechWorkerExecutableEnvironment]?.trim();
   if (configured != null && configured.isNotEmpty) {
     return LocalSpeechWorkerCommand(
       executable: configured,
-      environment: _workerEnvironment(env, configured, os),
+      environment: _workerEnvironment(env, configured, os, fileExists: exists),
     );
   }
 
   final runtime = resolvedExecutable ?? Platform.resolvedExecutable;
   final windows = os == 'windows';
-  final exists = fileExists ?? (path) => File(path).existsSync();
-  final runtimeName = p.basenameWithoutExtension(runtime).toLowerCase();
+  final packagePaths = p.Context(
+    style: windows ? p.Style.windows : p.Style.posix,
+  );
+  final runtimeName = packagePaths
+      .basenameWithoutExtension(runtime)
+      .toLowerCase();
   if (runtimeName == 'dart' || runtimeName == 'dartaotruntime') {
-    final workerEnvironment = _workerEnvironment(env, runtime, os);
+    final workerEnvironment = _workerEnvironment(
+      env,
+      runtime,
+      os,
+      fileExists: exists,
+    );
     return LocalSpeechWorkerCommand(
       executable: runtime,
       arguments: const ['run', 'agent_daemon:local_speech_worker'],
@@ -56,31 +69,72 @@ LocalSpeechWorkerCommand resolveLocalSpeechWorkerCommand({
     );
   }
 
-  final sibling = p.join(
-    p.dirname(runtime),
-    windows ? 'coding-agent-voice.exe' : 'coding-agent-voice',
+  final workerName = windows ? 'coding-agent-voice.exe' : 'coding-agent-voice';
+  final candidates = _packagedWorkerCandidates(
+    runtime,
+    workerName,
+    packagePaths,
   );
-  if (!exists(sibling)) {
-    throw StateError(
-      'Local speech worker executable not found at $sibling. '
-      'Set $localSpeechWorkerExecutableEnvironment to its path.',
-    );
+  for (final candidate in candidates) {
+    if (exists(candidate)) {
+      return LocalSpeechWorkerCommand(
+        executable: packagePaths.normalize(candidate),
+        environment: _workerEnvironment(env, candidate, os, fileExists: exists),
+      );
+    }
   }
-  return LocalSpeechWorkerCommand(
-    executable: sibling,
-    environment: _workerEnvironment(env, sibling, os),
+  throw StateError(
+    'Local speech worker executable not found. Checked '
+    '${candidates.join(', ')}. '
+    'Set $localSpeechWorkerExecutableEnvironment to its path.',
   );
+}
+
+List<String> _packagedWorkerCandidates(
+  String runtime,
+  String workerName,
+  p.Context paths,
+) {
+  final executableDirectory = paths.dirname(runtime);
+  final candidates = <String>[paths.join(executableDirectory, workerName)];
+  final prefix = _installationPrefix(executableDirectory, paths);
+  if (prefix != null) {
+    candidates.addAll([
+      paths.join(prefix, 'libexec', 'tinyrack', workerName),
+      paths.join(prefix, 'lib', 'tinyrack', workerName),
+      paths.join(prefix, 'lib', 'coding-agent', workerName),
+    ]);
+  }
+  return candidates;
+}
+
+String? _installationPrefix(String executableDirectory, p.Context paths) {
+  var cursor = paths.normalize(executableDirectory);
+  while (true) {
+    final name = paths.basename(cursor).toLowerCase();
+    if (name == 'bin' || name == 'libexec') {
+      return paths.dirname(cursor);
+    }
+    final parent = paths.dirname(cursor);
+    if (parent == cursor) return null;
+    if (paths.basename(parent).toLowerCase() == 'libexec') {
+      return paths.dirname(parent);
+    }
+    cursor = parent;
+  }
 }
 
 Map<String, String> _workerEnvironment(
   Map<String, String> environment,
   String executable,
-  String operatingSystem,
-) {
+  String operatingSystem, {
+  required bool Function(String path) fileExists,
+}) {
   final libraryDirectory = resolveSherpaLibraryDirectory(
     environment: environment,
     resolvedExecutable: executable,
     operatingSystem: operatingSystem,
+    fileExists: fileExists,
   );
   var result = libraryDirectory == null
       ? Map<String, String>.from(environment)
@@ -93,6 +147,7 @@ Map<String, String> _workerEnvironment(
     final sileroAsset = resolveBundledSileroVadModelPath(
       environment: result,
       resolvedExecutable: executable,
+      fileExists: fileExists,
     );
     result = {...result, sileroVadAssetEnvironment: sileroAsset};
   } on StateError {

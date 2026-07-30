@@ -173,6 +173,37 @@ void main() {
     expect(state.copyWith(clearActiveServerId: true).activeServerId, isNull);
   });
 
+  test('settings host resolution skips a stopped remembered local daemon', () {
+    final remote = _profile('server-remote', 'remote.example:6868');
+    expect(
+      resolveActiveHostServerId(
+        selectedServerId: null,
+        localServerId: 'server-local-stopped',
+        hosts: [remote],
+        orderedHosts: [remote],
+      ),
+      'server-remote',
+    );
+    expect(
+      resolveActiveHostServerId(
+        selectedServerId: 'stale-selection',
+        localServerId: 'server-local-stopped',
+        hosts: [remote],
+        orderedHosts: [remote],
+      ),
+      'server-remote',
+    );
+    expect(
+      resolveActiveHostServerId(
+        selectedServerId: null,
+        localServerId: 'server-local-stopped',
+        hosts: const [],
+        orderedHosts: const [],
+      ),
+      isNull,
+    );
+  });
+
   test(
     'rename validates labels and removeHost maintains active selection',
     () async {

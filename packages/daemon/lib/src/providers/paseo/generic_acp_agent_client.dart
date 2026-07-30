@@ -12,6 +12,7 @@ import 'acp_catalog.dart';
 import 'acp_client_runtime.dart';
 import 'acp_history.dart';
 import 'acp_rpc_process.dart';
+import 'omp_system_notice.dart';
 import 'provider_launch_config.dart';
 
 typedef AcpCommandResolver = Future<String?> Function();
@@ -366,6 +367,7 @@ final class GenericAcpAgentSession
   String? _sessionId;
   String? _fallbackAssistantMessageId;
   String? _fallbackReasoningId;
+  final Map<String, StringBuffer> _ompAssistantBuffers = {};
   bool _turnActive = false;
   bool _disposed = false;
   bool _intentionalClose = false;
@@ -510,6 +512,7 @@ final class GenericAcpAgentSession
     _turnActive = true;
     _fallbackAssistantMessageId = null;
     _fallbackReasoningId = null;
+    _ompAssistantBuffers.clear();
     final messageId = _uuid.v4();
     unawaited(
       rpc
@@ -517,7 +520,7 @@ final class GenericAcpAgentSession
             'sessionId': sessionId,
             'messageId': messageId,
             'prompt': prompt,
-          }, timeout: null)
+          }, timeout: acpRpcNoTimeout)
           .then(_handlePromptResponse)
           .catchError((Object error) {
             _finishTurn(TurnFailed(error: _requestErrorMessage(error)));
@@ -656,7 +659,11 @@ final class GenericAcpAgentSession
           final itemId =
               update['messageId'] as String? ??
               (_fallbackAssistantMessageId ??= _uuid.v4());
-          _events.add(AssistantTextDelta(itemId: itemId, text: text));
+          if (provider == 'omp') {
+            _handleOmpAssistantChunk(itemId, text);
+          } else {
+            _events.add(AssistantTextDelta(itemId: itemId, text: text));
+          }
         }
       case 'agent_thought_chunk':
         final text = _contentText(update['content']);
@@ -849,9 +856,74 @@ final class GenericAcpAgentSession
   void _finishTurn(ProviderEvent event) {
     if (!_turnActive || _events.isClosed) return;
     _turnActive = false;
+    _flushOmpAssistantBuffers();
     _fallbackAssistantMessageId = null;
     _fallbackReasoningId = null;
     _events.add(event);
+  }
+
+  void _handleOmpAssistantChunk(String itemId, String text) {
+    final pending = _ompAssistantBuffers[itemId];
+    if (pending == null) {
+      final candidate = text.trimLeft();
+      if (!ompSystemNoticeOpenTag.startsWith(candidate) &&
+          !candidate.startsWith(ompSystemNoticeOpenTag)) {
+        _events.add(AssistantTextDelta(itemId: itemId, text: text));
+        return;
+      }
+    }
+
+    final buffer = _ompAssistantBuffers.putIfAbsent(itemId, StringBuffer.new)
+      ..write(text);
+    final combined = buffer.toString();
+    final candidate = combined.trimLeft();
+    if (ompSystemNoticeOpenTag.startsWith(candidate)) return;
+    if (!candidate.startsWith(ompSystemNoticeOpenTag)) {
+      _ompAssistantBuffers.remove(itemId);
+      _events.add(AssistantTextDelta(itemId: itemId, text: combined));
+      return;
+    }
+
+    final closeIndex = combined.indexOf(ompSystemNoticeCloseTag);
+    if (closeIndex == -1) return;
+    final noticeEnd = closeIndex + ompSystemNoticeCloseTag.length;
+    final noticeText = combined.substring(0, noticeEnd);
+    final notice = parseOmpSystemNotice(noticeText);
+    _ompAssistantBuffers.remove(itemId);
+    if (notice != null) {
+      _events.add(
+        ToolCallStarted(
+          itemId: notice.callId,
+          toolName: 'task_notification',
+          status: notice.status,
+          detail: PlainTextDetail(
+            label: notice.label,
+            text: notice.text,
+            icon: 'wrench',
+          ),
+          errorMessage: notice.errorMessage,
+          metadata: notice.metadata,
+        ),
+      );
+    }
+    final trailing = combined.substring(noticeEnd);
+    if (trailing.trim().isNotEmpty) {
+      _events.add(AssistantTextDelta(itemId: itemId, text: trailing));
+    }
+  }
+
+  void _flushOmpAssistantBuffers() {
+    for (final entry in _ompAssistantBuffers.entries) {
+      final text = entry.value.toString();
+      final candidate = text.trimLeft();
+      final isNotice =
+          ompSystemNoticeOpenTag.startsWith(candidate) ||
+          candidate.startsWith(ompSystemNoticeOpenTag);
+      if (!isNotice) {
+        _events.add(AssistantTextDelta(itemId: entry.key, text: text));
+      }
+    }
+    _ompAssistantBuffers.clear();
   }
 
   void _applySessionState(Map<String, Object?> state) {

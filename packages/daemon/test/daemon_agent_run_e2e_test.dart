@@ -92,6 +92,37 @@ void main() {
       expect(child?.cwd, agent?.cwd);
       expect(child?.parentAgentId, agent?.agentId);
       expect(child?.labels[paseoParentAgentIdLabel], agent?.agentId);
+
+      final isolatedOutput = StringBuffer();
+      final isolatedCode = await runAgentRunCommand(
+        arguments: [
+          '--host',
+          '127.0.0.1:${handle.server.port}',
+          '--provider',
+          'codex/gpt-5.4',
+          '--new-workspace',
+          'local',
+          '--background',
+          '--json',
+          'child in an explicit new workspace',
+        ],
+        currentDirectory: home.path,
+        environment: {
+          'PASEO_AGENT_ID': result['agentId']! as String,
+          'PASEO_WORKSPACE_ID': agent!.workspaceId!,
+        },
+        writeOutput: isolatedOutput.write,
+        writeError: errors.write,
+      );
+      expect(isolatedCode, 0, reason: errors.toString());
+      final isolatedResult =
+          jsonDecode(isolatedOutput.toString()) as Map<String, Object?>;
+      final isolated = handle.manager.get(isolatedResult['agentId']! as String);
+      expect(isolated?.workspaceId, isNotNull);
+      expect(isolated?.workspaceId, isNot(agent.workspaceId));
+      expect(isolated?.cwd, home.path);
+      expect(isolated?.parentAgentId, agent.agentId);
+      expect(isolated?.labels[paseoParentAgentIdLabel], agent.agentId);
     },
   );
 

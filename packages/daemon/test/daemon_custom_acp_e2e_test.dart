@@ -241,6 +241,68 @@ void main() {
         importedTimeline.items.whereType<ToolCallItem>().single.status,
         ToolCallStatus.success,
       );
+
+      final collection = await handle.manager.collectIdleAgents(
+        cutoff: DateTime.now().toUtc().add(const Duration(seconds: 1)),
+      );
+      expect(
+        collection.collected.map((entry) => entry.agentId),
+        contains(imported.summary.agentId),
+      );
+
+      await handle.manager.prompt(
+        imported.summary.agentId,
+        'Continue after idle resume',
+        clientMessageId: 'client-resumed-message',
+      );
+      final permission = await handle.manager.waitForAgentEvent(
+        imported.summary.agentId,
+        timeout: const Duration(seconds: 5),
+      );
+      expect(
+        permission.summary.runState,
+        AgentRunState.awaitingPermission,
+        reason:
+            '${permission.summary.lastError} '
+            '${handle.manager.fetchTimeline(imported.summary.agentId).items}',
+      );
+      await handle.manager.respondPermission(
+        permission.permission!.permissionId,
+        'allow',
+      );
+      final completed = await handle.manager.waitForAgentEvent(
+        imported.summary.agentId,
+        timeout: const Duration(seconds: 5),
+      );
+      expect(completed.summary.runState, AgentRunState.idle);
+
+      final resumedTimeline = handle.manager.fetchTimeline(
+        imported.summary.agentId,
+      );
+      expect(
+        resumedTimeline.items.whereType<UserMessageItem>(),
+        [
+          isA<UserMessageItem>().having(
+            (item) => item.text,
+            'restored text',
+            'Restore [image]',
+          ),
+          isA<UserMessageItem>()
+              .having(
+                (item) => item.text,
+                'resumed text',
+                'Continue after idle resume',
+              )
+              .having(
+                (item) => item.clientMessageId,
+                'resumed client id',
+                'client-resumed-message',
+              ),
+        ],
+        reason:
+            'the generic ACP fallback keeps resumed message ordering stable; '
+            'native Pi entry-id parity is tracked separately',
+      );
     },
   );
 }

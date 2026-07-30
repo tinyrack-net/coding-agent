@@ -53,6 +53,40 @@ void main() {
     );
   });
 
+  test('discovers a Nix-packaged worker and its native library path', () {
+    final nixPaths = p.Context(style: p.Style.posix);
+    const runtime = '/nix/store/tinyrack/bin/coding-agent';
+    final worker = nixPaths.join(
+      '/nix/store/tinyrack',
+      'libexec',
+      'tinyrack',
+      'coding-agent-voice',
+    );
+    final nativeDirectory = nixPaths.join(
+      '/nix/store/tinyrack',
+      'lib',
+      'tinyrack',
+    );
+    final command = resolveLocalSpeechWorkerCommand(
+      environment: const {'LD_LIBRARY_PATH': '/nix/store/runtime/lib'},
+      resolvedExecutable: runtime,
+      operatingSystem: 'linux',
+      fileExists: (path) =>
+          path == worker ||
+          path == nixPaths.join(nativeDirectory, 'libsherpa-onnx-c-api.so'),
+    );
+
+    expect(command.executable, nixPaths.normalize(worker));
+    expect(
+      command.environment?[sherpaLibraryDirectoryEnvironment],
+      nixPaths.normalize(nativeDirectory),
+    );
+    expect(
+      command.environment?['LD_LIBRARY_PATH'],
+      '${nixPaths.normalize(nativeDirectory)}:/nix/store/runtime/lib',
+    );
+  });
+
   test('process transport exchanges JSON lines, bytes, and stderr', () async {
     final transport = await _startEchoWorker();
     final messages = <LocalSpeechWorkerMessage>[];

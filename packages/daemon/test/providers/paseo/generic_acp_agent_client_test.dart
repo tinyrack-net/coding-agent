@@ -29,11 +29,12 @@ String fixturePath() {
 }
 
 GenericAcpAgentClient client({
+  String provider = 'fixture-acp',
   Future<String?> Function()? resolveCommand,
   Map<String, String> environment = const {'ACP_FIXTURE_ENV': 'configured'},
   AcpRpcProcessStarter? processStarter,
 }) => GenericAcpAgentClient(
-  provider: 'fixture-acp',
+  provider: provider,
   command: 'dart',
   commandArgs: [fixturePath()],
   environment: environment,
@@ -185,6 +186,43 @@ void main() {
             .having((event) => event.itemId, 'item id', 'image-reply')
             .having((event) => event.text, 'text', 'image-ok'),
       );
+      expect(events.whereType<TurnCompleted>(), hasLength(1));
+    },
+  );
+
+  test(
+    'Pi compact waits for a long summary instead of reporting a false timeout',
+    () async {
+      final session =
+          await client(
+            provider: 'pi',
+            environment: const {'ACP_FIXTURE_COMPACT_DELAY_MS': '120'},
+          ).createSession(
+            cwd: Directory.current.path,
+            model: '',
+            mode: AgentMode.normal,
+          );
+      addTearDown(session.dispose);
+      final events = <ProviderEvent>[];
+      final completed = Completer<void>();
+      final subscription = session.events.listen((event) {
+        events.add(event);
+        if (event is TurnCompleted && !completed.isCompleted) {
+          completed.complete();
+        }
+      });
+      addTearDown(subscription.cancel);
+
+      final stopwatch = Stopwatch()..start();
+      await session.prompt('/compact summarize this long session');
+      await completed.future.timeout(const Duration(seconds: 2));
+      stopwatch.stop();
+
+      expect(
+        stopwatch.elapsed,
+        greaterThanOrEqualTo(const Duration(milliseconds: 100)),
+      );
+      expect(events.whereType<TurnFailed>(), isEmpty);
       expect(events.whereType<TurnCompleted>(), hasLength(1));
     },
   );

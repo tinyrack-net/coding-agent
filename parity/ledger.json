@@ -1630,73 +1630,97 @@
     },
     {
       "id": "release-feature:038-cli-agent-runs-stay-in-the-current-workspace-unless-a-new-workspace-is-requested",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/agent_run_command.dart",
+      "evidence": [
+        "packages/daemon/test/cli/agent_run_command_test.dart",
+        "packages/daemon/test/daemon_agent_run_e2e_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "release-feature:039-reused-branches-no-longer-attach-an-unrelated-merged-or-closed-pull-request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/workspace",
+      "evidence": [
+        "packages/daemon/test/workspace/polling_workspace_git_backend_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "release-feature:040-pi-compaction-waits-for-long-summaries-instead-of-reporting-a-false-timeout",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/generic_acp_agent_client.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo/acp_rpc_process_test.dart",
+        "packages/daemon/test/providers/paseo/generic_acp_agent_client_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "release-feature:041-pi-chats-keep-new-messages-aligned-with-the-correct-history-after-an-idle-agent-resumes",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/providers/paseo/generic_acp_agent_client.dart",
+      "evidence": [
+        "packages/daemon/test/daemon_custom_acp_e2e_test.dart"
+      ],
+      "notes": "Idle-resume ordering is covered through Generic ACP, but Tinyrack does not yet preserve Pi's native submitted entry ID separately from clientMessageId."
     },
     {
       "id": "release-feature:042-opencode-follow-ups-triggered-by-completed-background-work-now-remain-visible",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/generic_acp_agent_client.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo/opencode_background_followup_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "release-feature:043-codex-no-longer-shows-the-parent-agent-as-a-phantom-subagent",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/codex_agent_session.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo/codex_agent_session_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "release-feature:044-oh-my-pi-background-notices-appear-as-task-notifications-instead-of-raw-system-text",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/provider_event.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo/omp_system_notice_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "release-feature:045-local-dictation-now-works-in-nix-packaged-installations",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/voice/local/sherpa/runtime_env.dart",
+      "evidence": [
+        "packages/daemon/test/voice/local_worker_process_transport_test.dart",
+        "packages/daemon/test/voice/sherpa_runtime_env_test.dart"
+      ],
+      "notes": "Nix-style worker and Sherpa library discovery is implemented. The repository still lacks a Nix derivation, worker/model closure installation, and autoPatchelf/libstdc++ RPATH verification."
     },
     {
       "id": "release-feature:046-the-composer-remains-visible-after-submitting-dictated-text-and-returning-to-the-app",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/widgets/composer.dart",
+      "evidence": [
+        "packages/app/test/composer_test.dart"
+      ],
+      "notes": "The composer/voice-overlay resume state contract is implemented, but no production dictation controller is wired to showVoiceOverlay and microphone-to-submit E2E remains unavailable."
     },
     {
       "id": "release-feature:047-desktop-s-dictation-shortcut-remains-responsive-after-finishing-a-recording",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/widgets/composer.dart",
+      "evidence": [
+        "packages/app/test/dictation_shortcut_controller_test.dart",
+        "packages/app/test/composer_test.dart"
+      ],
+      "notes": "Live recording-state shortcut semantics are implemented, but the controller is not yet wired to a production recorder and desktop microphone cycle E2E remains unavailable."
     },
     {
       "id": "release-feature:048-projects-can-be-renamed-before-their-first-workspace",
@@ -1713,9 +1737,12 @@
     },
     {
       "id": "release-feature:049-settings-keep-showing-a-connected-remote-host-when-the-local-daemon-is-stopped",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/app/lib/state/host_registry_provider.dart",
+      "evidence": [
+        "packages/app/test/host_registry_provider_test.dart",
+        "packages/app/test/settings_shell_test.dart"
+      ],
       "notes": null
     },
     {

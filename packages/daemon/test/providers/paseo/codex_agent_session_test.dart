@@ -723,6 +723,53 @@ void main() {
   );
 
   test(
+    'does not register a parent interaction on a child thread as a subagent',
+    () async {
+      final (session, connection) = _createSession();
+      addTearDown(session.dispose);
+      final events = <ProviderEvent>[];
+      session.events.listen(events.add);
+      await session.prompt('delegate');
+
+      connection.emit('item/started', {
+        'threadId': 'thread',
+        'item': {
+          'id': 'child-started',
+          'type': 'subAgentActivity',
+          'kind': 'started',
+          'agentThreadId': 'child-thread',
+          'agentPath': '/root/child',
+        },
+      });
+      connection.emit('item/started', {
+        'threadId': 'child-thread',
+        'item': {
+          'id': 'parent-interacted',
+          'type': 'subAgentActivity',
+          'kind': 'interacted',
+          'agentThreadId': 'thread',
+          'agentPath': '/root',
+        },
+      });
+      await _flush();
+
+      expect(
+        events
+            .whereType<ProviderSubagentUpserted>()
+            .map((event) => event.subagentId)
+            .toSet(),
+        {'child-thread'},
+      );
+      expect(
+        events.whereType<ProviderSubagentTimelineChanged>().where(
+          (event) => event.subagentId == 'child-thread',
+        ),
+        hasLength(1),
+      );
+    },
+  );
+
+  test(
     'covers child activity, reasoning, compaction, and buffer bounds',
     () async {
       final (session, connection) = _createSession();

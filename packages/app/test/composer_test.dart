@@ -7,6 +7,7 @@ import 'package:coding_agent_app/attachments/memory_attachment_store.dart';
 import 'package:coding_agent_app/composer/composer_image_attachment_service.dart';
 import 'package:coding_agent_app/composer/composer_clipboard_reader.dart';
 import 'package:coding_agent_app/composer/composer_draft_store.dart';
+import 'package:coding_agent_app/composer/dictation_shortcut_controller.dart';
 import 'package:coding_agent_app/keyboard/keyboard_action_dispatcher.dart';
 import 'package:coding_agent_app/keyboard/shortcut_engine.dart';
 import 'package:coding_agent_app/keyboard/shortcut_focus_scope.dart';
@@ -19,6 +20,7 @@ import 'package:coding_agent_app/state/workspace_attachments_provider.dart';
 import 'package:coding_agent_app/widgets/composer.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -241,6 +243,9 @@ Future<ProviderContainer> pumpComposer(
   ComposerClipboardReader clipboardReader = const _ClipboardReader(),
   ComposerDraftStore? draftStore,
   ValueChanged<ComposerClientSlashCommand>? onClientSlashCommand,
+  ValueListenable<bool>? voiceOverlayVisibility,
+  Widget? voiceOverlay,
+  DictationShortcutController? dictationShortcutController,
 }) async {
   client.knownAgent = agent;
   final container = ProviderContainer(
@@ -249,24 +254,34 @@ Future<ProviderContainer> pumpComposer(
   addTearDown(container.dispose);
   container.read(agentsProvider.notifier).upsert(agent);
 
+  Widget buildComposer(bool showVoiceOverlay) => Composer(
+    agentId: 'a1',
+    onInputFocus: onInputFocus,
+    onPromptSend: onPromptSend,
+    imageAttachmentService:
+        imageAttachmentService ??
+        ComposerImageAttachmentService(
+          store: () async => MemoryAttachmentStore(),
+        ),
+    clipboardReader: clipboardReader,
+    draftStore: draftStore ?? _MemoryDraftStore(),
+    onClientSlashCommand: onClientSlashCommand,
+    showVoiceOverlay: showVoiceOverlay,
+    voiceOverlay: voiceOverlay,
+    dictationShortcutController: dictationShortcutController,
+  );
+
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
       child: FluentApp(
         home: ScaffoldPage(
-          content: Composer(
-            agentId: 'a1',
-            onInputFocus: onInputFocus,
-            onPromptSend: onPromptSend,
-            imageAttachmentService:
-                imageAttachmentService ??
-                ComposerImageAttachmentService(
-                  store: () async => MemoryAttachmentStore(),
+          content: voiceOverlayVisibility == null
+              ? buildComposer(false)
+              : ValueListenableBuilder<bool>(
+                  valueListenable: voiceOverlayVisibility,
+                  builder: (_, visible, _) => buildComposer(visible),
                 ),
-            clipboardReader: clipboardReader,
-            draftStore: draftStore ?? _MemoryDraftStore(),
-            onClientSlashCommand: onClientSlashCommand,
-          ),
         ),
       ),
     ),
@@ -277,6 +292,81 @@ Future<ProviderContainer> pumpComposer(
 }
 
 void main() {
+  testWidgets(
+    'dictation submit while paused restores a visible interactive composer',
+    (tester) async {
+      final overlayVisible = ValueNotifier(true);
+      addTearDown(overlayVisible.dispose);
+      addTearDown(
+        () => tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        ),
+      );
+      await pumpComposer(
+        tester,
+        FakeDaemonClient(),
+        voiceOverlayVisibility: overlayVisible,
+        voiceOverlay: const ColoredBox(
+          key: ValueKey('dictation-overlay'),
+          color: Color(0xFF000000),
+        ),
+      );
+
+      expect(
+        tester
+            .widget<Opacity>(
+              find.byKey(const ValueKey('composer-input-surface')),
+            )
+            .opacity,
+        0,
+      );
+      expect(
+        tester
+            .widget<IgnorePointer>(
+              find.byKey(const ValueKey('composer-input-pointer-state')),
+            )
+            .ignoring,
+        isTrue,
+      );
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      overlayVisible.value = false;
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+
+      expect(
+        tester
+            .widget<Opacity>(
+              find.byKey(const ValueKey('composer-input-surface')),
+            )
+            .opacity,
+        1,
+      );
+      expect(
+        tester
+            .widget<IgnorePointer>(
+              find.byKey(const ValueKey('composer-input-pointer-state')),
+            )
+            .ignoring,
+        isFalse,
+      );
+      expect(find.byType(TextBox).hitTestable(), findsOneWidget);
+      expect(
+        tester
+            .widget<Opacity>(
+              find.byKey(const ValueKey('composer-voice-overlay-surface')),
+            )
+            .opacity,
+        0,
+      );
+    },
+  );
+
   testWidgets('reports input focus and non-empty prompt send triggers', (
     tester,
   ) async {
@@ -1571,5 +1661,39 @@ void main() {
     expect(find.text('Permission mode applies next turn'), findsOneWidget);
     await tester.pump(const Duration(seconds: 2));
     expect(find.text('Permission mode applies next turn'), findsNothing);
+  });
+
+  testWidgets('dictation shortcut queries live state after confirm', (
+    tester,
+  ) async {
+    var recording = false;
+    final actions = <String>[];
+    await pumpComposer(
+      tester,
+      FakeDaemonClient(),
+      dictationShortcutController: DictationShortcutController(
+        isRecording: () => recording,
+        start: () {
+          actions.add('start');
+          recording = true;
+        },
+        markTranscriptForSend: () => actions.add('send transcript'),
+        confirm: () {
+          actions.add('confirm');
+          recording = false;
+        },
+      ),
+    );
+    const shortcut = KeyboardActionDefinition(
+      id: 'message-input.dictation-toggle',
+      scope: KeyboardActionScope.messageInput,
+    );
+
+    expect(keyboardActionDispatcher.dispatch(shortcut), isTrue);
+    expect(keyboardActionDispatcher.dispatch(shortcut), isTrue);
+    expect(keyboardActionDispatcher.dispatch(shortcut), isTrue);
+    await tester.pump();
+
+    expect(actions, ['start', 'send transcript', 'confirm', 'start']);
   });
 }

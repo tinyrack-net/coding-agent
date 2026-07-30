@@ -143,6 +143,22 @@ void main() {
     );
   });
 
+  test('finds Sherpa libraries in Nix-style package library layouts', () {
+    final nixPaths = p.Context(style: p.Style.posix);
+    const executable = '/nix/store/tinyrack/bin/coding-agent';
+    final expected = nixPaths.join('/nix/store/tinyrack', 'lib', 'tinyrack');
+    final resolved = resolveSherpaLibraryDirectory(
+      environment: const {},
+      resolvedExecutable: executable,
+      operatingSystem: 'linux',
+      abi: Abi.linuxX64,
+      fileExists: (path) =>
+          path == nixPaths.join(expected, 'libsherpa-onnx-c-api.so'),
+    );
+
+    expect(resolved, nixPaths.normalize(expected));
+  });
+
   test('returns null without a usable library and resolves Silero assets', () {
     expect(
       resolveSherpaLibraryDirectory(

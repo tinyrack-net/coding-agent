@@ -2083,12 +2083,16 @@ class AgentManager {
         :final toolName,
         :final status,
         :final detail,
+        :final errorMessage,
+        :final metadata,
       ):
       case ToolCallUpdated(
         :final itemId,
         :final toolName,
         :final status,
         :final detail,
+        :final errorMessage,
+        :final metadata,
       ):
         runtime.timeline.upsert(
           ToolCallItem(
@@ -2096,6 +2100,8 @@ class AgentManager {
             toolName: toolName,
             status: status,
             detail: detail,
+            errorMessage: errorMessage,
+            metadata: metadata,
           ),
         );
 

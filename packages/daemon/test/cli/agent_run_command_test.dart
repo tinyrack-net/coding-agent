@@ -279,6 +279,59 @@ void main() {
     },
   );
 
+  test(
+    'explicit new workspace overrides caller placement but keeps parentage',
+    () async {
+      final requests = <Map<String, Object?>>[];
+      final code = await runAgentRunCommand(
+        arguments: const [
+          '--provider',
+          'codex',
+          '--new-workspace',
+          'local',
+          '--background',
+          '--json',
+          'Isolated child task',
+        ],
+        currentDirectory: '/new-workspace-cwd',
+        environment: const {
+          'PASEO_AGENT_ID': ' parent-agent ',
+          'PASEO_WORKSPACE_ID': 'ambient-workspace',
+        },
+        request: (request) async {
+          requests.add(request);
+          return switch (request['type']) {
+            'workspace.create.request' => _workspaceCreatePayload(
+              request['requestId']! as String,
+              cwd: '/new-workspace-cwd',
+            ),
+            CreateAgentRequest.type => _createdPayload(
+              request['requestId']! as String,
+              cwd: '/new-workspace-cwd',
+            ),
+            _ => throw StateError('Unexpected request: $request'),
+          };
+        },
+        writeOutput: (_) {},
+        writeError: (_) {},
+      );
+
+      expect(code, 0);
+      expect(requests.map((entry) => entry['type']), [
+        'workspace.create.request',
+        CreateAgentRequest.type,
+      ]);
+      expect(requests.first['source'], {
+        'kind': 'directory',
+        'path': '/new-workspace-cwd',
+      });
+      final create = CreateAgentRequest.fromJson(requests.last);
+      expect(create.workspaceId, 'workspace-1');
+      expect(create.callerAgentId, 'parent-agent');
+      expect(create.config.cwd, '/new-workspace-cwd');
+    },
+  );
+
   test('explicit workspace replaces stale cwd without minting', () async {
     final requests = <Map<String, Object?>>[];
     final output = StringBuffer();

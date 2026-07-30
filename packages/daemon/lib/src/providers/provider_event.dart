@@ -71,12 +71,16 @@ final class ToolCallStarted extends ProviderEvent {
     required this.toolName,
     required this.status,
     required this.detail,
+    this.errorMessage,
+    this.metadata = const {},
   });
 
   final String itemId;
   final String toolName;
   final ToolCallStatus status;
   final ToolCallDetail detail;
+  final String? errorMessage;
+  final Map<String, Object?> metadata;
 }
 
 final class ToolCallUpdated extends ProviderEvent {
@@ -85,12 +89,16 @@ final class ToolCallUpdated extends ProviderEvent {
     required this.toolName,
     required this.status,
     required this.detail,
+    this.errorMessage,
+    this.metadata = const {},
   });
 
   final String itemId;
   final String toolName;
   final ToolCallStatus status;
   final ToolCallDetail detail;
+  final String? errorMessage;
+  final Map<String, Object?> metadata;
 }
 
 final class PermissionRequested extends ProviderEvent {

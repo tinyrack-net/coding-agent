@@ -12,6 +12,7 @@ import '../composer/composer_image_attachment_service.dart';
 import '../composer/composer_clipboard_reader.dart';
 import '../composer/composer_draft_store.dart';
 import '../composer/agent_command_autocomplete.dart';
+import '../composer/dictation_shortcut_controller.dart';
 import '../composer/file_mention_autocomplete.dart';
 import '../attachments/attachment_store.dart';
 import '../keyboard/keyboard_action_dispatcher.dart';
@@ -70,7 +71,10 @@ class Composer extends ConsumerStatefulWidget {
     this.clipboardReader = const SystemComposerClipboardReader(),
     this.draftStore,
     this.onClientSlashCommand,
-  });
+    this.showVoiceOverlay = false,
+    this.voiceOverlay,
+    this.dictationShortcutController,
+  }) : assert(!showVoiceOverlay || voiceOverlay != null);
 
   final String agentId;
   final String serverId;
@@ -81,6 +85,9 @@ class Composer extends ConsumerStatefulWidget {
   final ComposerClipboardReader clipboardReader;
   final ComposerDraftStore? draftStore;
   final ValueChanged<ComposerClientSlashCommand>? onClientSlashCommand;
+  final bool showVoiceOverlay;
+  final Widget? voiceOverlay;
+  final DictationShortcutController? dictationShortcutController;
 
   @override
   ConsumerState<Composer> createState() => _ComposerState();
@@ -119,10 +126,12 @@ class _ComposerState extends ConsumerState<Composer> {
     _disposeKeyboardHandler = keyboardActionDispatcher.registerHandler(
       KeyboardActionHandler(
         handlerId: 'composer:${widget.agentId}',
-        actions: const {
+        actions: {
           'message-input.focus',
           'message-input.send',
           'message-input.mode-cycle',
+          if (widget.dictationShortcutController != null)
+            'message-input.dictation-toggle',
         },
         enabled: true,
         priority: 100,
@@ -250,6 +259,8 @@ class _ComposerState extends ConsumerState<Composer> {
       case 'message-input.mode-cycle':
         unawaited(_cycleMode());
         return true;
+      case 'message-input.dictation-toggle':
+        return widget.dictationShortcutController?.toggle() ?? false;
       default:
         return false;
     }
@@ -978,7 +989,7 @@ class _ComposerState extends ConsumerState<Composer> {
       _scheduleQueuedDrain(queuedMessages);
     }
 
-    return DropTarget(
+    final composer = DropTarget(
       onDragEntered: (_) {
         if (!_dropActive) setState(() => _dropActive = true);
       },
@@ -1149,7 +1160,53 @@ class _ComposerState extends ConsumerState<Composer> {
         ],
       ),
     );
+    return ComposerVoiceSurface(
+      showOverlay: widget.showVoiceOverlay,
+      composer: composer,
+      overlay: widget.voiceOverlay ?? const SizedBox.shrink(),
+    );
   }
+}
+
+/// Keeps the input and voice overlay presentation derived from one synchronous
+/// state, matching Paseo's dictation/resume behavior without an exit animation.
+class ComposerVoiceSurface extends StatelessWidget {
+  const ComposerVoiceSurface({
+    super.key,
+    required this.showOverlay,
+    required this.composer,
+    required this.overlay,
+  });
+
+  final bool showOverlay;
+  final Widget composer;
+  final Widget overlay;
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    children: [
+      IgnorePointer(
+        key: const ValueKey('composer-input-pointer-state'),
+        ignoring: showOverlay,
+        child: Opacity(
+          key: const ValueKey('composer-input-surface'),
+          opacity: showOverlay ? 0 : 1,
+          child: composer,
+        ),
+      ),
+      Positioned.fill(
+        child: IgnorePointer(
+          key: const ValueKey('composer-voice-overlay-pointer-state'),
+          ignoring: !showOverlay,
+          child: Opacity(
+            key: const ValueKey('composer-voice-overlay-surface'),
+            opacity: showOverlay ? 1 : 0,
+            child: overlay,
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
 class ComposerFileAutocompletePopup extends StatelessWidget {
