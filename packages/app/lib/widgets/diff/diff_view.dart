@@ -1,11 +1,14 @@
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/diff_rendering.dart';
 import '../../core/diff_tree.dart';
 import '../../core/theme.dart';
 import '../../state/review_draft_provider.dart';
+import '../shortcut_badge.dart';
 import 'diff_scroll.dart';
 import 'diff_stat.dart';
 
@@ -400,7 +403,9 @@ final class _ReviewTarget {
   final ReviewAttachmentSide side;
   final int lineNumber;
 
-  String get key => '$filePath:${side.name}:$lineNumber';
+  String get key =>
+      '$filePath:${side == ReviewAttachmentSide.old ? 'old' : 'new'}:'
+      '$lineNumber';
 }
 
 final class _ReviewEditorTarget {
@@ -435,7 +440,7 @@ final class _ReviewViewModel {
   final ValueChanged<String> onDelete;
 }
 
-class _ReviewableDiffLine extends StatelessWidget {
+class _ReviewableDiffLine extends StatefulWidget {
   const _ReviewableDiffLine({
     required this.filePath,
     required this.line,
@@ -447,26 +452,43 @@ class _ReviewableDiffLine extends StatelessWidget {
   final _ReviewViewModel? review;
 
   @override
+  State<_ReviewableDiffLine> createState() => _ReviewableDiffLineState();
+}
+
+class _ReviewableDiffLineState extends State<_ReviewableDiffLine> {
+  bool _hovered = false;
+  bool _dismissedAfterPress = false;
+
+  bool get _isPointerFirstPlatform =>
+      kIsWeb ||
+      switch (defaultTargetPlatform) {
+        TargetPlatform.windows ||
+        TargetPlatform.macOS ||
+        TargetPlatform.linux => true,
+        _ => false,
+      };
+
+  @override
   Widget build(BuildContext context) {
-    final target = switch (line.type) {
-      DiffLineType.del when line.oldLineNo != null => _ReviewTarget(
-        filePath: filePath,
+    final target = switch (widget.line.type) {
+      DiffLineType.del when widget.line.oldLineNo != null => _ReviewTarget(
+        filePath: widget.filePath,
         side: ReviewAttachmentSide.old,
-        lineNumber: line.oldLineNo!,
+        lineNumber: widget.line.oldLineNo!,
       ),
-      DiffLineType.add when line.newLineNo != null => _ReviewTarget(
-        filePath: filePath,
+      DiffLineType.add when widget.line.newLineNo != null => _ReviewTarget(
+        filePath: widget.filePath,
         side: ReviewAttachmentSide.newLine,
-        lineNumber: line.newLineNo!,
+        lineNumber: widget.line.newLineNo!,
       ),
-      DiffLineType.context when line.newLineNo != null => _ReviewTarget(
-        filePath: filePath,
+      DiffLineType.context when widget.line.newLineNo != null => _ReviewTarget(
+        filePath: widget.filePath,
         side: ReviewAttachmentSide.newLine,
-        lineNumber: line.newLineNo!,
+        lineNumber: widget.line.newLineNo!,
       ),
       _ => null,
     };
-    final viewModel = review;
+    final viewModel = widget.review;
     final comments = target == null || viewModel == null
         ? const <ReviewDraftComment>[]
         : viewModel.comments
@@ -481,27 +503,121 @@ class _ReviewableDiffLine extends StatelessWidget {
         ? viewModel!.editor
         : null;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _DiffLineRow(
-          line: line,
+    final onStart = target == null || viewModel == null
+        ? null
+        : () {
+            setState(() => _dismissedAfterPress = true);
+            viewModel.onStart(target);
+          };
+    final line = Semantics(
+      button: onStart != null,
+      label: onStart == null ? null : 'Add review comment',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: !_isPointerFirstPlatform ? onStart : null,
+        child: _DiffLineRow(
+          line: widget.line,
           reviewTarget: target,
           hasComments: comments.isNotEmpty,
-          onAddReview: target == null || viewModel == null
-              ? null
-              : () => viewModel.onStart(target),
+          showReviewAction:
+              onStart != null && _hovered && !_dismissedAfterPress,
+          onAddReview: onStart,
         ),
-        if (viewModel != null &&
-            target != null &&
-            (comments.isNotEmpty || editor != null))
-          _InlineReviewThread(
-            target: target,
-            comments: comments,
-            editor: editor,
-            review: viewModel,
+      ),
+    );
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() {
+        _hovered = false;
+        _dismissedAfterPress = false;
+      }),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          line,
+          if (viewModel != null &&
+              target != null &&
+              (comments.isNotEmpty || editor != null))
+            _InlineReviewThread(
+              target: target,
+              comments: comments,
+              editor: editor,
+              review: viewModel,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InlineReviewCommentRow extends StatelessWidget {
+  const _InlineReviewCommentRow({
+    required this.target,
+    required this.comment,
+    required this.review,
+  });
+
+  final _ReviewTarget target;
+  final ReviewDraftComment comment;
+  final _ReviewViewModel review;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.paseoPalette;
+    return Container(
+      key: ValueKey('review-comment-${comment.id}'),
+      height: 72,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: palette.surface2,
+        border: Border.all(color: palette.borderAccent),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              comment.body,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12.5, height: 1.4),
+            ),
           ),
-      ],
+          const SizedBox(width: 8),
+          SizedBox.square(
+            dimension: 26,
+            child: Tooltip(
+              message: 'Edit review comment',
+              child: IconButton(
+                key: ValueKey('review-edit-${comment.id}'),
+                icon: Icon(
+                  FluentIcons.edit,
+                  size: 14,
+                  color: palette.foregroundMuted,
+                ),
+                onPressed: () => review.onEdit(target, comment),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          SizedBox.square(
+            dimension: 26,
+            child: Tooltip(
+              message: 'Delete review comment',
+              child: IconButton(
+                key: ValueKey('review-delete-${comment.id}'),
+                icon: Icon(
+                  FluentIcons.delete,
+                  size: 14,
+                  color: palette.statusDanger,
+                ),
+                onPressed: () => review.onDelete(comment.id),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -521,37 +637,23 @@ class _InlineReviewThread extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    return Container(
+    return Padding(
       key: ValueKey('review-thread-${target.key}'),
-      margin: const EdgeInsets.fromLTRB(48, 4, 12, 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: tokens.surfaceContainerHighest,
-        border: Border.all(color: tokens.outline),
-        borderRadius: BorderRadius.circular(6),
-      ),
+      padding: const EdgeInsets.fromLTRB(32, 8, 12, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (final comment in comments)
             if (editor?.commentId != comment.id)
-              Row(
-                key: ValueKey('review-comment-${comment.id}'),
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: Text(comment.body)),
-                  IconButton(
-                    key: ValueKey('review-edit-${comment.id}'),
-                    icon: const Icon(FluentIcons.edit, size: 14),
-                    onPressed: () => review.onEdit(target, comment),
-                  ),
-                  IconButton(
-                    key: ValueKey('review-delete-${comment.id}'),
-                    icon: const Icon(FluentIcons.delete, size: 14),
-                    onPressed: () => review.onDelete(comment.id),
-                  ),
-                ],
+              Padding(
+                padding: EdgeInsets.only(
+                  bottom: comment != comments.last || editor != null ? 6 : 0,
+                ),
+                child: _InlineReviewCommentRow(
+                  target: target,
+                  comment: comment,
+                  review: review,
+                ),
               ),
           if (editor != null)
             _InlineReviewEditor(
@@ -586,58 +688,152 @@ class _InlineReviewEditor extends StatefulWidget {
 
 class _InlineReviewEditorState extends State<_InlineReviewEditor> {
   late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+  late final ScrollController _scrollController;
+  FocusNode? _previousFocus;
+  bool _focused = false;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialBody);
+    _focusNode = FocusNode(debugLabel: 'inline-review-editor');
+    _scrollController = ScrollController(keepScrollOffset: false);
+    _focusNode.addListener(_handleFocusChange);
+    _previousFocus = FocusManager.instance.primaryFocus;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
   }
 
   @override
   void dispose() {
+    final previousFocus = _previousFocus;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (previousFocus?.context != null && previousFocus!.canRequestFocus) {
+        previousFocus.requestFocus();
+      }
+    });
+    _focusNode
+      ..removeListener(_handleFocusChange)
+      ..dispose();
+    _scrollController.dispose();
     _controller.dispose();
     super.dispose();
   }
 
+  void _handleFocusChange() {
+    _setFocused(_focusNode.hasFocus);
+  }
+
+  void _setFocused(bool focused) {
+    if (mounted && _focused != focused) setState(() => _focused = focused);
+  }
+
+  KeyEventResult _onKeyEvent(FocusNode _, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      widget.onCancel();
+      return KeyEventResult.handled;
+    }
+    final isEnter =
+        event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    final keyboard = HardwareKeyboard.instance;
+    if (!isEnter ||
+        keyboard.isShiftPressed ||
+        (!keyboard.isControlPressed && !keyboard.isMetaPressed)) {
+      return KeyEventResult.ignored;
+    }
+    final body = _controller.text.trim();
+    if (body.isNotEmpty) widget.onSave(body);
+    return KeyEventResult.handled;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        TextBox(
-          key: const ValueKey('inline-review-editor-input'),
-          controller: _controller,
-          autofocus: true,
-          minLines: 2,
-          maxLines: 6,
-          placeholder: 'Leave a review comment',
-          onChanged: (_) => setState(() {}),
-          onSubmitted: (_) {
-            if (_controller.text.trim().isNotEmpty) {
-              widget.onSave(_controller.text);
-            }
-          },
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
+    final palette = context.paseoPalette;
+    final showHints =
+        _focused &&
+        (kIsWeb ||
+            defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.linux);
+    final isMac = defaultTargetPlatform == TargetPlatform.macOS;
+    return Container(
+      height: 132,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: palette.surface2,
+        border: Border.all(color: palette.borderAccent),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Focus(
+        onKeyEvent: _onKeyEvent,
+        onFocusChange: _setFocused,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Button(
-              key: const ValueKey('inline-review-editor-cancel'),
-              onPressed: widget.onCancel,
-              child: const Text('Cancel'),
+            Expanded(
+              child: Semantics(
+                label: 'Review comment',
+                textField: true,
+                child: TextBox(
+                  key: const ValueKey('inline-review-editor-input'),
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  scrollController: _scrollController,
+                  minLines: 2,
+                  maxLines: 6,
+                  placeholder: 'Leave a review comment',
+                  onChanged: (_) => setState(() {}),
+                  onEditingComplete: () {},
+                ),
+              ),
             ),
-            const SizedBox(width: 8),
-            FilledButton(
-              key: const ValueKey('inline-review-editor-save'),
-              onPressed: _controller.text.trim().isEmpty
-                  ? null
-                  : () => widget.onSave(_controller.text),
-              child: const Text('Save'),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Button(
+                  key: const ValueKey('inline-review-editor-cancel'),
+                  onPressed: widget.onCancel,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Cancel'),
+                      if (showHints) ...[
+                        const SizedBox(width: 6),
+                        ShortcutBadge(keys: const ['Esc'], isMac: isMac),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  key: const ValueKey('inline-review-editor-save'),
+                  onPressed: _controller.text.trim().isEmpty
+                      ? null
+                      : () => widget.onSave(_controller.text.trim()),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Save'),
+                      if (showHints) ...[
+                        const SizedBox(width: 6),
+                        ShortcutBadge(
+                          keys: const ['mod', 'Enter'],
+                          isMac: isMac,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -670,12 +866,14 @@ class _DiffLineRow extends StatelessWidget {
     required this.line,
     this.reviewTarget,
     this.hasComments = false,
+    this.showReviewAction = false,
     this.onAddReview,
   });
 
   final DiffLine line;
   final _ReviewTarget? reviewTarget;
   final bool hasComments;
+  final bool showReviewAction;
   final VoidCallback? onAddReview;
 
   static const _monoStyle = TextStyle(fontFamily: 'monospace', fontSize: 12.5);
@@ -708,18 +906,21 @@ class _DiffLineRow extends StatelessWidget {
           SizedBox(
             width: 32,
             height: 24,
-            child: onAddReview == null
-                ? null
-                : IconButton(
-                    key: ValueKey('review-add-${reviewTarget!.key}'),
-                    icon: Icon(
-                      hasComments
-                          ? FluentIcons.comment_solid
-                          : FluentIcons.comment_add,
-                      size: 13,
-                    ),
-                    onPressed: onAddReview,
-                  ),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: hasComments ? context.paseoPalette.surface2 : null,
+              ),
+              child: showReviewAction
+                  ? Tooltip(
+                      message: 'Add review comment',
+                      child: IconButton(
+                        key: ValueKey('review-add-${reviewTarget!.key}'),
+                        icon: const Icon(FluentIcons.add, size: 16),
+                        onPressed: onAddReview,
+                      ),
+                    )
+                  : null,
+            ),
           ),
           SizedBox(
             width: 40,

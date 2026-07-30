@@ -1,6 +1,9 @@
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/widgets/diff/diff_view.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -218,34 +221,92 @@ void main() {
   testWidgets('inline review comments can be added, edited, and deleted', (
     tester,
   ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     await tester.binding.setSurfaceSize(const Size(1200, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       _wrap(const DiffView(diff: _diff, reviewDraftKey: 'review-scope')),
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey('review-add-lib/new_file.dart:newLine:1')),
-    );
+    const addKey = ValueKey('review-add-lib/new_file.dart:new:1');
+    expect(find.byKey(addKey), findsNothing);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(tester.getCenter(find.text('void main() {}')));
     await tester.pump();
+    expect(find.byKey(addKey), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.label == 'Add review comment' &&
+            widget.properties.button == true,
+      ),
+      findsWidgets,
+    );
+
+    await tester.tap(find.byKey(addKey));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .getSize(
+            find.byKey(
+              const ValueKey('review-editor-lib/new_file.dart:new:1-new'),
+            ),
+          )
+          .height,
+      132,
+    );
+    await tester.tap(find.byKey(const ValueKey('inline-review-editor-input')));
+    await tester.pump();
+    expect(find.text('Ctrl+Enter'), findsOneWidget);
     await tester.enterText(
       find.byKey(const ValueKey('inline-review-editor-input')),
       'Check this line',
     );
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('inline-review-editor-save')));
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey('inline-review-editor-input')),
       findsNothing,
     );
     expect(find.text('Check this line'), findsOneWidget);
+    final commentBlock = find.byWidgetPredicate(
+      (widget) =>
+          widget is Container &&
+          widget.key.toString().contains('review-comment-'),
+    );
+    expect(tester.getSize(commentBlock).height, 72);
 
     final editButton = find.byWidgetPredicate(
       (widget) =>
           widget is IconButton &&
           widget.key.toString().contains('review-edit-'),
     );
+    await tester.tap(editButton);
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey('inline-review-editor-input')),
+      'Discard this edit',
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('inline-review-editor-input')),
+      findsOneWidget,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.text('Check this line'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('inline-review-editor-input')),
+      findsNothing,
+    );
+
     await tester.tap(editButton);
     await tester.pump();
     await tester.enterText(
@@ -266,6 +327,85 @@ void main() {
     await tester.tap(deleteButton);
     await tester.pump(const Duration(milliseconds: 150));
     expect(find.text('Updated review'), findsNothing);
+    await mouse.removePointer();
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('touch platforms start an inline review by tapping the line', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    await tester.binding.setSurfaceSize(const Size(480, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _wrap(const DiffView(diff: _diff, reviewDraftKey: 'touch-review')),
+    );
+
+    await tester.tap(find.text('lib/new_file.dart'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('void main() {}'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('inline-review-editor-input')),
+      findsOneWidget,
+    );
+    expect(find.text('Ctrl+Enter'), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('closing the review editor restores the prior workspace focus', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    final workspaceFocus = FocusNode(debugLabel: 'workspace-focus');
+    addTearDown(workspaceFocus.dispose);
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        child: FluentApp(
+          home: ScaffoldPage(
+            content: Column(
+              children: [
+                Button(
+                  focusNode: workspaceFocus,
+                  onPressed: () {},
+                  child: const Text('Workspace action'),
+                ),
+                const Expanded(
+                  child: DiffView(diff: _diff, reviewDraftKey: 'focus-review'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    workspaceFocus.requestFocus();
+    await tester.pump();
+    expect(workspaceFocus.hasFocus, isTrue);
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(tester.getCenter(find.text('void main() {}')));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey('review-add-lib/new_file.dart:new:1')),
+    );
+    await tester.pumpAndSettle();
+    final input = tester.widget<TextBox>(
+      find.byKey(const ValueKey('inline-review-editor-input')),
+    );
+    expect(input.focusNode?.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    await tester.pump();
+    expect(workspaceFocus.hasFocus, isTrue);
+    await mouse.removePointer();
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('a renamed file shows "old -> new" and the renamed style', (
