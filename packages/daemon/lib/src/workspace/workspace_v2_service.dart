@@ -18,6 +18,7 @@ import '../terminal/terminal_manager.dart';
 import '../utils/path_identity.dart';
 import 'mnemonic_worktree_slug.dart';
 import 'polling_workspace_git_backend.dart';
+import 'project_directory_service.dart';
 import 'workspace_git_observer_service.dart';
 import 'workspace_registry.dart';
 import 'workspace_auto_name.dart';
@@ -130,6 +131,9 @@ final class WorkspaceV2Service {
         ArchiveWorkspaceRequest.fromJson(message),
       ),
       'project.add.request' => _projectAdd(ProjectAddRequest.fromJson(message)),
+      ProjectCreateDirectoryRequest.type => _projectCreateDirectory(
+        ProjectCreateDirectoryRequest.fromJson(message),
+      ),
       'project.rename.request' => _projectRename(
         ProjectRenameRequest.fromJson(message),
       ),
@@ -1268,6 +1272,49 @@ final class WorkspaceV2Service {
         requestId: request.requestId,
         project: null,
         error: _errorMessage(error, 'Failed to add project'),
+      ).toJson();
+    }
+  }
+
+  Future<Map<String, Object?>> _projectCreateDirectory(
+    ProjectCreateDirectoryRequest request,
+  ) async {
+    try {
+      final result = await createProjectDirectory(
+        parentPath: request.parentPath,
+        name: request.name,
+        registerProject: (directoryPath) async {
+          final isGit = await git.isGitRepo(directoryPath);
+          return _resolveProject(
+            projectId: null,
+            cwd: directoryPath,
+            isGit: isGit,
+            timestamp: _timestamp(),
+          );
+        },
+      );
+      return ProjectCreateDirectoryResponse(
+        requestId: request.requestId,
+        directoryPath: result.directoryPath,
+        project: _projectDescriptor(result.project),
+        error: null,
+        errorCode: null,
+      ).toJson();
+    } on ProjectDirectoryRequestException catch (error) {
+      return ProjectCreateDirectoryResponse(
+        requestId: request.requestId,
+        directoryPath: error.directoryPath,
+        project: null,
+        error: error.message,
+        errorCode: error.code.wireValue,
+      ).toJson();
+    } on Object catch (error) {
+      return ProjectCreateDirectoryResponse(
+        requestId: request.requestId,
+        directoryPath: null,
+        project: null,
+        error: _errorMessage(error, 'Failed to create project directory'),
+        errorCode: ProjectCreateDirectoryErrorCode.registrationFailed.wireValue,
       ).toJson();
     }
   }

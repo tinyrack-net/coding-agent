@@ -490,6 +490,8 @@ class WsServer {
       'projectAdd': true,
       'stableProjectIdentity': true,
       'projectGithubClone': true,
+      'workspaceGithubRepositorySearch': true,
+      'projectCreateDirectory': true,
       'projectRemove': true,
     },
   ).toJson();

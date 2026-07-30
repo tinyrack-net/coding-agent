@@ -7,6 +7,7 @@ import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/widgets/add_project_flow_host.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _host = AddProjectHost(
@@ -15,8 +16,8 @@ const _host = AddProjectHost(
   canAddProject: true,
   canBrowse: false,
   canCloneGithubRepositories: true,
-  canSearchGithubRepositories: false,
-  canCreateDirectory: false,
+  canSearchGithubRepositories: true,
+  canCreateDirectory: true,
 );
 
 final class _FlowClient extends DaemonClient {
@@ -30,31 +31,37 @@ final class _FlowClient extends DaemonClient {
         'projectAdd': true,
         'stableProjectIdentity': true,
         'projectGithubClone': true,
+        'workspaceGithubRepositorySearch': true,
+        'projectCreateDirectory': true,
       },
     );
   }
 
-  final requests = <(String, Map<String, Object?>)>[];
   final directoryQueries = <String>[];
+  final addedPaths = <String>[];
+  final githubQueries = <String>[];
   ProjectGithubCloneRequest? cloneRequest;
+  ProjectCreateDirectoryRequest? createDirectoryRequest;
 
   @override
   DaemonConnectionState get currentState => DaemonConnectionState.connected;
 
   @override
-  Future<Map<String, Object?>> request(
-    String type,
-    Map<String, Object?> payload, {
+  Future<ProjectAddResponse> addProject({
+    required String cwd,
     Duration timeout = const Duration(seconds: 30),
   }) async {
-    requests.add((type, payload));
-    return {
-      'project': {
-        'path': payload['path'],
-        'name': 'scratch',
-        'isGitRepo': false,
-      },
-    };
+    addedPaths.add(cwd);
+    return ProjectAddResponse(
+      requestId: 'add',
+      project: WorkspaceProjectDescriptor(
+        projectId: 'project-add',
+        projectDisplayName: 'scratch',
+        projectRootPath: cwd,
+        projectKind: WorkspaceProjectKind.nonGit,
+      ),
+      error: null,
+    );
   }
 
   @override
@@ -77,6 +84,58 @@ final class _FlowClient extends DaemonClient {
         ),
       ],
       requestId: 'directory',
+    );
+  }
+
+  @override
+  Future<ProjectCreateDirectoryResponse> createProjectDirectory({
+    required String parentPath,
+    required String name,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    createDirectoryRequest = ProjectCreateDirectoryRequest(
+      parentPath: parentPath,
+      name: name,
+      requestId: 'create',
+    );
+    final path = '$parentPath\\$name';
+    return ProjectCreateDirectoryResponse(
+      requestId: 'create',
+      directoryPath: path,
+      project: WorkspaceProjectDescriptor(
+        projectId: 'project-created',
+        projectDisplayName: name,
+        projectRootPath: path,
+        projectKind: WorkspaceProjectKind.nonGit,
+      ),
+      error: null,
+      errorCode: null,
+    );
+  }
+
+  @override
+  Future<WorkspaceGithubSearchRepositoriesResponse> searchGithubRepositories({
+    required String query,
+    int? limit,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    githubQueries.add(query);
+    return const WorkspaceGithubSearchRepositoriesResponse(
+      status: WorkspaceGithubSearchStatus.success,
+      requestId: 'search',
+      repositories: [
+        GithubRepository(
+          id: 'R_account',
+          name: 'account-repo',
+          nameWithOwner: 'owner/account-repo',
+          description: 'Account project',
+          visibility: GithubRepositoryVisibility.private,
+          updatedAt: '2026-07-30T00:00:00Z',
+          cloneUrl: 'git@github.com:owner/account-repo.git',
+        ),
+      ],
+      available: true,
+      error: null,
     );
   }
 
@@ -235,8 +294,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 150));
 
-    expect(client.requests.single.$1, MessageTypes.projectAddRequest);
-    expect(client.requests.single.$2, {'path': r'C:\scratch'});
+    expect(client.addedPaths, [r'C:\scratch']);
     expect(result?.serverId, 'server-a');
     expect(result?.project.path, r'C:\scratch');
   });
@@ -280,12 +338,147 @@ void main() {
     expect(result?.project.path, r'C:\workspace\repo');
     expect(result?.project.isGitRepo, isTrue);
   });
+
+  testWidgets('GitHub account search includes daemon repositories', (
+    tester,
+  ) async {
+    final client = _FlowClient();
+    addTearDown(client.dispose);
+    await _pumpDialog(tester, client, onAdded: (_) {});
+
+    await tester.tap(
+      find.byKey(const ValueKey('add-project-flow-method-github')),
+    );
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey('add-project-flow-input')),
+      'account',
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+
+    expect(client.githubQueries, ['account']);
+    expect(
+      find.byKey(const ValueKey('add-project-flow-repository-R_account')),
+      findsOneWidget,
+    );
+    expect(find.text('Account project'), findsOneWidget);
+  });
+
+  testWidgets('new directory creates and returns the registered project', (
+    tester,
+  ) async {
+    final client = _FlowClient();
+    addTearDown(client.dispose);
+    AddProjectFlowResult? result;
+    await _pumpDialog(tester, client, onAdded: (value) => result = value);
+
+    await tester.tap(
+      find.byKey(const ValueKey('add-project-flow-method-new-directory')),
+    );
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey('add-project-flow-input')),
+      r'C:\workspace',
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey(r'add-project-flow-path-C:\workspace')),
+    );
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey('add-project-flow-input')),
+      'new-project',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(client.createDirectoryRequest?.parentPath, r'C:\workspace');
+    expect(client.createDirectoryRequest?.name, 'new-project');
+    expect(result?.project.path, r'C:\workspace\new-project');
+  });
+
+  testWidgets('empty host flow routes through the Add host action', (
+    tester,
+  ) async {
+    var closed = 0;
+    var addHost = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: FluentApp(
+          home: Stack(
+            fit: StackFit.expand,
+            children: [
+              const SizedBox.expand(),
+              AddProjectFlowDialog(
+                request: const AddProjectFlowRequest(id: 1),
+                hostsOverride: const [],
+                clientsOverride: const {},
+                recommendedPathsOverride: const {},
+                onClose: () => closed += 1,
+                onAddHost: () => addHost += 1,
+                onAdded: (_) {},
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('add-project-flow-add-host')));
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(closed, 1);
+    expect(addHost, 1);
+  });
+
+  testWidgets('keyboard Escape navigates back then closes the flow', (
+    tester,
+  ) async {
+    final client = _FlowClient();
+    addTearDown(client.dispose);
+    var closed = 0;
+    await _pumpDialog(
+      tester,
+      client,
+      onAdded: (_) {},
+      onClose: () => closed += 1,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.label == 'Add project: method',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('add-project-flow-method-directory-search')),
+    );
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(
+      find.byKey(const ValueKey('add-project-flow-page-directory-search')),
+      findsOneWidget,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('add-project-flow-page-method')),
+      findsOneWidget,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(closed, 1);
+  });
 }
 
 Future<void> _pumpDialog(
   WidgetTester tester,
   DaemonClient client, {
   required ValueChanged<AddProjectFlowResult> onAdded,
+  VoidCallback? onClose,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -304,7 +497,7 @@ Future<void> _pumpDialog(
               recommendedPathsOverride: const {
                 'server-a': [r'C:\workspace\existing'],
               },
-              onClose: () {},
+              onClose: onClose ?? () {},
               onAdded: onAdded,
             ),
           ],

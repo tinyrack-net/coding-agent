@@ -31,6 +31,8 @@ $packages = [ordered]@{
             'test/workspace_v2_test.dart'
             'test/provider_v2_test.dart'
             'test/terminal_v2_test.dart'
+            'test/project_directory_test.dart'
+            'test/github_repository_search_test.dart'
         )
     }
     relay = @{
@@ -58,6 +60,8 @@ $packages = [ordered]@{
             'test/provider_visibility_test.dart'
             'test/timeline_projection_test.dart'
             'test/directory_suggestions_test.dart'
+            'test/workspace/project_directory_service_test.dart'
+            'test/workspace/github_repository_search_service_test.dart'
         )
     }
     app = @{
@@ -66,6 +70,7 @@ $packages = [ordered]@{
         Smoke = @(
             'test/add_project_flow_model_test.dart'
             'test/add_project_flow_host_test.dart'
+            'test/shorten_path_test.dart'
             'test/provider_model_selection_test.dart'
             'test/workspace_draft_submission_test.dart'
             'test/draft_agent_selection_test.dart'

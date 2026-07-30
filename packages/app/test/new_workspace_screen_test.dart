@@ -159,6 +159,31 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
   );
 
   @override
+  Future<ProjectAddResponse> addProject({
+    required String cwd,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final request = ProjectAddRequest(cwd: cwd, requestId: 'project-add');
+    requests.add((ProjectAddRequest.type, request.toJson()));
+    final scripted = onRequest(ProjectAddRequest.type, request.toJson());
+    final project = ProjectInfo.fromJson(
+      scripted['project'] as Map<String, Object?>? ?? const {},
+    );
+    return ProjectAddResponse(
+      requestId: request.requestId,
+      project: WorkspaceProjectDescriptor(
+        projectId: 'project-added',
+        projectDisplayName: project.name,
+        projectRootPath: project.path,
+        projectKind: project.isGitRepo
+            ? WorkspaceProjectKind.git
+            : WorkspaceProjectKind.nonGit,
+      ),
+      error: null,
+    );
+  }
+
+  @override
   Future<GetProvidersSnapshotResponse> fetchProvidersSnapshot({
     String? cwd,
     Duration timeout = const Duration(seconds: 30),

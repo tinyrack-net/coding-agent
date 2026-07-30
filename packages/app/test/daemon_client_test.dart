@@ -639,8 +639,11 @@ void main() {
 
       unawaited(
         conn.nextRequest(ProjectGithubCloneRequest.type).then((frame) {
-          expect(frame['repo'], 'tinyrack/coding-agent');
-          expect(frame['cloneProtocol'], 'ssh');
+          expect(
+            frame['repo'],
+            'https://github.com/tinyrack-net/coding-agent.git',
+          );
+          expect(frame['cloneProtocol'], isNull);
           expect(frame['targetDirectory'], r'C:\src');
           conn.respondNative(
             ProjectGithubCloneResponse.type,
@@ -661,13 +664,112 @@ void main() {
       );
 
       final response = await client.cloneGithubProject(
-        repo: 'tinyrack/coding-agent',
-        cloneProtocol: ProjectGithubCloneProtocol.ssh,
+        repo: 'https://github.com/tinyrack-net/coding-agent.git',
         targetDirectory: r'C:\src',
       );
 
       expect(response.repo, 'tinyrack/coding-agent');
       expect(response.project?.projectId, 'project-1');
+    },
+  );
+
+  test(
+    'project add, directory create, and GitHub search use native wire',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      unawaited(
+        conn.nextRequest(ProjectAddRequest.type).then((frame) {
+          expect(frame['cwd'], '/repo');
+          conn.respondNative(
+            ProjectAddResponse.type,
+            frame['requestId'] as String,
+            {
+              'project': {
+                'projectId': 'project-add',
+                'projectDisplayName': 'repo',
+                'projectRootPath': '/repo',
+                'projectKind': 'git',
+              },
+              'error': null,
+            },
+          );
+        }),
+      );
+      expect(
+        (await client.addProject(cwd: '/repo')).project?.projectId,
+        'project-add',
+      );
+
+      unawaited(
+        conn.nextRequest(ProjectCreateDirectoryRequest.type).then((frame) {
+          expect(frame['parentPath'], '/repo');
+          expect(frame['name'], 'child');
+          conn.respondNative(
+            ProjectCreateDirectoryResponse.type,
+            frame['requestId'] as String,
+            {
+              'directoryPath': '/repo/child',
+              'project': {
+                'projectId': 'project-child',
+                'projectDisplayName': 'child',
+                'projectRootPath': '/repo/child',
+                'projectKind': 'non_git',
+              },
+              'error': null,
+              'errorCode': null,
+            },
+          );
+        }),
+      );
+      expect(
+        (await client.createProjectDirectory(
+          parentPath: '/repo',
+          name: 'child',
+        )).directoryPath,
+        '/repo/child',
+      );
+
+      unawaited(
+        conn.nextRequest(WorkspaceGithubSearchRepositoriesRequest.type).then((
+          frame,
+        ) {
+          expect(frame['query'], 'paseo');
+          expect(frame['limit'], 30);
+          conn.respondNative(
+            WorkspaceGithubSearchRepositoriesResponse.type,
+            frame['requestId'] as String,
+            {
+              'status': 'success',
+              'repositories': [
+                {
+                  'id': 'R_1',
+                  'name': 'paseo',
+                  'nameWithOwner': 'getpaseo/paseo',
+                  'description': null,
+                  'visibility': 'public',
+                  'updatedAt': 'now',
+                  'cloneUrl': 'https://github.com/getpaseo/paseo',
+                },
+              ],
+              'available': true,
+              'error': null,
+            },
+          );
+        }),
+      );
+      final search = await client.searchGithubRepositories(
+        query: 'paseo',
+        limit: 30,
+      );
+      expect(search.repositories.single.nameWithOwner, 'getpaseo/paseo');
     },
   );
 

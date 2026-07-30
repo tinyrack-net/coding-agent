@@ -889,11 +889,13 @@ final class ProjectRemoveUpdate extends ProjectUpdate {
 final class ProjectAddRequest {
   const ProjectAddRequest({required this.cwd, required this.requestId});
 
+  static const type = 'project.add.request';
+
   final String cwd;
   final String requestId;
 
   factory ProjectAddRequest.fromJson(Map<String, Object?> json) {
-    _expectType(json, 'project.add.request');
+    _expectType(json, type);
     return ProjectAddRequest(
       cwd: _requiredString(json, 'cwd'),
       requestId: _requiredString(json, 'requestId'),
@@ -901,7 +903,7 @@ final class ProjectAddRequest {
   }
 
   Map<String, Object?> toJson() => {
-    'type': 'project.add.request',
+    'type': type,
     'cwd': cwd,
     'requestId': requestId,
   };
@@ -915,13 +917,15 @@ final class ProjectAddResponse {
     this.errorCode,
   });
 
+  static const type = 'project.add.response';
+
   final String requestId;
   final WorkspaceProjectDescriptor? project;
   final String? error;
   final String? errorCode;
 
   factory ProjectAddResponse.fromJson(Map<String, Object?> json) {
-    _expectType(json, 'project.add.response');
+    _expectType(json, type);
     final payload = _requiredMap(json, 'payload');
     return ProjectAddResponse(
       requestId: _requiredString(payload, 'requestId'),
@@ -936,7 +940,7 @@ final class ProjectAddResponse {
   }
 
   Map<String, Object?> toJson() => {
-    'type': 'project.add.response',
+    'type': type,
     'payload': {
       'requestId': requestId,
       'project': project?.toJson(),

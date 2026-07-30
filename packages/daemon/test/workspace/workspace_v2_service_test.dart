@@ -1805,6 +1805,37 @@ void main() {
       expect(missing.errorCode, 'directory_not_found');
     });
 
+    test('project.create_directory creates and registers atomically', () async {
+      final response = ProjectCreateDirectoryResponse.fromJson(
+        (await service.handle(
+          connection,
+          ProjectCreateDirectoryRequest(
+            parentPath: temp.path,
+            name: 'new-project',
+            requestId: 'create-directory',
+          ).toJson(),
+        ))!,
+      );
+      expect(response.error, isNull);
+      expect(response.project?.projectId, 'prj_1');
+      expect(response.directoryPath, contains('new-project'));
+      expect(Directory(response.directoryPath!).existsSync(), isTrue);
+      expect(await registries.workspaces.list(), isEmpty);
+
+      final invalid = ProjectCreateDirectoryResponse.fromJson(
+        (await service.handle(
+          connection,
+          ProjectCreateDirectoryRequest(
+            parentPath: temp.path,
+            name: '..',
+            requestId: 'invalid-directory',
+          ).toJson(),
+        ))!,
+      );
+      expect(invalid.errorCode, 'invalid_name');
+      expect(invalid.project, isNull);
+    });
+
     test(
       'project.rename trims, clears, and refreshes child descriptors',
       () async {

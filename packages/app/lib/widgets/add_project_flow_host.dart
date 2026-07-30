@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:file_selector/file_selector.dart';
@@ -6,15 +7,20 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../add_project_flow/model.dart';
 import '../add_project_flow/options.dart';
 import '../add_project_flow/project_picker_options.dart';
 import '../core/daemon_client.dart';
+import '../core/host_routes.dart';
+import '../core/shorten_path.dart';
 import '../state/add_project_flow_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/host_registry_provider.dart';
 import '../state/project_summaries_provider.dart';
+
+final _lastCloneParentByHost = <String, String>{};
 
 class AddProjectFlowHost extends ConsumerWidget {
   const AddProjectFlowHost({super.key});
@@ -43,6 +49,7 @@ class AddProjectFlowDialog extends ConsumerStatefulWidget {
     this.clientsOverride,
     this.recommendedPathsOverride,
     this.pickDirectoryPath = getDirectoryPath,
+    this.onAddHost,
   });
 
   final AddProjectFlowRequest request;
@@ -52,6 +59,7 @@ class AddProjectFlowDialog extends ConsumerStatefulWidget {
   final Map<String, DaemonClient>? clientsOverride;
   final Map<String, List<String>>? recommendedPathsOverride;
   final Future<String?> Function({String? confirmButtonText}) pickDirectoryPath;
+  final VoidCallback? onAddHost;
 
   @override
   ConsumerState<AddProjectFlowDialog> createState() =>
@@ -64,6 +72,7 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
   final _inputFocus = FocusNode();
   Timer? _debounce;
   List<String> _serverPaths = const [];
+  List<GithubRepositoryChoice> _githubRepositories = const [];
   Map<String, DaemonClient> _clients = const {};
   Map<String, List<String>> _recommendedPaths = const {};
   String _hostsSignature = '';
@@ -127,198 +136,216 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
         page is AddProjectNewDirectoryNamePage && page.name.trim().isNotEmpty
         ? joinDirectoryPath(page.parentPath, page.name.trim())
         : null;
+    final viewport = MediaQuery.sizeOf(context);
 
     return Positioned.fill(
-      child: ColoredBox(
-        key: const ValueKey('add-project-flow'),
-        color: Colors.black.withValues(alpha: 0.45),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                key: const ValueKey('add-project-flow-backdrop'),
-                onTap: widget.onClose,
-                behavior: HitTestBehavior.opaque,
+      child: Semantics(
+        container: true,
+        label: 'Add project: ${_pageKind(page)}',
+        child: ColoredBox(
+          key: const ValueKey('add-project-flow'),
+          color: Colors.black.withValues(alpha: 0.45),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  key: const ValueKey('add-project-flow-backdrop'),
+                  onTap: widget.onClose,
+                  behavior: HitTestBehavior.opaque,
+                ),
               ),
-            ),
-            Align(
-              alignment: const Alignment(0, -0.72),
-              child: Focus(
-                autofocus: true,
-                onKeyEvent: (_, event) => _handleKey(event, rows, activeIndex),
-                child: Container(
-                  key: ValueKey('add-project-flow-page-${_pageKind(page)}'),
-                  width: 560,
-                  constraints: const BoxConstraints(maxHeight: 620),
-                  decoration: BoxDecoration(
-                    color: FluentTheme.of(context).cardColor,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: FluentTheme.of(
-                        context,
-                      ).resources.cardStrokeColorDefault,
+              Align(
+                alignment: const Alignment(0, -0.72),
+                child: Focus(
+                  autofocus: true,
+                  onKeyEvent: (_, event) =>
+                      _handleKey(event, rows, activeIndex),
+                  child: Container(
+                    key: ValueKey('add-project-flow-page-${_pageKind(page)}'),
+                    width: math.min(640, viewport.width * 0.92),
+                    constraints: BoxConstraints(
+                      maxHeight: viewport.height * 0.8,
                     ),
-                    boxShadow: const [
-                      BoxShadow(
-                        blurRadius: 24,
-                        color: Color(0x55000000),
-                        offset: Offset(0, 12),
+                    decoration: BoxDecoration(
+                      color: FluentTheme.of(context).cardColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: FluentTheme.of(
+                          context,
+                        ).resources.cardStrokeColorDefault,
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              children: [
-                                if (_flow.pages.length > 1) ...[
-                                  IconButton(
-                                    key: const ValueKey(
-                                      'add-project-flow-back',
-                                    ),
-                                    icon: const Icon(
-                                      FluentIcons.back,
-                                      size: 14,
-                                    ),
-                                    onPressed: _back,
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
-                                Expanded(
-                                  child: Column(
-                                    key: const ValueKey(
-                                      'add-project-flow-title',
-                                    ),
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _pageTitle(page),
-                                        style: FluentTheme.of(
-                                          context,
-                                        ).typography.subtitle,
+                      boxShadow: const [
+                        BoxShadow(
+                          blurRadius: 24,
+                          color: Color(0x55000000),
+                          offset: Offset(0, 12),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                children: [
+                                  if (_flow.pages.length > 1) ...[
+                                    IconButton(
+                                      key: const ValueKey(
+                                        'add-project-flow-back',
                                       ),
-                                      if (host != null)
+                                      icon: const Icon(
+                                        FluentIcons.back,
+                                        size: 14,
+                                      ),
+                                      onPressed: _back,
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
+                                  Expanded(
+                                    child: Column(
+                                      key: const ValueKey(
+                                        'add-project-flow-title',
+                                      ),
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
                                         Text(
-                                          host.label,
+                                          _pageTitle(page),
                                           style: FluentTheme.of(
                                             context,
-                                          ).typography.caption,
+                                          ).typography.subtitle,
                                         ),
-                                    ],
+                                        if (host != null)
+                                          Text(
+                                            host.label,
+                                            style: FluentTheme.of(
+                                              context,
+                                            ).typography.caption,
+                                          ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            TextBox(
-                              key: const ValueKey('add-project-flow-input'),
-                              controller: _inputController,
-                              focusNode: _inputFocus,
-                              enabled: !isSubmitting,
-                              placeholder: _pagePlaceholder(page),
-                              onChanged: _changeInput,
-                              onSubmitted: (_) =>
-                                  _submitActive(rows, activeIndex),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Flexible(
-                        child: ListView(
-                          key: const ValueKey('add-project-flow-results'),
-                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                          shrinkWrap: true,
-                          children: [
-                            if (preview != null)
-                              Padding(
-                                padding: const EdgeInsets.all(8),
-                                child: Text(
-                                  preview,
-                                  key: const ValueKey(
-                                    'add-project-flow-path-preview',
-                                  ),
-                                ),
+                                ],
                               ),
-                            if (isSubmitting)
-                              _stateText(
-                                _progressText(page),
-                                'add-project-flow-progress',
-                              )
-                            else if (page.error != null)
-                              _errorText(page.error!, 'add-project-flow-error')
-                            else if (_queryError != null)
-                              _errorText(
-                                'Unable to search directories',
-                                'add-project-flow-query-error',
-                              )
-                            else if (_loading)
-                              _stateText(
-                                'Loading...',
-                                'add-project-flow-loading',
-                              )
-                            else if (rows.isEmpty &&
-                                page is! AddProjectNewDirectoryNamePage)
-                              _stateText(
-                                _emptyText(page, host),
-                                'add-project-flow-empty',
-                              )
-                            else
-                              for (
-                                var index = 0;
-                                index < rows.length;
-                                index += 1
-                              )
-                                _FlowRow(
-                                  option: rows[index],
-                                  active: index == activeIndex,
-                                ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        key: const ValueKey('add-project-flow-footer'),
-                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
-                        decoration: BoxDecoration(
-                          border: Border(
-                            top: BorderSide(
-                              color: FluentTheme.of(
-                                context,
-                              ).resources.dividerStrokeColorDefault,
-                            ),
+                              const SizedBox(height: 14),
+                              TextBox(
+                                key: const ValueKey('add-project-flow-input'),
+                                controller: _inputController,
+                                focusNode: _inputFocus,
+                                enabled: !isSubmitting,
+                                placeholder: _pagePlaceholder(page),
+                                onChanged: _changeInput,
+                                onSubmitted: (_) =>
+                                    _submitActive(rows, activeIndex),
+                              ),
+                            ],
                           ),
                         ),
-                        child: Row(
-                          children: [
-                            const Expanded(child: Text('↑ ↓  Navigate')),
-                            const Expanded(
-                              child: Text(
-                                'Enter  Select',
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                            Expanded(
-                              child: Text(
-                                _flow.pages.length > 1
-                                    ? 'Esc  Back'
-                                    : 'Esc  Close',
-                                textAlign: TextAlign.end,
-                              ),
-                            ),
-                          ],
+                        Flexible(
+                          child: ListView(
+                            key: const ValueKey('add-project-flow-results'),
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                            shrinkWrap: true,
+                            children: [
+                              if (preview != null)
+                                Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Text(
+                                    shortenPath(preview),
+                                    key: const ValueKey(
+                                      'add-project-flow-path-preview',
+                                    ),
+                                  ),
+                                ),
+                              if (isSubmitting)
+                                _stateText(
+                                  _progressText(page),
+                                  'add-project-flow-progress',
+                                ),
+                              if (!isSubmitting && page.error != null)
+                                _errorText(
+                                  page.error!,
+                                  'add-project-flow-error',
+                                )
+                              else if (!isSubmitting && _queryError != null)
+                                _errorText(
+                                  '$_queryError',
+                                  'add-project-flow-query-error',
+                                ),
+                              if (!isSubmitting && _loading)
+                                _stateText(
+                                  'Loading...',
+                                  'add-project-flow-loading',
+                                ),
+                              if (!isSubmitting &&
+                                  !_loading &&
+                                  _queryError == null &&
+                                  rows.isEmpty &&
+                                  page is! AddProjectNewDirectoryNamePage)
+                                _stateText(
+                                  _emptyText(page, host),
+                                  'add-project-flow-empty',
+                                ),
+                              if (!isSubmitting &&
+                                  (!_loading ||
+                                      page is AddProjectGithubSearchPage) &&
+                                  (_queryError == null ||
+                                      page is AddProjectGithubSearchPage))
+                                for (
+                                  var index = 0;
+                                  index < rows.length;
+                                  index += 1
+                                )
+                                  _FlowRow(
+                                    option: rows[index],
+                                    active: index == activeIndex,
+                                  ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                        Container(
+                          key: const ValueKey('add-project-flow-footer'),
+                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              top: BorderSide(
+                                color: FluentTheme.of(
+                                  context,
+                                ).resources.dividerStrokeColorDefault,
+                              ),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Expanded(child: Text('↑ ↓  Navigate')),
+                              const Expanded(
+                                child: Text(
+                                  'Enter  Select',
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  _flow.pages.length > 1
+                                      ? 'Esc  Back'
+                                      : 'Esc  Close',
+                                  textAlign: TextAlign.end,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -352,8 +379,13 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
                 client.serverInfo?.features['projectAdd'] == true,
             canCloneGithubRepositories:
                 client.serverInfo?.features['projectGithubClone'] == true,
-            canSearchGithubRepositories: false,
-            canCreateDirectory: false,
+            canSearchGithubRepositories:
+                client
+                    .serverInfo
+                    ?.features['workspaceGithubRepositorySearch'] ==
+                true,
+            canCreateDirectory:
+                client.serverInfo?.features['projectCreateDirectory'] == true,
           ),
     ];
     if (hosts.isNotEmpty) return hosts;
@@ -386,8 +418,10 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
         client.serverInfo?.features['projectAdd'] == true,
     canCloneGithubRepositories:
         client.serverInfo?.features['projectGithubClone'] == true,
-    canSearchGithubRepositories: false,
-    canCreateDirectory: false,
+    canSearchGithubRepositories:
+        client.serverInfo?.features['workspaceGithubRepositorySearch'] == true,
+    canCreateDirectory:
+        client.serverInfo?.features['projectCreateDirectory'] == true,
   );
 
   Map<String, List<String>> _buildRecommendedPaths(WidgetRef ref) {
@@ -407,7 +441,9 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
         .map(
           (host) =>
               '${host.serverId}:${host.canAddProject}:'
-              '${host.canBrowse}:${host.canCloneGithubRepositories}',
+              '${host.canBrowse}:${host.canCloneGithubRepositories}:'
+              '${host.canSearchGithubRepositories}:'
+              '${host.canCreateDirectory}',
         )
         .join('|');
     if (signature == _hostsSignature) return;
@@ -442,7 +478,7 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
 
   List<_FlowRowOption> _buildRows(AddProjectPage page, AddProjectHost? host) {
     if (page is AddProjectHostPage) {
-      return [
+      final rows = <_FlowRowOption>[
         for (final choice in filterAddProjectHosts(_flow.hosts, page.query))
           _FlowRowOption(
             id: choice.serverId,
@@ -454,6 +490,19 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
                 _setFlow(chooseAddProjectHost(_flow, choice.serverId)),
           ),
       ];
+      if (_flow.hosts.isEmpty) {
+        rows.add(
+          _FlowRowOption(
+            id: 'add-host',
+            title: 'Add host',
+            subtitle: 'No connected hosts',
+            icon: FluentIcons.add,
+            key: const ValueKey('add-project-flow-add-host'),
+            select: _openAddHost,
+          ),
+        );
+      }
+      return rows;
     }
     if (page is AddProjectMethodPage) {
       if (host == null) return const [];
@@ -479,9 +528,11 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
         for (final option in _pathOptions(page.query, page.hostId))
           _FlowRowOption(
             id: option.path,
-            title: option.path,
+            title: shortenPath(option.path),
             subtitle: option.kind == ProjectPickerOptionKind.path
-                ? 'Use this path'
+                ? 'Open this path'
+                : shortenPath(option.path) == option.path
+                ? null
                 : option.path,
             icon: FluentIcons.folder,
             key: ValueKey('add-project-flow-path-${option.path}'),
@@ -490,8 +541,18 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
       ];
     }
     if (page is AddProjectGithubSearchPage) {
+      final manual = buildManualGithubRepositoryChoices(page.query);
+      final normalized = page.query.trim().toLowerCase();
+      final hasExactResult = _githubRepositories.any(
+        (repository) =>
+            repository.nameWithOwner.toLowerCase() == normalized ||
+            repository.cloneUrl.toLowerCase() == normalized,
+      );
       return [
-        for (final repository in buildManualGithubRepositoryChoices(page.query))
+        for (final repository in [
+          if (!hasExactResult) ...manual,
+          ..._githubRepositories,
+        ])
           _FlowRowOption(
             id: repository.id,
             title: repository.cloneProtocol == null
@@ -509,9 +570,16 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
     }
     if (page is AddProjectGithubLocationPage) {
       final repositoryName = pathBaseName(page.repository.nameWithOwner);
-      final parents = buildSuggestedParentDirectories(
+      final suggestedParents = buildSuggestedParentDirectories(
         _recommendedPaths[page.hostId] ?? const [],
       );
+      final lastParent = _lastCloneParentByHost[page.hostId];
+      final parents = lastParent == null
+          ? suggestedParents
+          : [
+              lastParent,
+              ...suggestedParents.where((parent) => parent != lastParent),
+            ];
       final filtered = buildProjectPickerOptions(
         recommendedPaths: parents,
         serverPaths: _serverPaths,
@@ -526,7 +594,7 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
         ))
           _FlowRowOption(
             id: option.id,
-            title: option.displayPath,
+            title: shortenPath(option.displayPath),
             subtitle: option.secondaryText,
             icon: FluentIcons.hard_drive,
             disabled: option.disabled,
@@ -540,7 +608,7 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
         for (final option in _pathOptions(page.query, page.hostId))
           _FlowRowOption(
             id: option.path,
-            title: option.path,
+            title: shortenPath(option.path),
             subtitle: option.kind == ProjectPickerOptionKind.path
                 ? 'Use this parent'
                 : option.path,
@@ -595,19 +663,69 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
     _submissionInFlight = true;
     _setStatus(isSubmitting: true, error: null);
     try {
-      final response = await client.request(MessageTypes.projectAddRequest, {
-        'path': path,
-      });
-      final project = ProjectInfo.fromJson(
-        response['project'] as Map<String, Object?>? ?? const {},
-      );
+      final response = await client.addProject(cwd: path);
+      final descriptor = response.project;
+      if (response.error != null || descriptor == null) {
+        _setStatus(
+          isSubmitting: false,
+          error: response.error ?? 'Unable to add project',
+        );
+        return;
+      }
       if (!mounted) return;
       widget.onAdded(
-        AddProjectFlowResult(serverId: serverId, project: project),
+        AddProjectFlowResult(
+          serverId: serverId,
+          project: _projectInfo(descriptor),
+        ),
       );
     } on Object {
       if (mounted) {
         _setStatus(isSubmitting: false, error: 'Unable to add project');
+      }
+    } finally {
+      _submissionInFlight = false;
+    }
+  }
+
+  Future<void> _createDirectory(AddProjectNewDirectoryNamePage page) async {
+    final name = page.name.trim();
+    if (name.isEmpty ||
+        name == '.' ||
+        name == '..' ||
+        name.contains('/') ||
+        name.contains(r'\')) {
+      _setStatus(error: 'Enter a directory name');
+      return;
+    }
+    if (_submissionInFlight) return;
+    final client = _clients[page.hostId];
+    if (client == null) return;
+    _submissionInFlight = true;
+    _setStatus(isSubmitting: true, error: null);
+    try {
+      final response = await client.createProjectDirectory(
+        parentPath: page.parentPath,
+        name: name,
+      );
+      final descriptor = response.project;
+      if (response.error != null || descriptor == null) {
+        _setStatus(
+          isSubmitting: false,
+          error: response.error ?? 'Unable to create directory',
+        );
+        return;
+      }
+      if (!mounted) return;
+      widget.onAdded(
+        AddProjectFlowResult(
+          serverId: page.hostId,
+          project: _projectInfo(descriptor),
+        ),
+      );
+    } on Object {
+      if (mounted) {
+        _setStatus(isSubmitting: false, error: 'Unable to create directory');
       }
     } finally {
       _submissionInFlight = false;
@@ -642,6 +760,7 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
         return;
       }
       if (!mounted) return;
+      _lastCloneParentByHost[page.hostId] = parentPath;
       widget.onAdded(
         AddProjectFlowResult(
           serverId: page.hostId,
@@ -665,12 +784,13 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
     setState(() {
       _flow = next;
       _serverPaths = const [];
+      _githubRepositories = const [];
       _queryError = null;
       _loading = false;
       _syncInput();
     });
     _inputFocus.requestFocus();
-    _queueDirectoryFetch();
+    _queueFetch();
   }
 
   void _changeInput(String value) {
@@ -680,14 +800,21 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
           : setAddProjectPageInput(_flow, value);
       _queryError = null;
     });
-    _queueDirectoryFetch();
+    _queueFetch();
   }
 
-  void _queueDirectoryFetch() {
+  void _queueFetch() {
     _debounce?.cancel();
     final page = _page;
-    if (!_searchesDirectories(page)) return;
-    _debounce = Timer(const Duration(milliseconds: 250), _fetchDirectories);
+    if (!_searchesDirectories(page) && page is! AddProjectGithubSearchPage) {
+      return;
+    }
+    _debounce = Timer(
+      const Duration(milliseconds: 250),
+      page is AddProjectGithubSearchPage
+          ? _fetchGithubRepositories
+          : _fetchDirectories,
+    );
   }
 
   Future<void> _fetchDirectories() async {
@@ -721,10 +848,57 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
         _queryError = response.error;
         _loading = false;
       });
-    } on Object catch (error) {
+    } on Object {
       if (!mounted) return;
       setState(() {
-        _queryError = error;
+        _queryError = 'Unable to search directories';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _fetchGithubRepositories() async {
+    final page = _page;
+    if (page is! AddProjectGithubSearchPage) return;
+    final client = _clients[page.hostId];
+    final host = _hostFor(page);
+    if (client == null || host?.canSearchGithubRepositories != true) return;
+    final query = page.query;
+    setState(() {
+      _loading = true;
+      _queryError = null;
+    });
+    try {
+      final response = await client.searchGithubRepositories(
+        query: query,
+        limit: 30,
+      );
+      if (!mounted ||
+          _page is! AddProjectGithubSearchPage ||
+          (_page as AddProjectGithubSearchPage).hostId != page.hostId ||
+          (_page as AddProjectGithubSearchPage).query != query) {
+        return;
+      }
+      setState(() {
+        _githubRepositories = [
+          for (final repository in response.repositories)
+            GithubRepositoryChoice(
+              id: repository.id,
+              nameWithOwner: repository.nameWithOwner,
+              cloneUrl: repository.cloneUrl,
+              description: repository.description,
+              visibility: repository.visibility.name,
+              updatedAt: repository.updatedAt,
+            ),
+        ];
+        _queryError = response.error;
+        _loading = false;
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _githubRepositories = const [];
+        _queryError = 'Unable to search GitHub repositories';
         _loading = false;
       });
     }
@@ -760,10 +934,25 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
   }
 
   void _submitActive(List<_FlowRowOption> rows, int activeIndex) {
-    if (_page is AddProjectNewDirectoryNamePage) return;
+    if (_page case final AddProjectNewDirectoryNamePage page) {
+      unawaited(_createDirectory(page));
+      return;
+    }
     if (rows.isEmpty) return;
     final row = rows[activeIndex];
     if (!row.disabled) row.select();
+  }
+
+  void _openAddHost() {
+    widget.onClose();
+    final callback = widget.onAddHost;
+    if (callback != null) {
+      callback();
+      return;
+    }
+    context.go(
+      buildSettingsAddHostRoute(DateTime.now().millisecondsSinceEpoch),
+    );
   }
 
   void _back() {
@@ -851,6 +1040,12 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
   }
 }
 
+ProjectInfo _projectInfo(WorkspaceProjectDescriptor descriptor) => ProjectInfo(
+  path: descriptor.projectRootPath,
+  name: descriptor.projectDisplayName,
+  isGitRepo: descriptor.projectKind == WorkspaceProjectKind.git,
+);
+
 final class _FlowRowOption {
   const _FlowRowOption({
     required this.id,
@@ -878,18 +1073,22 @@ class _FlowRow extends StatelessWidget {
   final bool active;
 
   @override
-  Widget build(BuildContext context) => Opacity(
-    opacity: option.disabled ? 0.45 : 1,
-    child: Container(
-      key: option.key,
-      color: active
-          ? FluentTheme.of(context).accentColor.withValues(alpha: 0.12)
-          : null,
-      child: ListTile(
-        leading: Icon(option.icon, size: 16),
-        title: Text(option.title),
-        subtitle: option.subtitle == null ? null : Text(option.subtitle!),
-        onPressed: option.disabled ? null : option.select,
+  Widget build(BuildContext context) => Semantics(
+    selected: active,
+    enabled: !option.disabled,
+    child: Opacity(
+      opacity: option.disabled ? 0.45 : 1,
+      child: Container(
+        key: option.key,
+        color: active
+            ? FluentTheme.of(context).accentColor.withValues(alpha: 0.12)
+            : null,
+        child: ListTile(
+          leading: Icon(option.icon, size: 16),
+          title: Text(option.title),
+          subtitle: option.subtitle == null ? null : Text(option.subtitle!),
+          onPressed: option.disabled ? null : option.select,
+        ),
       ),
     ),
   );
@@ -927,22 +1126,24 @@ String _pageKind(AddProjectPage page) => switch (page) {
 };
 
 String _pageTitle(AddProjectPage page) => switch (page) {
-  AddProjectHostPage() => 'Choose a host',
+  AddProjectHostPage() => 'Choose host',
   AddProjectMethodPage() => 'Add project',
   AddProjectDirectorySearchPage() => 'Search for directory',
   AddProjectGithubSearchPage() => 'Clone from GitHub',
-  AddProjectGithubLocationPage() => 'Choose clone location',
+  AddProjectGithubLocationPage() => 'Choose destination',
   AddProjectNewDirectoryParentPage() => 'Choose parent directory',
-  AddProjectNewDirectoryNamePage() => 'Name new directory',
+  AddProjectNewDirectoryNamePage() => 'Name directory',
 };
 
 String _pagePlaceholder(AddProjectPage page) => switch (page) {
-  AddProjectHostPage() => 'Search hosts',
-  AddProjectMethodPage() => 'Search methods',
-  AddProjectDirectorySearchPage() => 'Search directories or enter a path',
-  AddProjectGithubSearchPage() => 'GitHub URL or owner/repo',
-  AddProjectGithubLocationPage() => 'Search parent directories',
-  AddProjectNewDirectoryParentPage() => 'Search parent directories',
+  AddProjectHostPage() => 'Search hosts...',
+  AddProjectMethodPage() => 'Search methods...',
+  AddProjectDirectorySearchPage() => 'Search directories or enter a path...',
+  AddProjectGithubSearchPage() => 'Search or enter a GitHub repository...',
+  AddProjectGithubLocationPage() =>
+    'Search parent directories or enter a path...',
+  AddProjectNewDirectoryParentPage() =>
+    'Search parent directories or enter a path...',
   AddProjectNewDirectoryNamePage() => 'Directory name',
 };
 

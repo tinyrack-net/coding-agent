@@ -767,6 +767,75 @@ class DaemonClient {
     return response;
   }
 
+  Future<ProjectAddResponse> addProject({
+    required String cwd,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final requestId = _uuid.v4();
+    final response = ProjectAddResponse.fromJson(
+      await requestSessionMessage(
+        ProjectAddRequest(cwd: cwd, requestId: requestId).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != requestId) {
+      throw FormatException(
+        'Project add response requestId mismatch: ${response.requestId}',
+      );
+    }
+    return response;
+  }
+
+  Future<ProjectCreateDirectoryResponse> createProjectDirectory({
+    required String parentPath,
+    required String name,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final requestId = _uuid.v4();
+    final response = ProjectCreateDirectoryResponse.fromJson(
+      await requestSessionMessage(
+        ProjectCreateDirectoryRequest(
+          parentPath: parentPath,
+          name: name,
+          requestId: requestId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != requestId) {
+      throw FormatException(
+        'Project directory response requestId mismatch: '
+        '${response.requestId}',
+      );
+    }
+    return response;
+  }
+
+  Future<WorkspaceGithubSearchRepositoriesResponse> searchGithubRepositories({
+    required String query,
+    int? limit,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final requestId = _uuid.v4();
+    final response = WorkspaceGithubSearchRepositoriesResponse.fromJson(
+      await requestSessionMessage(
+        WorkspaceGithubSearchRepositoriesRequest(
+          query: query,
+          limit: limit,
+          requestId: requestId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != requestId) {
+      throw FormatException(
+        'GitHub repository search response requestId mismatch: '
+        '${response.requestId}',
+      );
+    }
+    return response;
+  }
+
   Future<ProjectGithubCloneResponse> cloneGithubProject({
     required String repo,
     required String targetDirectory,
@@ -788,11 +857,6 @@ class DaemonClient {
     if (response.requestId != requestId) {
       throw FormatException(
         'GitHub clone response requestId mismatch: ${response.requestId}',
-      );
-    }
-    if (response.repo != repo.trim()) {
-      throw FormatException(
-        'GitHub clone response repo mismatch: ${response.repo}',
       );
     }
     return response;

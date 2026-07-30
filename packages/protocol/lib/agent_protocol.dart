@@ -63,6 +63,8 @@ export 'src/messages/provider_subagent.dart';
 export 'src/messages/schedule.dart';
 export 'src/messages/project_config.dart';
 export 'src/messages/project_clone.dart';
+export 'src/messages/project_directory.dart';
+export 'src/messages/github_repository_search.dart';
 export 'src/messages/pull_request_timeline.dart';
 export 'src/provider_icon_names.dart';
 export 'src/path_utils.dart';

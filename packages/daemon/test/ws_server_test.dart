@@ -154,6 +154,14 @@ void main() {
       expect(serverInfo['features'], containsPair('forgeCheckDetails', true));
       expect(serverInfo['features'], containsPair('checkoutRefresh', true));
       expect(serverInfo['features'], containsPair('projectGithubClone', true));
+      expect(
+        serverInfo['features'],
+        containsPair('workspaceGithubRepositorySearch', true),
+      );
+      expect(
+        serverInfo['features'],
+        containsPair('projectCreateDirectory', true),
+      );
       expect(serverInfo['features'], containsPair('projectAdd', true));
       expect(
         serverInfo['features'],

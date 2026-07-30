@@ -2488,7 +2488,7 @@
         "packages/app/test/new_workspace_screen_test.dart",
         "packages/daemon/test/ws_server_test.dart"
       ],
-      "notes": "Global multi-host flow, capability-gated methods, page history, keyboard-ready selection state, debounced directory suggestions, direct path registration, desktop Browse wiring, manual URL/owner-repo GitHub clone, progress/error/empty states, result adoption, and responsive overflow-safe panel geometry are implemented. GitHub account repository search, create-directory wire/service, Add Host routing, exact platform-adaptive presentation, and visual golden evidence remain."
+      "notes": "Global multi-host flow, capability-gated methods, page history, keyboard selection, debounced directory and GitHub-account search, direct path registration, desktop Browse wiring, URL/owner-repo clone, per-host last clone-parent preference, atomic create-directory, Add Host routing, path shortening, progress/error/empty states, result adoption, and frozen 640px/92%/80% responsive panel geometry are implemented. Exact platform-adaptive presentation, full accessibility-tree parity, and visual golden evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/components/agent-list.tsx",
@@ -8862,10 +8862,13 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/shorten-path.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/shorten_path.dart",
+      "evidence": [
+        "packages/app/test/shorten_path_test.dart",
+        "packages/app/test/add_project_flow_host_test.dart"
+      ],
+      "notes": "Null and empty inputs plus macOS and Linux home-prefix shortening match the frozen utility; other absolute path forms are preserved."
     },
     {
       "id": "source-unit:packages/app/src/utils/sidebar-agent-state.ts",
@@ -11480,10 +11483,12 @@
     {
       "id": "source-unit:packages/protocol/src/messages.ts",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/workspace_v2.dart; packages/protocol/lib/src/messages/provider_subagent.dart; packages/protocol/lib/src/messages/terminal.dart; packages/protocol/lib/src/messages/daemon_config.dart; packages/protocol/lib/src/messages/file_transfer.dart; packages/protocol/lib/src/messages/file_explorer.dart; packages/protocol/lib/src/messages/forge.dart; packages/protocol/lib/src/messages/checkout_pr.dart; packages/protocol/lib/src/messages/checkout_refresh.dart; packages/protocol/lib/src/messages/checkout_pr_status.dart; packages/protocol/lib/src/messages/checkout_check_details.dart; packages/protocol/lib/src/messages/pull_request_timeline.dart; packages/protocol/lib/src/messages/agent_attachment.dart; packages/protocol/lib/src/messages/voice.dart; packages/protocol/lib/src/messages/project_config.dart; packages/protocol/lib/src/timeline/paseo_agent_stream_codec.dart; packages/protocol/lib/src/timeline/paseo_agent_snapshot_codec.dart; packages/daemon/lib/src/agent/timeline_projection.dart; packages/daemon/lib/src/daemon_server.dart",
+      "implementation": "packages/protocol/lib/src/messages/workspace_v2.dart; packages/protocol/lib/src/messages/project_directory.dart; packages/protocol/lib/src/messages/github_repository_search.dart; packages/protocol/lib/src/messages/provider_subagent.dart; packages/protocol/lib/src/messages/terminal.dart; packages/protocol/lib/src/messages/daemon_config.dart; packages/protocol/lib/src/messages/file_transfer.dart; packages/protocol/lib/src/messages/file_explorer.dart; packages/protocol/lib/src/messages/forge.dart; packages/protocol/lib/src/messages/checkout_pr.dart; packages/protocol/lib/src/messages/checkout_refresh.dart; packages/protocol/lib/src/messages/checkout_pr_status.dart; packages/protocol/lib/src/messages/checkout_check_details.dart; packages/protocol/lib/src/messages/pull_request_timeline.dart; packages/protocol/lib/src/messages/agent_attachment.dart; packages/protocol/lib/src/messages/voice.dart; packages/protocol/lib/src/messages/project_config.dart; packages/protocol/lib/src/timeline/paseo_agent_stream_codec.dart; packages/protocol/lib/src/timeline/paseo_agent_snapshot_codec.dart; packages/daemon/lib/src/agent/timeline_projection.dart; packages/daemon/lib/src/daemon_server.dart",
       "evidence": [
         "packages/protocol/test/v2_websocket_test.dart",
         "packages/protocol/test/workspace_v2_test.dart",
+        "packages/protocol/test/project_directory_test.dart",
+        "packages/protocol/test/github_repository_search_test.dart",
         "packages/protocol/test/provider_subagent_test.dart",
         "packages/protocol/test/messages_terminal_test.dart",
         "packages/protocol/test/daemon_config_test.dart",
@@ -13433,10 +13438,14 @@
     },
     {
       "id": "source-unit:packages/server/src/server/project-directory-service.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/workspace/project_directory_service.dart;packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "evidence": [
+        "packages/daemon/test/workspace/project_directory_service_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
+        "packages/protocol/test/project_directory_test.dart"
+      ],
+      "notes": "Single-name validation, tilde and absolute parent resolution, containment, existing and missing directory errors, permission/filesystem classification, atomic registry adoption, rollback, typed open-ended error codes, and project descriptor response match the frozen service contract."
     },
     {
       "id": "source-unit:packages/server/src/server/push/notifications.ts",
@@ -14544,13 +14553,15 @@
     {
       "id": "source-unit:packages/server/src/services/github-service.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/forge/forge_adapters.dart",
+      "implementation": "packages/daemon/lib/src/forge/forge_adapters.dart;packages/daemon/lib/src/workspace/github_repository_search_service.dart",
       "evidence": [
         "packages/daemon/test/forge/forge_adapters_test.dart",
         "packages/daemon/test/forge/forge_check_details_test.dart",
-        "packages/daemon/test/forge/forge_timeline_adapters_test.dart"
+        "packages/daemon/test/forge/forge_timeline_adapters_test.dart",
+        "packages/daemon/test/workspace/github_repository_search_service_test.dart",
+        "packages/protocol/test/github_repository_search_test.dart"
       ],
-      "notes": "gh authentication, issue/PR search, current PR status, API-based PR creation, guarded direct merge, guarded auto-merge enable/disable, check-run annotations plus capped failed-job log tails, and the exact first-100 reviews/comments/reviewThreads GraphQL timeline read are implemented. Timeline normalization includes stable ordering, duplicate suppression, review states, inline locations, resolution/outdated state, attachment image URL normalization, truncation, and typed errors. Partial search semantics, statusCheckRollup fallback, reused-branch SHA/owner safety, PullRequestStatusFacts, merge guards, and prompt disabling are also covered. Remaining GitHub service operations, failed-log cache reuse, schemas, and cache invalidation remain."
+      "notes": "gh authentication, account repository list/search with configured HTTPS/SSH clone identity and typed missing/auth/error outcomes, issue/PR search, current PR status, API-based PR creation, guarded direct merge, guarded auto-merge enable/disable, check-run annotations plus capped failed-job log tails, and the exact first-100 reviews/comments/reviewThreads GraphQL timeline read are implemented. Timeline normalization includes stable ordering, duplicate suppression, review states, inline locations, resolution/outdated state, attachment image URL normalization, truncation, sorting, and typed errors. Partial search semantics, statusCheckRollup fallback, reused-branch SHA/owner safety, PullRequestStatusFacts, merge guards, and prompt disabling are also covered. Remaining GitHub service operations, failed-log cache reuse, schemas, and cache invalidation remain."
     },
     {
       "id": "source-unit:packages/server/src/services/gitlab-facts.ts",
