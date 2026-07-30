@@ -49,6 +49,7 @@ class WorkspaceExplorer extends ConsumerStatefulWidget {
     this.onChangesFilePress,
     this.onOpenFile,
     this.onAddFileToChat,
+    this.onCommitPress,
   });
 
   final String serverId;
@@ -61,6 +62,7 @@ class WorkspaceExplorer extends ConsumerStatefulWidget {
   final ValueChanged<String>? onChangesFilePress;
   final void Function(WorkspaceFileOpenRequest request)? onOpenFile;
   final ValueChanged<String>? onAddFileToChat;
+  final ValueChanged<String>? onCommitPress;
 
   @override
   ConsumerState<WorkspaceExplorer> createState() => _WorkspaceExplorerState();
@@ -186,6 +188,7 @@ class _WorkspaceExplorerState extends ConsumerState<WorkspaceExplorer> {
               onToggleChangesTab: widget.onToggleChangesTab,
               onChangesFilePress: widget.onChangesFilePress,
               onAddToChat: widget.onAddFileToChat,
+              onCommitPress: widget.onCommitPress,
             ),
             WorkspaceExplorerTab.files => _FilesPane(
               cwd: widget.cwd,

@@ -16,6 +16,7 @@ import '../../state/workspace_checkout_status_provider.dart';
 import '../../state/workspace_attachments_provider.dart';
 import '../../state/workspace_providers.dart';
 import '../../workspace/workspace_file_open.dart';
+import 'commits_section.dart';
 import 'diff_view.dart';
 
 /// Diff of a worktree's working directory with a manual refresh action.
@@ -35,6 +36,7 @@ class DiffPane extends ConsumerStatefulWidget {
     this.onChangesFilePress,
     this.onOpenWorkspaceFile,
     this.onAddToChat,
+    this.onCommitPress,
   });
 
   final String cwd;
@@ -48,6 +50,7 @@ class DiffPane extends ConsumerStatefulWidget {
   final ValueChanged<String>? onChangesFilePress;
   final ValueChanged<WorkspaceFileOpenRequest>? onOpenWorkspaceFile;
   final ValueChanged<String>? onAddToChat;
+  final ValueChanged<String>? onCommitPress;
 
   @override
   ConsumerState<DiffPane> createState() => _DiffPaneState();
@@ -91,6 +94,7 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
         diffViewController: _diffViewController,
         onOpenWorkspaceFile: widget.onOpenWorkspaceFile,
         onAddToChat: widget.onAddToChat,
+        onCommitPress: widget.onCommitPress,
       );
     }
     final diffAsync = ref.watch(diffProvider(widget.cwd));
@@ -302,6 +306,7 @@ class _LiveDiffPane extends ConsumerWidget {
     required this.diffViewController,
     required this.onOpenWorkspaceFile,
     required this.onAddToChat,
+    required this.onCommitPress,
   });
 
   final String serverId;
@@ -316,6 +321,7 @@ class _LiveDiffPane extends ConsumerWidget {
   final DiffViewController diffViewController;
   final ValueChanged<WorkspaceFileOpenRequest>? onOpenWorkspaceFile;
   final ValueChanged<String>? onAddToChat;
+  final ValueChanged<String>? onCommitPress;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -570,6 +576,12 @@ class _LiveDiffPane extends ConsumerWidget {
             },
           ),
         ),
+        if (compact && onCommitPress != null)
+          CommitsSection(
+            serverId: serverId,
+            cwd: cwd,
+            onCommitPress: onCommitPress!,
+          ),
       ],
     );
   }

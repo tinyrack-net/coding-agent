@@ -17,6 +17,10 @@ import 'worktree_metadata.dart';
 const int _maxUntrackedBytes = 1024 * 1024;
 const int _perFileDiffMaxBytes = 1024 * 1024;
 const int _totalDiffMaxBytes = 2 * 1024 * 1024;
+const int _checkoutBaseCommitLimit = 10;
+const String _commitFieldSeparator = '\x00';
+const String _commitRecordSeparator = '\x1e';
+const String _commitLogFormat = '%x1e%H%x00%h%x00%an%x00%aI%x00%s';
 
 class GitService {
   GitService({required this.dataDir, GitRunner? runner})
@@ -81,6 +85,18 @@ class GitService {
     );
     final name = result.stdout.trim();
     return (!result.ok || name.isEmpty || name == 'HEAD') ? 'main' : name;
+  }
+
+  /// The symbolic branch checked out at [cwd], or null for detached/unborn
+  /// HEAD. Commit history intentionally does not invent a branch in this case.
+  Future<String?> checkoutCurrentBranch(String cwd) async {
+    final result = await runner.run(
+      ['rev-parse', '--abbrev-ref', 'HEAD'],
+      cwd: cwd,
+      check: false,
+    );
+    final branch = result.stdout.trim();
+    return result.ok && branch.isNotEmpty && branch != 'HEAD' ? branch : null;
   }
 
   Future<bool> localBranchExists(String projectPath, String branch) async {
@@ -479,6 +495,212 @@ class GitService {
     );
   }
 
+  /// Frozen Paseo 0.2.0 checkout history: every commit ahead of the resolved
+  /// base followed by at most ten commits of base context.
+  Future<CheckoutCommitsResult> listCheckoutCommits(
+    String cwd, {
+    String? storedBaseRef,
+  }) async {
+    final current = await checkoutCurrentBranch(cwd);
+    if (current == null) {
+      return const CheckoutCommitsResult(baseRef: null, commits: []);
+    }
+
+    final fallbackBase = await _tryResolveDefaultBranch(cwd);
+    final preferredBase = switch (storedBaseRef?.trim()) {
+      final value? when value.isNotEmpty => value,
+      _ => fallbackBase,
+    };
+    var comparisonBase = await _tryResolveCommitsBase(
+      cwd,
+      preferredBase,
+      current,
+    );
+    final normalizedPreferred = preferredBase == null
+        ? null
+        : _normalizeLocalBranchRef(preferredBase);
+    if (comparisonBase == null &&
+        normalizedPreferred != null &&
+        normalizedPreferred != current &&
+        fallbackBase != null &&
+        _normalizeLocalBranchRef(fallbackBase) != normalizedPreferred) {
+      comparisonBase = await _tryResolveCommitsBase(cwd, fallbackBase, current);
+    }
+
+    var workspaceRecords = const <_ParsedCheckoutCommit>[];
+    var baseRevision = 'HEAD';
+    if (comparisonBase != null) {
+      final results = await Future.wait<Object?>([
+        _checkoutCommitRecords(cwd, '$comparisonBase..HEAD'),
+        _tryMergeBase(cwd, comparisonBase),
+      ]);
+      workspaceRecords = results[0] as List<_ParsedCheckoutCommit>;
+      baseRevision = results[1] as String? ?? '';
+    }
+    final baseRecords = baseRevision.isEmpty
+        ? const <_ParsedCheckoutCommit>[]
+        : await _checkoutCommitRecords(
+            cwd,
+            baseRevision,
+            maxCount: _checkoutBaseCommitLimit,
+          );
+    final records = [...workspaceRecords, ...baseRecords];
+    if (records.isEmpty) {
+      return CheckoutCommitsResult(baseRef: comparisonBase, commits: const []);
+    }
+
+    final unpushed = await _unpushedCommitShas(cwd);
+    final workspaceShas = workspaceRecords.map((record) => record.sha).toSet();
+    return CheckoutCommitsResult(
+      baseRef: comparisonBase,
+      commits: [
+        for (final record in records)
+          CheckoutCommit(
+            sha: record.sha,
+            shortSha: record.shortSha,
+            subject: record.subject,
+            authorName: record.authorName,
+            authorDate: record.authorDate,
+            isOnRemote: !unpushed.contains(record.sha),
+            isOnBase: !workspaceShas.contains(record.sha),
+            files: record.files,
+          ),
+      ],
+    );
+  }
+
+  /// Unified textual diff for one file introduced by [sha]. Binary-only
+  /// changes deliberately resolve to null so the client can synthesize the
+  /// stat-only binary row from commit metadata.
+  Future<DiffFile?> commitFileDiff(
+    String cwd, {
+    required String sha,
+    required String path,
+  }) async {
+    final result = await runner.run([
+      'show',
+      sha,
+      '--format=',
+      '--diff-merges=first-parent',
+      '--',
+      path,
+    ], cwd: cwd);
+    if (result.stdout.trim().isEmpty) return null;
+    final parsed = parseUnifiedDiff(result.stdout);
+    final file = parsed
+        .where((candidate) => candidate.path == path)
+        .firstOrNull;
+    if (file == null) return null;
+    if (file.hunks.isEmpty &&
+        RegExp(
+          r'^Binary files .* differ$',
+          multiLine: true,
+        ).hasMatch(result.stdout)) {
+      return null;
+    }
+    return file;
+  }
+
+  Future<String?> readFileAtRef(
+    String cwd, {
+    required String ref,
+    required String path,
+  }) async {
+    final result = await runner.run(
+      ['show', '$ref:$path'],
+      cwd: cwd,
+      check: false,
+    );
+    return result.ok ? result.stdout : null;
+  }
+
+  Future<String?> _tryResolveDefaultBranch(String cwd) async {
+    try {
+      return await resolveDefaultBranch(cwd);
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<String?> _tryResolveCommitsBase(
+    String cwd,
+    String? baseRef,
+    String currentBranch,
+  ) async {
+    if (baseRef == null) return null;
+    final normalized = _normalizeLocalBranchRef(baseRef);
+    if (normalized.isEmpty || normalized == currentBranch) return null;
+    try {
+      final local = await _refExists(cwd, 'refs/heads/$normalized');
+      final origin = await _refExists(cwd, 'refs/remotes/origin/$normalized');
+      if (local && !origin) return normalized;
+      if (!local && origin) return 'origin/$normalized';
+      if (!local && !origin) return null;
+      final counts = await runner.run([
+        'rev-list',
+        '--left-right',
+        '--count',
+        '$normalized...origin/$normalized',
+      ], cwd: cwd);
+      final parts = counts.stdout.trim().split(RegExp(r'\s+'));
+      final localOnly = int.tryParse(parts.isEmpty ? '0' : parts[0]) ?? 0;
+      final originOnly = int.tryParse(parts.length < 2 ? '0' : parts[1]) ?? 0;
+      return originOnly > localOnly ? 'origin/$normalized' : normalized;
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<bool> _refExists(String cwd, String fullRef) async =>
+      (await runner.run(
+        ['show-ref', '--verify', '--quiet', fullRef],
+        cwd: cwd,
+        check: false,
+      )).ok;
+
+  Future<String?> _tryMergeBase(String cwd, String baseRef) async {
+    final result = await runner.run(
+      ['merge-base', baseRef, 'HEAD'],
+      cwd: cwd,
+      check: false,
+    );
+    final value = result.stdout.trim();
+    return result.ok && value.isNotEmpty ? value : null;
+  }
+
+  Future<Set<String>> _unpushedCommitShas(String cwd) async {
+    final result = await runner.run([
+      'rev-list',
+      'HEAD',
+      '--not',
+      '--remotes',
+    ], cwd: cwd);
+    return result.stdout
+        .split(RegExp(r'\r?\n'))
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toSet();
+  }
+
+  Future<List<_ParsedCheckoutCommit>> _checkoutCommitRecords(
+    String cwd,
+    String revision, {
+    int? maxCount,
+  }) async {
+    final args = [
+      'log',
+      revision,
+      if (maxCount != null) '--max-count=$maxCount',
+      '--diff-merges=first-parent',
+      '--format=$_commitLogFormat',
+      '--raw',
+      '--numstat',
+      '-M',
+    ];
+    final result = await runner.run(args, cwd: cwd);
+    return _parseCheckoutCommitRecords(result.stdout);
+  }
+
   /// Applies Paseo's 1 MiB per-file and 2 MiB aggregate structured-diff
   /// budgets, preserving stats while omitting oversized hunks.
   DiffResponse applyCheckoutDiffBudgets(DiffResponse response) {
@@ -655,3 +877,124 @@ class GitService {
     return infos;
   }
 }
+
+final class CheckoutCommitsResult {
+  const CheckoutCommitsResult({required this.baseRef, required this.commits});
+
+  final String? baseRef;
+  final List<CheckoutCommit> commits;
+}
+
+final class _ParsedCheckoutCommit {
+  const _ParsedCheckoutCommit({
+    required this.sha,
+    required this.shortSha,
+    required this.authorName,
+    required this.authorDate,
+    required this.subject,
+    required this.files,
+  });
+
+  final String sha;
+  final String shortSha;
+  final String authorName;
+  final String authorDate;
+  final String subject;
+  final List<CheckoutCommitFile> files;
+}
+
+List<_ParsedCheckoutCommit> _parseCheckoutCommitRecords(String output) {
+  final commits = <_ParsedCheckoutCommit>[];
+  for (final rawRecord in output.split(_commitRecordSeparator)) {
+    final record = rawRecord.replaceFirst(RegExp(r'^[\r\n]+'), '');
+    if (record.isEmpty) continue;
+    final lines = record.split(RegExp(r'\r?\n'));
+    final fields = lines.first.split(_commitFieldSeparator);
+    if (fields.length < 5) continue;
+    final sha = fields[0].trim();
+    if (sha.isEmpty) continue;
+
+    final stats = <String, ({int additions, int deletions})>{};
+    final statuses = <String, CheckoutCommitFileStatus>{};
+    for (final line in lines.skip(1)) {
+      if (line.isEmpty) continue;
+      if (line.startsWith(':')) {
+        _parseCheckoutRawStatus(line, statuses);
+      } else {
+        _parseCheckoutNumstat(line, stats);
+      }
+    }
+    commits.add(
+      _ParsedCheckoutCommit(
+        sha: sha,
+        shortSha: fields[1].trim(),
+        authorName: fields[2],
+        authorDate: fields[3].trim(),
+        subject: fields[4],
+        files: [
+          for (final entry in stats.entries)
+            CheckoutCommitFile(
+              path: entry.key,
+              additions: entry.value.additions,
+              deletions: entry.value.deletions,
+              status: statuses[entry.key],
+            ),
+        ],
+      ),
+    );
+  }
+  return commits;
+}
+
+void _parseCheckoutRawStatus(
+  String line,
+  Map<String, CheckoutCommitFileStatus> statuses,
+) {
+  final parts = line.split('\t');
+  final metadata = parts.first;
+  final statusToken = metadata.substring(metadata.lastIndexOf(' ') + 1);
+  if (statusToken.isEmpty) return;
+  final letter = statusToken[0];
+  final status = switch (letter) {
+    'A' || 'C' => CheckoutCommitFileStatus.added,
+    'M' || 'T' => CheckoutCommitFileStatus.modified,
+    'D' => CheckoutCommitFileStatus.deleted,
+    'R' => CheckoutCommitFileStatus.renamed,
+    _ => null,
+  };
+  if (status == null || parts.length < 2) return;
+  final path = letter == 'R' || letter == 'C' ? parts.last : parts[1];
+  if (path.isNotEmpty) statuses[path] = status;
+}
+
+void _parseCheckoutNumstat(
+  String line,
+  Map<String, ({int additions, int deletions})> stats,
+) {
+  final parts = line.split('\t');
+  if (parts.length < 3) return;
+  final path = _normalizeCheckoutNumstatPath(parts.skip(2).join('\t'));
+  if (path.isEmpty) return;
+  if (parts[0] == '-' || parts[1] == '-') {
+    stats[path] = (additions: 0, deletions: 0);
+    return;
+  }
+  final additions = int.tryParse(parts[0]);
+  final deletions = int.tryParse(parts[1]);
+  if (additions == null || deletions == null) return;
+  stats[path] = (additions: additions, deletions: deletions);
+}
+
+String _normalizeCheckoutNumstatPath(String value) {
+  final braces = RegExp(r'^(.*)\{(.*) => (.*)\}(.*)$').firstMatch(value);
+  if (braces != null) {
+    return '${braces.group(1)}${braces.group(3)}${braces.group(4)}';
+  }
+  final inline = RegExp(r'^(.*) => (.*)$').firstMatch(value);
+  return inline?.group(2) ?? value;
+}
+
+String _normalizeLocalBranchRef(String input) => input
+    .replaceFirst(RegExp(r'^refs/remotes/origin/'), '')
+    .replaceFirst(RegExp(r'^refs/heads/'), '')
+    .replaceFirst(RegExp(r'^origin/'), '');

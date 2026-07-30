@@ -56,6 +56,10 @@ enum WorktreeTabKind {
   /// one agent.
   diff,
 
+  /// One historical commit's diff. Runtime-only and deliberately omitted
+  /// from persisted workspace layouts.
+  commitDiff,
+
   /// A workspace file preview. Identity is stable by path; repeated opens
   /// update the requested line range and navigation revision in place.
   file,
@@ -79,6 +83,7 @@ class WorktreeTab {
     this.setupWorkspaceId,
     this.diffFocusPath,
     this.diffFocusRequestId,
+    this.commitSha,
   });
 
   final String tabId;
@@ -100,6 +105,7 @@ class WorktreeTab {
   final String? setupWorkspaceId;
   final String? diffFocusPath;
   final int? diffFocusRequestId;
+  final String? commitSha;
 
   WorkspaceTabTarget? get workspaceTarget => switch (kind) {
     WorktreeTabKind.draft => WorkspaceDraftTabTarget(draftId: tabId),
@@ -119,6 +125,8 @@ class WorktreeTab {
       focusPath: diffFocusPath,
       focusRequestId: diffFocusRequestId,
     ),
+    WorktreeTabKind.commitDiff =>
+      commitSha == null ? null : WorkspaceCommitDiffTabTarget(sha: commitSha!),
     WorktreeTabKind.file =>
       filePath == null
           ? null
@@ -155,6 +163,7 @@ class WorktreeTab {
     setupWorkspaceId: setupWorkspaceId ?? this.setupWorkspaceId,
     diffFocusPath: diffFocusPath,
     diffFocusRequestId: diffFocusRequestId,
+    commitSha: commitSha,
   );
 
   WorktreeTab withDiffFocus({
@@ -174,6 +183,7 @@ class WorktreeTab {
     setupWorkspaceId: setupWorkspaceId,
     diffFocusPath: focusPath,
     diffFocusRequestId: focusRequestId,
+    commitSha: commitSha,
   );
 
   static WorktreeTab fromJson(Map<String, Object?> json) {
@@ -202,6 +212,7 @@ class WorktreeTab {
       setupWorkspaceId: json['setupWorkspaceId'] as String?,
       diffFocusPath: normalizedDiffTarget?.focusPath,
       diffFocusRequestId: normalizedDiffTarget?.focusRequestId,
+      commitSha: json['commitSha'] as String?,
     );
   }
 
@@ -220,6 +231,7 @@ class WorktreeTab {
     if (setupWorkspaceId != null) 'setupWorkspaceId': setupWorkspaceId,
     if (diffFocusPath != null) 'diffFocusPath': diffFocusPath,
     if (diffFocusRequestId != null) 'diffFocusRequestId': diffFocusRequestId,
+    if (commitSha != null) 'commitSha': commitSha,
   };
 
   @override
@@ -237,7 +249,8 @@ class WorktreeTab {
       other.fileNavigationRevision == fileNavigationRevision &&
       other.setupWorkspaceId == setupWorkspaceId &&
       other.diffFocusPath == diffFocusPath &&
-      other.diffFocusRequestId == diffFocusRequestId;
+      other.diffFocusRequestId == diffFocusRequestId &&
+      other.commitSha == commitSha;
 
   @override
   int get hashCode => Object.hash(
@@ -254,6 +267,7 @@ class WorktreeTab {
     setupWorkspaceId,
     diffFocusPath,
     diffFocusRequestId,
+    commitSha,
   );
 }
 
@@ -669,6 +683,35 @@ class WorktreeTabsNotifier extends Notifier<WorktreeTabLayoutState> {
     // of a stale on-disk snapshot that would discard not-yet-persisted local
     // mutations (like a tab just added via addTab()).
     _cachedLayout = layout;
+    final persistentTabs = layout.tabs
+        .where((tab) => tab.kind != WorktreeTabKind.commitDiff)
+        .toList(growable: false);
+    final persistentActive =
+        persistentTabs.any((tab) => tab.tabId == layout.activeTabId)
+        ? layout.activeTabId
+        : persistentTabs.firstOrNull?.tabId;
+    final persistentLayout = WorktreeTabLayout(
+      tabs: persistentTabs,
+      activeTabId: persistentActive,
+      paneLayout: persistentTabs.isEmpty
+          ? null
+          : reconcileWorkspacePaneLayout(
+              layout:
+                  layout.paneLayout ??
+                  WorkspacePaneLayout.single(
+                    paneId: 'pane_root',
+                    tabIds: persistentTabs
+                        .map((tab) => tab.tabId)
+                        .toList(growable: false),
+                    focusedTabId: persistentActive,
+                  ),
+              tabIds: persistentTabs
+                  .map((tab) => tab.tabId)
+                  .toList(growable: false),
+              preferredTabId: persistentActive,
+            ),
+      pinnedAgentIds: layout.pinnedAgentIds,
+    );
     // The actual blob write stays deferred: writing to
     // worktreeTabLayoutsProvider synchronously from here — even outside
     // build() — can re-enter this same notifier's build() (since it watches
@@ -681,7 +724,7 @@ class WorktreeTabsNotifier extends Notifier<WorktreeTabLayoutState> {
         _legacyKeyToRemove = null;
         ref
             .read(worktreeTabLayoutsProvider.notifier)
-            .setLayout(persistenceKey, layout, removeKey: removeKey);
+            .setLayout(persistenceKey, persistentLayout, removeKey: removeKey);
       }
     });
   }
@@ -775,6 +818,38 @@ class WorktreeTabsNotifier extends Notifier<WorktreeTabLayoutState> {
           kind: WorktreeTabKind.diff,
           diffFocusPath: normalizedFocusPath,
           diffFocusRequestId: normalizedFocusRequestId,
+        ),
+      ],
+      nextActive: (_) => tabId,
+    );
+  }
+
+  /// Opens one historical commit diff. Identity is deterministic by full SHA,
+  /// so reopening the same commit focuses its existing ephemeral tab.
+  void showCommitDiffTab(String sha) {
+    final target = normalizeWorkspaceTabTarget(
+      WorkspaceCommitDiffTabTarget(sha: sha),
+    );
+    if (target is! WorkspaceCommitDiffTabTarget) return;
+    final existing = state.layout.tabs
+        .where(
+          (tab) =>
+              tab.kind == WorktreeTabKind.commitDiff &&
+              tab.commitSha == target.sha,
+        )
+        .firstOrNull;
+    if (existing != null) {
+      setActiveTab(existing.tabId);
+      return;
+    }
+    final tabId = buildDeterministicWorkspaceTabId(target);
+    _mutate(
+      (tabs) => [
+        ...tabs,
+        WorktreeTab(
+          tabId: tabId,
+          kind: WorktreeTabKind.commitDiff,
+          commitSha: target.sha,
         ),
       ],
       nextActive: (_) => tabId,
@@ -1304,7 +1379,10 @@ class WorktreeTabsNotifier extends Notifier<WorktreeTabLayoutState> {
       case WorkspaceProviderSubagentTabTarget():
         focusProviderSubagent(target.parentAgentId, target.subagentId);
         return buildDeterministicWorkspaceTabId(target);
-      case WorkspaceBrowserTabTarget() || WorkspaceCommitDiffTabTarget():
+      case WorkspaceCommitDiffTabTarget():
+        showCommitDiffTab(target.sha);
+        return buildDeterministicWorkspaceTabId(target);
+      case WorkspaceBrowserTabTarget():
         return null;
     }
     _mutate((tabs) => [...tabs, tab], nextActive: (_) => tab.tabId);

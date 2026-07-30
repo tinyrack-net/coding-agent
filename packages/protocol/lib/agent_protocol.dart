@@ -34,6 +34,7 @@ export 'src/messages/create_agent.dart';
 export 'src/messages/checkout_pr.dart';
 export 'src/messages/checkout_refresh.dart';
 export 'src/messages/checkout_check_details.dart';
+export 'src/messages/checkout_commits.dart';
 export 'src/messages/checkout_diff.dart';
 export 'src/messages/checkout_pr_status.dart';
 export 'src/messages/checkout_status.dart';

@@ -748,6 +748,53 @@ void main() {
     expect(firstDiffTabId, 'working_diff');
   });
 
+  test('commit diff tabs reuse SHA identity but remain runtime-only', () async {
+    const persistenceKey = 'server-a:workspace-a';
+    final container = await makeContainer(persistenceKey: persistenceKey);
+    final provider = worktreeTabsProvider(_worktreePath);
+    final notifier = container.read(provider.notifier);
+
+    notifier.showCommitDiffTab(' abcdef0123456789 ');
+    notifier.showCommitDiffTab('abcdef0123456789');
+    notifier.showCommitDiffTab('fedcba9876543210');
+
+    final runtime = container.read(provider).layout;
+    final commits = runtime.tabs
+        .where((tab) => tab.kind == WorktreeTabKind.commitDiff)
+        .toList();
+    expect(commits, hasLength(2));
+    expect(commits.first.tabId, 'commit_diff_abcdef0123456789');
+    expect(commits.first.commitSha, 'abcdef0123456789');
+    expect(runtime.activeTabId, 'commit_diff_fedcba9876543210');
+    expect(
+      notifier.focusOpenIntentTarget(
+        const WorkspaceCommitDiffTabTarget(sha: 'abcdef0123456789'),
+      ),
+      'commit_diff_abcdef0123456789',
+    );
+    expect(
+      container.read(provider).layout.activeTabId,
+      'commit_diff_abcdef0123456789',
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    final persisted = container.read(
+      worktreeTabLayoutsProvider,
+    )[persistenceKey]!;
+    expect(
+      persisted.tabs.where((tab) => tab.kind == WorktreeTabKind.commitDiff),
+      isEmpty,
+    );
+    expect(
+      jsonDecode(
+        (await SharedPreferences.getInstance()).getString(
+          'worktree.tabLayouts',
+        )!,
+      ).toString(),
+      isNot(contains('commitDiff')),
+    );
+  });
+
   test(
     'working diff open intents update the singleton focus request',
     () async {

@@ -168,6 +168,11 @@ void main() {
         containsPair('stableProjectIdentity', true),
       );
       expect(serverInfo['features'], containsPair('projectRemove', true));
+      expect(serverInfo['features'], containsPair('commitsList', true));
+      expect(
+        serverInfo['features'],
+        containsPair('commitBaseClassification', true),
+      );
 
       final eventFuture = frames.firstWhere(
         (frame) =>

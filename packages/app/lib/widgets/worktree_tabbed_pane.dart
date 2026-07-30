@@ -35,6 +35,7 @@ import '../workspace/workspace_tab_drag_accessibility.dart';
 import '../workspace/workspace_tab_layout.dart';
 import '../workspace/workspace_mounted_tab_set.dart';
 import 'diff/diff_pane.dart';
+import 'diff/commit_diff_pane.dart';
 import 'draft_session_composer.dart';
 import 'terminal_pane.dart';
 import 'workspace_file_pane.dart';
@@ -177,6 +178,7 @@ class WorktreeTabbedPane extends ConsumerWidget {
       WorktreeTabKind.terminal => _closeTerminalTab(context, ref, tab),
       WorktreeTabKind.draft ||
       WorktreeTabKind.diff ||
+      WorktreeTabKind.commitDiff ||
       WorktreeTabKind.providerSubagent ||
       WorktreeTabKind.file ||
       WorktreeTabKind.setup => Future.sync(
@@ -193,6 +195,9 @@ class WorktreeTabbedPane extends ConsumerWidget {
         return 'New agent';
       case WorktreeTabKind.diff:
         return 'Changes';
+      case WorktreeTabKind.commitDiff:
+        final sha = tab.commitSha ?? '';
+        return sha.length <= 7 ? sha : sha.substring(0, 7);
       case WorktreeTabKind.terminal:
         return 'Terminal $terminalOrdinal';
       case WorktreeTabKind.agent:
@@ -247,6 +252,7 @@ class WorktreeTabbedPane extends ConsumerWidget {
     return switch (tab.kind) {
       WorktreeTabKind.draft => FluentIcons.add,
       WorktreeTabKind.diff => FluentIcons.branch_compare,
+      WorktreeTabKind.commitDiff => FluentIcons.git_graph,
       WorktreeTabKind.terminal => FluentIcons.command_prompt,
       WorktreeTabKind.agent => FluentIcons.chat,
       WorktreeTabKind.providerSubagent => FluentIcons.branch_fork,
@@ -280,6 +286,11 @@ class WorktreeTabbedPane extends ConsumerWidget {
       focusPath: tab.diffFocusPath,
       focusRequestId: tab.diffFocusRequestId,
       onOpenWorkspaceFile: onOpenWorkspaceFile,
+    ),
+    WorktreeTabKind.commitDiff => CommitDiffPane(
+      serverId: _workspaceServerId(ref),
+      cwd: worktreePath,
+      sha: tab.commitSha!,
     ),
     WorktreeTabKind.terminal => TerminalPane(
       worktreePath: worktreePath,
@@ -416,6 +427,12 @@ class WorktreeTabbedPane extends ConsumerWidget {
                 .closeTab(tab.tabId);
           }
 
+          void openCommitDiff(String sha) {
+            ref
+                .read(worktreeTabsProvider(worktreePath).notifier)
+                .showCommitDiffTab(sha);
+          }
+
           void addFileToChat(String path) {
             final target = focusedChat;
             if (target == null) return;
@@ -493,6 +510,7 @@ class WorktreeTabbedPane extends ConsumerWidget {
                   onChangesFilePress: changesTab == null ? null : openChanges,
                   onOpenFile: openWorkspaceFile,
                   onAddFileToChat: focusedChat == null ? null : addFileToChat,
+                  onCommitPress: openCommitDiff,
                   onClose: () => ref
                       .read(
                         workspaceExplorerVisibilityProvider(

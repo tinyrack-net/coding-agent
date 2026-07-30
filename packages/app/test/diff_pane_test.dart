@@ -13,12 +13,23 @@ import 'package:flutter_test/flutter_test.dart';
 const _cwd = '/work/demo';
 
 class FakeDaemonClient extends DaemonClient {
-  FakeDaemonClient({this.diff = const DiffResponse(files: [])})
-    : super(uri: Uri.parse('ws://fake'));
+  FakeDaemonClient({
+    this.diff = const DiffResponse(files: []),
+    this.commits = const [],
+  }) : super(uri: Uri.parse('ws://fake')) {
+    serverInfo = const ServerInfoStatus(
+      serverId: 'server-1',
+      hostname: 'test',
+      version: '0.2.0',
+      desktopManaged: false,
+      features: {'commitsList': true, 'commitBaseClassification': true},
+    );
+  }
 
   final requests = <(String, Map<String, Object?>)>[];
   final sessionRequests = <Map<String, Object?>>[];
   final DiffResponse diff;
+  final List<CheckoutCommit> commits;
   bool failNextGet = false;
   final downloadRequests = <(String, String)>[];
 
@@ -102,6 +113,15 @@ class FakeDaemonClient extends DaemonClient {
         requestId: message['requestId']! as String,
       ).toJson();
     }
+    if (message['type'] == CheckoutCommitsListRequest.type) {
+      return CheckoutCommitsListResponse(
+        cwd: message['cwd']! as String,
+        baseRef: 'main',
+        commits: commits,
+        error: null,
+        requestId: message['requestId']! as String,
+      ).toJson();
+    }
     return const {};
   }
 }
@@ -118,6 +138,7 @@ Future<ProviderContainer> pumpDiffPane(
   ValueChanged<String>? onChangesFilePress,
   ValueChanged<WorkspaceFileOpenRequest>? onOpenWorkspaceFile,
   ValueChanged<String>? onAddToChat,
+  ValueChanged<String>? onCommitPress,
   ExternalUrlLauncher? launcher,
 }) async {
   final container = ProviderContainer(
@@ -149,6 +170,7 @@ Future<ProviderContainer> pumpDiffPane(
             onChangesFilePress: onChangesFilePress,
             onOpenWorkspaceFile: onOpenWorkspaceFile,
             onAddToChat: onAddToChat,
+            onCommitPress: onCommitPress,
           ),
         ),
       ),
@@ -160,6 +182,70 @@ Future<ProviderContainer> pumpDiffPane(
 }
 
 void main() {
+  testWidgets('compact Changes lazily lists workspace commits and opens one', (
+    tester,
+  ) async {
+    const workspaceCommit = CheckoutCommit(
+      sha: 'abcdef0123456789',
+      shortSha: 'abcdef0',
+      subject: 'Workspace change',
+      authorName: 'Test',
+      authorDate: '2026-07-30T00:00:00.000Z',
+      isOnRemote: false,
+      isOnBase: false,
+      files: [],
+    );
+    const baseCommit = CheckoutCommit(
+      sha: '1111111111111111',
+      shortSha: '1111111',
+      subject: 'Base change',
+      authorName: 'Test',
+      authorDate: '2026-07-29T00:00:00.000Z',
+      isOnRemote: true,
+      isOnBase: true,
+      files: [],
+    );
+    final client = FakeDaemonClient(
+      commits: const [workspaceCommit, baseCommit],
+    );
+    final opened = <String>[];
+    await pumpDiffPane(
+      tester,
+      client: client,
+      live: true,
+      compact: true,
+      onCommitPress: opened.add,
+    );
+
+    expect(
+      find.byKey(const ValueKey('commits-section-header')),
+      findsOneWidget,
+    );
+    expect(
+      client.sessionRequests.where(
+        (request) => request['type'] == CheckoutCommitsListRequest.type,
+      ),
+      isEmpty,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('commits-section-header')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('commit-row-abcdef0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('commit-row-1111111')), findsNothing);
+    expect(find.byKey(const ValueKey('commit-dot-local')), findsOneWidget);
+    expect(
+      client.sessionRequests.where(
+        (request) => request['type'] == CheckoutCommitsListRequest.type,
+      ),
+      hasLength(1),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('commit-row-abcdef0')));
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(opened, ['abcdef0123456789']);
+  });
+
   testWidgets('compact Changes toolbar exposes the open-tab toggle state', (
     tester,
   ) async {

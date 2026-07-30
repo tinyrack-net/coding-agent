@@ -86,6 +86,7 @@ import 'workspace/service_proxy_standalone.dart';
 import 'workspace/script_health_monitor.dart';
 import 'workspace/checkout_status_service.dart';
 import 'workspace/checkout_diff_service.dart';
+import 'workspace/checkout_commits_service.dart';
 import 'workspace/polling_workspace_git_backend.dart';
 import 'workspace/project_github_clone_service.dart';
 import 'workspace/github_repository_search_service.dart';
@@ -843,6 +844,13 @@ Future<DaemonServerHandle> startDaemonServer({
   final checkoutDiff = CheckoutDiffService(
     git: gitService,
     backend: workspaceGitObserverBackend,
+  );
+  final checkoutCommits = CheckoutCommitsService(
+    git: gitService,
+    resolveStoredBaseRef: (cwd) async => (await resolveCheckoutStatusWorkspace(
+      workspaceRegistries.workspaces,
+      cwd,
+    ))?.baseBranch,
   );
   final forgeSearch = ForgeSearchService(resolver: forgeResolver);
   final pullRequestTimeline = PullRequestTimelineService(
@@ -1732,6 +1740,8 @@ Future<DaemonServerHandle> startDaemonServer({
     if (forgeActionResponse != null) return forgeActionResponse;
     final checkoutStatusResponse = await checkoutStatus.handle(message);
     if (checkoutStatusResponse != null) return checkoutStatusResponse;
+    final checkoutCommitsResponse = await checkoutCommits.handle(message);
+    if (checkoutCommitsResponse != null) return checkoutCommitsResponse;
     if (message['type'] == SubscribeCheckoutDiffRequest.type) {
       return checkoutDiff.subscribe(connection, message);
     }

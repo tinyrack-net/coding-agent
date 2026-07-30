@@ -493,6 +493,8 @@ class WsServer {
       'workspaceGithubRepositorySearch': true,
       'projectCreateDirectory': true,
       'projectRemove': true,
+      'commitsList': true,
+      'commitBaseClassification': true,
     },
   ).toJson();
 

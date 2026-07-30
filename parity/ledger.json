@@ -1305,9 +1305,11 @@
     },
     {
       "id": "release-feature:006-browse-workspace-commit-history-and-open-individual-commit-diffs-from-changes",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/checkout_commits.dart; packages/daemon/lib/src/git/git_service.dart; packages/daemon/lib/src/workspace/checkout_commits_service.dart; packages/daemon/lib/src/daemon_server.dart; packages/app/lib/state/checkout_commits_provider.dart; packages/app/lib/widgets/diff/commits_section.dart; packages/app/lib/widgets/diff/commit_diff_pane.dart; packages/app/lib/widgets/diff/diff_pane.dart; packages/app/lib/state/worktree_tabs_provider.dart; packages/app/lib/widgets/worktree_tabbed_pane.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_commits_test.dart; packages/daemon/test/workspace/checkout_commits_service_test.dart; packages/daemon/test/daemon_checkout_commits_e2e_test.dart; packages/daemon/test/ws_server_test.dart; packages/app/test/diff_pane_test.dart; packages/app/test/commit_diff_pane_test.dart; packages/app/test/worktree_tabs_provider_test.dart"
+      ],
       "notes": null
     },
     {
