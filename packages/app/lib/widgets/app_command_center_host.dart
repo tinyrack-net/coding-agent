@@ -250,14 +250,14 @@ class _AppCommandCenterHostState extends ConsumerState<AppCommandCenterHost> {
     switch (name) {
       case ShortcutCallbackName.toggleAgentList:
         if (ref.read(appCompactLayoutProvider)) {
-          ref.read(mobileSidebarVisibilityProvider.notifier).toggle();
+          ref.read(mobilePanelProvider.notifier).toggleAgentList();
         } else {
           ref.read(appSidebarVisibilityProvider.notifier).toggle();
         }
         return true;
       case ShortcutCallbackName.toggleBothSidebars:
         if (ref.read(appCompactLayoutProvider)) {
-          ref.read(mobileSidebarVisibilityProvider.notifier).toggle();
+          ref.read(mobilePanelProvider.notifier).toggleAgentList();
           return true;
         }
         final leftVisible = ref.read(appSidebarVisibilityProvider);
@@ -329,6 +329,10 @@ class _AppCommandCenterHostState extends ConsumerState<AppCommandCenterHost> {
         return true;
       case 'sidebar.toggle.right':
         if (path == null) return false;
+        if (ref.read(appCompactLayoutProvider)) {
+          ref.read(mobilePanelProvider.notifier).toggleFileExplorer();
+          return true;
+        }
         final provider = workspaceExplorerVisibilityProvider(path);
         final notifier = ref.read(provider.notifier);
         if (ref.read(provider)) {

@@ -4,6 +4,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/keyboard/shortcut_engine.dart';
 import 'package:coding_agent_app/keyboard/shortcut_focus_scope.dart';
+import 'package:coding_agent_app/mobile_panels/mobile_panel_model.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/add_project_flow_provider.dart';
 import 'package:coding_agent_app/state/appearance_provider.dart';
@@ -669,7 +670,8 @@ void main() {
   ) async {
     final (container, _) = await _pumpHost(tester);
     container.read(appCompactLayoutProvider.notifier).setCompact(true);
-    expect(container.read(mobileSidebarVisibilityProvider), isFalse);
+    container.read(selectedWorktreeProvider.notifier).select('/work/compact');
+    expect(container.read(mobilePanelProvider).target, MobilePanelView.agent);
     expect(container.read(appSidebarVisibilityProvider), isTrue);
 
     await _sendShortcut(
@@ -678,7 +680,10 @@ void main() {
       physicalKey: PhysicalKeyboardKey.keyB,
       control: true,
     );
-    expect(container.read(mobileSidebarVisibilityProvider), isTrue);
+    expect(
+      container.read(mobilePanelProvider).target,
+      MobilePanelView.agentList,
+    );
     expect(container.read(appSidebarVisibilityProvider), isTrue);
 
     await _sendShortcut(
@@ -687,8 +692,27 @@ void main() {
       physicalKey: PhysicalKeyboardKey.period,
       control: true,
     );
-    expect(container.read(mobileSidebarVisibilityProvider), isFalse);
+    expect(container.read(mobilePanelProvider).target, MobilePanelView.agent);
     expect(container.read(appSidebarVisibilityProvider), isTrue);
+
+    await _sendShortcut(
+      tester,
+      LogicalKeyboardKey.keyE,
+      physicalKey: PhysicalKeyboardKey.keyE,
+      control: true,
+    );
+    expect(
+      container.read(mobilePanelProvider).target,
+      MobilePanelView.fileExplorer,
+    );
+
+    await _sendShortcut(
+      tester,
+      LogicalKeyboardKey.keyE,
+      physicalKey: PhysicalKeyboardKey.keyE,
+      control: true,
+    );
+    expect(container.read(mobilePanelProvider).target, MobilePanelView.agent);
   });
 
   testWidgets('message-input focus scope routes focus and mode shortcuts', (

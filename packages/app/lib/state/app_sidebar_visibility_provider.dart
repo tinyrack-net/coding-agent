@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../mobile_panels/mobile_panel_model.dart';
+
 class AppSidebarVisibilityNotifier extends Notifier<bool> {
   @override
   bool build() => true;
@@ -14,18 +16,36 @@ final appSidebarVisibilityProvider =
       AppSidebarVisibilityNotifier.new,
     );
 
-class MobileSidebarVisibilityNotifier extends Notifier<bool> {
+class MobilePanelNotifier extends Notifier<MobilePanelSelection> {
   @override
-  bool build() => false;
+  MobilePanelSelection build() => const MobilePanelSelection.initial();
 
-  void toggle() => state = !state;
-  void show() => state = true;
-  void hide() => state = false;
+  void _setTarget(MobilePanelView target) {
+    state = state.setTarget(target);
+  }
+
+  void showAgent() => _setTarget(MobilePanelView.agent);
+
+  void showAgentList() => _setTarget(MobilePanelView.agentList);
+
+  void showFileExplorer() => _setTarget(MobilePanelView.fileExplorer);
+
+  void toggleAgentList() => _setTarget(
+    state.target == MobilePanelView.agentList
+        ? MobilePanelView.agent
+        : MobilePanelView.agentList,
+  );
+
+  void toggleFileExplorer() => _setTarget(
+    state.target == MobilePanelView.fileExplorer
+        ? MobilePanelView.agent
+        : MobilePanelView.fileExplorer,
+  );
 }
 
-final mobileSidebarVisibilityProvider =
-    NotifierProvider<MobileSidebarVisibilityNotifier, bool>(
-      MobileSidebarVisibilityNotifier.new,
+final mobilePanelProvider =
+    NotifierProvider<MobilePanelNotifier, MobilePanelSelection>(
+      MobilePanelNotifier.new,
     );
 
 class AppCompactLayoutNotifier extends Notifier<bool> {

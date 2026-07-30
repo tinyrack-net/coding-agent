@@ -10,6 +10,7 @@ import '../core/host_routes.dart';
 import '../core/theme.dart';
 import '../core/worktree_actions.dart';
 import '../layout/desktop_sidebar_layout.dart';
+import '../mobile_panels/mobile_panel_model.dart';
 import '../sidebar/sidebar_project_row_model.dart';
 import '../sidebar/sidebar_gesture_interaction.dart';
 import '../sidebar/sidebar_reorder.dart';
@@ -36,8 +37,10 @@ import '../widgets/provider_settings_host.dart';
 import '../widgets/sidebar_agent_list_skeleton.dart';
 import '../widgets/sidebar_callout_slot.dart';
 import '../widgets/sidebar_resize_handle.dart';
+import '../widgets/workspace_explorer.dart';
 import '../widgets/worktree_tabbed_pane.dart';
 import '../workspace/workspace_deck_retention.dart';
+import '../workspace/workspace_file_open.dart';
 
 /// Desktop-style shell: agent sidebar on the left, persistent across every
 /// route, with [child] (the currently routed page) filling the rest.
@@ -89,83 +92,333 @@ class _CompactHomeLayout extends ConsumerStatefulWidget {
   ConsumerState<_CompactHomeLayout> createState() => _CompactHomeLayoutState();
 }
 
-class _CompactHomeLayoutState extends ConsumerState<_CompactHomeLayout> {
-  double _horizontalDrag = 0;
+class _CompactHomeLayoutState extends ConsumerState<_CompactHomeLayout>
+    with SingleTickerProviderStateMixin {
+  static const _animationDuration = Duration(milliseconds: 220);
+  static const _animationCurve = Cubic(0.25, 0.1, 0.25, 1);
 
-  void _beginDrag(DragStartDetails _) => _horizontalDrag = 0;
+  late final AnimationController _position;
+  late MobilePanelMotionState _motionState;
+  double _horizontalDrag = 0;
+  var _startedRevision = -1;
+  var _leftPresented = false;
+  var _rightPresented = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final selection = ref.read(mobilePanelProvider);
+    _motionState = MobilePanelMotionState.fromSelection(selection);
+    _position = AnimationController.unbounded(
+      vsync: this,
+      value: getMobilePanelAnchor(selection.target),
+    );
+    _leftPresented = selection.target == MobilePanelView.agentList;
+    _rightPresented = selection.target == MobilePanelView.fileExplorer;
+    ref.listenManual<MobilePanelSelection>(
+      mobilePanelProvider,
+      (_, next) => _applySelection(next),
+    );
+  }
+
+  @override
+  void dispose() {
+    _position.dispose();
+    super.dispose();
+  }
+
+  void _applySelection(MobilePanelSelection selection) {
+    final transition = transitionMobilePanel(
+      _motionState,
+      MobilePanelCommand(selection),
+    );
+    if (identical(transition.state, _motionState)) return;
+    _motionState = transition.state;
+    final target = transition.animationTarget;
+    if (target == null) return;
+    if (target == MobilePanelView.agentList && !_leftPresented) {
+      setState(() => _leftPresented = true);
+    } else if (target == MobilePanelView.fileExplorer && !_rightPresented) {
+      setState(() => _rightPresented = true);
+    }
+    _animateTo(target, selection.revision);
+  }
+
+  void _animateTo(MobilePanelView target, int revision) {
+    unawaited(
+      _position
+          .animateTo(
+            getMobilePanelAnchor(target),
+            duration: _animationDuration,
+            curve: _animationCurve,
+          )
+          .then((_) {
+            if (!mounted) return;
+            final transition = transitionMobilePanel(
+              _motionState,
+              MobilePanelAnimationFinished(revision: revision, target: target),
+            );
+            _motionState = transition.state;
+            final selection = ref.read(mobilePanelProvider);
+            if (selection.revision != revision || selection.target != target) {
+              return;
+            }
+            setState(() {
+              _leftPresented = target == MobilePanelView.agentList;
+              _rightPresented = target == MobilePanelView.fileExplorer;
+            });
+          }),
+    );
+  }
+
+  void _beginDrag(DragStartDetails _) {
+    final selection = ref.read(mobilePanelProvider);
+    final transition = transitionMobilePanel(
+      _motionState,
+      MobilePanelGestureBegin(selection.target),
+    );
+    if (identical(transition.state, _motionState)) {
+      _startedRevision = -1;
+      return;
+    }
+    _motionState = transition.state;
+    _startedRevision = transition.state.gesture?.startedRevision ?? -1;
+    _horizontalDrag = 0;
+    _position.stop();
+    setState(() {
+      if (selection.target == MobilePanelView.agent) {
+        _leftPresented = true;
+        _rightPresented = ref.read(selectedWorktreeProvider) != null;
+      }
+    });
+  }
 
   void _updateDrag(DragUpdateDetails details) {
+    if (!isMobilePanelGestureCurrent(_motionState, _startedRevision)) {
+      return;
+    }
     _horizontalDrag += details.primaryDelta ?? 0;
+    if (_motionState.target == MobilePanelView.agent &&
+        _horizontalDrag < 0 &&
+        ref.read(selectedWorktreeProvider) == null) {
+      _position.value = 0;
+      return;
+    }
+    final width = context.size?.width ?? MediaQuery.sizeOf(context).width;
+    final nextPosition = switch (_motionState.target) {
+      MobilePanelView.agent => -_horizontalDrag / width,
+      MobilePanelView.agentList => -1 - _horizontalDrag / width,
+      MobilePanelView.fileExplorer => 1 - _horizontalDrag / width,
+    };
+    _position.value = nextPosition.clamp(-1.0, 1.0);
   }
 
-  void _finishOpenDrag(DragEndDetails _) {
-    if (_horizontalDrag >= 72) {
-      ref.read(mobileSidebarVisibilityProvider.notifier).show();
+  void _finishDrag(DragEndDetails details) {
+    if (!isMobilePanelGestureCurrent(_motionState, _startedRevision)) {
+      return;
+    }
+    final width = context.size?.width ?? MediaQuery.sizeOf(context).width;
+    final velocity = details.primaryVelocity ?? 0;
+    final origin = _motionState.target;
+    final hasExplorer = ref.read(selectedWorktreeProvider) != null;
+    final target = switch (origin) {
+      MobilePanelView.agent
+          when _horizontalDrag > width / 3 || velocity > 500 =>
+        MobilePanelView.agentList,
+      MobilePanelView.agent
+          when hasExplorer &&
+              (_horizontalDrag < -width / 3 || velocity < -500) =>
+        MobilePanelView.fileExplorer,
+      MobilePanelView.agent => MobilePanelView.agent,
+      MobilePanelView.agentList
+          when _horizontalDrag < -width / 3 || velocity < -500 =>
+        MobilePanelView.agent,
+      MobilePanelView.agentList => MobilePanelView.agentList,
+      MobilePanelView.fileExplorer
+          when _horizontalDrag > width / 3 || velocity > 500 =>
+        MobilePanelView.agent,
+      MobilePanelView.fileExplorer => MobilePanelView.fileExplorer,
+    };
+    final transition = transitionMobilePanel(
+      _motionState,
+      MobilePanelGestureFinish(
+        startedRevision: _startedRevision,
+        success: true,
+        target: target,
+      ),
+    );
+    _motionState = transition.state;
+    final commit = transition.commit;
+    if (commit != null &&
+        ref.read(mobilePanelProvider).revision == commit.startedRevision) {
+      final notifier = ref.read(mobilePanelProvider.notifier);
+      switch (commit.target) {
+        case MobilePanelView.agent:
+          notifier.showAgent();
+        case MobilePanelView.agentList:
+          notifier.showAgentList();
+        case MobilePanelView.fileExplorer:
+          notifier.showFileExplorer();
+      }
+    } else {
+      _animateTo(target, _motionState.revision);
     }
     _horizontalDrag = 0;
+    _startedRevision = -1;
   }
 
-  void _finishCloseDrag(DragEndDetails _) {
-    if (_horizontalDrag <= -72) {
-      ref.read(mobileSidebarVisibilityProvider.notifier).hide();
+  void _cancelDrag() {
+    if (!isMobilePanelGestureCurrent(_motionState, _startedRevision)) {
+      return;
     }
+    final target = _motionState.target;
+    final transition = transitionMobilePanel(
+      _motionState,
+      MobilePanelGestureFinish(
+        startedRevision: _startedRevision,
+        success: false,
+        target: target,
+      ),
+    );
+    _motionState = transition.state;
+    _animateTo(target, _motionState.revision);
     _horizontalDrag = 0;
+    _startedRevision = -1;
   }
 
   @override
   Widget build(BuildContext context) {
-    final visible = ref.watch(mobileSidebarVisibilityProvider);
-    final visibility = ref.read(mobileSidebarVisibilityProvider.notifier);
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        GestureDetector(
-          key: const ValueKey('mobile-agent-surface'),
-          behavior: HitTestBehavior.translucent,
-          onHorizontalDragStart: visible ? null : _beginDrag,
-          onHorizontalDragUpdate: visible ? null : _updateDrag,
-          onHorizontalDragEnd: visible ? null : _finishOpenDrag,
-          child: widget.content,
-        ),
-        if (!visible)
-          Positioned(
-            top: 8,
-            left: 8,
-            child: Tooltip(
-              message: 'Open menu',
-              child: IconButton(
-                key: const ValueKey('menu-button'),
-                icon: const Icon(FluentIcons.global_nav_button, size: 16),
-                onPressed: visibility.show,
-              ),
-            ),
-          ),
-        if (visible) ...[
-          Positioned.fill(
-            child: GestureDetector(
-              key: const ValueKey('agent-list-backdrop'),
-              behavior: HitTestBehavior.opaque,
-              onTap: visibility.hide,
-              child: ColoredBox(color: Colors.black.withValues(alpha: 0.5)),
-            ),
-          ),
-          Positioned.fill(
-            key: const ValueKey('mobile-left-sidebar'),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
+    final selection = ref.watch(mobilePanelProvider);
+    final selectedWorktree = ref.watch(selectedWorktreeProvider);
+    final notifier = ref.read(mobilePanelProvider.notifier);
+    if (selection.target == MobilePanelView.fileExplorer &&
+        selectedWorktree == null) {
+      scheduleMicrotask(notifier.showAgent);
+    }
+
+    void openWorkspaceFile(WorkspaceFileOpenRequest request) {
+      final path = selectedWorktree;
+      if (path == null) return;
+      final tabs = ref.read(worktreeTabsProvider(path).notifier);
+      if (request.disposition == OpenFileDisposition.side) {
+        tabs.openFileInSidePane(request.location);
+      } else {
+        tabs.openFile(request.location);
+      }
+      notifier.showAgent();
+    }
+
+    return AnimatedBuilder(
+      animation: _position,
+      builder: (context, _) {
+        final frame = getMobilePanelFrame(
+          _position.value,
+          MediaQuery.sizeOf(context).width,
+        );
+        final overlayOpacity =
+            frame.leftBackdropOpacity + frame.rightBackdropOpacity;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            GestureDetector(
+              key: const ValueKey('mobile-agent-surface'),
+              behavior: HitTestBehavior.translucent,
               onHorizontalDragStart: _beginDrag,
               onHorizontalDragUpdate: _updateDrag,
-              onHorizontalDragEnd: _finishCloseDrag,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: context.paseoPalette.surfaceSidebar,
-                ),
-                child: _Sidebar(compact: true, onClose: visibility.hide),
-              ),
+              onHorizontalDragEnd: _finishDrag,
+              onHorizontalDragCancel: _cancelDrag,
+              child: widget.content,
             ),
-          ),
-        ],
-      ],
+            if (selection.target == MobilePanelView.agent &&
+                _position.value.abs() <= 0.002)
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Tooltip(
+                  message: 'Open menu',
+                  child: IconButton(
+                    key: const ValueKey('menu-button'),
+                    icon: const Icon(FluentIcons.global_nav_button, size: 16),
+                    onPressed: notifier.showAgentList,
+                  ),
+                ),
+              ),
+            if (_leftPresented || _rightPresented)
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: selection.target == MobilePanelView.agent,
+                  child: GestureDetector(
+                    key: ValueKey(
+                      selection.target == MobilePanelView.fileExplorer
+                          ? 'file-explorer-backdrop'
+                          : 'agent-list-backdrop',
+                    ),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: notifier.showAgent,
+                    child: ColoredBox(
+                      color: Colors.black.withValues(
+                        alpha: 0.5 * overlayOpacity.clamp(0.0, 1.0),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            if (_leftPresented)
+              Positioned.fill(
+                key: const ValueKey('mobile-left-sidebar'),
+                child: IgnorePointer(
+                  ignoring: selection.target != MobilePanelView.agentList,
+                  child: Transform.translate(
+                    offset: Offset(frame.leftTranslateX, 0),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onHorizontalDragStart: _beginDrag,
+                      onHorizontalDragUpdate: _updateDrag,
+                      onHorizontalDragEnd: _finishDrag,
+                      onHorizontalDragCancel: _cancelDrag,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: context.paseoPalette.surfaceSidebar,
+                        ),
+                        child: _Sidebar(
+                          compact: true,
+                          onClose: notifier.showAgent,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            if (_rightPresented && selectedWorktree != null)
+              Positioned.fill(
+                key: const ValueKey('mobile-file-explorer'),
+                child: IgnorePointer(
+                  ignoring: selection.target != MobilePanelView.fileExplorer,
+                  child: Transform.translate(
+                    offset: Offset(frame.rightTranslateX, 0),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onHorizontalDragStart: _beginDrag,
+                      onHorizontalDragUpdate: _updateDrag,
+                      onHorizontalDragEnd: _finishDrag,
+                      onHorizontalDragCancel: _cancelDrag,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: context.paseoPalette.surfaceSidebar,
+                        ),
+                        child: WorkspaceExplorer(
+                          cwd: selectedWorktree,
+                          onClose: notifier.showAgent,
+                          onOpenFile: openWorkspaceFile,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

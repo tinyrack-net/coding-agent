@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/app_router.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
+import 'package:coding_agent_app/mobile_panels/mobile_panel_model.dart';
 import 'package:coding_agent_app/screens/agent_chat_screen.dart';
 import 'package:coding_agent_app/screens/home_shell.dart';
 import 'package:coding_agent_app/screens/host_settings_route_screen.dart';
@@ -274,6 +275,11 @@ Future<ProviderContainer> pumpHomeShell(
   return container;
 }
 
+Future<void> settleMobilePanel(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 240));
+}
+
 void main() {
   testWidgets('compact shell starts closed and opens a full-width sidebar', (
     tester,
@@ -283,7 +289,7 @@ void main() {
       surfaceSize: const Size(500, 700),
     );
 
-    expect(container.read(mobileSidebarVisibilityProvider), isFalse);
+    expect(container.read(mobilePanelProvider).target, MobilePanelView.agent);
     expect(find.byKey(const ValueKey('menu-button')), findsOneWidget);
     expect(
       find.byKey(const ValueKey('left-sidebar-resize-handle')),
@@ -291,9 +297,12 @@ void main() {
     );
 
     await tester.tap(find.byKey(const ValueKey('menu-button')));
-    await tester.pump(const Duration(milliseconds: 120));
+    await settleMobilePanel(tester);
 
-    expect(container.read(mobileSidebarVisibilityProvider), isTrue);
+    expect(
+      container.read(mobilePanelProvider).target,
+      MobilePanelView.agentList,
+    );
     expect(find.byKey(const ValueKey('sidebar-close')), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const ValueKey('mobile-left-sidebar'))),
@@ -301,8 +310,8 @@ void main() {
     );
 
     await tester.tap(find.byKey(const ValueKey('sidebar-close')));
-    await tester.pump(const Duration(milliseconds: 120));
-    expect(container.read(mobileSidebarVisibilityProvider), isFalse);
+    await settleMobilePanel(tester);
+    expect(container.read(mobilePanelProvider).target, MobilePanelView.agent);
   });
 
   testWidgets('compact sidebar supports open and close swipe gestures', (
@@ -315,17 +324,38 @@ void main() {
 
     await tester.drag(
       find.byKey(const ValueKey('mobile-agent-surface')),
-      const Offset(100, 0),
+      const Offset(220, 0),
     );
-    await tester.pump();
-    expect(container.read(mobileSidebarVisibilityProvider), isTrue);
+    await settleMobilePanel(tester);
+    expect(
+      container.read(mobilePanelProvider).target,
+      MobilePanelView.agentList,
+    );
 
     await tester.drag(
       find.byKey(const ValueKey('mobile-left-sidebar')),
-      const Offset(-100, 0),
+      const Offset(-220, 0),
     );
-    await tester.pump();
-    expect(container.read(mobileSidebarVisibilityProvider), isFalse);
+    await settleMobilePanel(tester);
+    expect(container.read(mobilePanelProvider).target, MobilePanelView.agent);
+  });
+
+  testWidgets('compact shell rejects explorer swipe without a workspace', (
+    tester,
+  ) async {
+    final container = await pumpHomeShell(
+      tester,
+      surfaceSize: const Size(500, 700),
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey('mobile-agent-surface')),
+      const Offset(-220, 0),
+    );
+    await settleMobilePanel(tester);
+
+    expect(container.read(mobilePanelProvider).target, MobilePanelView.agent);
+    expect(find.byKey(const ValueKey('mobile-file-explorer')), findsNothing);
   });
 
   testWidgets('compact sidebar closes before route navigation', (tester) async {
@@ -334,13 +364,82 @@ void main() {
       surfaceSize: const Size(500, 700),
     );
     await tester.tap(find.byKey(const ValueKey('menu-button')));
-    await tester.pump(const Duration(milliseconds: 120));
+    await settleMobilePanel(tester);
 
     await tester.tap(find.byKey(const ValueKey('sidebar-sessions')));
-    await tester.pump(const Duration(milliseconds: 120));
+    await settleMobilePanel(tester);
 
-    expect(container.read(mobileSidebarVisibilityProvider), isFalse);
+    expect(container.read(mobilePanelProvider).target, MobilePanelView.agent);
     expect(find.byType(SessionsScreen), findsOneWidget);
+  });
+
+  testWidgets('compact workspace swipes to the right-side file explorer', (
+    tester,
+  ) async {
+    final container = await pumpHomeShell(
+      tester,
+      agents: const [_agent1],
+      surfaceSize: const Size(500, 700),
+    );
+    container.read(selectedWorktreeProvider.notifier).select('/work/one');
+    await tester.pump();
+
+    await tester.drag(
+      find.byKey(const ValueKey('mobile-agent-surface')),
+      const Offset(-220, 0),
+    );
+    await settleMobilePanel(tester);
+
+    expect(
+      container.read(mobilePanelProvider).target,
+      MobilePanelView.fileExplorer,
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('mobile-file-explorer'))),
+      const Size(500, 700),
+    );
+    expect(
+      find.byKey(const ValueKey('file-explorer-backdrop')),
+      findsOneWidget,
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey('mobile-file-explorer')),
+      const Offset(220, 0),
+    );
+    await settleMobilePanel(tester);
+    expect(container.read(mobilePanelProvider).target, MobilePanelView.agent);
+  });
+
+  testWidgets('newer compact command supersedes an in-flight gesture', (
+    tester,
+  ) async {
+    final container = await pumpHomeShell(
+      tester,
+      agents: const [_agent1],
+      surfaceSize: const Size(500, 700),
+    );
+    container.read(selectedWorktreeProvider.notifier).select('/work/one');
+    await tester.pump();
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('mobile-agent-surface'))),
+    );
+    await gesture.moveBy(const Offset(100, 0));
+    await tester.pump();
+
+    container.read(mobilePanelProvider.notifier).showFileExplorer();
+    await gesture.up();
+    await settleMobilePanel(tester);
+
+    expect(
+      container.read(mobilePanelProvider),
+      const MobilePanelSelection(
+        target: MobilePanelView.fileExplorer,
+        revision: 1,
+      ),
+    );
+    expect(find.byKey(const ValueKey('mobile-file-explorer')), findsOneWidget);
   });
 
   testWidgets('width above compact breakpoint keeps the desktop sidebar', (
