@@ -104,6 +104,8 @@ final class WorkspaceV2Service {
   final Map<String, _WorkspaceBucketHistoryEntry> _bucketHistory = {};
   final Map<String, WorkspaceGitSubscription> _gitSubscriptions = {};
   final Map<String, _PendingAgentBootstrap> _pendingAgentBootstraps = {};
+  final Map<({String connectionId, String requestId}), ProjectMutation>
+  _deferredProjectRenameUpdates = {};
 
   Future<Map<String, Object?>?> handle(
     Connection connection,
@@ -149,6 +151,7 @@ final class WorkspaceV2Service {
         ProjectCreateDirectoryRequest.fromJson(message),
       ),
       'project.rename.request' => _projectRename(
+        connection,
         ProjectRenameRequest.fromJson(message),
       ),
       'project.remove.request' => _projectRemove(
@@ -385,6 +388,9 @@ final class WorkspaceV2Service {
 
   void onConnectionClosed(String connectionId) {
     _workspaceSubscriptions.remove(connectionId);
+    _deferredProjectRenameUpdates.removeWhere(
+      (key, _) => key.connectionId == connectionId,
+    );
   }
 
   /// Flushes updates that raced the initial directory snapshot.
@@ -397,6 +403,18 @@ final class WorkspaceV2Service {
     final subscription = _workspaceSubscriptions[connectionId];
     if (subscription?.subscriptionId != subscriptionId) return;
     subscription!.flush(emit: (message) => _broadcast(message, {connectionId}));
+  }
+
+  /// Emits the replica mutation only after the correlated response is written.
+  Future<void> afterProjectRenameResponseSent(
+    String connectionId,
+    String requestId,
+  ) async {
+    final mutation = _deferredProjectRenameUpdates.remove((
+      connectionId: connectionId,
+      requestId: requestId,
+    ));
+    if (mutation != null) await _onProjectMutation(mutation);
   }
 
   /// Creates the per-run workspace used by Paseo-compatible unattended
@@ -1357,6 +1375,7 @@ final class WorkspaceV2Service {
   }
 
   Future<Map<String, Object?>> _projectRename(
+    Connection connection,
     ProjectRenameRequest request,
   ) async {
     final project = await registries.projects.get(request.projectId);
@@ -1372,8 +1391,18 @@ final class WorkspaceV2Service {
     final trimmed = request.customName?.trim() ?? '';
     final customName = trimmed.isEmpty ? null : trimmed;
     try {
-      await registries.projects.upsert(
-        project.copyWith(customName: customName, updatedAt: _timestamp()),
+      final updated = project.copyWith(
+        customName: customName,
+        updatedAt: _timestamp(),
+      );
+      await registries.projects.upsert(updated, notify: false);
+      _deferredProjectRenameUpdates[(
+        connectionId: connection.id,
+        requestId: request.requestId,
+      )] = ProjectMutation(
+        kind: RegistryMutationKind.upsert,
+        projectId: updated.projectId,
+        project: updated,
       );
       return ProjectRenameResponse(
         requestId: request.requestId,

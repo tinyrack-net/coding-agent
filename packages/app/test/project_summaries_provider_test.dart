@@ -183,6 +183,51 @@ void main() {
     expect(empty.emptyProjects.single.projectCustomName, 'Custom App');
   });
 
+  test(
+    'empty project upsert refreshes its derived name without adding a workspace',
+    () {
+      final replica = ProjectHostReplica(
+        serverId: 'local',
+        serverName: 'Local',
+        workspaces: const [],
+        emptyProjects: [_project('app', name: 'app')],
+      );
+      final updated = applyProjectReplicaDirectoryUpdate(
+        replica,
+        const ProjectDirectoryEvent(
+          ProjectUpsertUpdate(
+            WorkspaceProjectDescriptor(
+              projectId: 'app',
+              projectDisplayName: 'Renamed empty project',
+              projectCustomName: 'Renamed empty project',
+              projectRootPath: '/repo/app',
+              projectKind: WorkspaceProjectKind.git,
+            ),
+          ),
+        ),
+      );
+
+      final result = deriveProjectsFromReplica(
+        replicas: [updated],
+        runtimeStates: const [
+          ProjectHostRuntimeState(
+            serverId: 'local',
+            isOnline: true,
+            isLoading: false,
+            isFetching: false,
+            error: null,
+          ),
+        ],
+      );
+
+      final project = result.projects.single;
+      expect(project.projectName, 'Renamed empty project');
+      expect(project.totalWorkspaceCount, 0);
+      expect(project.hosts.single.workspaceCount, 0);
+      expect(project.hosts.single.repoRoot, '/repo/app');
+    },
+  );
+
   test('project removal and agent events preserve exact replica semantics', () {
     final replica = ProjectHostReplica(
       serverId: 'local',

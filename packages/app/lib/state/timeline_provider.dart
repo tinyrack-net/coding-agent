@@ -33,6 +33,8 @@ final class TimelineDisplayItem {
   final OptimisticUserMessage? userMessage;
 }
 
+enum TimelineCatchUpPhase { idle, syncing, error }
+
 /// Paseo keeps the authoritative tail page separate from the active stream
 /// head. This lets older pages prepend without disturbing live item identity.
 class TimelineState {
@@ -47,7 +49,9 @@ class TimelineState {
     this.hasOlder = false,
     this.loading = true,
     this.loadingOlder = false,
+    this.catchUpPhase = TimelineCatchUpPhase.idle,
     this.error,
+    this.syncError,
   });
 
   final List<TimelineItem> tailItems;
@@ -60,7 +64,9 @@ class TimelineState {
   final bool hasOlder;
   final bool loading;
   final bool loadingOlder;
+  final TimelineCatchUpPhase catchUpPhase;
   final String? error;
+  final String? syncError;
 
   List<TimelineItem> get items => [...tailItems, ...headItems];
   List<OptimisticUserMessage> get pendingUserMessages => [
@@ -104,8 +110,11 @@ class TimelineState {
     bool? hasOlder,
     bool? loading,
     bool? loadingOlder,
+    TimelineCatchUpPhase? catchUpPhase,
     String? error,
     bool clearError = false,
+    String? syncError,
+    bool clearSyncError = false,
   }) => TimelineState(
     tailItems: tailItems ?? this.tailItems,
     headItems: headItems ?? this.headItems,
@@ -120,7 +129,9 @@ class TimelineState {
     hasOlder: hasOlder ?? this.hasOlder,
     loading: loading ?? this.loading,
     loadingOlder: loadingOlder ?? this.loadingOlder,
+    catchUpPhase: catchUpPhase ?? this.catchUpPhase,
     error: clearError ? null : (error ?? this.error),
+    syncError: clearSyncError ? null : (syncError ?? this.syncError),
   );
 }
 
@@ -347,7 +358,6 @@ class TimelineNotifier extends Notifier<TimelineState> {
                 endSeq: math.max(cursor.endSeq, endSeq),
               ),
         loading: false,
-        clearError: true,
       ),
     );
   }
@@ -482,6 +492,10 @@ class TimelineNotifier extends Notifier<TimelineState> {
       return;
     }
     _fetching = true;
+    final isCatchUp = state.epoch != null;
+    if (isCatchUp) {
+      _publish(state.copyWith(catchUpPhase: TimelineCatchUpPhase.syncing));
+    }
     try {
       final client = ref.read(daemonClientProvider);
       final cursor = full ? null : state.cursor;
@@ -509,10 +523,27 @@ class TimelineNotifier extends Notifier<TimelineState> {
           }
           afterCursor = end;
         }
+        _publish(
+          state.copyWith(
+            catchUpPhase: TimelineCatchUpPhase.idle,
+            clearError: true,
+            clearSyncError: true,
+          ),
+        );
       }
     } catch (error) {
       if (!ref.mounted || generation != _generation) return;
-      _publish(state.copyWith(loading: false, error: error.toString()));
+      if (isCatchUp) {
+        _publish(
+          state.copyWith(
+            loading: false,
+            catchUpPhase: TimelineCatchUpPhase.error,
+            syncError: error.toString(),
+          ),
+        );
+      } else {
+        _publish(state.copyWith(loading: false, error: error.toString()));
+      }
     } finally {
       if (ref.mounted && generation == _generation) {
         _fetching = false;
@@ -554,7 +585,9 @@ class TimelineNotifier extends Notifier<TimelineState> {
         cursor: page.cursorRange,
         hasOlder: page.hasOlder,
         loading: false,
+        catchUpPhase: TimelineCatchUpPhase.idle,
         error: null,
+        syncError: null,
       ),
     );
   }
@@ -593,7 +626,6 @@ class TimelineNotifier extends Notifier<TimelineState> {
         cursor: _combineCursor(state.cursor, page.cursorRange),
         hasOlder: state.hasOlder || page.hasOlder,
         loading: false,
-        clearError: true,
       ),
     );
   }

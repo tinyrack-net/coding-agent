@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/app_router.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
@@ -6,6 +8,7 @@ import 'package:coding_agent_app/projects/projects.dart';
 import 'package:coding_agent_app/screens/project_settings_screen.dart';
 import 'package:coding_agent_app/screens/projects_settings_screen.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
+import 'package:coding_agent_app/state/host_registry_provider.dart';
 import 'package:coding_agent_app/state/project_summaries_provider.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -396,6 +399,83 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'zero-workspace project settings applies the live rename upsert',
+    (tester) async {
+      final client = _ProjectClient(
+        emptyProject: const WorkspaceProjectDescriptor(
+          projectId: 'project-empty',
+          projectDisplayName: 'Empty project',
+          projectRootPath: '/repo/empty',
+          projectKind: WorkspaceProjectKind.git,
+        ),
+      );
+      addTearDown(client.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            hostRegistryProvider.overrideWith(_ProjectHostRegistry.new),
+            hostRuntimeClientsProvider.overrideWithValue({'host-a': client}),
+            hostConnectionStateProvider.overrideWith(
+              (ref, serverId) => const Stream<DaemonConnectionState>.empty(),
+            ),
+          ],
+          child: const FluentApp(
+            home: ProjectSettingsScreen(projectKey: 'project-empty'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Empty project'), findsOneWidget);
+      expect(find.byKey(const Key('project-name-edit-button')), findsOneWidget);
+      expect(client.activeDirectoryUpdateListeners, 1);
+      expect(client.hasRawDirectoryUpdateListener, isTrue);
+      final fetchesBeforeRename = client.workspaceFetchCount;
+
+      await tester.tap(find.byKey(const Key('project-name-edit-button')));
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('project-name-input')),
+        'Renamed empty project',
+      );
+      await tester.tap(find.byKey(const Key('project-name-save-button')));
+      await tester.pumpAndSettle();
+      expect(client.renames, [('project-empty', 'Renamed empty project')]);
+      expect(client.activeDirectoryUpdateListeners, 1);
+      expect(client.workspaceFetchCount, greaterThan(fetchesBeforeRename));
+      expect(client.hasRawDirectoryUpdateListener, isTrue);
+
+      client.emitProjectUpdate(
+        const WorkspaceProjectDescriptor(
+          projectId: 'project-empty',
+          projectDisplayName: 'Renamed empty project',
+          projectCustomName: 'Renamed empty project',
+          projectRootPath: '/repo/empty',
+          projectKind: WorkspaceProjectKind.git,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ProjectSettingsScreen)),
+      );
+      expect(
+        container
+            .read(projectSummariesProvider)
+            .value!
+            .projects
+            .single
+            .projectName,
+        'Renamed empty project',
+      );
+      expect(find.text('Renamed empty project'), findsOneWidget);
+      expect(find.byKey(const Key('project-name-edit-button')), findsOneWidget);
+      expect(find.byKey(const Key('project-settings-no-target')), findsNothing);
+      await tester.pump(const Duration(seconds: 5));
+    },
+  );
 }
 
 Widget _app({
@@ -472,7 +552,7 @@ typedef _Read = ReadProjectConfigResponse Function();
 typedef _Write = WriteProjectConfigResponse Function();
 
 final class _ProjectClient extends DaemonClient {
-  _ProjectClient({_Read? read, _Write? write})
+  _ProjectClient({_Read? read, _Write? write, this.emptyProject})
     : _read =
           read ??
           (() => const ReadProjectConfigSuccess(
@@ -493,6 +573,11 @@ final class _ProjectClient extends DaemonClient {
 
   final _Read _read;
   final _Write _write;
+  final WorkspaceProjectDescriptor? emptyProject;
+  final StreamController<DirectoryUpdateEvent> _directoryUpdates =
+      StreamController<DirectoryUpdateEvent>.broadcast();
+  int activeDirectoryUpdateListeners = 0;
+  int workspaceFetchCount = 0;
   final List<Map<String, Object?>> writes = [];
   final List<(String, String?)> renames = [];
   ProjectConfigRevision? expectedRevision;
@@ -504,6 +589,41 @@ final class _ProjectClient extends DaemonClient {
   @override
   Stream<DaemonConnectionState> get connectionState =>
       Stream.value(DaemonConnectionState.connected);
+
+  @override
+  Stream<DirectoryUpdateEvent> get directoryUpdateEvents =>
+      _CountingStream<DirectoryUpdateEvent>(
+        _directoryUpdates.stream,
+        onListen: () => activeDirectoryUpdateListeners++,
+        onCancel: () => activeDirectoryUpdateListeners--,
+      );
+
+  bool get hasRawDirectoryUpdateListener => _directoryUpdates.hasListener;
+
+  @override
+  Future<Map<String, Object?>> requestSessionMessage(
+    Map<String, Object?> message, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    if (message['type'] == 'fetch_workspaces_request') {
+      workspaceFetchCount++;
+      return FetchWorkspacesResponse(
+        requestId: message['requestId']! as String,
+        entries: const [],
+        emptyProjects: [?emptyProject],
+        pageInfo: const WorkspacePageInfo(
+          nextCursor: null,
+          prevCursor: null,
+          hasMore: false,
+        ),
+      ).toJson();
+    }
+    return super.requestSessionMessage(message, timeout: timeout);
+  }
+
+  void emitProjectUpdate(WorkspaceProjectDescriptor project) {
+    _directoryUpdates.add(ProjectDirectoryEvent(ProjectUpsertUpdate(project)));
+  }
 
   @override
   Future<ReadProjectConfigResponse> readProjectConfig(
@@ -564,4 +684,106 @@ final class _ProjectClient extends DaemonClient {
     error: null,
     requestId: requestId ?? 'icon',
   );
+
+  @override
+  void dispose() {
+    unawaited(_directoryUpdates.close());
+    super.dispose();
+  }
+}
+
+final class _ProjectHostRegistry extends HostRegistryNotifier {
+  @override
+  HostRegistryState build() => const HostRegistryState(
+    hosts: [
+      HostProfile(
+        serverId: 'host-a',
+        label: 'Local',
+        connections: [
+          DirectTcpHostConnection(
+            id: 'direct:127.0.0.1:6868',
+            endpoint: '127.0.0.1:6868',
+          ),
+        ],
+        preferredConnectionId: 'direct:127.0.0.1:6868',
+        createdAt: '2026-07-30T00:00:00.000Z',
+        updatedAt: '2026-07-30T00:00:00.000Z',
+      ),
+    ],
+    activeServerId: 'host-a',
+    loaded: true,
+  );
+}
+
+final class _CountingStream<T> extends Stream<T> {
+  const _CountingStream(
+    this.source, {
+    required this.onListen,
+    required this.onCancel,
+  });
+
+  final Stream<T> source;
+  final void Function() onListen;
+  final void Function() onCancel;
+
+  @override
+  StreamSubscription<T> listen(
+    void Function(T event)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) {
+    var active = true;
+    void finish() {
+      if (!active) return;
+      active = false;
+      onCancel();
+    }
+
+    onListen();
+    final subscription = source.listen(
+      onData,
+      onError: onError,
+      onDone: () {
+        finish();
+        onDone?.call();
+      },
+      cancelOnError: cancelOnError,
+    );
+    return _CountingSubscription<T>(subscription, finish);
+  }
+}
+
+final class _CountingSubscription<T> implements StreamSubscription<T> {
+  const _CountingSubscription(this.delegate, this.onCancel);
+
+  final StreamSubscription<T> delegate;
+  final void Function() onCancel;
+
+  @override
+  Future<void> cancel() {
+    onCancel();
+    return delegate.cancel();
+  }
+
+  @override
+  void onData(void Function(T data)? handleData) => delegate.onData(handleData);
+
+  @override
+  void onError(Function? handleError) => delegate.onError(handleError);
+
+  @override
+  void onDone(void Function()? handleDone) => delegate.onDone(handleDone);
+
+  @override
+  void pause([Future<void>? resumeSignal]) => delegate.pause(resumeSignal);
+
+  @override
+  void resume() => delegate.resume();
+
+  @override
+  bool get isPaused => delegate.isPaused;
+
+  @override
+  Future<E> asFuture<E>([E? futureValue]) => delegate.asFuture(futureValue);
 }

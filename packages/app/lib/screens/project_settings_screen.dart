@@ -201,7 +201,7 @@ class _ProjectNameEditorState extends ConsumerState<_ProjectNameEditor> {
     setState(() => _saving = true);
     try {
       await widget.client.renameProject(widget.project.projectKey, name);
-      ref.invalidate(projectSummariesProvider);
+      await ref.read(projectSummariesProvider.notifier).reload();
       if (!mounted) return;
       setState(() => _editing = false);
       AppToast.show(context, 'Project renamed.');

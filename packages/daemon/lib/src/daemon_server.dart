@@ -1763,6 +1763,16 @@ Future<DaemonServerHandle> startDaemonServer({
     if (setupResponse != null) return setupResponse;
     final workspaceResponse = await workspaceV2.handle(connection, message);
     if (workspaceResponse == null) return null;
+    if (message['type'] == 'project.rename.request') {
+      final request = ProjectRenameRequest.fromJson(message);
+      return V2SessionResponse(
+        message: workspaceResponse,
+        afterSend: () => workspaceV2.afterProjectRenameResponseSent(
+          connection.id,
+          request.requestId,
+        ),
+      );
+    }
     if (message['type'] == 'fetch_workspaces_request') {
       final request = FetchWorkspacesRequest.fromJson(message);
       final payload = workspaceResponse['payload'];

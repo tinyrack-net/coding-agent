@@ -1913,6 +1913,7 @@ void main() {
             ).toJson(),
           ))!,
         );
+        await service.afterProjectRenameResponseSent(connection.id, 'rename');
         expect(renamed.customName, 'Renamed');
         expect(
           (await registries.projects.get('prj_empty'))?.customName,
@@ -1940,6 +1941,7 @@ void main() {
             ).toJson(),
           ))!,
         );
+        await service.afterProjectRenameResponseSent(connection.id, 'clear');
         expect(cleared.customName, isNull);
 
         final missing = ProjectRenameResponse.fromJson(

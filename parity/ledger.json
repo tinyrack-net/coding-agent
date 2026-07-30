@@ -1331,10 +1331,18 @@
     },
     {
       "id": "release-feature:008-open-existing-agents-from-paseo-links-or-the-cli",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/cli/agent_command.dart; packages/daemon/lib/src/cli/desktop_launch.dart; packages/app/lib/core/app_router.dart; packages/app/lib/core/agent_hot_route_controller.dart; packages/app/lib/core/desktop/agent_navigation_inbox.dart; packages/app/lib/core/desktop/agent_hot_route_binding.dart; packages/app/windows/runner/protocol_registration.cpp; packages/app/windows/runner/main.cpp",
+      "evidence": [
+        "packages/daemon/test/cli/agent_command_test.dart",
+        "packages/daemon/test/cli/desktop_launch_test.dart",
+        "packages/app/test/app_router_test.dart",
+        "packages/app/test/agent_navigation_inbox_test.dart",
+        "packages/app/test/agent_hot_route_controller_test.dart",
+        "packages/app/test/core/desktop/agent_hot_route_binding_test.dart",
+        "packages/app/windows/runner/protocol_registration_test.cpp"
+      ],
+      "notes": "The CLI emits opaque host/agent deep links, cold starts restore them, the app owns newest-wins hot-route inbox/controller/binding semantics, and Windows registers the user-scoped coding-agent scheme with a quoted executable and URI. Remaining parity is the native single-instance relay/platform event adapter wired into the running Flutter app, foreground activation, packaged activation E2E, and non-Windows registration."
     },
     {
       "id": "release-feature:009-configure-workspace-service-ports-with-a-fixed-range-or-external-allocator",
@@ -1490,9 +1498,12 @@
       "status": "partial",
       "implementation": "packages/app/lib/state/timeline_provider.dart; packages/app/lib/screens/agent_chat_screen.dart",
       "evidence": [
-        "packages/app/test/agent_chat_screen_test.dart"
+        "packages/app/test/agent_chat_screen_test.dart",
+        "packages/app/test/timeline_provider_test.dart",
+        "packages/app/test/agent_screen_sync_state_test.dart",
+        "packages/app/test/fluent_toast_test.dart"
       ],
-      "notes": "A cold authoritative-history failure immediately replaces the whole conversation body with retry recovery and keeps the composer blocked; retry remains blocked until a successful page arrives. A hydrated catch-up failure retains the conversation and composer with a sync-error callout. Real daemon error-timing conformance and the complete reconnect/catch-up state machine remain."
+      "notes": "A cold authoritative-history failure immediately replaces the whole conversation body with retry recovery and keeps the composer blocked; retry remains blocked until a successful page arrives. Hydrated history survives failed catch-up, sync errors persist across live events until authoritative recovery, and a disconnected ready conversation shows an ownership-safe persistent reconnect toast ahead of the sync-error callout. Real daemon error-timing conformance and the exact visibility-triggered catch-up overlay remain."
     },
     {
       "id": "release-feature:029-terminal-pairing-qr-codes-remain-scannable-in-narrow-terminals",
@@ -1629,10 +1640,16 @@
     },
     {
       "id": "release-feature:048-projects-can-be-renamed-before-their-first-workspace",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/daemon/lib/src/workspace/workspace_registry.dart; packages/daemon/lib/src/daemon_server.dart; packages/app/lib/screens/project_settings_screen.dart; packages/app/lib/state/project_summaries_provider.dart",
+      "evidence": [
+        "packages/daemon/test/daemon_empty_project_rename_e2e_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
+        "packages/app/test/daemon_client_test.dart",
+        "packages/app/test/project_summaries_provider_test.dart",
+        "packages/app/test/project_settings_screen_test.dart"
+      ],
+      "notes": "An empty project is renamed durably before any workspace exists. The correlated response is sent before its project.update replica mutation, no workspace update is synthesized, the Flutter client performs an authoritative reload without replacing its single live directory subscription, and the zero-workspace title updates from the subsequent upsert."
     },
     {
       "id": "release-feature:049-settings-keep-showing-a-connected-remote-host-when-the-local-daemon-is-stopped",
@@ -4647,10 +4664,15 @@
     },
     {
       "id": "source-unit:packages/app/src/desktop/agent-navigation.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/agent_hot_route_controller.dart; packages/app/lib/core/desktop/agent_navigation_inbox.dart; packages/app/lib/core/desktop/agent_hot_route_binding.dart; packages/app/lib/core/app_router.dart",
+      "evidence": [
+        "packages/app/test/agent_navigation_inbox_test.dart",
+        "packages/app/test/agent_hot_route_controller_test.dart",
+        "packages/app/test/core/desktop/agent_hot_route_binding_test.dart",
+        "packages/app/test/app_router_test.dart"
+      ],
+      "notes": "The Flutter-side bridge registers before first-frame readiness, buffers the newest valid encoded host/agent target per window, retries source registration without overlap, and prevents async activation reordering. Remaining parity is wiring a real native platform source into app startup and multi-window foreground activation."
     },
     {
       "id": "source-unit:packages/app/src/desktop/attachments/desktop-attachment-bridge.ts",
@@ -5865,9 +5887,12 @@
       "status": "partial",
       "implementation": "packages/app/lib/state/timeline_provider.dart; packages/app/lib/screens/agent_chat_screen.dart",
       "evidence": [
-        "packages/app/test/agent_chat_screen_test.dart"
+        "packages/app/test/agent_chat_screen_test.dart",
+        "packages/app/test/timeline_provider_test.dart",
+        "packages/app/test/agent_screen_sync_state_test.dart",
+        "packages/app/test/fluent_toast_test.dart"
       ],
-      "notes": "Cold loading/error and retained ready sync-error states match the frozen behavior. Route-scoped stale-agent memory, persistent reconnect toast, and silent-versus-overlay catch-up policy remain."
+      "notes": "Cold loading/error, retained ready sync-error, route-scoped ready memory, state priority, persistent ownership-safe reconnect toast, and optimistic/hydrated silent catch-up policy match the frozen behavior. The exact visibility-triggered catch-up overlay path, final panel placement, and stale-agent presentation remain."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-aggregated-agents.ts",
@@ -6615,17 +6640,24 @@
     },
     {
       "id": "source-unit:packages/app/src/panels/agent-panel-load-state.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/screens/agent_screen_sync_state.dart; packages/app/lib/state/timeline_provider.dart",
+      "evidence": [
+        "packages/app/test/agent_screen_sync_state_test.dart",
+        "packages/app/test/timeline_provider_test.dart"
+      ],
+      "notes": "The Dart state projection separates cold load, retained ready content, reconnecting, catch-up, and authoritative sync error with the frozen priority and overlay policy. The visibility-triggered catch-up input still needs to be connected to the panel lifecycle."
     },
     {
       "id": "source-unit:packages/app/src/panels/agent-panel.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/screens/agent_chat_screen.dart; packages/app/lib/screens/agent_screen_sync_state.dart; packages/app/lib/widgets/fluent/toast.dart",
+      "evidence": [
+        "packages/app/test/agent_chat_screen_test.dart",
+        "packages/app/test/agent_screen_sync_state_test.dart",
+        "packages/app/test/fluent_toast_test.dart"
+      ],
+      "notes": "The ready panel retains conversation/composer state through reconnect and catch-up failures, surfaces retryable cold failures, and owns the persistent reconnect toast safely across replacement and recovery. Remaining parity includes the exact catch-up overlay placement, stale-agent affordance, and other panel actions tracked by adjacent source units."
     },
     {
       "id": "source-unit:packages/app/src/panels/browser-panel.tsx",
@@ -10834,10 +10866,13 @@
     },
     {
       "id": "source-unit:packages/desktop/src/agent-navigation.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/windows/runner/protocol_registration.cpp; packages/app/windows/runner/main.cpp; packages/app/lib/core/desktop/agent_navigation_inbox.dart",
+      "evidence": [
+        "packages/app/windows/runner/protocol_registration_test.cpp",
+        "packages/app/test/agent_navigation_inbox_test.dart"
+      ],
+      "notes": "Windows registers coding-agent under HKCU with the URL Protocol marker, icon, and a safely quoted open command, while cold argv parsing preserves opaque encoded identifiers. Remaining parity is forwarding subsequent activations to the existing process, focusing its window, platform-channel delivery, packaged activation E2E, and the other desktop platforms."
     },
     {
       "id": "source-unit:packages/desktop/src/daemon/cli/entrypoints.ts",

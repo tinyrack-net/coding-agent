@@ -1597,6 +1597,50 @@ void main() {
     );
   });
 
+  test(
+    'native project updates decode an empty project onto the directory stream',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final eventFuture = client.directoryUpdateEvents.first;
+      conn.socket.add(
+        jsonEncode({
+          'type': 'session',
+          'message': {
+            'type': 'project.update',
+            'payload': {
+              'kind': 'upsert',
+              'project': {
+                'projectId': 'project-empty',
+                'projectDisplayName': 'Renamed empty project',
+                'projectCustomName': 'Renamed empty project',
+                'projectRootPath': '/repo/empty',
+                'projectKind': 'git',
+              },
+            },
+          },
+        }),
+      );
+
+      final event = await eventFuture;
+      expect(event, isA<ProjectDirectoryEvent>());
+      final update = (event as ProjectDirectoryEvent).update;
+      expect(update, isA<ProjectUpsertUpdate>());
+      final project = (update as ProjectUpsertUpdate).project;
+      expect(project.projectId, 'project-empty');
+      expect(project.projectDisplayName, 'Renamed empty project');
+      expect(project.projectCustomName, 'Renamed empty project');
+      expect(project.projectRootPath, '/repo/empty');
+    },
+  );
+
   test('checkout status updates are decoded onto a typed stream', () async {
     client = DaemonClient(uri: server.uri);
     final connFuture = nextConnection(server);

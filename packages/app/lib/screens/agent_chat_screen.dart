@@ -26,6 +26,7 @@ import '../widgets/composer.dart';
 import '../widgets/fluent/toast.dart';
 import '../widgets/subagents_track.dart';
 import '../widgets/timeline_item_tile.dart';
+import 'agent_screen_sync_state.dart';
 
 /// Chat view for one agent: timeline list (auto-stick to bottom) + composer.
 /// Chat-only — diff and terminal are sibling top-level tabs at the worktree
@@ -51,6 +52,7 @@ class AgentChatScreen extends ConsumerStatefulWidget {
 class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     with WidgetsBindingObserver {
   final _scrollController = ScrollController();
+  final _syncMemory = AgentScreenRouteMemory();
   bool _stickToBottom = true;
   bool _hasSeenAttentionState = false;
   bool _lastRequiresAttention = false;
@@ -58,9 +60,11 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
   bool _attentionClearInFlight = false;
   bool _historyEdgeReady = false;
   bool _loadingOlder = false;
+  bool _reconnectToastArmed = false;
   late bool _isAppVisible;
   AgentSummary? _observedAgent;
   DaemonClient? _observedClient;
+  AppToastHandle? _reconnectToastHandle;
 
   @override
   void initState() {
@@ -76,10 +80,36 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
 
   @override
   void dispose() {
+    _reconnectToastHandle?.dismiss();
     WidgetsBinding.instance.removeObserver(this);
     windowFocusedNotifier.removeListener(_onWindowFocusChanged);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _observeReconnectToast({
+    required AgentScreenSyncStatus syncStatus,
+    required bool hasRenderedReady,
+  }) {
+    if (!hasRenderedReady || syncStatus != AgentScreenSyncStatus.reconnecting) {
+      if (!_reconnectToastArmed) return;
+      _reconnectToastArmed = false;
+      final handle = _reconnectToastHandle;
+      _reconnectToastHandle = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) => handle?.dismiss());
+      return;
+    }
+    if (_reconnectToastArmed) return;
+    _reconnectToastArmed = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_reconnectToastArmed) return;
+      _reconnectToastHandle = AppToast.show(
+        context,
+        'Reconnecting…',
+        key: const ValueKey('agent-reconnecting-toast'),
+        duration: null,
+      );
+    });
   }
 
   @override
@@ -382,6 +412,29 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     _observedClient = ref.watch(daemonClientProvider);
     final agent = ref.watch(agentSummaryProvider(widget.agentId));
     final timeline = ref.watch(timelineProvider(widget.agentId));
+    final connection =
+        ref.watch(connectionStateProvider).value ??
+        _observedClient!.currentState;
+    _syncMemory.enterRoute('${widget.serverId}:${widget.agentId}');
+    if (timeline.error != null && timeline.epoch == null) {
+      _syncMemory.markInitialSyncFailure();
+    }
+    if (timeline.epoch != null) {
+      _syncMemory.markReady();
+    }
+    final syncState = resolveAgentScreenSyncState(
+      archived: agent?.archivedAt != null,
+      connected: connection == DaemonConnectionState.connected,
+      catchUpPending: timeline.catchUpPhase == TimelineCatchUpPhase.syncing,
+      hasSyncError: timeline.syncError != null,
+      optimisticCreate:
+          timeline.epoch == null && timeline.pendingUserMessages.isNotEmpty,
+      hasHydratedTimeline: timeline.epoch != null,
+      visibilityCatchUpPending:
+          timeline.catchUpPhase == TimelineCatchUpPhase.syncing &&
+          timeline.epoch == null,
+      hadInitialSyncFailure: _syncMemory.hadInitialSyncFailure,
+    );
     final toolCallDetailLevel = ref.watch(toolCallDetailLevelProvider);
     final projectedRows = _projectTimelineRows(
       timeline,
@@ -393,6 +446,10 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     );
     final subagents = ref.watch(subagentsForParentProvider(widget.agentId));
     _observeAttention(agent);
+    _observeReconnectToast(
+      syncStatus: syncState.status,
+      hasRenderedReady: _syncMemory.hasRenderedReady,
+    );
 
     // While stuck to bottom, follow new/updated content.
     ref.listen(timelineProvider(widget.agentId), (previous, next) {
@@ -467,6 +524,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
           context,
           projectedRows,
           timeline,
+          syncState,
           timeline.loading,
           timeline.loadingOlder,
         ),
@@ -478,6 +536,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     BuildContext context,
     List<_ProjectedTimelineRow> rows,
     TimelineState timeline,
+    AgentScreenSyncState syncState,
     bool loading,
     bool loadingOlder,
   ) {
@@ -502,39 +561,54 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     }
     return [
       Expanded(
-        child: count == 0
-            ? Center(
-                child: Text(
-                  'No messages yet. Say something below.',
-                  style: TextStyle(color: context.tokens.outline),
-                ),
-              )
-            : Stack(
-                children: [
-                  ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    itemCount: count,
-                    itemBuilder: (context, index) => _TimelineRow(
-                      agentId: widget.agentId,
-                      row: rows[index],
-                      onOpenWorkspaceFile: widget.onOpenWorkspaceFile,
-                    ),
-                  ),
-                  if (loadingOlder)
-                    const Align(
-                      alignment: Alignment.topCenter,
-                      child: Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: ProgressRing(strokeWidth: 2),
-                        ),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: count == 0
+                  ? Center(
+                      child: Text(
+                        'No messages yet. Say something below.',
+                        style: TextStyle(color: context.tokens.outline),
                       ),
+                    )
+                  : Stack(
+                      children: [
+                        ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          itemCount: count,
+                          itemBuilder: (context, index) => _TimelineRow(
+                            agentId: widget.agentId,
+                            row: rows[index],
+                            onOpenWorkspaceFile: widget.onOpenWorkspaceFile,
+                          ),
+                        ),
+                        if (loadingOlder)
+                          const Align(
+                            alignment: Alignment.topCenter,
+                            child: Padding(
+                              padding: EdgeInsets.only(top: 8),
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: ProgressRing(strokeWidth: 2),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                ],
+            ),
+            if (syncState.showsCatchUpOverlay)
+              const Positioned.fill(
+                child: ColoredBox(
+                  color: Color(0x33000000),
+                  child: Center(
+                    child: ProgressRing(key: ValueKey('agent-history-overlay')),
+                  ),
+                ),
               ),
+          ],
+        ),
       ),
       if (!_stickToBottom)
         Align(
@@ -557,7 +631,8 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
             ),
           ),
         ),
-      if (hasRetainedHistory && timeline.error != null)
+      if (hasRetainedHistory &&
+          syncState.status == AgentScreenSyncStatus.syncError)
         const Padding(
           padding: EdgeInsets.fromLTRB(12, 0, 12, 8),
           child: InfoBar(

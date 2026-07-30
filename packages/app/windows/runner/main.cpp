@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include "flutter_window.h"
+#include "protocol_registration.h"
 #include "utils.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
@@ -17,10 +18,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
+  const LSTATUS protocol_status = RegisterCodingAgentProtocol();
+  if (protocol_status != ERROR_SUCCESS) {
+    const std::wstring message =
+        L"Failed to register coding-agent protocol for the current user: " +
+        std::to_wstring(protocol_status) + L"\n";
+    ::OutputDebugStringW(message.c_str());
+  }
+
   flutter::DartProject project(L"data");
 
-  std::vector<std::string> command_line_arguments =
-      GetCommandLineArguments();
+  std::vector<std::string> command_line_arguments = GetCommandLineArguments();
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 

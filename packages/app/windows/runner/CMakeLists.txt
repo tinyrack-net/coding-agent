@@ -9,6 +9,7 @@ project(runner LANGUAGES CXX)
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "main.cpp"
+  "protocol_registration.cpp"
   "utils.cpp"
   "win32_window.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
@@ -34,7 +35,22 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "advapi32.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
+
+# Native contract test for the user-scoped protocol registration plan. It is
+# excluded from normal app builds and can be built explicitly in CI.
+add_executable(coding_agent_protocol_registration_test EXCLUDE_FROM_ALL
+  "protocol_registration.cpp"
+  "protocol_registration_test.cpp"
+)
+apply_standard_settings(coding_agent_protocol_registration_test)
+target_compile_definitions(coding_agent_protocol_registration_test PRIVATE
+  "NOMINMAX"
+)
+target_link_libraries(coding_agent_protocol_registration_test PRIVATE
+  "advapi32.lib"
+)
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)

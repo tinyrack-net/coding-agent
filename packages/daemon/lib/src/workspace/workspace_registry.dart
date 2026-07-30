@@ -329,8 +329,12 @@ final class FileBackedProjectRegistry {
     }
   });
 
-  Future<void> upsert(PersistedProjectRecord record) async {
+  Future<void> upsert(
+    PersistedProjectRecord record, {
+    bool notify = true,
+  }) async {
     await _registry.upsert(record);
+    if (!notify) return;
     await _notify(
       ProjectMutation(
         kind: RegistryMutationKind.upsert,

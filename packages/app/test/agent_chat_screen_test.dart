@@ -9,6 +9,7 @@ import 'package:coding_agent_app/state/timeline_provider.dart';
 import 'package:coding_agent_app/state/tool_call_detail_level_provider.dart';
 import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
 import 'package:coding_agent_app/tool_calls/detail_level/tool_call_projection.dart';
+import 'package:coding_agent_app/widgets/fluent/toast.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -88,10 +89,14 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
   FakeDaemonClient({
     List<AgentSummary> extraAgents = const [],
     this.subagents = const [],
+    DaemonConnectionState initialConnection = DaemonConnectionState.connected,
   }) : agents = [_agent, _worktreeAgent, ...extraAgents],
+       _connectionState = initialConnection,
        super(uri: Uri.parse('ws://fake'));
 
   final eventsController = StreamController<RpcEvent>.broadcast();
+  final connectionController =
+      StreamController<DaemonConnectionState>.broadcast();
   final requests = <(String, Map<String, Object?>)>[];
   final timelinePages = <AgentTimelinePage>[];
   final timelineErrors = <Object>[];
@@ -104,6 +109,7 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
   /// with the two hardcoded defaults.
   final List<AgentSummary> agents;
   final List<ProviderSubagentDescriptor> subagents;
+  DaemonConnectionState _connectionState;
 
   /// When true, the next `permission.respond.request` throws instead of
   /// responding (consumed after one use).
@@ -116,10 +122,16 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
   Stream<TerminalFrame> get terminalFrames => const Stream.empty();
 
   @override
-  DaemonConnectionState get currentState => DaemonConnectionState.connected;
+  DaemonConnectionState get currentState => _connectionState;
 
   @override
-  Stream<DaemonConnectionState> get connectionState => const Stream.empty();
+  Stream<DaemonConnectionState> get connectionState =>
+      connectionController.stream;
+
+  void setConnectionState(DaemonConnectionState value) {
+    _connectionState = value;
+    connectionController.add(value);
+  }
 
   @override
   void sendTerminalFrame(TerminalFrame frame) {}
@@ -300,6 +312,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('No messages yet. Say something below.'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('agent-reconnecting-toast')),
+      findsNothing,
+    );
   });
 
   testWidgets(
@@ -336,6 +352,7 @@ void main() {
   testWidgets('failed catch-up retains rendered conversation and composer', (
     tester,
   ) async {
+    addTearDown(AppToast.dismissCurrent);
     final client = FakeDaemonClient()
       ..timelinePages.add(timelinePage(start: 1, end: 1, hasOlder: false));
     final container = await pumpChatScreen(tester, client: client);
@@ -350,6 +367,85 @@ void main() {
     expect(find.textContaining('catch-up unavailable'), findsNothing);
     expect(find.widgetWithText(Button, 'Retry'), findsNothing);
     expect(find.byType(TextBox), findsOneWidget);
+
+    client.setConnectionState(DaemonConnectionState.disconnected);
+    await tester.pump(const Duration(milliseconds: 10));
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(find.text('Timeline sync failed'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('agent-reconnecting-toast')),
+      findsOneWidget,
+    );
+
+    client.timelineErrors.add(StateError('still unavailable'));
+    client.setConnectionState(DaemonConnectionState.connected);
+    await tester.pump(const Duration(milliseconds: 10));
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(find.text('Timeline sync failed'), findsOneWidget);
+  });
+
+  testWidgets('ready conversation keeps reconnect toast until online', (
+    tester,
+  ) async {
+    addTearDown(AppToast.dismissCurrent);
+    final client = FakeDaemonClient()
+      ..timelinePages.add(timelinePage(start: 1, end: 1, hasOlder: false));
+    final container = await pumpChatScreen(tester, client: client);
+
+    client.setConnectionState(DaemonConnectionState.disconnected);
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(
+      container.read(connectionStateProvider).value,
+      DaemonConnectionState.disconnected,
+    );
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(
+      find.byKey(const ValueKey('agent-reconnecting-toast')),
+      findsOneWidget,
+    );
+
+    await tester.pump(const Duration(seconds: 5));
+    expect(
+      find.byKey(const ValueKey('agent-reconnecting-toast')),
+      findsOneWidget,
+    );
+
+    client.setConnectionState(DaemonConnectionState.connected);
+    await tester.pump(const Duration(milliseconds: 10));
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(find.text('Reconnecting…'), findsNothing);
+  });
+
+  testWidgets('online recovery cannot dismiss a replacement toast', (
+    tester,
+  ) async {
+    addTearDown(AppToast.dismissCurrent);
+    final client = FakeDaemonClient()
+      ..timelinePages.add(timelinePage(start: 1, end: 1, hasOlder: false));
+    final container = await pumpChatScreen(tester, client: client);
+
+    client.setConnectionState(DaemonConnectionState.disconnected);
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(
+      container.read(connectionStateProvider).value,
+      DaemonConnectionState.disconnected,
+    );
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(find.text('Reconnecting…'), findsOneWidget);
+
+    AppToast.show(
+      tester.element(find.text('Demo agent')),
+      'Unrelated notice',
+      duration: null,
+    );
+    await tester.pump();
+    expect(find.text('Unrelated notice'), findsOneWidget);
+
+    client.setConnectionState(DaemonConnectionState.connected);
+    await tester.pump(const Duration(milliseconds: 10));
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(find.text('Unrelated notice'), findsOneWidget);
+    AppToast.dismissCurrent();
   });
 
   testWidgets(

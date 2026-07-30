@@ -25,8 +25,10 @@ class FakeDaemonClient extends DaemonClient {
   DaemonConnectionState _state;
   final fetchRequests = <Map<String, Object?>>[];
   final List<TimelineFetchResponse> fetchResponses = [];
+  final List<Object> fetchErrors = [];
   final List<bool> hasOlderResponses = [];
   final List<bool> hasNewerResponses = [];
+  Completer<void>? nextFetchGate;
 
   @override
   Stream<RpcEvent> get events => eventsController.stream;
@@ -53,6 +55,12 @@ class FakeDaemonClient extends DaemonClient {
     Duration timeout = const Duration(seconds: 30),
   }) async {
     fetchRequests.add(message);
+    final gate = nextFetchGate;
+    if (gate != null) {
+      nextFetchGate = null;
+      await gate.future;
+    }
+    if (fetchErrors.isNotEmpty) throw fetchErrors.removeAt(0);
     final response = fetchResponses.isEmpty
         ? const TimelineFetchResponse(epoch: 0, lastSeq: 0, items: [])
         : fetchResponses.removeAt(0);
@@ -210,6 +218,58 @@ void main() {
 
     expect(container.read(timelineProvider('a1')).items, hasLength(1));
   });
+
+  test(
+    'authoritative catch-up exposes phase, retains error across live events, '
+    'and clears it only after sync succeeds',
+    () async {
+      final client = FakeDaemonClient()
+        ..fetchResponses.add(
+          const TimelineFetchResponse(epoch: 0, lastSeq: 1, items: [_msg1]),
+        );
+      final container = makeContainer(client);
+      container.read(timelineProvider('a1'));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      final gate = Completer<void>();
+      client.nextFetchGate = gate;
+      client.fetchErrors.add(StateError('catch-up failed'));
+      client.setState(DaemonConnectionState.connected);
+      await Future<void>.delayed(Duration.zero);
+
+      var state = container.read(timelineProvider('a1'));
+      expect(state.items.map((item) => item.id), ['m1']);
+      expect(state.catchUpPhase, TimelineCatchUpPhase.syncing);
+      expect(state.syncError, isNull);
+
+      gate.complete();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      state = container.read(timelineProvider('a1'));
+      expect(state.items.map((item) => item.id), ['m1']);
+      expect(state.catchUpPhase, TimelineCatchUpPhase.error);
+      expect(state.syncError, contains('catch-up failed'));
+
+      client.nativeEventsController.add(
+        const AgentStreamPayload(agentId: 'a1', epoch: 0, seq: 2, item: _msg2),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        container.read(timelineProvider('a1')).syncError,
+        contains('catch-up failed'),
+      );
+
+      client.fetchResponses.add(
+        const TimelineFetchResponse(epoch: 0, lastSeq: 2, items: [_msg2]),
+      );
+      await container.read(timelineProvider('a1').notifier).retry();
+      state = container.read(timelineProvider('a1'));
+      expect(state.items.map((item) => item.id), ['m2']);
+      expect(state.catchUpPhase, TimelineCatchUpPhase.idle);
+      expect(state.syncError, isNull);
+    },
+  );
 
   test(
     'host selection restores independent retained timeline replicas',
