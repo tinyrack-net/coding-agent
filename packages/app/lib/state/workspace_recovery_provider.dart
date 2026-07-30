@@ -121,8 +121,10 @@ final class DaemonWorkspaceRecoveryTransport
   }
 
   @override
-  Future<void> refreshAgent(String agentId) =>
-      _ref.read(agentsProvider.notifier).refresh();
+  Future<void> refreshAgent(String agentId) async {
+    await _client.refreshAgent(agentId);
+    await _ref.read(agentsProvider.notifier).refresh();
+  }
 
   @override
   Future<void> refreshWorkspaces() async {

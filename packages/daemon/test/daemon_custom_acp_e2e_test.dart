@@ -48,6 +48,7 @@ void main() {
                   'ACP_FIXTURE_ENV': 'configured',
                   'ACP_FIXTURE_EXPECT_CLIENT_RUNTIME': 'true',
                   'ACP_FIXTURE_EXPECT_RUNTIME_MCP': 'true',
+                  'ACP_FIXTURE_ECHO_IMAGE_PROMPT': 'true',
                 },
                 'params': const {
                   'supportsMcpServers': true,
@@ -151,6 +152,41 @@ void main() {
           'command',
           'review',
         ),
+      );
+
+      await handle.manager.prompt(
+        created.agentId,
+        'see this',
+        images: const [AgentPromptImage(data: 'AA==', mimeType: 'image/png')],
+        clientMessageId: 'client-image-message',
+      );
+      final deadline = DateTime.now().add(const Duration(seconds: 5));
+      while (handle.manager.get(created.agentId)?.runState !=
+          AgentRunState.idle) {
+        if (DateTime.now().isAfter(deadline)) {
+          fail('ACP image prompt did not complete before the deadline');
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+
+      final prompted = handle.manager.fetchTimeline(created.agentId);
+      expect(
+        prompted.items.whereType<UserMessageItem>(),
+        [
+          isA<UserMessageItem>()
+              .having((item) => item.text, 'text', 'see this')
+              .having(
+                (item) => item.clientMessageId,
+                'client message id',
+                'client-image-message',
+              ),
+        ],
+        reason:
+            'ACP text/image echoes must not duplicate the canonical user item',
+      );
+      expect(
+        prompted.items.whereType<AssistantMessageItem>().single.text,
+        'image-ok',
       );
 
       final recentFrame = frames.firstWhere(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -32,7 +34,15 @@ Future<void> main(List<String> args) async {
     bindAgentHotRoutes(
       router: router,
       source: createPlatformAgentDeepLinkSource(),
-      child: ProviderScope(child: CodingAgentApp(router: router)),
+      child: ProviderScope(
+        overrides: [
+          notificationRouteOpenerProvider.overrideWithValue((route) {
+            router.go(route);
+            unawaited(showAndFocusDesktopWindow());
+          }),
+        ],
+        child: CodingAgentApp(router: router),
+      ),
     ),
   );
 }

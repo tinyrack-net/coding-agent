@@ -446,7 +446,7 @@ void main() {
       expect(find.text('lib/new.dart'), findsOneWidget);
       expect(find.byIcon(FluentIcons.edit), findsOneWidget);
       await tester.tap(find.text('Write'));
-      await tester.pumpAndSettle(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('void main() {}'), findsOneWidget);
 
       // Canonical Paseo search summaries show the query, independently of the
@@ -463,7 +463,7 @@ void main() {
 
       // Generic body (non-empty input) renders once expanded.
       await tester.tap(find.text('Custom'));
-      await tester.pumpAndSettle(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 300));
       expect(find.textContaining('key'), findsOneWidget);
     },
   );

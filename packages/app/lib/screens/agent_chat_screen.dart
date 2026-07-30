@@ -5,6 +5,7 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/daemon_client.dart';
+import '../core/chat_scroll_geometry.dart';
 import '../core/desktop/desktop_shell.dart';
 import '../core/provider_display.dart';
 import '../core/theme.dart';
@@ -69,6 +70,8 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
   bool _visibilityCatchUpScheduled = false;
   bool _visibilityCatchUpPending = false;
   bool _visibilityCatchUpError = false;
+  bool _unarchiving = false;
+  String? _unarchiveError;
   int _visibilityCatchUpGeneration = 0;
   late bool _isAppVisible;
   AgentSummary? _observedAgent;
@@ -310,7 +313,14 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
 
   void _scrollToBottom() {
     if (!_scrollController.hasClients) return;
-    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+    final position = _scrollController.position;
+    if (isChatViewportOverscrolledPastBottom(
+      pixels: position.pixels,
+      maxScrollExtent: position.maxScrollExtent,
+    )) {
+      return;
+    }
+    _scrollController.jumpTo(position.maxScrollExtent);
   }
 
   void _observeAttention(AgentSummary? agent) {
@@ -503,11 +513,32 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     }
   }
 
+  Future<void> _unarchiveAgent() async {
+    if (_unarchiving) return;
+    setState(() {
+      _unarchiving = true;
+      _unarchiveError = null;
+    });
+    try {
+      await ref.read(daemonClientProvider).refreshAgent(widget.agentId);
+      await ref.read(agentsProvider.notifier).refresh();
+      ref.invalidate(timelineProvider(widget.agentId));
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _unarchiveError = error.toString());
+    } finally {
+      if (mounted) setState(() => _unarchiving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     _observedClient = ref.watch(daemonClientProvider);
     final agent = ref.watch(agentSummaryProvider(widget.agentId));
-    final timeline = ref.watch(timelineProvider(widget.agentId));
+    final archived = agent?.archivedAt != null;
+    final timeline = archived
+        ? const TimelineState(loading: false)
+        : ref.watch(timelineProvider(widget.agentId));
     final connection =
         ref.watch(connectionStateProvider).value ??
         _observedClient!.currentState;
@@ -532,7 +563,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
             timeline.catchUpPhase != TimelineCatchUpPhase.idle);
     final displayAgent = agent ?? (mayUseStaleAgent ? _lastReadyAgent : null);
     final syncState = resolveAgentScreenSyncState(
-      archived: agent?.archivedAt != null,
+      archived: archived,
       connected: connection == DaemonConnectionState.connected,
       catchUpPending:
           timeline.catchUpPhase == TimelineCatchUpPhase.syncing ||
@@ -565,11 +596,15 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     }
 
     // While stuck to bottom, follow new/updated content.
-    ref.listen(timelineProvider(widget.agentId), (previous, next) {
-      if (_stickToBottom) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-      }
-    });
+    if (!archived) {
+      ref.listen(timelineProvider(widget.agentId), (previous, next) {
+        if (_stickToBottom) {
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _scrollToBottom(),
+          );
+        }
+      });
+    }
 
     return Column(
       children: [
@@ -596,7 +631,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
               message: 'Archive agent',
               child: IconButton(
                 icon: const Icon(FluentIcons.archive),
-                onPressed: agent == null
+                onPressed: agent == null || archived
                     ? null
                     : () =>
                           archiveAgentWithWorktreeConfirm(context, ref, agent),
@@ -633,14 +668,23 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
                 .hideFinished(),
           ),
         const Divider(),
-        ..._chatChildren(
-          context,
-          projectedRows,
-          timeline,
-          syncState,
-          timeline.loading,
-          timeline.loadingOlder,
-        ),
+        if (archived)
+          Expanded(
+            child: _ArchivedAgentCallout(
+              loading: _unarchiving,
+              error: _unarchiveError,
+              onUnarchive: _unarchiveAgent,
+            ),
+          )
+        else
+          ..._chatChildren(
+            context,
+            projectedRows,
+            timeline,
+            syncState,
+            timeline.loading,
+            timeline.loadingOlder,
+          ),
       ],
     );
   }
@@ -770,6 +814,52 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
       ),
     ];
   }
+}
+
+class _ArchivedAgentCallout extends StatelessWidget {
+  const _ArchivedAgentCallout({
+    required this.loading,
+    required this.error,
+    required this.onUnarchive,
+  });
+
+  final bool loading;
+  final String? error;
+  final VoidCallback onUnarchive;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'This agent is archived',
+            key: ValueKey('archived-agent-callout'),
+          ),
+          if (error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              error!,
+              key: const ValueKey('agent-unarchive-error'),
+              style: TextStyle(
+                color: FluentTheme.of(
+                  context,
+                ).resources.systemFillColorCritical,
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          FilledButton(
+            key: const ValueKey('agent-unarchive-action'),
+            onPressed: loading ? null : onUnarchive,
+            child: Text(loading ? 'Unarchiving...' : 'Unarchive'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _TimelineColdOpenFailure extends StatelessWidget {

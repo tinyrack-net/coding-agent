@@ -309,7 +309,7 @@ final class _AcpToolSnapshot {
 
 final class GenericAcpAgentSession
     implements
-        StructuredPromptAgentSession,
+        ImagePromptAgentSession,
         ConfigurableAgentSession,
         CommandListingAgentSession,
         HistoryRestoringAgentSession {
@@ -478,6 +478,13 @@ final class GenericAcpAgentSession
   Future<void> promptWithAttachments(
     String text,
     List<AgentAttachment> attachments,
+  ) => promptWithImagesAndAttachments(text, const [], attachments);
+
+  @override
+  Future<void> promptWithImagesAndAttachments(
+    String text,
+    List<AgentPromptImage> images,
+    List<AgentAttachment> attachments,
   ) {
     final history = attachments.where(isChatHistoryAttachment);
     final context = attachments.where(
@@ -487,6 +494,8 @@ final class GenericAcpAgentSession
       for (final attachment in history)
         {'type': 'text', 'text': renderPromptAttachmentAsText(attachment)},
       if (text.trim().isNotEmpty) {'type': 'text', 'text': text.trim()},
+      for (final image in images)
+        {'type': 'image', 'data': image.data, 'mimeType': image.mimeType},
       for (final attachment in context)
         {'type': 'text', 'text': renderPromptAttachmentAsText(attachment)},
     ]);
@@ -890,10 +899,22 @@ final class GenericAcpAgentSession
 
   Future<void> _closeAfterInitializationFailure() async {
     _intentionalClose = true;
-    await _clientRuntime.dispose();
+    try {
+      await _clientRuntime.dispose();
+    } on Object {
+      // The ACP initialization failure is authoritative. Continue to the
+      // provider process cleanup even if a client-owned terminal fails to
+      // release.
+    }
     final rpc = _rpc;
     _rpc = null;
-    if (rpc != null) await rpc.close();
+    if (rpc != null) {
+      try {
+        await rpc.close();
+      } on Object {
+        // Preserve the original session/new, session/load, or handshake error.
+      }
+    }
   }
 }
 

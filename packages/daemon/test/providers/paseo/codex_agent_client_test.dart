@@ -401,6 +401,30 @@ void main() {
     );
     expect(connection.disposed, isTrue);
   });
+
+  test('preserves the startup error when process cleanup also fails', () async {
+    final connection = _FailingDisposeConnection();
+    final client = CodexAgentClient(
+      resolveExecutable: () async => 'codex',
+      startConnection: (_) async => connection,
+    );
+
+    await expectLater(
+      client.createSession(
+        cwd: 'C:/workspace',
+        model: 'gpt',
+        mode: AgentMode.normal,
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'initialize failed',
+        ),
+      ),
+    );
+    expect(connection.disposeAttempts, greaterThanOrEqualTo(1));
+  });
 }
 
 final class _ThreadStartingConnection extends _ClientConnection {
@@ -429,5 +453,20 @@ final class _FailingConnection extends _ClientConnection {
   @override
   Future<Object?> request(String method, [Object? params, Duration? timeout]) {
     throw StateError('initialize failed');
+  }
+}
+
+final class _FailingDisposeConnection extends _ClientConnection {
+  var disposeAttempts = 0;
+
+  @override
+  Future<Object?> request(String method, [Object? params, Duration? timeout]) {
+    throw StateError('initialize failed');
+  }
+
+  @override
+  Future<void> dispose() async {
+    disposeAttempts += 1;
+    throw StateError('cleanup failed');
   }
 }

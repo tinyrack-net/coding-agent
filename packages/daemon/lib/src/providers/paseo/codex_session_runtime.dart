@@ -229,7 +229,12 @@ final class CodexSessionRuntime {
       }
       _connected = true;
     } on Object {
-      await close();
+      try {
+        await close();
+      } on Object {
+        // The connection failure is authoritative. Cleanup is best effort and
+        // must not replace the provider error that explains why startup failed.
+      }
       rethrow;
     }
   }

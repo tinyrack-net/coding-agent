@@ -606,6 +606,8 @@ class _ToolStatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status_ = context.statusColors;
+    final loading =
+        status == ToolCallStatus.pending || status == ToolCallStatus.running;
     final (label, color) = switch (status) {
       ToolCallStatus.pending => ('pending', status_.neutral),
       ToolCallStatus.running => ('running', status_.running),
@@ -620,7 +622,24 @@ class _ToolStatusChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: color.withValues(alpha: 0.6)),
       ),
-      child: Text(label, style: TextStyle(fontSize: 11, color: color)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (loading) ...[
+            SizedBox(
+              width: 10,
+              height: 10,
+              child: ProgressRing(
+                strokeWidth: 1.5,
+                activeColor: color,
+                semanticLabel: 'Loading tool call',
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
+          Text(label, style: TextStyle(fontSize: 11, color: color)),
+        ],
+      ),
     );
   }
 }

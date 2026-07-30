@@ -83,6 +83,18 @@ const _attentionAgent = AgentSummary(
   attentionTimestamp: '2026-07-26T00:00:00.000Z',
 );
 
+const _archivedAgent = AgentSummary(
+  agentId: 'archived-agent',
+  title: 'Archived agent',
+  cwd: '/work/archived',
+  provider: 'codex',
+  model: 'gpt-5.4',
+  mode: AgentMode.normal,
+  runState: AgentRunState.closed,
+  createdAtMs: 3,
+  archivedAt: '2026-07-30T00:00:00.000Z',
+);
+
 /// Scriptable fake covering what AgentChatScreen's chat-only view touches:
 /// agent list (for the header) and the timeline fetch.
 class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
@@ -110,6 +122,7 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
   final List<AgentSummary> agents;
   final List<ProviderSubagentDescriptor> subagents;
   DaemonConnectionState _connectionState;
+  final List<String> refreshedAgentIds = [];
 
   /// When true, the next `permission.respond.request` throws instead of
   /// responding (consumed after one use).
@@ -135,6 +148,26 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
 
   @override
   void sendTerminalFrame(TerminalFrame frame) {}
+
+  @override
+  Future<AgentRefreshedStatus> refreshAgent(
+    String agentId, {
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    refreshedAgentIds.add(agentId);
+    final index = agents.indexWhere((agent) => agent.agentId == agentId);
+    if (index >= 0) {
+      agents[index] = agents[index].copyWith(
+        archivedAt: null,
+        runState: AgentRunState.idle,
+      );
+    }
+    return AgentRefreshedStatus(
+      requestId: 'refresh-test',
+      agentId: agentId,
+      timelineSize: 0,
+    );
+  }
 
   @override
   Future<ListCommandsResponse> listCommands({
@@ -322,6 +355,32 @@ Future<void> pumpChatScreenFocus(
 }
 
 void main() {
+  testWidgets(
+    'archived history agent waits for explicit unarchive before timeline load',
+    (tester) async {
+      final client = FakeDaemonClient(extraAgents: const [_archivedAgent]);
+      await pumpChatScreen(
+        tester,
+        client: client,
+        agentId: _archivedAgent.agentId,
+        extraAgents: const [_archivedAgent],
+      );
+
+      expect(find.text('This agent is archived'), findsOneWidget);
+      expect(find.text('Unarchive'), findsOneWidget);
+      expect(client.timelineDirections, isEmpty);
+
+      await tester.tap(find.byKey(const ValueKey('agent-unarchive-action')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump(const Duration(milliseconds: 150));
+
+      expect(client.refreshedAgentIds, [_archivedAgent.agentId]);
+      expect(find.text('This agent is archived'), findsNothing);
+      expect(client.timelineDirections, [AgentTimelineDirection.tail]);
+    },
+  );
+
   testWidgets('shows the agent header and empty-timeline placeholder', (
     tester,
   ) async {

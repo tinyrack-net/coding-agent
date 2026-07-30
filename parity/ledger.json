@@ -1560,51 +1560,72 @@
     },
     {
       "id": "release-feature:031-failed-agent-starts-no-longer-leave-provider-processes-running",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/generic_acp_agent_client.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo/codex_agent_client_test.dart",
+        "packages/daemon/test/providers/paseo/generic_acp_agent_client_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "release-feature:032-completed-opencode-turns-stay-idle-when-late-metadata-updates-arrive",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/generic_acp_agent_client.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo/opencode_late_metadata_test.dart",
+        "packages/daemon/test/fixtures/opencode_late_metadata_acp_child.dart"
+      ],
       "notes": null
     },
     {
       "id": "release-feature:033-acp-image-prompts-no-longer-appear-twice",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/generic_acp_agent_client.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo/generic_acp_agent_client_test.dart",
+        "packages/daemon/test/daemon_custom_acp_e2e_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "release-feature:034-web-chats-stay-pinned-to-the-latest-message-at-non-default-browser-zoom",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/app/lib/screens/agent_chat_screen.dart",
+      "evidence": [
+        "packages/app/test/chat_scroll_geometry_test.dart",
+        "packages/app/test/agent_chat_screen_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "release-feature:035-grouped-tool-call-loading-animations-display-correctly",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/timeline_item_tile.dart",
+      "evidence": [
+        "packages/app/test/tool_call_overview_view_test.dart",
+        "packages/app/test/timeline_item_tile_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "release-feature:036-notifications-now-open-the-correct-workspace-and-agent",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/app/lib/main.dart",
+      "evidence": [
+        "packages/app/test/agents_provider_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "release-feature:037-archived-agents-can-be-restored-directly-from-history",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/app/lib/screens/agent_chat_screen.dart",
+      "evidence": [
+        "packages/app/test/workspace_recovery_provider_test.dart",
+        "packages/app/test/sessions_screen_test.dart",
+        "packages/app/test/agent_chat_screen_test.dart"
+      ],
       "notes": null
     },
     {

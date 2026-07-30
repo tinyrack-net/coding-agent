@@ -31,6 +31,7 @@ String fixturePath() {
 GenericAcpAgentClient client({
   Future<String?> Function()? resolveCommand,
   Map<String, String> environment = const {'ACP_FIXTURE_ENV': 'configured'},
+  AcpRpcProcessStarter? processStarter,
 }) => GenericAcpAgentClient(
   provider: 'fixture-acp',
   command: 'dart',
@@ -38,6 +39,7 @@ GenericAcpAgentClient client({
   environment: environment,
   providerParams: const {'supportsMcpServers': false},
   resolveCommand: resolveCommand ?? () async => Platform.resolvedExecutable,
+  processStarter: processStarter,
 );
 
 Future<T> eventOf<T extends ProviderEvent>(Stream<ProviderEvent> events) =>
@@ -143,6 +145,45 @@ void main() {
             .having((usage) => usage.inputTokens, 'input', 6)
             .having((usage) => usage.cachedInputTokens, 'cached', 2)
             .having((usage) => usage.outputTokens, 'output', 4),
+      );
+      expect(events.whereType<TurnCompleted>(), hasLength(1));
+    },
+  );
+
+  test(
+    'forwards one image block while suppressing the ACP user echo',
+    () async {
+      final session =
+          await client(
+            environment: const {'ACP_FIXTURE_ECHO_IMAGE_PROMPT': 'true'},
+          ).createSession(
+            cwd: Directory.current.path,
+            model: '',
+            mode: AgentMode.normal,
+          );
+      addTearDown(session.dispose);
+      final events = <ProviderEvent>[];
+      final completed = Completer<void>();
+      final subscription = session.events.listen((event) {
+        events.add(event);
+        if (event is TurnCompleted && !completed.isCompleted) {
+          completed.complete();
+        }
+      });
+      addTearDown(subscription.cancel);
+
+      await (session as ImagePromptAgentSession).promptWithImagesAndAttachments(
+        'see this',
+        const [AgentPromptImage(data: 'AA==', mimeType: 'image/png')],
+        const [],
+      );
+      await completed.future.timeout(const Duration(seconds: 5));
+
+      expect(
+        events.whereType<AssistantTextDelta>().single,
+        isA<AssistantTextDelta>()
+            .having((event) => event.itemId, 'item id', 'image-reply')
+            .having((event) => event.text, 'text', 'image-ok'),
       );
       expect(events.whereType<TurnCompleted>(), hasLength(1));
     },
@@ -413,25 +454,83 @@ void main() {
     expect(history?[4], isA<TodoItem>());
   });
 
-  test('closes and surfaces ACP session/load failure', () async {
+  test('terminates the ACP process when session/new fails', () async {
+    Process? spawned;
+    final configured = client(
+      environment: const {'ACP_FIXTURE_NEW_FAIL': 'true'},
+      processStarter: (launch) async {
+        spawned = await Process.start(
+          launch.command,
+          launch.args,
+          workingDirectory: launch.cwd,
+          environment: launch.environment,
+          includeParentEnvironment: launch.includeParentEnvironment,
+        );
+        return spawned!;
+      },
+    );
+
     await expectLater(
-      client(
-        environment: const {'ACP_FIXTURE_LOAD_FAIL': 'true'},
-      ).createSession(
+      configured.createSession(
         cwd: Directory.current.path,
         model: '',
         mode: AgentMode.normal,
-        sessionId: 'restored-session',
       ),
       throwsA(
         isA<AcpRpcError>().having(
           (error) => error.message,
           'message',
-          'session/load failed',
+          'session/new failed',
         ),
       ),
     );
+
+    expect(spawned, isNotNull);
+    await expectLater(
+      spawned!.exitCode.timeout(const Duration(seconds: 2)),
+      completes,
+    );
   });
+
+  test(
+    'terminates the ACP process and surfaces session/load failure',
+    () async {
+      Process? spawned;
+      await expectLater(
+        client(
+          environment: const {'ACP_FIXTURE_LOAD_FAIL': 'true'},
+          processStarter: (launch) async {
+            spawned = await Process.start(
+              launch.command,
+              launch.args,
+              workingDirectory: launch.cwd,
+              environment: launch.environment,
+              includeParentEnvironment: launch.includeParentEnvironment,
+            );
+            return spawned!;
+          },
+        ).createSession(
+          cwd: Directory.current.path,
+          model: '',
+          mode: AgentMode.normal,
+          sessionId: 'restored-session',
+        ),
+        throwsA(
+          isA<AcpRpcError>().having(
+            (error) => error.message,
+            'message',
+            'session/load failed',
+          ),
+        ),
+      );
+
+      expect(spawned, isNotNull);
+      await expectLater(
+        spawned!.exitCode.timeout(const Duration(seconds: 2)),
+        completes,
+      );
+    },
+  );
 
   test(
     'probes ACP models, modes and thinking without interactive auth',

@@ -150,6 +150,56 @@ void main() {
     expect(find.text('Agent server-a/archived'), findsOneWidget);
   });
 
+  testWidgets(
+    'archived workspace session preserves the agent recovery open intent',
+    (tester) async {
+      final router = GoRouter(
+        initialLocation: '/sessions',
+        routes: [
+          GoRoute(path: '/sessions', builder: (_, _) => const SessionsScreen()),
+          GoRoute(
+            path: '/h/:serverId/workspace/:workspaceId',
+            builder: (_, state) => Text(
+              'Workspace ${state.pathParameters['serverId']}/'
+              '${state.pathParameters['workspaceId']} '
+              '${state.uri.queryParameters['open']}',
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            agentHistoryProvider.overrideWith(
+              () => _HistoryNotifier(
+                AgentHistoryState(
+                  entries: [_entry(workspaceId: 'workspace-1')],
+                ),
+              ),
+            ),
+          ],
+          child: FluentApp.router(theme: buildAppTheme(), routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey('agent-row-server-a-archived')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        router.routeInformationProvider.value.uri.toString(),
+        '/h/server-a/workspace/workspace-1?open=agent%3Aarchived',
+      );
+      expect(
+        find.text('Workspace server-a/workspace-1 agent:archived'),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('filters sessions by host and renders active fallback titles', (
     tester,
   ) async {
@@ -597,6 +647,7 @@ AgentHistoryEntry _entry({
   AgentRunState runState = AgentRunState.closed,
   bool archived = true,
   bool attention = false,
+  String? workspaceId,
   String? updatedAt,
 }) => AgentHistoryEntry(
   serverId: serverId,
@@ -611,6 +662,7 @@ AgentHistoryEntry _entry({
     runState: runState,
     createdAtMs: 1,
     updatedAt: updatedAt,
+    workspaceId: workspaceId,
     requiresAttention: attention,
     archivedAt: archived ? '2026-07-28T00:00:00.000Z' : null,
   ),

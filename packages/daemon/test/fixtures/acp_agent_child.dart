@@ -20,6 +20,8 @@ bool get malformedSessionList =>
     Platform.environment['ACP_FIXTURE_MALFORMED_LIST'] == 'true';
 bool get failSessionLoad =>
     Platform.environment['ACP_FIXTURE_LOAD_FAIL'] == 'true';
+bool get failSessionNew =>
+    Platform.environment['ACP_FIXTURE_NEW_FAIL'] == 'true';
 bool get expectClientRuntime =>
     Platform.environment['ACP_FIXTURE_EXPECT_CLIENT_RUNTIME'] == 'true';
 bool get expectNoMcp =>
@@ -30,6 +32,8 @@ bool get exerciseClientRuntime =>
     Platform.environment['ACP_FIXTURE_EXERCISE_CLIENT_RUNTIME'] == 'true';
 bool get requireSessionEnvironment =>
     Platform.environment['ACP_FIXTURE_REQUIRE_SESSION_ENV'] == 'true';
+bool get echoImagePrompt =>
+    Platform.environment['ACP_FIXTURE_ECHO_IMAGE_PROMPT'] == 'true';
 
 List<Map<String, Object?>> configOnlyOptions() => [
   {
@@ -379,6 +383,14 @@ void main() {
         respond(id, {'sessionId': loadedSessionId});
       case 'session/new':
         final mcpServers = params['mcpServers'];
+        if (failSessionNew) {
+          send({
+            'jsonrpc': '2.0',
+            'id': id,
+            'error': {'code': -32000, 'message': 'session/new failed'},
+          });
+          return;
+        }
         if (requireSessionEnvironment &&
             Platform.environment['RUN_TOKEN'] != 'session-value') {
           send({
@@ -584,6 +596,59 @@ void main() {
             .map((item) => map(item)['text'])
             .whereType<String>()
             .join('|');
+        if (echoImagePrompt) {
+          final images = prompt
+              .map(map)
+              .where((item) => item['type'] == 'image')
+              .toList(growable: false);
+          if (text != 'see this' ||
+              images.length != 1 ||
+              images.single['data'] != 'AA==' ||
+              images.single['mimeType'] != 'image/png') {
+            send({
+              'jsonrpc': '2.0',
+              'id': id,
+              'error': {
+                'code': -32602,
+                'message': 'invalid image prompt blocks',
+              },
+            });
+            pendingPromptId = null;
+            return;
+          }
+          for (final content in [
+            {'type': 'text', 'text': text},
+            images.single,
+          ]) {
+            send({
+              'jsonrpc': '2.0',
+              'method': 'session/update',
+              'params': {
+                'sessionId': 'session-1',
+                'update': {
+                  'sessionUpdate': 'user_message_chunk',
+                  'messageId': 'provider-owned-message-id',
+                  'content': content,
+                },
+              },
+            });
+          }
+          send({
+            'jsonrpc': '2.0',
+            'method': 'session/update',
+            'params': {
+              'sessionId': 'session-1',
+              'update': {
+                'sessionUpdate': 'agent_message_chunk',
+                'messageId': 'image-reply',
+                'content': {'type': 'text', 'text': 'image-ok'},
+              },
+            },
+          });
+          respond(id, {'stopReason': 'end_turn'});
+          pendingPromptId = null;
+          return;
+        }
         pendingPromptWaitsForCancel = text.contains('wait-for-cancel');
         send({
           'jsonrpc': '2.0',

@@ -184,7 +184,12 @@ final class CodexAgentClient
       await runtime.connect();
       return session;
     } on Object {
-      await session.dispose();
+      try {
+        await session.dispose();
+      } on Object {
+        // CodexSessionRuntime already owns startup cleanup. Preserve the
+        // original provider failure if a repeated best-effort close also fails.
+      }
       rethrow;
     }
   }

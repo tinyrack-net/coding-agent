@@ -231,6 +231,7 @@ void main() {
       expect(client.sessionTypes, [
         'workspace.recovery.inspect.request',
         'workspace.recovery.restore.request',
+        'refresh_agent_request',
       ]);
 
       client.rejectRestore = true;
@@ -352,6 +353,11 @@ final class _RecoveryDaemonClient extends DaemonClient
         workspaceId: 'workspace-1',
         accepted: !rejectRestore,
         error: rejectRestore ? 'restore rejected' : null,
+      ).toJson(),
+      'refresh_agent_request' => AgentRefreshedStatus(
+        requestId: requestId,
+        agentId: message['agentId']! as String,
+        timelineSize: 2,
       ).toJson(),
       _ => throw StateError('unexpected session message: $type'),
     };

@@ -2,14 +2,14 @@ import 'dart:async';
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:window_manager/window_manager.dart';
 
 import '../core/daemon_client.dart';
 import '../core/desktop/desktop_shell.dart';
 import '../core/desktop/notification_service.dart';
+import '../core/host_routes.dart';
+import 'agent_history_provider.dart';
 import 'daemon_providers.dart';
 import 'host_registry_provider.dart';
-import 'worktree_tabs_provider.dart';
 
 /// The worktree/session-group an agent belongs to: a worktree agent's `cwd`
 /// *is* the worktree path; a local-isolation agent's `cwd` *is* the project
@@ -152,20 +152,18 @@ class AgentsNotifier extends Notifier<Map<String, AgentSummary>> {
   void _maybeNotify(AgentRunState? previous, AgentSummary agent) {
     if (previous == null) return;
     if (windowFocusedNotifier.value) return;
+    final workspaceId = agent.workspaceId?.trim();
+    if (workspaceId == null || workspaceId.isEmpty) return;
     final title = agent.title.isEmpty ? agent.agentId : agent.title;
     final notifications = ref.read(notificationServiceProvider);
+    final openRoute = ref.read(notificationRouteOpenerProvider);
+    final route = buildHostWorkspaceOpenRoute(
+      _serverId,
+      workspaceId,
+      'agent:${agent.agentId}',
+    );
     void onClick() {
-      // coverage:ignore-start
-      // This callback crosses the window_manager platform channel. Its
-      // navigation result is covered by the Windows integration suite.
-      windowManager.show();
-      windowManager.focus();
-      final worktreePath = resolveWorktreeKey(agent);
-      ref
-          .read(worktreeTabsProvider(worktreePath).notifier)
-          .focusAgent(agent.agentId);
-      ref.read(selectedWorktreeProvider.notifier).select(worktreePath);
-      // coverage:ignore-end
+      openRoute(route);
     }
 
     if (previous != AgentRunState.awaitingPermission &&
@@ -321,9 +319,28 @@ final sortedAgentsProvider = Provider<List<AgentSummary>>((ref) {
 });
 
 /// Summary (incl. runState) for a single agent.
-final agentSummaryProvider = Provider.family<AgentSummary?, String>(
-  (ref, agentId) => ref.watch(agentsProvider)[agentId],
-);
+final agentSummaryProvider = Provider.family<AgentSummary?, String>((
+  ref,
+  agentId,
+) {
+  final active = ref.watch(agentsProvider)[agentId];
+  if (active != null) return active;
+  final serverId = ref.watch(activeHostProvider)?.serverId;
+  final history = ref.watch(agentHistoryProvider);
+  return switch (history) {
+    AsyncData(:final value) =>
+      value.entries
+          .where(
+            (entry) =>
+                entry.serverId == serverId &&
+                entry.agent.agentId == agentId &&
+                entry.agent.archivedAt != null,
+          )
+          .map((entry) => entry.agent)
+          .firstOrNull,
+    _ => null,
+  };
+});
 
 /// Imperative daemon actions used by the UI.
 class AgentActions {

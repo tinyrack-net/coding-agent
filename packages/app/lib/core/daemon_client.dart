@@ -714,6 +714,28 @@ class DaemonClient {
     return AgentFetchResult(agent: agent, project: response.project);
   }
 
+  /// Unarchives and resumes one persisted agent through the frozen Paseo
+  /// refresh contract.
+  Future<AgentRefreshedStatus> refreshAgent(
+    String agentId, {
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    final requestId = _uuid.v4();
+    final status = AgentRefreshedStatus.fromJson(
+      await requestSessionMessage(
+        RefreshAgentRequest(requestId: requestId, agentId: agentId).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (status.requestId != requestId || status.agentId != agentId) {
+      throw FormatException(
+        'Agent refresh response mismatch: '
+        '${status.requestId}/${status.agentId}',
+      );
+    }
+    return status;
+  }
+
   Future<FetchRecentProviderSessionsResponse> fetchRecentProviderSessions({
     String? cwd,
     List<String>? providers,

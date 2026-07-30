@@ -26,6 +26,12 @@ const String _appName = 'Coding Agent';
 /// is enough, e.g. deciding whether to fire an OS notification.
 final windowFocusedNotifier = ValueNotifier<bool>(true);
 
+Future<void> showAndFocusDesktopWindow() async {
+  if (!isDesktopShell) return;
+  await windowManager.show();
+  await windowManager.focus();
+}
+
 /// Close button hides the window instead of quitting; the app keeps living in
 /// the tray. Real quit goes through the tray menu (TrayController.quit).
 /// Also tracks OS focus into [windowFocusedNotifier].

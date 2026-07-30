@@ -4,6 +4,18 @@ import 'package:local_notifier/local_notifier.dart';
 
 import 'desktop_shell.dart';
 
+typedef NotificationRouteOpener = void Function(String route);
+
+/// Opens the authoritative host/workspace target captured when an agent
+/// attention notification is created.
+///
+/// The app entry point supplies a GoRouter-backed implementation that also
+/// activates the desktop window. Keeping the callback injectable makes the
+/// notification click contract deterministic in widget and provider tests.
+final notificationRouteOpenerProvider = Provider<NotificationRouteOpener>(
+  (ref) => (_) {},
+);
+
 /// Wraps `local_notifier` for OS-level desktop notifications (an agent needs
 /// input, or a run finished). No-op off desktop (see [isDesktopShell]) so
 /// mobile/web builds never touch the plugin.

@@ -14,7 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// Records `notify()` calls instead of touching the real `local_notifier`
 /// platform channel (unavailable/flaky in `flutter test`).
 class FakeNotificationService extends NotificationService {
-  final calls = <({String title, String body})>[];
+  final calls = <({String title, String body, VoidCallback? onClick})>[];
 
   @override
   void notify({
@@ -22,7 +22,7 @@ class FakeNotificationService extends NotificationService {
     required String body,
     VoidCallback? onClick,
   }) {
-    calls.add((title: title, body: body));
+    calls.add((title: title, body: body, onClick: onClick));
   }
 }
 
@@ -35,6 +35,7 @@ const _a1 = AgentSummary(
   mode: AgentMode.normal,
   runState: AgentRunState.idle,
   createdAtMs: 100,
+  workspaceId: 'workspace-a',
 );
 
 const _a2 = AgentSummary(
@@ -234,12 +235,17 @@ class AgentsHostRegistry extends HostRegistryNotifier {
 ProviderContainer makeContainer(
   FakeDaemonClient client, {
   NotificationService? notificationService,
+  NotificationRouteOpener? notificationRouteOpener,
 }) {
   final container = ProviderContainer(
     overrides: [
       daemonClientProvider.overrideWithValue(client),
       if (notificationService != null)
         notificationServiceProvider.overrideWithValue(notificationService),
+      if (notificationRouteOpener != null)
+        notificationRouteOpenerProvider.overrideWithValue(
+          notificationRouteOpener,
+        ),
     ],
   );
   addTearDown(container.dispose);
@@ -629,6 +635,50 @@ void main() {
       expect(notifications.calls, hasLength(1));
       expect(notifications.calls.single.body, 'Finished');
     });
+
+    test(
+      'notification click opens its authoritative host workspace and agent',
+      () async {
+        windowFocusedNotifier.value = false;
+        final client = FakeDaemonClient();
+        final notifications = FakeNotificationService();
+        final openedRoutes = <String>[];
+        final container = ProviderContainer(
+          overrides: [
+            hostRegistryProvider.overrideWith(AgentsHostRegistry.new),
+            daemonClientProvider.overrideWithValue(client),
+            notificationServiceProvider.overrideWithValue(notifications),
+            notificationRouteOpenerProvider.overrideWithValue(openedRoutes.add),
+          ],
+        );
+        addTearDown(container.dispose);
+        container
+            .read(agentsProvider.notifier)
+            .upsert(_a1.copyWith(runState: AgentRunState.running));
+
+        client.eventsController.add(
+          RpcEvent(
+            type: MessageTypes.agentStateEvent,
+            payload: AgentStatePayload(
+              agent: _a1.copyWith(runState: AgentRunState.idle),
+            ).toJson(),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+        expect(notifications.calls, hasLength(1));
+
+        // Change the currently selected host before clicking. The target must
+        // still come from the notification's originating agent snapshot.
+        await container
+            .read(hostRegistryProvider.notifier)
+            .selectHost('server-b');
+        notifications.calls.single.onClick!();
+
+        expect(openedRoutes, [
+          '/h/server-a/workspace/workspace-a?open=agent%3Aa1',
+        ]);
+      },
+    );
 
     test('notifies once when a running agent errors (running -> error) '
         'while the window is unfocused', () async {

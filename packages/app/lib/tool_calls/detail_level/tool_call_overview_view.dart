@@ -86,7 +86,10 @@ class _ToolCallOverviewGroupViewState extends State<ToolCallOverviewGroupView> {
               const SizedBox(
                 width: 14,
                 height: 14,
-                child: ProgressRing(strokeWidth: 2),
+                child: ProgressRing(
+                  strokeWidth: 2,
+                  semanticLabel: 'Loading grouped tool calls',
+                ),
               ),
             ],
           ],
