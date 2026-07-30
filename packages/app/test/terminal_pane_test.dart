@@ -792,6 +792,70 @@ void main() {
   });
 
   testWidgets(
+    'a terminal attached while hidden claims its rendered size when visible',
+    (tester) async {
+      final fake = FakeDaemonClient();
+      fake.pendingSubscribe = Completer<Map<String, Object?>>();
+      final container = ProviderContainer(
+        overrides: [daemonClientProvider.overrideWithValue(fake)],
+      );
+      addTearDown(container.dispose);
+      addTearDown(
+        () => tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        ),
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const FluentApp(
+            home: ScaffoldPage(
+              content: TerminalPane(worktreePath: _worktreePath, tabId: _tabId),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      fake.pendingSubscribe!.complete({
+        'type': 'subscribe_terminal_response',
+        'payload': {
+          'terminalId': 'term-1',
+          'slot': 1,
+          'error': null,
+          'requestId': 'subscribe',
+        },
+      });
+      await tester.pump();
+
+      final session = container.read(terminalSessionProvider(_key));
+      expect(session.status, TerminalSessionStatus.running);
+      fake.sentFrames.clear();
+
+      // Reproduce Paseo's 80x24 regression without focusing or typing in the
+      // pane: xterm knows the rendered size while the hidden PTY receives no
+      // resize claim.
+      session.terminal.resize(132, 41);
+      expect(
+        fake.sentFrames.where((frame) => frame.opcode == TerminalOpcode.resize),
+        isEmpty,
+      );
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pump();
+
+      final resizeFrames = fake.sentFrames
+          .where((frame) => frame.opcode == TerminalOpcode.resize)
+          .toList();
+      expect(resizeFrames, hasLength(1));
+      expect(resizeFrames.single.resizeSize, (132, 41));
+    },
+  );
+
+  testWidgets(
     'mobile virtual keyboard consumes one-shot modifiers and sends keys',
     (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;

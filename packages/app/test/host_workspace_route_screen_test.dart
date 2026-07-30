@@ -15,6 +15,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
+import 'support/legacy_agent_list_fetch_mixin.dart';
+
 void main() {
   testWidgets('resolves workspace id to directory and applies file intent', (
     tester,
@@ -182,6 +184,55 @@ void main() {
       'workspaces',
     ]);
     await tester.pump(const Duration(milliseconds: 150));
+  });
+
+  testWidgets('offers Unarchive when the archived workspace still exists', (
+    tester,
+  ) async {
+    final transport = _StaticRecoveryTransport(
+      const RecoverableWorkspaceState(
+        workspaceId: 'workspace-1',
+        workspaceName: 'Existing workspace',
+        action: 'unarchive',
+        branch: 'feature',
+      ),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        key: UniqueKey(),
+        overrides: [
+          hostRegistryProvider.overrideWith(_ActiveRegistry.new),
+          connectionStateProvider.overrideWithValue(
+            const AsyncData(DaemonConnectionState.connected),
+          ),
+          workspaceRecoveryCapabilityProvider.overrideWithValue(true),
+          workspaceRecoveryLoadingDelayProvider.overrideWithValue(
+            Duration.zero,
+          ),
+          workspaceRecoveryTransportProvider.overrideWithValue(transport),
+          workspaceCatalogProvider.overrideWithValue(const AsyncData([])),
+        ],
+        child: const FluentApp(
+          home: HostWorkspaceRouteScreen(
+            serverId: 'server-a',
+            workspaceId: 'workspace-1',
+            openIntent: AgentWorkspaceOpenIntent('agent-1'),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Workspace archived'), findsOneWidget);
+    expect(
+      find.text(
+        'Existing workspace is archived. Unarchive it to open it again.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Unarchive'), findsOneWidget);
+    expect(find.text('Restore'), findsNothing);
   });
 
   testWidgets('shows authoritative recovery error and retry states', (
@@ -445,7 +496,7 @@ void main() {
   testWidgets('executes agent, terminal, draft, and setup open intents', (
     tester,
   ) async {
-    final client = DaemonClient(uri: Uri.parse('ws://host.example:6868'));
+    final client = _NoNetworkDaemonClient();
     addTearDown(client.dispose);
     for (final intent in const <WorkspaceOpenIntent>[
       AgentWorkspaceOpenIntent('agent-1'),
@@ -460,6 +511,7 @@ void main() {
           overrides: [
             hostRegistryProvider.overrideWith(_ActiveRegistry.new),
             daemonClientProvider.overrideWithValue(client),
+            daemonClientFactoryProvider.overrideWithValue((_) => client),
             connectionStateProvider.overrideWith((ref) => const Stream.empty()),
             worktreeTabLayoutsHydratedProvider.overrideWith(
               _HydratedLayouts.new,
@@ -555,6 +607,21 @@ class _ActiveRegistry extends HostRegistryNotifier {
     activeServerId: 'server-a',
     loaded: true,
   );
+}
+
+final class _NoNetworkDaemonClient extends DaemonClient
+    with LegacyAgentListFetchMixin {
+  _NoNetworkDaemonClient() : super(uri: Uri.parse('ws://test.invalid'));
+
+  @override
+  Future<void> connect() async {}
+
+  @override
+  Future<Map<String, Object?>> request(
+    String type,
+    Map<String, Object?> payload, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async => const {'agents': <Object?>[]};
 }
 
 class _LoadingRegistry extends HostRegistryNotifier {

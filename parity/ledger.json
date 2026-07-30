@@ -1747,24 +1747,31 @@
     },
     {
       "id": "release-feature:050-pinned-workspaces-no-longer-disappear-briefly-when-reopening-the-compact-sidebar",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/screens/home_shell.dart",
+      "evidence": [
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "Compact sidebars retain their last workspace groups, projects, selection, titles, and activity snapshot while hidden; workspace subscriptions pause off-screen, the first reopening frame uses the cached pinned rows, and live updates catch up after the frame."
     },
     {
       "id": "release-feature:051-terminal-panes-no-longer-remain-at-80x24-after-focus-or-visibility-changes",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/terminal_pane.dart;packages/app/lib/state/terminal_providers.dart",
+      "evidence": [
+        "packages/app/test/terminal_pane_test.dart",
+        "packages/daemon/test/terminal/terminal_v2_service_test.dart"
+      ],
+      "notes": "Terminal panes defer size claims while hidden, then force the current rendered dimensions after focus or lifecycle visibility returns; focused app and daemon regression suites pass repeatedly."
     },
     {
       "id": "release-feature:052-sign-in-popups-in-the-desktop-browser-now-complete-successfully",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/desktop/desktop_browser_window_open.dart",
+      "evidence": [
+        "packages/app/test/core/desktop/desktop_browser_window_open_test.dart"
+      ],
+      "notes": "Paseo-compatible popup policy, malformed URL rejection, bounded pre-registration queue, secure child-window options, and opaque original native request context are modeled and tested. Remaining parity requires the embedded desktop browser/native child-window host, recursive popup navigation guards, and OAuth opener/POST/window.close E2E; no such browser runtime exists yet."
     },
     {
       "id": "release-feature:053-browser-typing-and-shortcuts-no-longer-submit-the-active-paseo-prompt",
@@ -1782,10 +1789,14 @@
     },
     {
       "id": "release-feature:055-archived-workspaces-now-show-the-correct-unarchive-or-restore-action",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/workspace/workspace_v2_service.dart;packages/app/lib/state/workspace_recovery_provider.dart;packages/app/lib/screens/host_workspace_route_screen.dart",
+      "evidence": [
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
+        "packages/app/test/workspace_recovery_provider_test.dart",
+        "packages/app/test/host_workspace_route_screen_test.dart"
+      ],
+      "notes": "Recovery inspection returns Unarchive for archived workspaces whose directory remains and Restore for removed worktrees; the Flutter route renders the matching Paseo label and description and preserves retry behavior."
     },
     {
       "id": "release-feature:056-archived-sessions-can-be-reimported-into-the-current-workspace",

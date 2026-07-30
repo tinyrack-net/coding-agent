@@ -412,6 +412,59 @@ void main() {
     expect(container.read(mobilePanelProvider).target, MobilePanelView.agent);
   });
 
+  testWidgets(
+    'compact sidebar freezes workspace updates while retaining its pinned row',
+    (tester) async {
+      final container = await pumpHomeShell(
+        tester,
+        agents: const [_projectAgent1],
+        projects: const [_projectA],
+        worktreesByProject: const {
+          '/repo-a': [_mainWorktreeA],
+        },
+        surfaceSize: const Size(500, 700),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('menu-button')));
+      await settleMobilePanel(tester);
+      await tester.tap(find.byIcon(FluentIcons.more_vertical));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pin'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pinned'), findsOneWidget);
+      expect(find.text('Repo A agent'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('sidebar-close')));
+      await settleMobilePanel(tester);
+
+      expect(container.read(mobilePanelProvider).target, MobilePanelView.agent);
+      expect(find.text('Pinned'), findsOneWidget);
+      expect(find.text('Repo A agent'), findsOneWidget);
+
+      container.read(agentsProvider.notifier).upsert(_agent3);
+      await tester.pump();
+
+      expect(find.text('Pinned'), findsOneWidget);
+      expect(find.text('Repo A agent'), findsOneWidget);
+      expect(find.text('Third agent'), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('menu-button')));
+      await tester.pump();
+
+      expect(find.text('Pinned'), findsOneWidget);
+      expect(find.text('Repo A agent'), findsOneWidget);
+      expect(find.text('Third agent'), findsNothing);
+
+      await tester.pump();
+
+      expect(find.text('Pinned'), findsOneWidget);
+      expect(find.text('Repo A agent'), findsOneWidget);
+      expect(find.text('Third agent'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 150));
+    },
+  );
+
   testWidgets('compact sidebar supports open and close swipe gestures', (
     tester,
   ) async {

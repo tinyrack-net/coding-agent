@@ -175,7 +175,11 @@ class _CompactHomeLayoutState extends ConsumerState<_CompactHomeLayout>
               return;
             }
             setState(() {
-              _leftPresented = target == MobilePanelView.agentList;
+              // Keep a sidebar that has been presented mounted after it
+              // closes. The sidebar pauses its live subscriptions while
+              // hidden, but its last rendered pinned rows survive reopening.
+              _leftPresented =
+                  _leftPresented || target == MobilePanelView.agentList;
               _rightPresented = target == MobilePanelView.fileExplorer;
             });
           }),
@@ -456,23 +460,31 @@ class _CompactHomeLayoutState extends ConsumerState<_CompactHomeLayout>
             if (_leftPresented)
               Positioned.fill(
                 key: const ValueKey('mobile-left-sidebar'),
-                child: IgnorePointer(
-                  ignoring: selection.target != MobilePanelView.agentList,
-                  child: Transform.translate(
-                    offset: Offset(frame.leftTranslateX, 0),
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onHorizontalDragStart: _beginDrag,
-                      onHorizontalDragUpdate: _updateDrag,
-                      onHorizontalDragEnd: _finishDrag,
-                      onHorizontalDragCancel: _cancelDrag,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: context.paseoPalette.surfaceSidebar,
-                        ),
-                        child: _Sidebar(
-                          compact: true,
-                          onClose: notifier.showAgent,
+                child: ExcludeSemantics(
+                  excluding: selection.target != MobilePanelView.agentList,
+                  child: ExcludeFocus(
+                    excluding: selection.target != MobilePanelView.agentList,
+                    child: IgnorePointer(
+                      ignoring: selection.target != MobilePanelView.agentList,
+                      child: Transform.translate(
+                        offset: Offset(frame.leftTranslateX, 0),
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragStart: _beginDrag,
+                          onHorizontalDragUpdate: _updateDrag,
+                          onHorizontalDragEnd: _finishDrag,
+                          onHorizontalDragCancel: _cancelDrag,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: context.paseoPalette.surfaceSidebar,
+                            ),
+                            child: _Sidebar(
+                              compact: true,
+                              live:
+                                  selection.target == MobilePanelView.agentList,
+                              onClose: notifier.showAgent,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -1069,9 +1081,10 @@ class _SectionLabel extends StatelessWidget {
 }
 
 class _Sidebar extends ConsumerStatefulWidget {
-  const _Sidebar({this.compact = false, this.onClose});
+  const _Sidebar({this.compact = false, this.live = true, this.onClose});
 
   final bool compact;
+  final bool live;
   final VoidCallback? onClose;
 
   @override
@@ -1083,6 +1096,59 @@ class _SidebarState extends ConsumerState<_Sidebar> {
   _SidebarGroupMode _groupMode = _SidebarGroupMode.project;
   _SidebarWorkspaceTitleSource _titleSource =
       _SidebarWorkspaceTitleSource.title;
+  late SidebarGroups _retainedGroups;
+  late AsyncValue<List<ProjectInfo>> _retainedProjects;
+  String? _retainedSelection;
+  late final ProviderSubscription<SidebarGroups> _groupsSubscription;
+  late final ProviderSubscription<AsyncValue<List<ProjectInfo>>>
+  _projectsSubscription;
+  late final ProviderSubscription<String?> _selectionSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _retainedGroups = ref.read(sidebarGroupsProvider);
+    _retainedProjects = ref.read(projectsProvider);
+    _retainedSelection = ref.read(selectedWorktreeProvider);
+    _groupsSubscription = ref.listenManual(sidebarGroupsProvider, (_, next) {
+      if (widget.live && mounted) setState(() => _retainedGroups = next);
+    });
+    _projectsSubscription = ref.listenManual(projectsProvider, (_, next) {
+      if (widget.live && mounted) setState(() => _retainedProjects = next);
+    });
+    _selectionSubscription = ref.listenManual(selectedWorktreeProvider, (
+      _,
+      next,
+    ) {
+      if (widget.live && mounted) setState(() => _retainedSelection = next);
+    });
+    if (!widget.live) _pauseLiveSubscriptions();
+  }
+
+  @override
+  void didUpdateWidget(covariant _Sidebar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.live == widget.live) return;
+    if (widget.live) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.live) _resumeLiveSubscriptions();
+      });
+    } else {
+      _pauseLiveSubscriptions();
+    }
+  }
+
+  void _pauseLiveSubscriptions() {
+    _groupsSubscription.pause();
+    _projectsSubscription.pause();
+    _selectionSubscription.pause();
+  }
+
+  void _resumeLiveSubscriptions() {
+    _groupsSubscription.resume();
+    _projectsSubscription.resume();
+    _selectionSubscription.resume();
+  }
 
   String _newWorkspaceRoute({
     required String? selected,
@@ -1193,9 +1259,9 @@ class _SidebarState extends ConsumerState<_Sidebar> {
 
   @override
   Widget build(BuildContext context) {
-    final selected = ref.watch(selectedWorktreeProvider);
-    final groups = ref.watch(sidebarGroupsProvider);
-    final projects = ref.watch(projectsProvider);
+    final selected = _retainedSelection;
+    final groups = _retainedGroups;
+    final projects = _retainedProjects;
     final client = ref.watch(daemonClientProvider);
     final serverId =
         ref.watch(activeHostProvider)?.serverId ?? client.serverInfo?.serverId;
@@ -1312,6 +1378,7 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                           row: row,
                           selected: row.key == selected,
                           titleSource: _titleSource,
+                          live: widget.live,
                           onTap: () => selectRow(row),
                         ),
                     ],
@@ -1324,6 +1391,7 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                             row: row,
                             selected: row.key == selected,
                             titleSource: _titleSource,
+                            live: widget.live,
                             onTap: () => selectRow(row),
                           ),
                       ],
@@ -1343,6 +1411,7 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                                 row: row,
                                 selected: row.key == selected,
                                 titleSource: _titleSource,
+                                live: widget.live,
                                 onTap: () => selectRow(row),
                               ),
                           ],
@@ -1357,6 +1426,7 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                                 row: row,
                                 selected: row.key == selected,
                                 titleSource: _titleSource,
+                                live: widget.live,
                                 onTap: () => selectRow(row),
                               ),
                           ],
@@ -1454,6 +1524,7 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                                   row: row,
                                   selected: row.key == selected,
                                   titleSource: _titleSource,
+                                  live: widget.live,
                                   onTap: () => selectRow(row),
                                 ),
                               );
@@ -1518,12 +1589,14 @@ class _SidebarWorktreeRow extends ConsumerStatefulWidget {
     required this.row,
     required this.selected,
     required this.titleSource,
+    required this.live,
     required this.onTap,
   });
 
   final SidebarWorktreeRow row;
   final bool selected;
   final _SidebarWorkspaceTitleSource titleSource;
+  final bool live;
   final VoidCallback onTap;
 
   @override
@@ -1534,6 +1607,55 @@ class _SidebarWorktreeRow extends ConsumerStatefulWidget {
 class _SidebarWorktreeRowState extends ConsumerState<_SidebarWorktreeRow> {
   final _menuController = FlyoutController();
   final _menuButtonKey = GlobalKey();
+  String? _retainedTitleOverride;
+  Map<String, WorkspaceAgentActivity> _retainedActivityIndex = const {};
+  late final ProviderSubscription<Map<String, String>> _titlesSubscription;
+  late final ProviderSubscription<Map<String, WorkspaceAgentActivity>>
+  _activitySubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _retainedTitleOverride = ref.read(worktreeTitlesProvider)[widget.row.key];
+    _retainedActivityIndex = ref.read(workspaceAgentActivityIndexProvider);
+    _titlesSubscription = ref.listenManual(worktreeTitlesProvider, (_, next) {
+      if (widget.live && mounted) {
+        setState(() => _retainedTitleOverride = next[widget.row.key]);
+      }
+    });
+    _activitySubscription = ref.listenManual(
+      workspaceAgentActivityIndexProvider,
+      (_, next) {
+        if (widget.live && mounted) {
+          setState(() => _retainedActivityIndex = next);
+        }
+      },
+    );
+    if (!widget.live) _pauseLiveSubscriptions();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SidebarWorktreeRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.row.key != widget.row.key && widget.live) {
+      _retainedTitleOverride = ref.read(worktreeTitlesProvider)[widget.row.key];
+    }
+    if (oldWidget.live == widget.live) return;
+    if (widget.live) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !widget.live) return;
+        _titlesSubscription.resume();
+        _activitySubscription.resume();
+      });
+    } else {
+      _pauseLiveSubscriptions();
+    }
+  }
+
+  void _pauseLiveSubscriptions() {
+    _titlesSubscription.pause();
+    _activitySubscription.pause();
+  }
 
   String get _fallbackName {
     if (widget.titleSource == _SidebarWorkspaceTitleSource.branch) {
@@ -1695,8 +1817,7 @@ class _SidebarWorktreeRowState extends ConsumerState<_SidebarWorktreeRow> {
   @override
   Widget build(BuildContext context) {
     final row = widget.row;
-    final override = ref.watch(worktreeTitlesProvider)[row.key];
-    final title = override ?? _fallbackName;
+    final title = _retainedTitleOverride ?? _fallbackName;
     final subtitle = switch (row.agents.length) {
       0 => row.key,
       1 => '${row.agents.single.provider} · ${row.agents.single.model}',
@@ -1704,7 +1825,7 @@ class _SidebarWorktreeRowState extends ConsumerState<_SidebarWorktreeRow> {
     };
     final activity = latestWorkspaceActivityForAgents(
       row.agents,
-      ref.watch(workspaceAgentActivityIndexProvider),
+      _retainedActivityIndex,
     );
     final hasWorkspaceIdentity = row.agents.any(
       (agent) => agent.workspaceId?.trim().isNotEmpty == true,
