@@ -1032,4 +1032,57 @@ void main() {
     expect(find.text('Copy path'), findsOneWidget);
     expect(find.text('new line'), findsNothing);
   });
+
+  testWidgets('expanded header stays pinned and collapse restores its anchor', (
+    tester,
+  ) async {
+    final longLines = List.generate(
+      80,
+      (index) => DiffLine(
+        type: DiffLineType.context,
+        text: 'line $index',
+        oldLineNo: index + 1,
+        newLineNo: index + 1,
+      ),
+    );
+    final diff = DiffResponse(
+      files: [
+        DiffFile(
+          path: 'lib/long.dart',
+          status: DiffFileStatus.modified,
+          hunks: [DiffHunk(header: '@@ -1,80 +1,80 @@', lines: longLines)],
+        ),
+        const DiffFile(path: 'lib/next.dart', status: DiffFileStatus.modified),
+      ],
+    );
+    await tester.binding.setSurfaceSize(const Size(600, 320));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(_wrap(DiffView(diff: diff)));
+
+    await tester.tap(find.text('lib/long.dart'));
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const ValueKey('git-diff-scroll')),
+      const Offset(0, -280),
+    );
+    await tester.pumpAndSettle();
+
+    final scroll = tester.widget<CustomScrollView>(
+      find.byKey(const ValueKey('git-diff-scroll')),
+    );
+    expect(scroll.controller!.offset, greaterThan(200));
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('diff-file-0'))).dy,
+      closeTo(
+        tester.getTopLeft(find.byKey(const ValueKey('git-diff-scroll'))).dy,
+        1,
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('diff-file-0')));
+    await tester.pumpAndSettle();
+
+    expect(scroll.controller!.offset, closeTo(0, 1));
+    expect(find.text('line 0'), findsNothing);
+  });
 }

@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/diff_flat_items.dart';
 import '../../core/diff_order.dart';
 import '../../core/diff_rendering.dart';
+import '../../core/diff_scroll.dart';
 import '../../core/diff_tree.dart';
 import '../../core/theme.dart';
 import '../../state/changes_preferences_provider.dart';
@@ -131,6 +133,9 @@ class DiffView extends ConsumerStatefulWidget {
 class _DiffViewState extends ConsumerState<DiffView> {
   late DiffViewController _controller;
   late bool _ownsController;
+  final _scrollController = ScrollController();
+  final _headerKeys = <String, GlobalKey>{};
+  final _folderKeys = <String, GlobalKey>{};
   _ReviewEditorTarget? _reviewEditor;
 
   @override
@@ -167,7 +172,49 @@ class _DiffViewState extends ConsumerState<DiffView> {
   void dispose() {
     _controller.removeListener(_handleControllerChanged);
     if (_ownsController) _controller.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  GlobalKey _headerKey(String path) =>
+      _headerKeys.putIfAbsent(path, GlobalKey.new);
+
+  GlobalKey _folderKey(String path) =>
+      _folderKeys.putIfAbsent(path, GlobalKey.new);
+
+  void _toggleFile(String path) {
+    final isExpanded = _controller.expandedPaths.contains(path);
+    if (isExpanded) _anchorBeforeCollapse(_headerKey(path));
+    _controller.toggleFile(path);
+  }
+
+  void _toggleFolder(String path) {
+    final isCollapsed = _controller.collapsedFolders.contains(path);
+    if (!isCollapsed) _anchorBeforeCollapse(_folderKey(path));
+    _controller.toggleFolder(path);
+  }
+
+  void _anchorBeforeCollapse(GlobalKey itemKey) {
+    if (!_scrollController.hasClients) return;
+    final renderObject = itemKey.currentContext?.findRenderObject();
+    if (renderObject == null || !renderObject.attached) return;
+    final viewport = RenderAbstractViewport.maybeOf(renderObject);
+    if (viewport == null) return;
+    final targetOffset = viewport.getOffsetToReveal(renderObject, 0).offset;
+    final itemHeight = renderObject.paintBounds.height;
+    final position = _scrollController.position;
+    final shouldAnchor = shouldAnchorHeaderBeforeCollapse(
+      AnchorVisibilityInput(
+        headerOffset: targetOffset,
+        headerHeight: itemHeight,
+        viewportOffset: position.pixels,
+        viewportHeight: position.viewportDimension,
+      ),
+    );
+    if (!shouldAnchor) return;
+    _scrollController.jumpTo(
+      targetOffset.clamp(position.minScrollExtent, position.maxScrollExtent),
+    );
   }
 
   @override
@@ -252,34 +299,70 @@ class _DiffViewState extends ConsumerState<DiffView> {
             collapsedFolders: _controller.collapsedFolders,
             expandedPaths: _controller.expandedPaths,
           );
-          return ListView.builder(
+          final stickyIndices = result.stickyHeaderIndices.toSet();
+          return CustomScrollView(
             key: const ValueKey('git-diff-scroll'),
-            itemCount: result.items.length,
-            itemBuilder: (context, index) => switch (result.items[index]) {
-              final DiffFlatFolderItem folder => _DiffFolderRow(
-                folder: folder,
-                onToggle: () => _controller.toggleFolder(folder.dirPath),
-              ),
-              final DiffFlatHeaderItem header => _DiffFileHeader(
-                item: header,
-                showDirectory: widget.viewMode == ChangesViewMode.flat,
-                onToggle: () => _controller.toggleFile(header.file.path),
-                onOpenFile: widget.onOpenFile,
-                onCopyPath: widget.onCopyPath,
-                onDownload: widget.onDownload,
-                onAddToChat: widget.onAddToChat,
-              ),
-              final DiffFlatBodyItem body => Padding(
-                key: ValueKey('diff-file-${body.fileIndex}-body'),
-                padding: EdgeInsets.only(left: body.depth * 16.0),
-                child: _FileDiffBody(
-                  file: body.file,
-                  review: review,
-                  layout: layout,
-                  wrapLines: widget.wrapLines,
-                ),
-              ),
-            },
+            controller: _scrollController,
+            slivers: [
+              for (var index = 0; index < result.items.length; index++)
+                switch (result.items[index]) {
+                  final DiffFlatFolderItem folder => SliverToBoxAdapter(
+                    child: KeyedSubtree(
+                      key: _folderKey(folder.dirPath),
+                      child: _DiffFolderRow(
+                        folder: folder,
+                        onToggle: () => _toggleFolder(folder.dirPath),
+                      ),
+                    ),
+                  ),
+                  final DiffFlatHeaderItem header
+                      when stickyIndices.contains(index) =>
+                    PinnedHeaderSliver(
+                      child: KeyedSubtree(
+                        key: _headerKey(header.file.path),
+                        child: ColoredBox(
+                          color: context.paseoPalette.surface1,
+                          child: _DiffFileHeader(
+                            item: header,
+                            showDirectory:
+                                widget.viewMode == ChangesViewMode.flat,
+                            onToggle: () => _toggleFile(header.file.path),
+                            onOpenFile: widget.onOpenFile,
+                            onCopyPath: widget.onCopyPath,
+                            onDownload: widget.onDownload,
+                            onAddToChat: widget.onAddToChat,
+                          ),
+                        ),
+                      ),
+                    ),
+                  final DiffFlatHeaderItem header => SliverToBoxAdapter(
+                    child: KeyedSubtree(
+                      key: _headerKey(header.file.path),
+                      child: _DiffFileHeader(
+                        item: header,
+                        showDirectory: widget.viewMode == ChangesViewMode.flat,
+                        onToggle: () => _toggleFile(header.file.path),
+                        onOpenFile: widget.onOpenFile,
+                        onCopyPath: widget.onCopyPath,
+                        onDownload: widget.onDownload,
+                        onAddToChat: widget.onAddToChat,
+                      ),
+                    ),
+                  ),
+                  final DiffFlatBodyItem body => SliverToBoxAdapter(
+                    child: Padding(
+                      key: ValueKey('diff-file-${body.fileIndex}-body'),
+                      padding: EdgeInsets.only(left: body.depth * 16.0),
+                      child: _FileDiffBody(
+                        file: body.file,
+                        review: review,
+                        layout: layout,
+                        wrapLines: widget.wrapLines,
+                      ),
+                    ),
+                  ),
+                },
+            ],
           );
         },
       ),
