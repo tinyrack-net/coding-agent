@@ -1869,17 +1869,22 @@
     },
     {
       "id": "source-unit:packages/app/src/add-project-flow/model.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/add_project_flow/model.dart",
+      "evidence": [
+        "packages/app/test/add_project_flow_model_test.dart"
+      ],
+      "notes": "The sealed Dart flow preserves frozen host selection, page history, Back restoration, directory and GitHub destination drafts, active selection movement, late host availability, and submission/error fields."
     },
     {
       "id": "source-unit:packages/app/src/add-project-flow/options.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/add_project_flow/options.dart",
+      "evidence": [
+        "packages/app/test/add_project_flow_model_test.dart",
+        "packages/protocol/test/git_remote_test.dart"
+      ],
+      "notes": "Host/method filtering, capability-gated copy, complete remote and owner/repo choices, path helpers, suggested parents, existing-path disabling, case handling, and home-equivalent deduplication match the frozen option contract."
     },
     {
       "id": "source-unit:packages/app/src/agent-stream/bottom-anchor-controller.ts",
@@ -2594,12 +2599,12 @@
     {
       "id": "source-unit:packages/app/src/components/combined-model-selector.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/composer/provider_model_selection.dart; packages/app/lib/widgets/combined_model_selector.dart",
+      "implementation": "packages/app/lib/composer/provider_model_selection.dart;packages/app/lib/widgets/combined_model_selector.dart;packages/app/lib/widgets/provider_icon.dart;packages/app/lib/state/provider_settings_provider.dart",
       "evidence": [
         "packages/app/test/provider_model_selection_test.dart",
         "packages/app/test/combined_model_selector_test.dart"
       ],
-      "notes": "The Flutter selector resolves selected and stale model labels, opens the frozen single-provider or all-provider initial view, drills across providers, searches, retries errors, selects synthetic Default models, and toggles favorites. It now exposes the frozen custom fill-trigger contract with selected label, disabled/open/hover/press state and open/close lifecycle; the schedule consumer renders the provider glyph through the shared frozen icon catalog. Exact provider glyphs inside the browser, settings actions, responsive Combobox sheet presentation, browser keyboard geometry, and frozen visual evidence remain."
+      "notes": "The Flutter selector resolves selected and stale model labels, opens the frozen single-provider or all-provider initial view, drills across providers, renders exact provider glyphs, opens host-gated provider settings without dismissing the selector, searches, retries errors, selects synthetic Default models, toggles favorites, and exposes the frozen custom fill-trigger lifecycle. Responsive Combobox sheet presentation, browser keyboard geometry, and frozen visual evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/components/community-links.tsx",

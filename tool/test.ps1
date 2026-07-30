@@ -64,6 +64,7 @@ $packages = [ordered]@{
         Path = 'packages/app'
         Flutter = $true
         Smoke = @(
+            'test/add_project_flow_model_test.dart'
             'test/provider_model_selection_test.dart'
             'test/workspace_draft_submission_test.dart'
             'test/draft_agent_selection_test.dart'
