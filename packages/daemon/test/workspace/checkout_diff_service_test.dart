@@ -63,7 +63,7 @@ void main() {
 
   test('pushes only changed snapshots after backend notifications', () async {
     await service.subscribe(connection, _subscribe());
-    backend.emit('/repo');
+    backend.emitAll();
     await Future<void>.delayed(Duration.zero);
     await Future<void>.delayed(Duration.zero);
     expect(sent, isEmpty);
@@ -73,7 +73,7 @@ void main() {
         DiffFile(path: 'new.txt', status: DiffFileStatus.added, additions: 2),
       ],
     );
-    backend.emit('/repo');
+    backend.emitAll();
     await Future<void>.delayed(Duration.zero);
     await Future<void>.delayed(Duration.zero);
 
@@ -101,7 +101,9 @@ void main() {
         relayConnectionId: null,
       );
       await service.subscribe(other, _subscribe());
-      expect(backend.activeCount, 2);
+      expect(backend.activeCount, 1);
+      expect(service.metrics.targetCount, 1);
+      expect(service.metrics.subscriptionCount, 2);
 
       service.unsubscribe('connection-1', {
         'type': UnsubscribeCheckoutDiffRequest.type,
@@ -110,8 +112,45 @@ void main() {
       expect(backend.activeCount, 1);
       service.onConnectionClosed('connection-2');
       expect(backend.activeCount, 0);
+      expect(service.metrics.targetCount, 0);
     },
   );
+
+  test('per-file and aggregate budgets emit too-large placeholders', () {
+    final justOverOneMiB = 'x' * (1024 * 1024);
+    final limited = git.applyCheckoutDiffBudgets(
+      DiffResponse(
+        files: [
+          DiffFile(
+            path: 'one.txt',
+            status: DiffFileStatus.modified,
+            additions: 1,
+            hunks: [
+              DiffHunk(
+                header: '@@ -1 +1 @@',
+                lines: [DiffLine(type: DiffLineType.add, text: justOverOneMiB)],
+              ),
+            ],
+          ),
+          const DiffFile(
+            path: 'small.txt',
+            status: DiffFileStatus.modified,
+            additions: 1,
+            hunks: [
+              DiffHunk(
+                header: '@@ -1 +1 @@',
+                lines: [DiffLine(type: DiffLineType.add, text: 'small')],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    expect(limited.files.first.tooLarge, isTrue);
+    expect(limited.files.first.hunks, isEmpty);
+    expect(limited.files.last.tooLarge, isFalse);
+  });
 }
 
 Map<String, Object?> _subscribe({String? baseRef}) =>
@@ -161,9 +200,11 @@ final class _FakeBackend implements WorkspaceGitObserverBackend {
     );
   }
 
-  void emit(String cwd) {
-    for (final listener in [...?listeners[cwd]]) {
-      listener(const WorkspaceGitObserverSnapshot(currentBranch: 'main'));
+  void emitAll() {
+    for (final listenersForCwd in listeners.values) {
+      for (final listener in [...listenersForCwd]) {
+        listener(const WorkspaceGitObserverSnapshot(currentBranch: 'main'));
+      }
     }
   }
 }

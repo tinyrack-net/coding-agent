@@ -10,6 +10,9 @@ import '../forge/workspace_forge_status_service.dart';
 import '../git/git_runner.dart';
 import 'workspace_git_observer_service.dart';
 
+typedef WorkspaceDirectoryWatch =
+    Stream<FileSystemEvent> Function(String path, {required bool recursive});
+
 /// The local Git portion of Paseo's `WorkspaceGitRuntimeSnapshot`.
 ///
 /// The backend caches local and forge snapshots separately, then emits their
@@ -79,17 +82,25 @@ final class PollingWorkspaceGitBackend implements WorkspaceGitObserverBackend {
     GitRunner? runner,
     this.forgeStatus,
     this.pollInterval = const Duration(seconds: 5),
+    this.watchDebounce = const Duration(milliseconds: 150),
     this.richRefreshInterval = const Duration(minutes: 2),
     this.pendingForgeRefreshInterval = const Duration(seconds: 20),
+    WorkspaceDirectoryWatch? watchDirectory,
     DateTime Function()? now,
   }) : _runner = runner ?? const GitRunner(),
+       _watchDirectory =
+           watchDirectory ??
+           ((path, {required recursive}) =>
+               Directory(path).watch(recursive: recursive)),
        _now = now ?? DateTime.now;
 
   final GitRunner _runner;
   final WorkspaceForgeStatusService? forgeStatus;
   final Duration pollInterval;
+  final Duration watchDebounce;
   final Duration richRefreshInterval;
   final Duration pendingForgeRefreshInterval;
+  final WorkspaceDirectoryWatch _watchDirectory;
   final DateTime Function() _now;
   final Map<String, _PollingGitTarget> _targets = {};
   final List<Future<void>> _disposeFutures = [];
@@ -158,6 +169,7 @@ final class PollingWorkspaceGitBackend implements WorkspaceGitObserverBackend {
       pollInterval,
       (_) => unawaited(refreshNow(normalized, force: false)),
     );
+    _startWorkingTreeWatch(normalized, target);
     unawaited(refreshNow(normalized));
     var subscribed = true;
     Future<void>? inFlightAtUnsubscribe;
@@ -167,6 +179,9 @@ final class PollingWorkspaceGitBackend implements WorkspaceGitObserverBackend {
       target.listeners.remove(onSnapshot);
       if (target.listeners.isEmpty) {
         target.timer?.cancel();
+        target.watchDebounceTimer?.cancel();
+        unawaited(target.watcher?.cancel());
+        target.watcher = null;
         inFlightAtUnsubscribe = target.refreshInFlight;
         _targets.remove(normalized);
       }
@@ -183,6 +198,45 @@ final class PollingWorkspaceGitBackend implements WorkspaceGitObserverBackend {
         }
       },
     );
+  }
+
+  void _startWorkingTreeWatch(String normalized, _PollingGitTarget target) {
+    if (target.watcher != null || target.watchStarting) return;
+    target.watchStarting = true;
+    try {
+      final stream = _watchDirectory(normalized, recursive: !Platform.isLinux);
+      late final StreamSubscription<FileSystemEvent> watcher;
+      watcher = stream.listen(
+        (_) {
+          if (!identical(_targets[normalized], target) ||
+              target.listeners.isEmpty) {
+            return;
+          }
+          target.watchDebounceTimer?.cancel();
+          target.watchDebounceTimer = Timer(watchDebounce, () {
+            target.watchDebounceTimer = null;
+            unawaited(refreshNow(normalized));
+          });
+        },
+        onError: (_) {
+          if (identical(target.watcher, watcher)) {
+            target.watcher = null;
+          }
+          unawaited(watcher.cancel());
+        },
+        onDone: () {
+          if (identical(target.watcher, watcher)) {
+            target.watcher = null;
+          }
+        },
+      );
+      target.watcher = watcher;
+    } on FileSystemException {
+      // The periodic observer remains the frozen fallback when native watches
+      // are unavailable or recursive watching is unsupported.
+    } finally {
+      target.watchStarting = false;
+    }
   }
 
   Future<void> refreshNow(String cwd, {bool force = true}) async {
@@ -381,6 +435,8 @@ final class PollingWorkspaceGitBackend implements WorkspaceGitObserverBackend {
     _disposed = true;
     for (final target in _targets.values) {
       target.timer?.cancel();
+      target.watchDebounceTimer?.cancel();
+      unawaited(target.watcher?.cancel());
       final refresh = target.refreshInFlight;
       if (refresh != null) {
         _disposeFutures.add(() async {
@@ -414,6 +470,9 @@ final class _PollingGitTarget {
   final String cwd;
   final Set<void Function(WorkspaceGitObserverSnapshot)> listeners = {};
   Timer? timer;
+  Timer? watchDebounceTimer;
+  StreamSubscription<FileSystemEvent>? watcher;
+  bool watchStarting = false;
   String? statusFingerprint;
   String? fingerprint;
   WorkspaceLocalGitSnapshot? snapshot;

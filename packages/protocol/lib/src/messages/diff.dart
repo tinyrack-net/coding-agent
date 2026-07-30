@@ -20,18 +20,18 @@ final class DiffLine {
   final int? newLineNo;
 
   static DiffLine fromJson(Map<String, Object?> json) => DiffLine(
-        type: DiffLineType.values.byName((json['type'] as String?) ?? 'context'),
-        text: (json['text'] as String?) ?? '',
-        oldLineNo: (json['oldLineNo'] as num?)?.toInt(),
-        newLineNo: (json['newLineNo'] as num?)?.toInt(),
-      );
+    type: DiffLineType.values.byName((json['type'] as String?) ?? 'context'),
+    text: (json['text'] as String?) ?? '',
+    oldLineNo: (json['oldLineNo'] as num?)?.toInt(),
+    newLineNo: (json['newLineNo'] as num?)?.toInt(),
+  );
 
   Map<String, Object?> toJson() => {
-        'type': type.name,
-        'text': text,
-        if (oldLineNo != null) 'oldLineNo': oldLineNo,
-        if (newLineNo != null) 'newLineNo': newLineNo,
-      };
+    'type': type.name,
+    'text': text,
+    if (oldLineNo != null) 'oldLineNo': oldLineNo,
+    if (newLineNo != null) 'newLineNo': newLineNo,
+  };
 }
 
 final class DiffHunk {
@@ -41,17 +41,17 @@ final class DiffHunk {
   final List<DiffLine> lines;
 
   static DiffHunk fromJson(Map<String, Object?> json) => DiffHunk(
-        header: (json['header'] as String?) ?? '',
-        lines: ((json['lines'] as List?) ?? const [])
-            .cast<Map<String, Object?>>()
-            .map(DiffLine.fromJson)
-            .toList(),
-      );
+    header: (json['header'] as String?) ?? '',
+    lines: ((json['lines'] as List?) ?? const [])
+        .cast<Map<String, Object?>>()
+        .map(DiffLine.fromJson)
+        .toList(),
+  );
 
   Map<String, Object?> toJson() => {
-        'header': header,
-        'lines': lines.map((l) => l.toJson()).toList(),
-      };
+    'header': header,
+    'lines': lines.map((l) => l.toJson()).toList(),
+  };
 }
 
 final class DiffFile {
@@ -60,6 +60,7 @@ final class DiffFile {
     required this.status,
     this.oldPath,
     this.binary = false,
+    this.tooLarge = false,
     this.additions = 0,
     this.deletions = 0,
     this.hunks = const [],
@@ -69,33 +70,37 @@ final class DiffFile {
   final DiffFileStatus status;
   final String? oldPath;
   final bool binary;
+  final bool tooLarge;
   final int additions;
   final int deletions;
   final List<DiffHunk> hunks;
 
   static DiffFile fromJson(Map<String, Object?> json) => DiffFile(
-        path: json['path'] as String,
-        status: DiffFileStatus.values
-            .byName((json['status'] as String?) ?? 'modified'),
-        oldPath: json['oldPath'] as String?,
-        binary: (json['binary'] as bool?) ?? false,
-        additions: (json['additions'] as num?)?.toInt() ?? 0,
-        deletions: (json['deletions'] as num?)?.toInt() ?? 0,
-        hunks: ((json['hunks'] as List?) ?? const [])
-            .cast<Map<String, Object?>>()
-            .map(DiffHunk.fromJson)
-            .toList(),
-      );
+    path: json['path'] as String,
+    status: DiffFileStatus.values.byName(
+      (json['status'] as String?) ?? 'modified',
+    ),
+    oldPath: json['oldPath'] as String?,
+    binary: (json['binary'] as bool?) ?? false,
+    tooLarge: (json['tooLarge'] as bool?) ?? false,
+    additions: (json['additions'] as num?)?.toInt() ?? 0,
+    deletions: (json['deletions'] as num?)?.toInt() ?? 0,
+    hunks: ((json['hunks'] as List?) ?? const [])
+        .cast<Map<String, Object?>>()
+        .map(DiffHunk.fromJson)
+        .toList(),
+  );
 
   Map<String, Object?> toJson() => {
-        'path': path,
-        'status': status.name,
-        if (oldPath != null) 'oldPath': oldPath,
-        'binary': binary,
-        'additions': additions,
-        'deletions': deletions,
-        'hunks': hunks.map((h) => h.toJson()).toList(),
-      };
+    'path': path,
+    'status': status.name,
+    if (oldPath != null) 'oldPath': oldPath,
+    'binary': binary,
+    if (tooLarge) 'tooLarge': true,
+    'additions': additions,
+    'deletions': deletions,
+    'hunks': hunks.map((h) => h.toJson()).toList(),
+  };
 }
 
 /// Response of `diff.get.request` (payload: `{cwd, baseRef?}`).
@@ -106,12 +111,13 @@ final class DiffResponse {
   final List<DiffFile> files;
 
   static DiffResponse fromJson(Map<String, Object?> json) => DiffResponse(
-        files: ((json['files'] as List?) ?? const [])
-            .cast<Map<String, Object?>>()
-            .map(DiffFile.fromJson)
-            .toList(),
-      );
+    files: ((json['files'] as List?) ?? const [])
+        .cast<Map<String, Object?>>()
+        .map(DiffFile.fromJson)
+        .toList(),
+  );
 
-  Map<String, Object?> toJson() =>
-      {'files': files.map((f) => f.toJson()).toList()};
+  Map<String, Object?> toJson() => {
+    'files': files.map((f) => f.toJson()).toList(),
+  };
 }

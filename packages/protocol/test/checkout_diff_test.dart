@@ -124,4 +124,27 @@ void main() {
     expect(restored.hunks.single.lines[1].oldLineNo, 4);
     expect(restored.hunks.single.lines[2].newLineNo, 4);
   });
+
+  test('too-large placeholders survive both conversion directions', () {
+    final payload = checkoutDiffPayloadFromLegacy(
+      subscriptionId: 'sub-1',
+      cwd: '/repo',
+      diff: const DiffResponse(
+        files: [
+          DiffFile(
+            path: 'generated.js',
+            status: DiffFileStatus.modified,
+            tooLarge: true,
+            additions: 1000,
+            deletions: 900,
+          ),
+        ],
+      ),
+    );
+
+    expect(payload.files.single.status, CheckoutDiffFileStatus.too_large);
+    final restored = payload.toLegacyDiff().files.single;
+    expect(restored.tooLarge, isTrue);
+    expect(restored.binary, isFalse);
+  });
 }

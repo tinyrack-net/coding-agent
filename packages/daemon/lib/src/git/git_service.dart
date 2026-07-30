@@ -15,6 +15,8 @@ import 'worktree_metadata.dart';
 
 /// Untracked files larger than this are reported as binary without content.
 const int _maxUntrackedBytes = 1024 * 1024;
+const int _perFileDiffMaxBytes = 1024 * 1024;
+const int _totalDiffMaxBytes = 2 * 1024 * 1024;
 
 class GitService {
   GitService({required this.dataDir, GitRunner? runner})
@@ -452,7 +454,9 @@ class GitService {
   ) async {
     final normalized = compare.normalized();
     if (normalized.mode == CheckoutDiffMode.uncommitted) {
-      return diff(cwd, ignoreWhitespace: normalized.ignoreWhitespace);
+      return applyCheckoutDiffBudgets(
+        await diff(cwd, ignoreWhitespace: normalized.ignoreWhitespace),
+      );
     }
     final baseRef = normalized.baseRef ?? 'HEAD';
     final mergeBase = await runner.run(
@@ -470,7 +474,46 @@ class GitService {
       'HEAD',
       '--no-color',
     ], cwd: cwd);
-    return DiffResponse(files: parseUnifiedDiff(result.stdout));
+    return applyCheckoutDiffBudgets(
+      DiffResponse(files: parseUnifiedDiff(result.stdout)),
+    );
+  }
+
+  /// Applies Paseo's 1 MiB per-file and 2 MiB aggregate structured-diff
+  /// budgets, preserving stats while omitting oversized hunks.
+  DiffResponse applyCheckoutDiffBudgets(DiffResponse response) {
+    var totalBytes = 0;
+    final files = <DiffFile>[];
+    for (final file in response.files) {
+      if (file.binary || file.tooLarge) {
+        files.add(file);
+        continue;
+      }
+      var fileBytes = 0;
+      for (final hunk in file.hunks) {
+        fileBytes += utf8.encode('${hunk.header}\n').length;
+        for (final line in hunk.lines) {
+          fileBytes += utf8.encode('${line.text}\n').length + 1;
+        }
+      }
+      if (fileBytes > _perFileDiffMaxBytes ||
+          totalBytes + fileBytes > _totalDiffMaxBytes) {
+        files.add(
+          DiffFile(
+            path: file.path,
+            status: file.status,
+            oldPath: file.oldPath,
+            tooLarge: true,
+            additions: file.additions,
+            deletions: file.deletions,
+          ),
+        );
+        continue;
+      }
+      totalBytes += fileBytes;
+      files.add(file);
+    }
+    return DiffResponse(files: files);
   }
 
   /// Synthesizes an all-added [DiffFile] for every untracked file.
@@ -510,7 +553,7 @@ class GitService {
       return DiffFile(
         path: relPath,
         status: DiffFileStatus.added,
-        binary: true,
+        tooLarge: true,
       );
     }
     final bytes = await file.readAsBytes();

@@ -330,6 +330,8 @@ CheckoutDiffFile _fromLegacyFile(DiffFile file) => CheckoutDiffFile(
   deletions: file.deletions,
   status: file.binary
       ? CheckoutDiffFileStatus.binary
+      : file.tooLarge
+      ? CheckoutDiffFileStatus.too_large
       : CheckoutDiffFileStatus.ok,
   hunks: file.hunks.map((hunk) {
     final match = _hunkHeader.firstMatch(hunk.header);
@@ -366,6 +368,7 @@ DiffFile _toLegacyFile(CheckoutDiffFile file) => DiffFile(
       ? DiffFileStatus.deleted
       : DiffFileStatus.modified,
   binary: file.status == CheckoutDiffFileStatus.binary,
+  tooLarge: file.status == CheckoutDiffFileStatus.too_large,
   additions: file.additions,
   deletions: file.deletions,
   hunks: file.hunks.map((hunk) {

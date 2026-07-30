@@ -7,33 +7,40 @@ import 'package:uuid/uuid.dart';
 import '../core/daemon_client.dart';
 import 'workspace_checkout_status_provider.dart';
 
-typedef WorkingDiffCheckoutKey = ({String serverId, String cwd});
-
 final class WorkingDiffOverride {
   const WorkingDiffOverride({
+    required this.serverId,
+    required this.cwd,
     required this.mode,
     required this.isDirtyAtSelection,
   });
 
+  final String serverId;
+  final String cwd;
   final CheckoutDiffMode mode;
   final bool isDirtyAtSelection;
 }
 
 final class WorkingDiffOverrideNotifier
-    extends Notifier<Map<WorkingDiffCheckoutKey, WorkingDiffOverride>> {
+    extends Notifier<Map<String, WorkingDiffOverride>> {
   @override
-  Map<WorkingDiffCheckoutKey, WorkingDiffOverride> build() => const {};
+  Map<String, WorkingDiffOverride> build() => const {};
 
   void select({
+    required String scopeKey,
     required String serverId,
     required String cwd,
     required CheckoutDiffMode mode,
     required bool isDirty,
   }) {
-    final key = (serverId: serverId, cwd: cwd);
     state = Map.unmodifiable({
       ...state,
-      key: WorkingDiffOverride(mode: mode, isDirtyAtSelection: isDirty),
+      scopeKey: WorkingDiffOverride(
+        serverId: serverId,
+        cwd: cwd,
+        mode: mode,
+        isDirtyAtSelection: isDirty,
+      ),
     });
   }
 
@@ -42,11 +49,20 @@ final class WorkingDiffOverrideNotifier
     required String cwd,
     required bool isDirty,
   }) {
-    final key = (serverId: serverId, cwd: cwd);
-    final current = state[key];
-    if (current == null || current.isDirtyAtSelection == isDirty) return;
-    final next = Map<WorkingDiffCheckoutKey, WorkingDiffOverride>.from(state)
-      ..remove(key);
+    final staleKeys = state.entries
+        .where(
+          (entry) =>
+              entry.value.serverId == serverId &&
+              entry.value.cwd == cwd &&
+              entry.value.isDirtyAtSelection != isDirty,
+        )
+        .map((entry) => entry.key)
+        .toList(growable: false);
+    if (staleKeys.isEmpty) return;
+    final next = Map<String, WorkingDiffOverride>.from(state);
+    for (final key in staleKeys) {
+      next.remove(key);
+    }
     state = Map.unmodifiable(next);
   }
 }
@@ -54,8 +70,29 @@ final class WorkingDiffOverrideNotifier
 final workingDiffOverrideProvider =
     NotifierProvider<
       WorkingDiffOverrideNotifier,
-      Map<WorkingDiffCheckoutKey, WorkingDiffOverride>
+      Map<String, WorkingDiffOverride>
     >(WorkingDiffOverrideNotifier.new);
+
+String buildWorkingDiffScopeKey({
+  required String serverId,
+  required String cwd,
+  String? workspaceId,
+  String? baseRef,
+  required bool ignoreWhitespace,
+}) {
+  final normalizedWorkspaceId = workspaceId?.trim();
+  final placement =
+      normalizedWorkspaceId != null && normalizedWorkspaceId.isNotEmpty
+      ? 'workspace=${Uri.encodeComponent(normalizedWorkspaceId)}'
+      : 'cwd=${Uri.encodeComponent(_normalizeCwd(cwd))}';
+  return [
+    'review',
+    'server=${Uri.encodeComponent(serverId.trim())}',
+    placement,
+    'base=${Uri.encodeComponent(baseRef?.trim() ?? '')}',
+    'ignoreWhitespace=$ignoreWhitespace',
+  ].join(':');
+}
 
 CheckoutDiffMode resolveWorkingDiffMode({
   required bool isDirty,
@@ -180,4 +217,12 @@ String _stableSubscriptionId(CheckoutDiffQuery query) {
     hash = (hash * 0x100000001b3) & 0x7fffffffffffffff;
   }
   return 'checkout-diff-${hash.toRadixString(16)}';
+}
+
+String _normalizeCwd(String cwd) {
+  final trimmed = cwd.trim();
+  if (trimmed == '/' || RegExp(r'^[A-Za-z]:[\\/]?$').hasMatch(trimmed)) {
+    return trimmed;
+  }
+  return trimmed.replaceFirst(RegExp(r'[\\/]+$'), '');
 }

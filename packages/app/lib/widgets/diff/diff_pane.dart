@@ -3,6 +3,7 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
+import '../../state/changes_preferences_provider.dart';
 import '../../state/working_diff_provider.dart';
 import '../../state/workspace_checkout_status_provider.dart';
 import '../../state/workspace_providers.dart';
@@ -110,23 +111,37 @@ class _LiveDiffPane extends ConsumerWidget {
     final status = ref
         .watch(workspaceCheckoutStatusProvider((serverId: serverId, cwd: cwd)))
         .value;
+    final changesPreferences =
+        ref.watch(changesPreferencesProvider).value ??
+        const ChangesPreferences();
+    final ignoreWhitespace = changesPreferences.hideWhitespace;
+    final scopeKey = buildWorkingDiffScopeKey(
+      serverId: serverId,
+      workspaceId: workspaceId,
+      cwd: cwd,
+      baseRef: status?.baseRef,
+      ignoreWhitespace: ignoreWhitespace,
+    );
     final isDirty = status?.isGit == true && status?.isDirty == true;
     final override = ref.watch(
-      workingDiffOverrideProvider.select(
-        (overrides) => overrides[(serverId: serverId, cwd: cwd)],
-      ),
+      workingDiffOverrideProvider.select((overrides) => overrides[scopeKey]),
     );
     final mode = resolveWorkingDiffMode(isDirty: isDirty, override: override);
     final compare = CheckoutDiffCompare(
       mode: mode,
       baseRef: mode == CheckoutDiffMode.base ? status?.baseRef : null,
+      ignoreWhitespace: ignoreWhitespace,
     );
     final query = CheckoutDiffQuery(
       serverId: serverId,
       cwd: cwd,
       compare: compare,
     );
-    final diffAsync = ref.watch(checkoutDiffProvider(query));
+    final AsyncValue<CheckoutDiffPayload?> diffAsync = switch (status) {
+      null => const AsyncLoading(),
+      final value when value.isGit => ref.watch(checkoutDiffProvider(query)),
+      _ => const AsyncData(null),
+    };
     final baseLabel = switch (status?.baseRef?.trim()) {
       final value? when value.isNotEmpty => value,
       _ => 'base',
@@ -136,6 +151,7 @@ class _LiveDiffPane extends ConsumerWidget {
       ref
           .read(workingDiffOverrideProvider.notifier)
           .select(
+            scopeKey: scopeKey,
             serverId: serverId,
             cwd: cwd,
             mode: selected,
@@ -176,6 +192,18 @@ class _LiveDiffPane extends ConsumerWidget {
               onChanged: (value) {
                 if (value != null) selectMode(value);
               },
+            ),
+          ),
+          Tooltip(
+            message: ignoreWhitespace
+                ? 'Show whitespace changes'
+                : 'Hide whitespace changes',
+            child: ToggleButton(
+              checked: ignoreWhitespace,
+              onChanged: (_) => ref
+                  .read(changesPreferencesProvider.notifier)
+                  .updatePreferences(hideWhitespace: !ignoreWhitespace),
+              child: const Text('−WS'),
             ),
           ),
           Tooltip(

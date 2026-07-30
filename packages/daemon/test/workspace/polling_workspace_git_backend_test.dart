@@ -31,7 +31,10 @@ void main() {
       'origin/main',
       'main',
     ]);
-    backend = PollingWorkspaceGitBackend(pollInterval: const Duration(days: 1));
+    backend = PollingWorkspaceGitBackend(
+      pollInterval: const Duration(days: 1),
+      watchDirectory: _noWatch,
+    );
   });
 
   tearDown(() {
@@ -142,6 +145,58 @@ void main() {
   });
 
   test(
+    'native working-tree events debounce refresh and share one watcher',
+    () async {
+      backend.dispose();
+      final events = StreamController<FileSystemEvent>.broadcast();
+      var watchCalls = 0;
+      backend = PollingWorkspaceGitBackend(
+        pollInterval: const Duration(days: 1),
+        watchDebounce: Duration.zero,
+        watchDirectory: (_, {required recursive}) {
+          watchCalls++;
+          expect(recursive, !Platform.isLinux);
+          return events.stream;
+        },
+      );
+      addTearDown(events.close);
+      final firstSnapshots = <WorkspaceGitObserverSnapshot>[];
+      final secondSnapshots = <WorkspaceGitObserverSnapshot>[];
+      final first = backend.registerWorkspace(repo.path, firstSnapshots.add);
+      final second = backend.registerWorkspace(repo.path, secondSnapshots.add);
+      await _waitFor(
+        () => firstSnapshots.isNotEmpty && secondSnapshots.isNotEmpty,
+      );
+      expect(watchCalls, 1);
+      expect(events.hasListener, isTrue);
+
+      File(
+        '${repo.path}${Platform.pathSeparator}file.txt',
+      ).writeAsStringSync('native watch\n');
+      events.add(
+        FileSystemModifyEvent(
+          '${repo.path}${Platform.pathSeparator}file.txt',
+          false,
+          true,
+        ),
+      );
+      await _waitFor(
+        () => (firstSnapshots.last.value! as WorkspaceLocalGitSnapshot).isDirty,
+      );
+      expect(
+        (secondSnapshots.last.value! as WorkspaceLocalGitSnapshot).isDirty,
+        isTrue,
+      );
+
+      first.unsubscribe();
+      expect(events.hasListener, isTrue);
+      second.unsubscribe();
+      await Future<void>.delayed(Duration.zero);
+      expect(events.hasListener, isFalse);
+    },
+  );
+
+  test(
     'one-shot checkout snapshots do not retain an observer target',
     () async {
       final snapshot = await backend.getSnapshot(repo.path, baseRef: 'main');
@@ -211,6 +266,7 @@ void main() {
       backend = PollingWorkspaceGitBackend(
         forgeStatus: forgeStatus,
         pollInterval: const Duration(days: 1),
+        watchDirectory: _noWatch,
         now: () => now,
       );
       final snapshots = <WorkspaceGitObserverSnapshot>[];
@@ -262,6 +318,9 @@ void main() {
     },
   );
 }
+
+Stream<FileSystemEvent> _noWatch(String path, {required bool recursive}) =>
+    const Stream.empty();
 
 Future<void> _git(String cwd, List<String> args) async {
   final result = await Process.run('git', args, workingDirectory: cwd);

@@ -1,15 +1,29 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:agent_protocol/agent_protocol.dart';
+import 'package:path/path.dart' as p;
 
 import '../git/git_service.dart';
 import '../server/connection.dart';
 import 'workspace_git_observer_service.dart';
 
-/// Session-scoped live checkout diffs matching Paseo's frozen subscription
-/// contract. A single backend watch is shared by cwd while subscription ids
-/// remain isolated per connection.
+final class CheckoutDiffMetrics {
+  const CheckoutDiffMetrics({
+    required this.targetCount,
+    required this.subscriptionCount,
+  });
+
+  final int targetCount;
+  final int subscriptionCount;
+}
+
+/// Paseo-compatible live checkout diff manager.
+///
+/// Equivalent cwd/compare subscriptions share one Git watch, initial load,
+/// debounce timer, refresh queue, and snapshot fingerprint. Subscription ids
+/// remain isolated per connection and are projected only at the wire edge.
 final class CheckoutDiffService {
   CheckoutDiffService({
     required this.git,
@@ -20,36 +34,49 @@ final class CheckoutDiffService {
   final GitService git;
   final WorkspaceGitObserverBackend backend;
   final Duration debounce;
-  final Map<({String connectionId, String subscriptionId}), _DiffSubscription>
+  final Map<({String connectionId, String subscriptionId}), _DiffListener>
   _subscriptions = {};
+  final Map<String, _DiffTarget> _targets = {};
+
+  CheckoutDiffMetrics get metrics => CheckoutDiffMetrics(
+    targetCount: _targets.length,
+    subscriptionCount: _subscriptions.length,
+  );
 
   Future<Map<String, Object?>> subscribe(
     Connection connection,
     Map<String, Object?> message,
   ) async {
     final request = SubscribeCheckoutDiffRequest.fromJson(message);
-    final key = (
+    final subscriptionKey = (
       connectionId: connection.id,
       subscriptionId: request.subscriptionId,
     );
-    _remove(key);
-    final subscription = _DiffSubscription(
+    _remove(subscriptionKey);
+
+    final compare = request.compare.normalized();
+    final cwd = p.normalize(p.absolute(_expandTilde(request.cwd)));
+    final targetKey = _targetKey(cwd, compare);
+    final target = _targets.putIfAbsent(
+      targetKey,
+      () => _DiffTarget(key: targetKey, cwd: cwd, compare: compare),
+    );
+    final listener = _DiffListener(
       connection: connection,
       request: request,
+      target: target,
     );
-    _subscriptions[key] = subscription;
-    subscription.gitSubscription = backend.registerWorkspace(
-      request.cwd,
-      (_) => _scheduleRefresh(key, subscription),
+    _subscriptions[subscriptionKey] = listener;
+    target.listeners[subscriptionKey] = listener;
+    target.gitSubscription ??= backend.registerWorkspace(
+      cwd,
+      (_) => _scheduleRefresh(target),
     );
-    final payload = await _load(subscription);
-    if (identical(_subscriptions[key], subscription)) {
-      subscription
-        ..fingerprint = jsonEncode(payload.toJson())
-        ..ready = true;
-    }
+
+    target.openFuture ??= _open(target);
+    final snapshot = await target.openFuture!;
     return SubscribeCheckoutDiffResponse(
-      payload: payload,
+      payload: _payloadFor(listener, snapshot),
       requestId: request.requestId,
     ).toJson();
   }
@@ -72,69 +99,77 @@ final class CheckoutDiffService {
   }
 
   void dispose() {
-    for (final key in _subscriptions.keys.toList(growable: false)) {
-      _remove(key);
+    for (final target in _targets.values) {
+      _closeTarget(target);
     }
+    _targets.clear();
+    _subscriptions.clear();
   }
 
-  void _scheduleRefresh(
-    ({String connectionId, String subscriptionId}) key,
-    _DiffSubscription subscription,
-  ) {
-    if (!subscription.ready || !identical(_subscriptions[key], subscription)) {
-      return;
+  Future<_DiffSnapshot> _open(_DiffTarget target) async {
+    final snapshot = await _load(target);
+    if (identical(_targets[target.key], target)) {
+      target
+        ..latest = snapshot
+        ..fingerprint = jsonEncode(snapshot.toJson())
+        ..ready = true;
     }
-    subscription.debounceTimer?.cancel();
-    subscription.debounceTimer = Timer(debounce, () {
-      subscription.debounceTimer = null;
-      unawaited(_refresh(key, subscription));
+    return snapshot;
+  }
+
+  void _scheduleRefresh(_DiffTarget target) {
+    if (!target.ready || !identical(_targets[target.key], target)) return;
+    target.debounceTimer?.cancel();
+    target.debounceTimer = Timer(debounce, () {
+      target.debounceTimer = null;
+      unawaited(_refresh(target));
     });
   }
 
-  Future<void> _refresh(
-    ({String connectionId, String subscriptionId}) key,
-    _DiffSubscription subscription,
-  ) async {
-    if (subscription.refreshing) {
-      subscription.refreshAgain = true;
+  Future<void> _refresh(_DiffTarget target) async {
+    if (target.refreshing) {
+      target.refreshAgain = true;
       return;
     }
-    subscription.refreshing = true;
+    target.refreshing = true;
     try {
       do {
-        subscription.refreshAgain = false;
-        final payload = await _load(subscription);
-        if (!identical(_subscriptions[key], subscription)) return;
-        final fingerprint = jsonEncode(payload.toJson());
-        if (fingerprint != subscription.fingerprint) {
-          subscription.fingerprint = fingerprint;
-          subscription.connection.sendJson({
-            'type': 'session',
-            'message': CheckoutDiffUpdate(payload).toJson(),
-          });
+        target.refreshAgain = false;
+        final snapshot = await _load(target);
+        if (!identical(_targets[target.key], target)) return;
+        target.latest = snapshot;
+        final fingerprint = jsonEncode(snapshot.toJson());
+        if (fingerprint != target.fingerprint) {
+          target.fingerprint = fingerprint;
+          for (final listener in target.listeners.values.toList(
+            growable: false,
+          )) {
+            listener.connection.sendJson({
+              'type': 'session',
+              'message': CheckoutDiffUpdate(
+                _payloadFor(listener, snapshot),
+              ).toJson(),
+            });
+          }
         }
-      } while (subscription.refreshAgain);
+      } while (target.refreshAgain);
     } finally {
-      subscription.refreshing = false;
+      target.refreshing = false;
     }
   }
 
-  Future<CheckoutDiffPayload> _load(_DiffSubscription subscription) async {
+  Future<_DiffSnapshot> _load(_DiffTarget target) async {
     try {
-      final diff = await git.checkoutDiff(
-        subscription.request.cwd,
-        subscription.request.compare,
-      );
-      return checkoutDiffPayloadFromLegacy(
-        subscriptionId: subscription.request.subscriptionId,
-        cwd: subscription.request.cwd,
+      final diff = await git.checkoutDiff(target.cwd, target.compare);
+      final payload = checkoutDiffPayloadFromLegacy(
+        subscriptionId: '',
+        cwd: target.cwd,
         diff: diff,
       );
+      return _DiffSnapshot(files: payload.files, error: null);
     } on Object catch (error) {
-      return checkoutDiffPayloadFromLegacy(
-        subscriptionId: subscription.request.subscriptionId,
-        cwd: subscription.request.cwd,
-        diff: const DiffResponse(files: []),
+      return _DiffSnapshot(
+        files: const [],
         error: CheckoutError(
           code: CheckoutErrorCode.unknown,
           message: '$error',
@@ -143,22 +178,92 @@ final class CheckoutDiffService {
     }
   }
 
+  CheckoutDiffPayload _payloadFor(
+    _DiffListener listener,
+    _DiffSnapshot snapshot,
+  ) => CheckoutDiffPayload(
+    subscriptionId: listener.request.subscriptionId,
+    cwd: listener.request.cwd,
+    files: snapshot.files,
+    error: snapshot.error,
+  );
+
   void _remove(({String connectionId, String subscriptionId}) key) {
-    final subscription = _subscriptions.remove(key);
-    subscription?.debounceTimer?.cancel();
-    subscription?.gitSubscription?.unsubscribe();
+    final listener = _subscriptions.remove(key);
+    if (listener == null) return;
+    final target = listener.target;
+    target.listeners.remove(key);
+    if (target.listeners.isEmpty) {
+      _closeTarget(target);
+      if (identical(_targets[target.key], target)) {
+        _targets.remove(target.key);
+      }
+    }
+  }
+
+  void _closeTarget(_DiffTarget target) {
+    target.debounceTimer?.cancel();
+    target.gitSubscription?.unsubscribe();
+    target.gitSubscription = null;
+    target.listeners.clear();
   }
 }
 
-final class _DiffSubscription {
-  _DiffSubscription({required this.connection, required this.request});
+String _targetKey(String cwd, CheckoutDiffCompare compare) => jsonEncode([
+  cwd,
+  compare.mode.name,
+  compare.mode == CheckoutDiffMode.base ? compare.baseRef ?? '' : '',
+  compare.ignoreWhitespace,
+]);
 
-  final Connection connection;
-  final SubscribeCheckoutDiffRequest request;
+String _expandTilde(String value) {
+  if (value != '~' && !value.startsWith('~/') && !value.startsWith(r'~\')) {
+    return value;
+  }
+  final home =
+      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+  if (home == null || home.isEmpty) return value;
+  return value == '~' ? home : p.join(home, value.substring(2));
+}
+
+final class _DiffSnapshot {
+  const _DiffSnapshot({required this.files, required this.error});
+
+  final List<CheckoutDiffFile> files;
+  final CheckoutError? error;
+
+  Map<String, Object?> toJson() => {
+    'files': files.map((file) => file.toJson()).toList(),
+    'error': error?.toJson(),
+  };
+}
+
+final class _DiffTarget {
+  _DiffTarget({required this.key, required this.cwd, required this.compare});
+
+  final String key;
+  final String cwd;
+  final CheckoutDiffCompare compare;
+  final Map<({String connectionId, String subscriptionId}), _DiffListener>
+  listeners = {};
   WorkspaceGitSubscription? gitSubscription;
   Timer? debounceTimer;
+  Future<_DiffSnapshot>? openFuture;
+  _DiffSnapshot? latest;
   String? fingerprint;
   bool ready = false;
   bool refreshing = false;
   bool refreshAgain = false;
+}
+
+final class _DiffListener {
+  const _DiffListener({
+    required this.connection,
+    required this.request,
+    required this.target,
+  });
+
+  final Connection connection;
+  final SubscribeCheckoutDiffRequest request;
+  final _DiffTarget target;
 }

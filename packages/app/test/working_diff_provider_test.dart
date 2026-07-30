@@ -15,6 +15,8 @@ void main() {
       resolveWorkingDiffMode(
         isDirty: true,
         override: const WorkingDiffOverride(
+          serverId: 'server-1',
+          cwd: '/repo',
           mode: CheckoutDiffMode.base,
           isDirtyAtSelection: true,
         ),
@@ -25,6 +27,8 @@ void main() {
       resolveWorkingDiffMode(
         isDirty: false,
         override: const WorkingDiffOverride(
+          serverId: 'server-1',
+          cwd: '/repo',
           mode: CheckoutDiffMode.base,
           isDirtyAtSelection: true,
         ),
@@ -39,12 +43,21 @@ void main() {
     final notifier = container.read(workingDiffOverrideProvider.notifier);
     notifier
       ..select(
+        scopeKey: 'one-default',
         serverId: 'server-1',
         cwd: '/one',
         mode: CheckoutDiffMode.base,
         isDirty: true,
       )
       ..select(
+        scopeKey: 'one-whitespace',
+        serverId: 'server-1',
+        cwd: '/one',
+        mode: CheckoutDiffMode.uncommitted,
+        isDirty: true,
+      )
+      ..select(
+        scopeKey: 'two-default',
         serverId: 'server-1',
         cwd: '/two',
         mode: CheckoutDiffMode.uncommitted,
@@ -53,9 +66,35 @@ void main() {
       ..expireIfDirtyChanged(serverId: 'server-1', cwd: '/one', isDirty: false);
 
     final overrides = container.read(workingDiffOverrideProvider);
-    expect(overrides[(serverId: 'server-1', cwd: '/one')], isNull);
-    expect(overrides[(serverId: 'server-1', cwd: '/two')], isNotNull);
+    expect(overrides['one-default'], isNull);
+    expect(overrides['one-whitespace'], isNull);
+    expect(overrides['two-default'], isNotNull);
   });
+
+  test(
+    'review scope prefers workspace identity and includes diff settings',
+    () {
+      expect(
+        buildWorkingDiffScopeKey(
+          serverId: 'local host',
+          workspaceId: 'workspace/1',
+          cwd: '/ignored/',
+          baseRef: ' main ',
+          ignoreWhitespace: true,
+        ),
+        'review:server=local%20host:workspace=workspace%2F1:'
+        'base=main:ignoreWhitespace=true',
+      );
+      expect(
+        buildWorkingDiffScopeKey(
+          serverId: 'local',
+          cwd: '/repo/',
+          ignoreWhitespace: false,
+        ),
+        'review:server=local:cwd=%2Frepo:base=:ignoreWhitespace=false',
+      );
+    },
+  );
 
   test(
     'subscription consumes matching pushes and unsubscribes on disposal',

@@ -102,6 +102,29 @@ Color? _rowBackground(WidgetTester tester, String lineText) {
 }
 
 void main() {
+  testWidgets('too-large placeholders explain why hunks are omitted', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        const DiffView(
+          diff: DiffResponse(
+            files: [
+              DiffFile(
+                path: 'generated.js',
+                status: DiffFileStatus.modified,
+                tooLarge: true,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Diff too large'), findsOneWidget);
+    expect(find.text('No textual changes'), findsNothing);
+  });
+
   testWidgets('wide layout: file rows with status colors and counts', (
     tester,
   ) async {

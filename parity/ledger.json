@@ -5112,14 +5112,15 @@
     {
       "id": "source-unit:packages/app/src/git/diff-pane.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/widgets/diff/diff_view.dart; packages/app/lib/core/diff_layout.dart; packages/app/lib/core/diff_rendering.dart; packages/app/lib/core/diff_tree.dart",
+      "implementation": "packages/app/lib/widgets/diff/diff_pane.dart; packages/app/lib/widgets/diff/diff_view.dart; packages/app/lib/core/diff_layout.dart; packages/app/lib/core/diff_rendering.dart; packages/app/lib/core/diff_tree.dart; packages/app/lib/state/changes_preferences_provider.dart",
       "evidence": [
+        "packages/app/test/diff_pane_test.dart",
         "packages/app/test/diff_view_test.dart",
         "packages/app/test/diff_layout_test.dart",
         "packages/app/test/diff_rendering_test.dart",
         "packages/app/test/diff_tree_test.dart"
       ],
-      "notes": "The Flutter diff pane has responsive file selection, a compressed collapsible tree navigator on wide layouts, unified hunks, binary and empty states, horizontal scrolling, stable blank-row geometry, and the frozen split/unified review-target layout model. Paseo's split-view renderer, inline review comments, selection toolbar, persisted tree/flat controls on every form factor, metrics, and full diff-pane orchestration remain unported."
+      "notes": "The Flutter diff pane has live base/uncommitted mode selection, persisted whitespace filtering, responsive file selection, a compressed tree navigator, unified hunks, binary/too-large/empty states, horizontal scrolling, stable blank-row geometry, and the split/unified layout model. The split renderer, inline review comments, selection toolbar, tree/flat controls on every form factor, metrics, and remaining orchestration remain."
     },
     {
       "id": "source-unit:packages/app/src/git/diff-scroll.ts",
@@ -5595,7 +5596,7 @@
         "packages/app/test/working_diff_provider_test.dart",
         "packages/app/test/workspace_checkout_status_provider_test.dart"
       ],
-      "notes": "Dirty checkouts default to uncommitted diff, clean checkouts default to base diff, explicit choices are scoped by host/cwd and expire on dirty flips, and the Changes pane exposes both modes. Review-draft scoped ignore-whitespace state remains."
+      "notes": "Dirty checkouts default to uncommitted diff, clean checkouts default to base diff, explicit choices use the frozen server/workspace-or-cwd/base/whitespace scope and every stale checkout override expires on dirty flips. Queries wait for Git status and propagate the persisted ignore-whitespace preference. Inline review controller and attachment publication remain."
     },
     {
       "id": "source-unit:packages/app/src/git/workspace-actions.tsx",
@@ -5860,24 +5861,31 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-changes-preferences/fakes.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/state/changes_preferences_provider.dart",
+      "evidence": [
+        "packages/app/test/changes_preferences_provider_test.dart"
+      ],
+      "notes": "The injectable storage boundary supports deterministic in-memory preference tests."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-changes-preferences/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/state/changes_preferences_provider.dart",
+      "evidence": [
+        "packages/app/test/changes_preferences_provider_test.dart",
+        "packages/app/test/diff_pane_test.dart"
+      ],
+      "notes": "One shared async preference replica loads defaults and exposes optimistic persisted partial updates to diff consumers."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-changes-preferences/storage.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/state/changes_preferences_provider.dart",
+      "evidence": [
+        "packages/app/test/changes_preferences_provider_test.dart"
+      ],
+      "notes": "Unified/split, flat/tree, wrap-lines, hide-whitespace, and commits-collapsed use the frozen defaults, tolerate partial or invalid persisted fields, and migrate the legacy wrap-lines value."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-clear-workspace-attention.ts",
@@ -6820,14 +6828,16 @@
       "evidence": [
         "packages/app/test/working_diff_provider_test.dart"
       ],
-      "notes": "Frozen diff-mode override selection, dirty-state validation, and targeted expiry are implemented. Review drafts, comments, mention targets, and persistence remain."
+      "notes": "Frozen scope-keyed diff-mode override selection, dirty-state validation, and checkout-wide targeted expiry are implemented. Review drafts, comments, mention targets, and persistence remain."
     },
     {
       "id": "source-unit:packages/app/src/review/store.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/working_diff_provider.dart",
+      "evidence": [
+        "packages/app/test/working_diff_provider_test.dart"
+      ],
+      "notes": "Review draft scope keys match server/workspace-or-cwd/base/ignoreWhitespace identity and in-memory diff-mode overrides. Persisted comments and review attachment snapshots remain."
     },
     {
       "id": "source-unit:packages/app/src/review/surface.tsx",
@@ -13112,9 +13122,10 @@
       "status": "partial",
       "implementation": "packages/daemon/lib/src/workspace/checkout_diff_service.dart; packages/daemon/lib/src/workspace/polling_workspace_git_backend.dart; packages/daemon/lib/src/git/git_service.dart",
       "evidence": [
-        "packages/daemon/test/workspace/checkout_diff_service_test.dart"
+        "packages/daemon/test/workspace/checkout_diff_service_test.dart",
+        "packages/daemon/test/workspace/polling_workspace_git_backend_test.dart"
       ],
-      "notes": "Session-scoped subscription replacement, shared cwd observation, 150ms debounce, serialized refresh, fingerprint suppression, disconnect cleanup, uncommitted/base merge-base semantics, and error payloads are implemented. Native filesystem watch latency and highlighted token generation remain."
+      "notes": "Equivalent cwd/compare subscriptions share one target, native working-tree observer, initial load, 150ms debounce, serialized refresh queue, and fingerprint. Session replacement, disconnect cleanup, merge-base modes, error payloads, and periodic watch fallback match the frozen manager. Highlighted token generation remains."
     },
     {
       "id": "source-unit:packages/server/src/server/checkout-git-utils.ts",
@@ -14408,7 +14419,7 @@
         "packages/daemon/test/workspace/workspace_v2_service_test.dart",
         "packages/daemon/test/daemon_agent_continuation_e2e_test.dart"
       ],
-      "notes": "A production polling backend emits branch and working-tree changes, drives live workspace routes, and projects cached local Git snapshots with repo/main roots, remote, dirty state, base and upstream ahead/behind counts, and tracked/untracked diff stats. It combines cached forge state, matches the 20s pending and 120s settled cadence, and daemon shutdown waits for in-flight Git polling before workspace cleanup. Auxiliary LRU caches, background fetch scheduling, branch/stash/worktree reads, native filesystem watch topology, and full service metrics remain."
+      "notes": "The production backend shares native recursive working-tree watches per cwd with 150ms debounce and periodic fallback, emits branch/working-tree changes, and projects cached repo/main roots, remote, dirty state, base/upstream divergence, diff stats, and forge state at frozen pending/settled cadences. Linux per-directory watch expansion, auxiliary LRU caches, background fetch scheduling, remaining Git reads, and full metrics remain."
     },
     {
       "id": "source-unit:packages/server/src/server/workspace-reconciliation-service.ts",
@@ -15001,12 +15012,14 @@
     {
       "id": "source-unit:packages/server/src/utils/checkout-git.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/workspace/polling_workspace_git_backend.dart; packages/daemon/lib/src/workspace/checkout_status_service.dart",
+      "implementation": "packages/daemon/lib/src/workspace/polling_workspace_git_backend.dart; packages/daemon/lib/src/workspace/checkout_status_service.dart; packages/daemon/lib/src/git/git_service.dart; packages/protocol/lib/src/messages/checkout_diff.dart",
       "evidence": [
         "packages/daemon/test/workspace/polling_workspace_git_backend_test.dart",
-        "packages/daemon/test/workspace/checkout_status_service_test.dart"
+        "packages/daemon/test/workspace/checkout_status_service_test.dart",
+        "packages/daemon/test/workspace/checkout_diff_service_test.dart",
+        "packages/protocol/test/checkout_diff_test.dart"
       ],
-      "notes": "One-shot and observed snapshots cover repository roots, linked worktree main roots, branches including detached HEAD, dirty state, ahead/behind, origin divergence, and remote metadata for checkout-status projection. Frozen diff aggregation, commit/stash/branch operations, structured failure taxonomy, and the remaining utility surface remain."
+      "notes": "Snapshots cover roots, linked worktrees, branches, dirty state, divergence, and remote metadata. Structured checkout diffs cover uncommitted/base merge-base comparison, whitespace filtering, binary and 1MiB per-file/2MiB aggregate too-large placeholders, stats, and untracked files. Commit/stash/branch operations, full base-resolution edge cases, highlighted tokens, structured failure taxonomy, and the remaining utility surface remain."
     },
     {
       "id": "source-unit:packages/server/src/utils/directory-suggestions.ts",

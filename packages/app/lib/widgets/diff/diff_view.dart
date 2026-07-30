@@ -274,6 +274,19 @@ class _FileDiffBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final outline = context.tokens.outline;
+    if (file.tooLarge) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(FluentIcons.warning, size: 18, color: outline),
+            const SizedBox(width: 8),
+            Text('Diff too large', style: TextStyle(color: outline)),
+          ],
+        ),
+      );
+    }
     if (file.binary) {
       return Padding(
         padding: const EdgeInsets.all(24),

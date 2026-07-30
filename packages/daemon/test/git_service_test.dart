@@ -509,7 +509,7 @@ void main() {
     });
 
     test(
-      'untracked files larger than the cap are synthesized as binary',
+      'untracked files larger than the cap are synthesized as too large',
       () async {
         File(
           p.join(repo, 'huge.bin'),
@@ -517,7 +517,8 @@ void main() {
         final response = await service.diff(repo);
         final huge = response.files.singleWhere((f) => f.path == 'huge.bin');
         expect(huge.status, DiffFileStatus.added);
-        expect(huge.binary, isTrue);
+        expect(huge.binary, isFalse);
+        expect(huge.tooLarge, isTrue);
         expect(huge.hunks, isEmpty);
       },
     );
