@@ -1,4 +1,5 @@
 import 'package:agent_protocol/agent_protocol.dart';
+import 'package:coding_agent_app/state/changes_preferences_provider.dart';
 import 'package:coding_agent_app/widgets/diff/diff_view.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/foundation.dart';
@@ -192,6 +193,86 @@ void main() {
     expect(find.text('new_file.dart'), findsNothing);
     expect(find.text('changed.dart'), findsNothing);
     expect(find.text('gone.dart'), findsNothing);
+  });
+
+  testWidgets('split layout pairs replacement rows and aligns review threads', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _wrap(
+        const DiffView(
+          diff: _diff,
+          layout: ChangesLayout.split,
+          reviewDraftKey: 'split-review',
+        ),
+      ),
+    );
+    await tester.tap(find.text('changed.dart'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('split-diff')), findsOneWidget);
+    expect(find.text('@@ -1,3 +1,3 @@'), findsNWidgets(2));
+    expect(
+      find.byKey(const ValueKey('split-line-left-lib/changed.dart:old:2')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('split-line-right-lib/changed.dart:new:2')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('split-empty-left')), findsOneWidget);
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(
+      tester.getCenter(
+        find.byKey(const ValueKey('split-line-left-lib/changed.dart:old:2')),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey('review-add-lib/changed.dart:old:2')),
+    );
+    await tester.pumpAndSettle();
+
+    final leftPair = find.byKey(const ValueKey('split-left-row-2'));
+    final rightPair = find.byKey(const ValueKey('split-right-row-2'));
+    expect(tester.getSize(leftPair).height, tester.getSize(rightPair).height);
+    expect(tester.getSize(leftPair).height, 172);
+    expect(
+      find.byKey(const ValueKey('review-thread-lib/changed.dart:old:2')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('review-thread-lib/changed.dart:new:2')),
+      findsNothing,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    await mouse.removePointer();
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('split preference falls back to unified below desktop width', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    await tester.binding.setSurfaceSize(const Size(800, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _wrap(
+        const DiffView(diff: _diff, layout: ChangesLayout.split),
+        size: const Size(800, 800),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('split-diff')), findsNothing);
+    expect(find.text('@@ -0,0 +1,2 @@'), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('narrow layout: collapsible file sections', (tester) async {

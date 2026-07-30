@@ -40,6 +40,9 @@ class DiffPane extends ConsumerWidget {
       );
     }
     final diffAsync = ref.watch(diffProvider(cwd));
+    final changesPreferences =
+        ref.watch(changesPreferencesProvider).value ??
+        const ChangesPreferences();
 
     return Column(
       children: [
@@ -55,6 +58,17 @@ class DiffPane extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     style: context.textStyles.bodySmall,
                   ),
+                ),
+                _DiffLayoutToggle(
+                  layout: changesPreferences.layout,
+                  onToggle: () => ref
+                      .read(changesPreferencesProvider.notifier)
+                      .updatePreferences(
+                        layout:
+                            changesPreferences.layout == ChangesLayout.unified
+                            ? ChangesLayout.split
+                            : ChangesLayout.unified,
+                      ),
                 ),
                 Tooltip(
                   message: 'Refresh diff',
@@ -87,7 +101,8 @@ class DiffPane extends ConsumerWidget {
           child: diffAsync.when(
             loading: () => const Center(child: ProgressRing()),
             error: (e, _) => Center(child: Text('Failed to load diff: $e')),
-            data: (diff) => DiffView(diff: diff),
+            data: (diff) =>
+                DiffView(diff: diff, layout: changesPreferences.layout),
           ),
         ),
       ],
@@ -209,6 +224,17 @@ class _LiveDiffPane extends ConsumerWidget {
               },
             ),
           ),
+          if (!compact)
+            _DiffLayoutToggle(
+              layout: changesPreferences.layout,
+              onToggle: () => ref
+                  .read(changesPreferencesProvider.notifier)
+                  .updatePreferences(
+                    layout: changesPreferences.layout == ChangesLayout.unified
+                        ? ChangesLayout.split
+                        : ChangesLayout.unified,
+                  ),
+            ),
           Tooltip(
             message: ignoreWhitespace
                 ? 'Show whitespace changes'
@@ -279,11 +305,39 @@ class _LiveDiffPane extends ConsumerWidget {
                   );
                 }
               });
-              return DiffView(diff: diff, reviewDraftKey: reviewDraftKey);
+              return DiffView(
+                diff: diff,
+                reviewDraftKey: reviewDraftKey,
+                layout: changesPreferences.layout,
+              );
             },
           ),
         ),
       ],
+    );
+  }
+}
+
+class _DiffLayoutToggle extends StatelessWidget {
+  const _DiffLayoutToggle({required this.layout, required this.onToggle});
+
+  final ChangesLayout layout;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final split = layout == ChangesLayout.split;
+    final label = split ? 'Switch to unified diff' : 'Switch to split diff';
+    return Tooltip(
+      message: label,
+      child: IconButton(
+        key: const ValueKey('changes-toggle-layout'),
+        icon: Icon(
+          split ? FluentIcons.align_justify : FluentIcons.column,
+          size: 16,
+        ),
+        onPressed: onToggle,
+      ),
     );
   }
 }

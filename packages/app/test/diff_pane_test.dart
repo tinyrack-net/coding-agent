@@ -158,6 +158,34 @@ void main() {
     expect(find.textContaining('Failed to load diff'), findsOneWidget);
   });
 
+  testWidgets('layout toggle persists the requested split preference', (
+    tester,
+  ) async {
+    final container = await pumpDiffPane(tester);
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip && widget.message == 'Switch to split diff',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('changes-toggle-layout')));
+    await tester.pumpAndSettle();
+
+    expect(
+      container.read(changesPreferencesProvider).requireValue.layout,
+      ChangesLayout.split,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip && widget.message == 'Switch to unified diff',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('live mode follows base status and toggles whitespace compare', (
     tester,
   ) async {

@@ -5122,7 +5122,7 @@
         "packages/app/test/diff_rendering_test.dart",
         "packages/app/test/diff_tree_test.dart"
       ],
-      "notes": "The Flutter diff pane has live base/uncommitted mode selection, persisted whitespace filtering, responsive file selection, a compressed tree navigator, unified hunks, binary/too-large/empty states, horizontal scrolling, stable blank-row geometry, the split/unified layout model, and old/new-side inline review threads. Review affordances are hover-only on pointer platforms and whole-line taps on touch platforms, with fixed thread geometry and exact editor shortcuts. The split renderer, selection toolbar, tree/flat controls on every form factor, metrics, and remaining orchestration remain."
+      "notes": "The Flutter diff pane has live base/uncommitted mode selection, persisted whitespace filtering and layout selection, responsive file selection, a compressed tree navigator, unified hunks, binary/too-large/empty states, horizontal scrolling, stable blank-row geometry, and old/new-side inline review threads. Its desktop split renderer duplicates context, pairs replacement runs, preserves unmatched blank cells, scrolls both columns independently, and falls back to unified below the supported desktop width. Review affordances are hover-only on pointer platforms and whole-line taps on touch platforms, with fixed thread geometry, synchronized split-side thread heights, and exact editor shortcuts. The selection toolbar, tree/flat controls on every form factor, metrics, and remaining orchestration remain."
     },
     {
       "id": "source-unit:packages/app/src/git/diff-scroll.ts",
@@ -6853,7 +6853,7 @@
       "evidence": [
         "packages/app/test/diff_view_test.dart"
       ],
-      "notes": "Reviewable old/new diff targets expose one inline editor at a time with trimmed add/edit/delete, hover-only desktop affordances, touch row activation, 72px comments, 132px editors, Escape cancel, modifier-Enter save, focus-sensitive shortcut hints, accessibility labels, and prior-focus restoration. Split-side paired thread sizing, sticky horizontal viewport placement, and pixel-golden token verification remain with the split renderer."
+      "notes": "Reviewable old/new diff targets expose one inline editor at a time with trimmed add/edit/delete, hover-only desktop affordances, touch row activation, 72px comments, 132px editors, Escape cancel, modifier-Enter save, focus-sensitive shortcut hints, accessibility labels, and prior-focus restoration. Split-side threads preserve their old/new targets and reserve the larger thread height on both paired columns. Sticky horizontal viewport placement and pixel-golden token verification remain."
     },
     {
       "id": "source-unit:packages/app/src/runtime/activity/index.ts",
