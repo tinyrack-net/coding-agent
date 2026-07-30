@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:agent_protocol/agent_protocol.dart';
 
+import '../../agent/prompt_attachments.dart';
 import '../agent_session.dart';
 import '../provider_event.dart';
 import 'codex_session_runtime.dart';
@@ -81,19 +82,21 @@ final class CodexAgentSession
     if (_disposed || _processExited) {
       throw StateError('Codex session is disposed');
     }
-    final chatHistory = <TextAgentAttachment>[];
-    final context = <TextAgentAttachment>[];
-    for (final attachment in attachments.whereType<TextAgentAttachment>()) {
-      if (attachment.contextKind == 'chat_history') {
+    final chatHistory = <AgentAttachment>[];
+    final context = <AgentAttachment>[];
+    for (final attachment in attachments) {
+      if (isChatHistoryAttachment(attachment)) {
         chatHistory.add(attachment);
       } else {
         context.add(attachment);
       }
     }
     final input = <Map<String, Object?>>[
-      for (final attachment in chatHistory) _textInput(attachment.text),
+      for (final attachment in chatHistory)
+        _textInput(renderPromptAttachmentAsText(attachment)),
       if (text.trim().isNotEmpty) _textInput(text.trim()),
-      for (final attachment in context) _textInput(attachment.text),
+      for (final attachment in context)
+        _textInput(renderPromptAttachmentAsText(attachment)),
     ];
     return _runtime.startTurnInput(input);
   }
@@ -108,18 +111,18 @@ final class CodexAgentSession
     if (_disposed || _processExited) {
       throw StateError('Codex session is disposed');
     }
-    final history = attachments.whereType<TextAgentAttachment>().where(
-      (attachment) => attachment.contextKind == 'chat_history',
-    );
-    final context = attachments.whereType<TextAgentAttachment>().where(
-      (attachment) => attachment.contextKind != 'chat_history',
+    final history = attachments.where(isChatHistoryAttachment);
+    final context = attachments.where(
+      (attachment) => !isChatHistoryAttachment(attachment),
     );
     return _runtime.startTurnInput([
-      for (final attachment in history) _textInput(attachment.text),
+      for (final attachment in history)
+        _textInput(renderPromptAttachmentAsText(attachment)),
       if (text.trim().isNotEmpty) _textInput(text.trim()),
       for (final image in images)
         {'type': 'image', 'url': 'data:${image.mimeType};base64,${image.data}'},
-      for (final attachment in context) _textInput(attachment.text),
+      for (final attachment in context)
+        _textInput(renderPromptAttachmentAsText(attachment)),
     ], outputSchema: outputSchema);
   }
 

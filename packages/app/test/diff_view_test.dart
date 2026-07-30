@@ -1,6 +1,7 @@
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/widgets/diff/diff_view.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _diff = DiffResponse(
@@ -82,11 +83,13 @@ const _diff = DiffResponse(
 );
 
 Widget _wrap(Widget child, {Size size = const Size(1200, 800)}) {
-  return FluentApp(
-    home: ScaffoldPage(
-      content: MediaQuery(
-        data: MediaQueryData(size: size),
-        child: child,
+  return ProviderScope(
+    child: FluentApp(
+      home: ScaffoldPage(
+        content: MediaQuery(
+          data: MediaQueryData(size: size),
+          child: child,
+        ),
       ),
     ),
   );
@@ -210,6 +213,59 @@ void main() {
       _wrap(const DiffView(diff: DiffResponse(files: []))),
     );
     expect(find.text('No changes'), findsOneWidget);
+  });
+
+  testWidgets('inline review comments can be added, edited, and deleted', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _wrap(const DiffView(diff: _diff, reviewDraftKey: 'review-scope')),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('review-add-lib/new_file.dart:newLine:1')),
+    );
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey('inline-review-editor-input')),
+      'Check this line',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('inline-review-editor-save')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('inline-review-editor-input')),
+      findsNothing,
+    );
+    expect(find.text('Check this line'), findsOneWidget);
+
+    final editButton = find.byWidgetPredicate(
+      (widget) =>
+          widget is IconButton &&
+          widget.key.toString().contains('review-edit-'),
+    );
+    await tester.tap(editButton);
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey('inline-review-editor-input')),
+      'Updated review',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('inline-review-editor-save')));
+    await tester.pump();
+    expect(find.text('Updated review'), findsOneWidget);
+    expect(find.text('Check this line'), findsNothing);
+
+    final deleteButton = find.byWidgetPredicate(
+      (widget) =>
+          widget is IconButton &&
+          widget.key.toString().contains('review-delete-'),
+    );
+    await tester.tap(deleteButton);
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(find.text('Updated review'), findsNothing);
   });
 
   testWidgets('a renamed file shows "old -> new" and the renamed style', (

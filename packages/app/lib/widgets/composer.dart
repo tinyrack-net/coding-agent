@@ -26,6 +26,7 @@ import '../state/daemon_providers.dart';
 import '../state/directory_suggestions_provider.dart';
 import '../state/host_registry_provider.dart';
 import '../state/queued_messages_provider.dart';
+import '../state/review_draft_provider.dart';
 import '../state/timeline_provider.dart';
 import '../state/workspace_attachments_provider.dart';
 import '../providers/agent_commands.dart';
@@ -283,6 +284,7 @@ class _ComposerState extends ConsumerState<Composer> {
       widget.onPromptSend?.call();
       _clearVisibleDraft();
       if (cwd != null) {
+        _clearReviewDrafts(attachments);
         ref.read(workspaceAttachmentsProvider(cwd).notifier).clear();
       }
       _draftWrite = _draftWrite
@@ -341,6 +343,7 @@ class _ComposerState extends ConsumerState<Composer> {
             clientMessageId: clientMessageId,
           );
       if (cwd != null) {
+        _clearReviewDrafts(attachments);
         ref.read(workspaceAttachmentsProvider(cwd).notifier).clear();
       }
       _draftWrite = _draftWrite
@@ -366,6 +369,14 @@ class _ComposerState extends ConsumerState<Composer> {
         'Failed to send prompt: $e',
         severity: InfoBarSeverity.error,
       );
+    }
+  }
+
+  void _clearReviewDrafts(Iterable<WorkspaceContextAttachment> attachments) {
+    final notifier = ref.read(reviewDraftProvider.notifier);
+    for (final attachment in attachments) {
+      final key = attachment.reviewDraftKey;
+      if (key != null) notifier.clear(key);
     }
   }
 

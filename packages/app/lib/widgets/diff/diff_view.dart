@@ -1,9 +1,11 @@
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/diff_rendering.dart';
 import '../../core/diff_tree.dart';
 import '../../core/theme.dart';
+import '../../state/review_draft_provider.dart';
 import 'diff_scroll.dart';
 import 'diff_stat.dart';
 
@@ -24,22 +26,27 @@ import 'diff_stat.dart';
 ///
 /// Wide layouts show a file list on the left and the selected file's hunks on
 /// the right; narrow layouts fall back to collapsible per-file sections.
-class DiffView extends StatefulWidget {
-  const DiffView({super.key, required this.diff});
+class DiffView extends ConsumerStatefulWidget {
+  const DiffView({super.key, required this.diff, this.reviewDraftKey});
 
   final DiffResponse diff;
+  final String? reviewDraftKey;
 
   @override
-  State<DiffView> createState() => _DiffViewState();
+  ConsumerState<DiffView> createState() => _DiffViewState();
 }
 
-class _DiffViewState extends State<DiffView> {
+class _DiffViewState extends ConsumerState<DiffView> {
   int _selectedIndex = 0;
   final Set<String> _collapsedFolders = {};
+  _ReviewEditorTarget? _reviewEditor;
 
   @override
   void didUpdateWidget(covariant DiffView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.reviewDraftKey != widget.reviewDraftKey) {
+      _reviewEditor = null;
+    }
     if (_selectedIndex >= widget.diff.files.length) {
       _selectedIndex = 0;
     }
@@ -53,6 +60,60 @@ class _DiffViewState extends State<DiffView> {
   Widget build(BuildContext context) {
     final files = widget.diff.files;
     if (files.isEmpty) return const _NoChanges();
+    final reviewKey = widget.reviewDraftKey;
+    final comments = reviewKey == null
+        ? const <ReviewDraftComment>[]
+        : ref.watch(
+            reviewDraftProvider.select(
+              (state) => state.drafts[reviewKey] ?? const [],
+            ),
+          );
+    final review = reviewKey == null
+        ? null
+        : _ReviewViewModel(
+            comments: comments,
+            editor: _reviewEditor,
+            onStart: (target) => setState(
+              () => _reviewEditor = _ReviewEditorTarget(target: target),
+            ),
+            onEdit: (target, comment) => setState(
+              () => _reviewEditor = _ReviewEditorTarget(
+                target: target,
+                commentId: comment.id,
+                initialBody: comment.body,
+              ),
+            ),
+            onCancel: () => setState(() => _reviewEditor = null),
+            onSave: (body) {
+              final editor = _reviewEditor;
+              if (editor == null || body.trim().isEmpty) return;
+              final notifier = ref.read(reviewDraftProvider.notifier);
+              if (editor.commentId == null) {
+                notifier.add(
+                  key: reviewKey,
+                  filePath: editor.target.filePath,
+                  side: editor.target.side,
+                  lineNumber: editor.target.lineNumber,
+                  body: body,
+                );
+              } else {
+                notifier.updateComment(
+                  key: reviewKey,
+                  id: editor.commentId!,
+                  body: body,
+                );
+              }
+              setState(() => _reviewEditor = null);
+            },
+            onDelete: (id) {
+              ref
+                  .read(reviewDraftProvider.notifier)
+                  .delete(key: reviewKey, id: id);
+              if (_reviewEditor?.commentId == id) {
+                setState(() => _reviewEditor = null);
+              }
+            },
+          );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -66,7 +127,7 @@ class _DiffViewState extends State<DiffView> {
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Expander(
                     header: _FileRowLabel(file: file),
-                    content: _FileDiffBody(file: file),
+                    content: _FileDiffBody(file: file, review: review),
                   ),
                 ),
             ],
@@ -95,7 +156,7 @@ class _DiffViewState extends State<DiffView> {
             Expanded(
               child: ListView(
                 key: ValueKey('diff-body-${selected.path}'),
-                children: [_FileDiffBody(file: selected)],
+                children: [_FileDiffBody(file: selected, review: review)],
               ),
             ),
           ],
@@ -267,9 +328,10 @@ String _treeFileLabel(DiffFile file) {
 
 /// Unified diff for a single file: hunk headers + numbered, tinted lines.
 class _FileDiffBody extends StatelessWidget {
-  const _FileDiffBody({required this.file});
+  const _FileDiffBody({required this.file, this.review});
 
   final DiffFile file;
+  final _ReviewViewModel? review;
 
   @override
   Widget build(BuildContext context) {
@@ -314,10 +376,268 @@ class _FileDiffBody extends StatelessWidget {
         children: [
           for (final hunk in file.hunks) ...[
             _HunkHeader(header: hunk.header),
-            for (final line in hunk.lines) _DiffLineRow(line: line),
+            for (final line in hunk.lines)
+              _ReviewableDiffLine(
+                filePath: file.path,
+                line: line,
+                review: review,
+              ),
           ],
         ],
       ),
+    );
+  }
+}
+
+final class _ReviewTarget {
+  const _ReviewTarget({
+    required this.filePath,
+    required this.side,
+    required this.lineNumber,
+  });
+
+  final String filePath;
+  final ReviewAttachmentSide side;
+  final int lineNumber;
+
+  String get key => '$filePath:${side.name}:$lineNumber';
+}
+
+final class _ReviewEditorTarget {
+  const _ReviewEditorTarget({
+    required this.target,
+    this.commentId,
+    this.initialBody = '',
+  });
+
+  final _ReviewTarget target;
+  final String? commentId;
+  final String initialBody;
+}
+
+final class _ReviewViewModel {
+  const _ReviewViewModel({
+    required this.comments,
+    required this.editor,
+    required this.onStart,
+    required this.onEdit,
+    required this.onCancel,
+    required this.onSave,
+    required this.onDelete,
+  });
+
+  final List<ReviewDraftComment> comments;
+  final _ReviewEditorTarget? editor;
+  final ValueChanged<_ReviewTarget> onStart;
+  final void Function(_ReviewTarget, ReviewDraftComment) onEdit;
+  final VoidCallback onCancel;
+  final ValueChanged<String> onSave;
+  final ValueChanged<String> onDelete;
+}
+
+class _ReviewableDiffLine extends StatelessWidget {
+  const _ReviewableDiffLine({
+    required this.filePath,
+    required this.line,
+    required this.review,
+  });
+
+  final String filePath;
+  final DiffLine line;
+  final _ReviewViewModel? review;
+
+  @override
+  Widget build(BuildContext context) {
+    final target = switch (line.type) {
+      DiffLineType.del when line.oldLineNo != null => _ReviewTarget(
+        filePath: filePath,
+        side: ReviewAttachmentSide.old,
+        lineNumber: line.oldLineNo!,
+      ),
+      DiffLineType.add when line.newLineNo != null => _ReviewTarget(
+        filePath: filePath,
+        side: ReviewAttachmentSide.newLine,
+        lineNumber: line.newLineNo!,
+      ),
+      DiffLineType.context when line.newLineNo != null => _ReviewTarget(
+        filePath: filePath,
+        side: ReviewAttachmentSide.newLine,
+        lineNumber: line.newLineNo!,
+      ),
+      _ => null,
+    };
+    final viewModel = review;
+    final comments = target == null || viewModel == null
+        ? const <ReviewDraftComment>[]
+        : viewModel.comments
+              .where(
+                (comment) =>
+                    comment.filePath == target.filePath &&
+                    comment.side == target.side &&
+                    comment.lineNumber == target.lineNumber,
+              )
+              .toList(growable: false);
+    final editor = target != null && viewModel?.editor?.target.key == target.key
+        ? viewModel!.editor
+        : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _DiffLineRow(
+          line: line,
+          reviewTarget: target,
+          hasComments: comments.isNotEmpty,
+          onAddReview: target == null || viewModel == null
+              ? null
+              : () => viewModel.onStart(target),
+        ),
+        if (viewModel != null &&
+            target != null &&
+            (comments.isNotEmpty || editor != null))
+          _InlineReviewThread(
+            target: target,
+            comments: comments,
+            editor: editor,
+            review: viewModel,
+          ),
+      ],
+    );
+  }
+}
+
+class _InlineReviewThread extends StatelessWidget {
+  const _InlineReviewThread({
+    required this.target,
+    required this.comments,
+    required this.editor,
+    required this.review,
+  });
+
+  final _ReviewTarget target;
+  final List<ReviewDraftComment> comments;
+  final _ReviewEditorTarget? editor;
+  final _ReviewViewModel review;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Container(
+      key: ValueKey('review-thread-${target.key}'),
+      margin: const EdgeInsets.fromLTRB(48, 4, 12, 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: tokens.surfaceContainerHighest,
+        border: Border.all(color: tokens.outline),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final comment in comments)
+            if (editor?.commentId != comment.id)
+              Row(
+                key: ValueKey('review-comment-${comment.id}'),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: Text(comment.body)),
+                  IconButton(
+                    key: ValueKey('review-edit-${comment.id}'),
+                    icon: const Icon(FluentIcons.edit, size: 14),
+                    onPressed: () => review.onEdit(target, comment),
+                  ),
+                  IconButton(
+                    key: ValueKey('review-delete-${comment.id}'),
+                    icon: const Icon(FluentIcons.delete, size: 14),
+                    onPressed: () => review.onDelete(comment.id),
+                  ),
+                ],
+              ),
+          if (editor != null)
+            _InlineReviewEditor(
+              key: ValueKey(
+                'review-editor-${target.key}-${editor!.commentId ?? 'new'}',
+              ),
+              initialBody: editor!.initialBody,
+              onCancel: review.onCancel,
+              onSave: review.onSave,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InlineReviewEditor extends StatefulWidget {
+  const _InlineReviewEditor({
+    super.key,
+    required this.initialBody,
+    required this.onCancel,
+    required this.onSave,
+  });
+
+  final String initialBody;
+  final VoidCallback onCancel;
+  final ValueChanged<String> onSave;
+
+  @override
+  State<_InlineReviewEditor> createState() => _InlineReviewEditorState();
+}
+
+class _InlineReviewEditorState extends State<_InlineReviewEditor> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialBody);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextBox(
+          key: const ValueKey('inline-review-editor-input'),
+          controller: _controller,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 6,
+          placeholder: 'Leave a review comment',
+          onChanged: (_) => setState(() {}),
+          onSubmitted: (_) {
+            if (_controller.text.trim().isNotEmpty) {
+              widget.onSave(_controller.text);
+            }
+          },
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Button(
+              key: const ValueKey('inline-review-editor-cancel'),
+              onPressed: widget.onCancel,
+              child: const Text('Cancel'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              key: const ValueKey('inline-review-editor-save'),
+              onPressed: _controller.text.trim().isEmpty
+                  ? null
+                  : () => widget.onSave(_controller.text),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -346,9 +666,17 @@ class _HunkHeader extends StatelessWidget {
 }
 
 class _DiffLineRow extends StatelessWidget {
-  const _DiffLineRow({required this.line});
+  const _DiffLineRow({
+    required this.line,
+    this.reviewTarget,
+    this.hasComments = false,
+    this.onAddReview,
+  });
 
   final DiffLine line;
+  final _ReviewTarget? reviewTarget;
+  final bool hasComments;
+  final VoidCallback? onAddReview;
 
   static const _monoStyle = TextStyle(fontFamily: 'monospace', fontSize: 12.5);
 
@@ -377,6 +705,22 @@ class _DiffLineRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          SizedBox(
+            width: 32,
+            height: 24,
+            child: onAddReview == null
+                ? null
+                : IconButton(
+                    key: ValueKey('review-add-${reviewTarget!.key}'),
+                    icon: Icon(
+                      hasComments
+                          ? FluentIcons.comment_solid
+                          : FluentIcons.comment_add,
+                      size: 13,
+                    ),
+                    onPressed: onAddReview,
+                  ),
+          ),
           SizedBox(
             width: 40,
             child: Text(

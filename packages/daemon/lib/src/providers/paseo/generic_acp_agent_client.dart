@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../agent/prompt_attachments.dart';
 import '../agent_client.dart';
 import '../agent_session.dart';
 import '../provider_event.dart';
@@ -478,18 +479,16 @@ final class GenericAcpAgentSession
     String text,
     List<AgentAttachment> attachments,
   ) {
-    final history = attachments.whereType<TextAgentAttachment>().where(
-      (attachment) => attachment.contextKind == 'chat_history',
-    );
-    final context = attachments.whereType<TextAgentAttachment>().where(
-      (attachment) => attachment.contextKind != 'chat_history',
+    final history = attachments.where(isChatHistoryAttachment);
+    final context = attachments.where(
+      (attachment) => !isChatHistoryAttachment(attachment),
     );
     return _promptBlocks([
       for (final attachment in history)
-        {'type': 'text', 'text': attachment.text},
+        {'type': 'text', 'text': renderPromptAttachmentAsText(attachment)},
       if (text.trim().isNotEmpty) {'type': 'text', 'text': text.trim()},
       for (final attachment in context)
-        {'type': 'text', 'text': attachment.text},
+        {'type': 'text', 'text': renderPromptAttachmentAsText(attachment)},
     ]);
   }
 

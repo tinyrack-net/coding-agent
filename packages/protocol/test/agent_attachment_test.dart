@@ -51,4 +51,67 @@ void main() {
           .having((value) => value.mimeType, 'mimeType', 'image/png'),
     ]);
   });
+
+  test('review attachment round-trips line context exactly', () {
+    const target = ReviewAttachmentContextLine(
+      oldLineNumber: null,
+      newLineNumber: 8,
+      type: ReviewAttachmentLineType.add,
+      content: 'return next;',
+    );
+    const attachment = ReviewAgentAttachment(
+      cwd: '/repo',
+      mode: ReviewAttachmentMode.base,
+      baseRef: 'main',
+      comments: [
+        ReviewAttachmentComment(
+          filePath: 'lib/a.dart',
+          side: ReviewAttachmentSide.newLine,
+          lineNumber: 8,
+          body: 'Please explain this.',
+          context: ReviewAttachmentContext(
+            hunkHeader: '@@ -7,1 +7,2 @@',
+            targetLine: target,
+            lines: [target],
+          ),
+        ),
+      ],
+    );
+
+    final decoded = AgentAttachment.tryFromJson(attachment.toJson());
+    expect(decoded, isA<ReviewAgentAttachment>());
+    final review = decoded! as ReviewAgentAttachment;
+    expect(review.mode, ReviewAttachmentMode.base);
+    expect(review.comments.single.context.targetLine.newLineNumber, 8);
+    expect(review.toJson(), attachment.toJson());
+  });
+
+  test('review normalization drops malformed positive line targets', () {
+    final valid = const ReviewAgentAttachment(
+      cwd: '/repo',
+      mode: ReviewAttachmentMode.uncommitted,
+      comments: [],
+    ).toJson();
+    final malformed = Map<String, Object?>.from(valid)
+      ..['comments'] = [
+        {
+          'filePath': 'a.dart',
+          'side': 'new',
+          'lineNumber': 0,
+          'body': 'bad',
+          'context': {
+            'hunkHeader': '@@',
+            'targetLine': {
+              'oldLineNumber': null,
+              'newLineNumber': 0,
+              'type': 'add',
+              'content': 'bad',
+            },
+            'lines': [],
+          },
+        },
+      ];
+
+    expect(AgentAttachment.tryFromJson(malformed), isNull);
+  });
 }

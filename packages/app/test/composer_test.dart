@@ -13,6 +13,7 @@ import 'package:coding_agent_app/keyboard/shortcut_focus_scope.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/queued_messages_provider.dart';
+import 'package:coding_agent_app/state/review_draft_provider.dart';
 import 'package:coding_agent_app/state/timeline_provider.dart';
 import 'package:coding_agent_app/state/workspace_attachments_provider.dart';
 import 'package:coding_agent_app/widgets/composer.dart';
@@ -955,6 +956,77 @@ void main() {
       expect(find.text('reviewer'), findsNothing);
     },
   );
+
+  testWidgets('review attachments keep wire semantics and clear sent drafts', (
+    tester,
+  ) async {
+    final client = FakeDaemonClient();
+    final container = await pumpComposer(tester, client);
+    container
+        .read(reviewDraftProvider.notifier)
+        .add(
+          key: 'review-scope',
+          filePath: 'lib/example.dart',
+          side: ReviewAttachmentSide.newLine,
+          lineNumber: 4,
+          body: 'Please reconsider this.',
+          id: 'comment-1',
+          createdAt: '2026-07-30T00:00:00.000Z',
+        );
+    const semantic = ReviewAgentAttachment(
+      cwd: '/work',
+      mode: ReviewAttachmentMode.uncommitted,
+      baseRef: null,
+      comments: [
+        ReviewAttachmentComment(
+          filePath: 'lib/example.dart',
+          side: ReviewAttachmentSide.newLine,
+          lineNumber: 4,
+          body: 'Please reconsider this.',
+          context: ReviewAttachmentContext(
+            hunkHeader: '@@ -4 +4 @@',
+            targetLine: ReviewAttachmentContextLine(
+              oldLineNumber: null,
+              newLineNumber: 4,
+              type: ReviewAttachmentLineType.add,
+              content: 'new line',
+            ),
+            lines: [
+              ReviewAttachmentContextLine(
+                oldLineNumber: null,
+                newLineNumber: 4,
+                type: ReviewAttachmentLineType.add,
+                content: 'new line',
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    container
+        .read(workspaceAttachmentsProvider(_agent.cwd).notifier)
+        .add(
+          const WorkspaceContextAttachment(
+            kind: 'review',
+            id: 'working-diff-review',
+            title: 'Review comments',
+            subtitle: '1 draft comment',
+            text: '1 inline review comment',
+            url: null,
+            semanticAttachment: semantic,
+            reviewDraftKey: 'review-scope',
+          ),
+        );
+    await tester.pump();
+
+    await tester.tap(find.byIcon(FluentIcons.send));
+    await tester.pump(const Duration(milliseconds: 150));
+
+    final (_, payload) = client.requests.single;
+    expect(payload['attachments'], [semantic.toJson()]);
+    expect(container.read(reviewDraftProvider).drafts, isEmpty);
+    expect(container.read(workspaceAttachmentsProvider(_agent.cwd)), isEmpty);
+  });
 
   testWidgets('browser-element screenshot hands off to timeline ownership', (
     tester,

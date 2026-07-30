@@ -2316,9 +2316,10 @@
       "implementation": "packages/app/lib/state/workspace_attachments_provider.dart",
       "evidence": [
         "packages/app/test/queued_messages_provider_test.dart",
-        "packages/app/test/composer_test.dart"
+        "packages/app/test/composer_test.dart",
+        "packages/app/test/review_draft_provider_test.dart"
       ],
-      "notes": "Workspace-scoped context attachments dedupe by kind/id, support add/remove/clear, and register browser-element screenshot ids in a global GC owner projection. Full server/workspace/agent scope keys, selection suppression, reviewed-item cleanup, persistence, and every workspace attachment kind remain."
+      "notes": "Workspace-scoped context attachments dedupe by kind/id, support semantic review snapshots plus add/remove/clear, clear submitted review drafts, and register browser-element screenshot ids in a global GC owner projection. Full server/workspace/agent scope keys, selection suppression, reviewed-item cleanup, persistence, and every workspace attachment kind remain."
     },
     {
       "id": "source-unit:packages/app/src/attachments/workspace-file-drag-source.types.ts",
@@ -4132,9 +4133,10 @@
       "implementation": "packages/app/lib/state/queued_messages_provider.dart; packages/app/lib/state/timeline_provider.dart; packages/app/lib/widgets/composer.dart",
       "evidence": [
         "packages/app/test/queued_messages_provider_test.dart",
-        "packages/app/test/composer_test.dart"
+        "packages/app/test/composer_test.dart",
+        "packages/protocol/test/agent_attachment_test.dart"
       ],
-      "notes": "Host-keyed queued composer messages trim input, preserve per-agent order and attachments, isolate identical agent ids across servers, support edit removal, force-send removal, failed-send front restoration, and image ownership. Direct, send-now, and drained prompts append rich optimistic user rows with stable client message ids and roll them back on transport failure. Full user-only attachment filtering, forge toggles, open actions, and the global per-host drain lifecycle remain."
+      "notes": "Host-keyed queued composer messages trim input, preserve per-agent order and semantic review attachments, isolate identical agent ids across servers, support edit removal, force-send removal, failed-send front restoration, and image ownership. Direct sends preserve the frozen review wire shape and clear sent review drafts; optimistic user rows retain stable client message ids and roll back on transport failure. Full user-only attachment filtering, forge toggles, open actions, and the global per-host drain lifecycle remain."
     },
     {
       "id": "source-unit:packages/app/src/composer/agent-controls/control.tsx",
@@ -5120,7 +5122,7 @@
         "packages/app/test/diff_rendering_test.dart",
         "packages/app/test/diff_tree_test.dart"
       ],
-      "notes": "The Flutter diff pane has live base/uncommitted mode selection, persisted whitespace filtering, responsive file selection, a compressed tree navigator, unified hunks, binary/too-large/empty states, horizontal scrolling, stable blank-row geometry, and the split/unified layout model. The split renderer, inline review comments, selection toolbar, tree/flat controls on every form factor, metrics, and remaining orchestration remain."
+      "notes": "The Flutter diff pane has live base/uncommitted mode selection, persisted whitespace filtering, responsive file selection, a compressed tree navigator, unified hunks, binary/too-large/empty states, horizontal scrolling, stable blank-row geometry, the split/unified layout model, and old/new-side inline review add/edit/delete threads. The split renderer, selection toolbar, hover-only comment affordances, exact shortcut hints, tree/flat controls on every form factor, metrics, and remaining orchestration remain."
     },
     {
       "id": "source-unit:packages/app/src/git/diff-scroll.ts",
@@ -5594,9 +5596,11 @@
       "implementation": "packages/app/lib/state/working_diff_provider.dart; packages/app/lib/state/workspace_checkout_status_provider.dart; packages/app/lib/widgets/diff/diff_pane.dart",
       "evidence": [
         "packages/app/test/working_diff_provider_test.dart",
-        "packages/app/test/workspace_checkout_status_provider_test.dart"
+        "packages/app/test/workspace_checkout_status_provider_test.dart",
+        "packages/app/test/review_draft_provider_test.dart",
+        "packages/app/test/diff_pane_test.dart"
       ],
-      "notes": "Dirty checkouts default to uncommitted diff, clean checkouts default to base diff, explicit choices use the frozen server/workspace-or-cwd/base/whitespace scope and every stale checkout override expires on dirty flips. Queries wait for Git status and propagate the persisted ignore-whitespace preference. Inline review controller and attachment publication remain."
+      "notes": "Dirty checkouts default to uncommitted diff, clean checkouts default to base diff, explicit choices use the frozen server/workspace-or-cwd/base/whitespace scope and every stale checkout override expires on dirty flips. Queries wait for Git status, propagate persisted whitespace preferences, and publish bounded semantic review snapshots into workspace attachments. Exact React hook lifecycle and every upstream attachment kind remain."
     },
     {
       "id": "source-unit:packages/app/src/git/workspace-actions.tsx",
@@ -6823,28 +6827,33 @@
     },
     {
       "id": "source-unit:packages/app/src/review/state.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/state/working_diff_provider.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/state/working_diff_provider.dart; packages/app/lib/state/review_draft_provider.dart",
       "evidence": [
-        "packages/app/test/working_diff_provider_test.dart"
+        "packages/app/test/working_diff_provider_test.dart",
+        "packages/app/test/review_draft_provider_test.dart"
       ],
-      "notes": "Frozen scope-keyed diff-mode override selection, dirty-state validation, and checkout-wide targeted expiry are implemented. Review drafts, comments, mention targets, and persistence remain."
+      "notes": "Frozen review comment state, add/update/delete/clear transitions, persisted-draft normalization, scope-keyed diff-mode override selection, dirty-state validation, and checkout-wide expiry are covered."
     },
     {
       "id": "source-unit:packages/app/src/review/store.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/state/working_diff_provider.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/state/working_diff_provider.dart; packages/app/lib/state/review_draft_provider.dart",
       "evidence": [
-        "packages/app/test/working_diff_provider_test.dart"
+        "packages/app/test/working_diff_provider_test.dart",
+        "packages/app/test/review_draft_provider_test.dart",
+        "packages/protocol/test/agent_attachment_test.dart"
       ],
-      "notes": "Review draft scope keys match server/workspace-or-cwd/base/ignoreWhitespace identity and in-memory diff-mode overrides. Persisted comments and review attachment snapshots remain."
+      "notes": "Review drafts persist independently from in-memory mode overrides, use the frozen server/workspace-or-cwd/mode/base/whitespace key, normalize malformed storage, and build bounded three-line-context semantic attachments while skipping missing targets."
     },
     {
       "id": "source-unit:packages/app/src/review/surface.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/widgets/diff/diff_view.dart",
+      "evidence": [
+        "packages/app/test/diff_view_test.dart"
+      ],
+      "notes": "Reviewable old/new diff targets expose one inline editor at a time with trimmed add, edit, cancel, delete, and stable thread geometry. Exact hover behavior, Escape and modifier-Enter shortcuts, shortcut hints, focus restoration, and token-level visual parity remain."
     },
     {
       "id": "source-unit:packages/app/src/runtime/activity/index.ts",
@@ -12188,9 +12197,14 @@
       "status": "partial",
       "implementation": "packages/protocol/lib/src/messages/agent_attachment.dart; packages/daemon/lib/src/agent/first_agent_context.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/providers/paseo/codex_agent_session.dart; packages/daemon/lib/src/providers/paseo/claude_agent_session.dart",
       "evidence": [
-        "packages/daemon/test/agent/first_agent_context_test.dart; packages/daemon/test/agent_manager_test.dart; packages/daemon/test/providers/paseo/codex_agent_session_test.dart; packages/daemon/test/providers/paseo/claude_agent_client_test.dart; packages/protocol/test/agent_attachment_test.dart"
+        "packages/daemon/test/agent/first_agent_context_test.dart",
+        "packages/daemon/test/agent/prompt_attachments_test.dart",
+        "packages/daemon/test/agent_manager_test.dart",
+        "packages/daemon/test/providers/paseo/codex_agent_session_test.dart",
+        "packages/daemon/test/providers/paseo/claude_agent_client_test.dart",
+        "packages/protocol/test/agent_attachment_test.dart"
       ],
-      "notes": "Frozen first-agent metadata seed fencing now joins prompt and semantic text attachments. Existing prompt image and provider rendering coverage remains; forge, issue, review, uploaded-file, Codex image materialization, and full app picker remain."
+      "notes": "Frozen first-agent metadata fencing and Claude, Codex, ACP, and fallback provider prompts now preserve semantic text attachments and render review comments with exact file/side/line/hunk/context formatting. Forge, issue, uploaded-file, Codex image materialization, and the full app picker remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/provider-history-timestamps.ts",

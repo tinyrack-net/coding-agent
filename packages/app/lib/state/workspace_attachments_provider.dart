@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,6 +14,8 @@ final class WorkspaceContextAttachment {
     required this.text,
     required this.url,
     this.screenshot,
+    this.semanticAttachment,
+    this.reviewDraftKey,
   });
 
   final String kind;
@@ -21,9 +25,11 @@ final class WorkspaceContextAttachment {
   final String text;
   final String? url;
   final AttachmentMetadata? screenshot;
+  final AgentAttachment? semanticAttachment;
+  final String? reviewDraftKey;
 
-  TextAgentAttachment toAgentAttachment() =>
-      TextAgentAttachment(title: title, text: text);
+  AgentAttachment toAgentAttachment() =>
+      semanticAttachment ?? TextAgentAttachment(title: title, text: text);
 }
 
 class WorkspaceAttachmentsNotifier
@@ -36,6 +42,21 @@ class WorkspaceAttachmentsNotifier
   List<WorkspaceContextAttachment> build() => const [];
 
   void add(WorkspaceContextAttachment attachment) {
+    final existing = state
+        .where(
+          (current) =>
+              current.kind == attachment.kind && current.id == attachment.id,
+        )
+        .firstOrNull;
+    if (existing != null &&
+        existing.title == attachment.title &&
+        existing.subtitle == attachment.subtitle &&
+        existing.text == attachment.text &&
+        existing.url == attachment.url &&
+        jsonEncode(existing.semanticAttachment?.toJson()) ==
+            jsonEncode(attachment.semanticAttachment?.toJson())) {
+      return;
+    }
     state = [
       for (final current in state)
         if (current.kind != attachment.kind || current.id != attachment.id)

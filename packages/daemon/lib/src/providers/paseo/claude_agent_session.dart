@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:agent_protocol/agent_protocol.dart';
 
+import '../../agent/prompt_attachments.dart';
 import '../agent_session.dart';
 import '../provider_event.dart';
 import 'claude_image_output.dart';
@@ -121,10 +122,10 @@ final class ClaudeAgentSession
     List<AgentPromptImage> images,
     List<AgentAttachment> attachments,
   ) {
-    final chatHistory = <TextAgentAttachment>[];
-    final context = <TextAgentAttachment>[];
-    for (final attachment in attachments.whereType<TextAgentAttachment>()) {
-      if (attachment.contextKind == 'chat_history') {
+    final chatHistory = <AgentAttachment>[];
+    final context = <AgentAttachment>[];
+    for (final attachment in attachments) {
+      if (isChatHistoryAttachment(attachment)) {
         chatHistory.add(attachment);
       } else {
         context.add(attachment);
@@ -132,7 +133,7 @@ final class ClaudeAgentSession
     }
     return _promptContent([
       for (final attachment in chatHistory)
-        {'type': 'text', 'text': attachment.text},
+        {'type': 'text', 'text': renderPromptAttachmentAsText(attachment)},
       if (text.trim().isNotEmpty) {'type': 'text', 'text': text.trim()},
       for (final image in images)
         if (_claudeImageMimeTypes.contains(image.mimeType))
@@ -145,7 +146,7 @@ final class ClaudeAgentSession
             },
           },
       for (final attachment in context)
-        {'type': 'text', 'text': attachment.text},
+        {'type': 'text', 'text': renderPromptAttachmentAsText(attachment)},
     ]);
   }
 

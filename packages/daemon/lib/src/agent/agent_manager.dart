@@ -15,6 +15,7 @@ import '../server/rpc_router.dart';
 import '../utils/path_identity.dart';
 import 'agent_store.dart';
 import 'create_agent_title.dart';
+import 'prompt_attachments.dart';
 import 'provider_subagent_store.dart';
 import 'runtime_mcp_config.dart';
 import 'system_prompt.dart';
@@ -1171,8 +1172,7 @@ class AgentManager {
     final parts = <String>[
       if (text.trim().isNotEmpty) text.trim(),
       for (final attachment in attachments)
-        if (attachment case TextAgentAttachment(text: final value))
-          value.trim(),
+        renderPromptAttachmentAsText(attachment).trim(),
     ]..removeWhere((part) => part.isEmpty);
     return parts.join('\n\n');
   }

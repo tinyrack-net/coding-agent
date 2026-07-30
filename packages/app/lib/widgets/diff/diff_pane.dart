@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
 import '../../state/changes_preferences_provider.dart';
+import '../../state/review_draft_provider.dart';
 import '../../state/working_diff_provider.dart';
 import '../../state/workspace_checkout_status_provider.dart';
+import '../../state/workspace_attachments_provider.dart';
 import '../../state/workspace_providers.dart';
 import 'diff_view.dart';
 
@@ -137,6 +139,19 @@ class _LiveDiffPane extends ConsumerWidget {
       cwd: cwd,
       compare: compare,
     );
+    final reviewDraftKey = buildReviewDraftKey(
+      serverId: serverId,
+      workspaceId: workspaceId,
+      cwd: cwd,
+      mode: mode,
+      baseRef: status?.baseRef,
+      ignoreWhitespace: ignoreWhitespace,
+    );
+    final reviewComments = ref.watch(
+      reviewDraftProvider.select(
+        (state) => state.drafts[reviewDraftKey] ?? const [],
+      ),
+    );
     final AsyncValue<CheckoutDiffPayload?> diffAsync = switch (status) {
       null => const AsyncLoading(),
       final value when value.isGit => ref.watch(checkoutDiffProvider(query)),
@@ -232,9 +247,39 @@ class _LiveDiffPane extends ConsumerWidget {
                   child: Text('Failed to load diff: ${error.message}'),
                 );
               }
-              return DiffView(
-                diff: payload?.toLegacyDiff() ?? const DiffResponse(files: []),
+              final diff =
+                  payload?.toLegacyDiff() ?? const DiffResponse(files: []);
+              final reviewAttachment = buildReviewAttachment(
+                cwd: cwd,
+                mode: mode,
+                baseRef: status?.baseRef,
+                comments: reviewComments,
+                diff: diff,
               );
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                final attachments = ref.read(
+                  workspaceAttachmentsProvider(cwd).notifier,
+                );
+                if (reviewAttachment == null) {
+                  attachments.remove('review', 'working-diff-review');
+                } else {
+                  attachments.add(
+                    WorkspaceContextAttachment(
+                      kind: 'review',
+                      id: 'working-diff-review',
+                      title: 'Code review',
+                      subtitle: '${reviewAttachment.comments.length} comments',
+                      text: reviewAttachment.comments
+                          .map((comment) => comment.body)
+                          .join('\n'),
+                      url: null,
+                      semanticAttachment: reviewAttachment,
+                      reviewDraftKey: reviewDraftKey,
+                    ),
+                  );
+                }
+              });
+              return DiffView(diff: diff, reviewDraftKey: reviewDraftKey);
             },
           ),
         ),
