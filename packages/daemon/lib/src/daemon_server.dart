@@ -85,6 +85,7 @@ import 'workspace/service_proxy_route_registry.dart';
 import 'workspace/service_proxy_standalone.dart';
 import 'workspace/script_health_monitor.dart';
 import 'workspace/checkout_status_service.dart';
+import 'workspace/checkout_diff_service.dart';
 import 'workspace/polling_workspace_git_backend.dart';
 import 'workspace/project_github_clone_service.dart';
 import 'workspace/github_repository_search_service.dart';
@@ -838,6 +839,10 @@ Future<DaemonServerHandle> startDaemonServer({
     loadSnapshot: workspaceGitObserverBackend.getSnapshot,
     resolveWorkspace: (cwd) =>
         resolveCheckoutStatusWorkspace(workspaceRegistries.workspaces, cwd),
+  );
+  final checkoutDiff = CheckoutDiffService(
+    git: gitService,
+    backend: workspaceGitObserverBackend,
   );
   final forgeSearch = ForgeSearchService(resolver: forgeResolver);
   final pullRequestTimeline = PullRequestTimelineService(
@@ -1727,6 +1732,13 @@ Future<DaemonServerHandle> startDaemonServer({
     if (forgeActionResponse != null) return forgeActionResponse;
     final checkoutStatusResponse = await checkoutStatus.handle(message);
     if (checkoutStatusResponse != null) return checkoutStatusResponse;
+    if (message['type'] == SubscribeCheckoutDiffRequest.type) {
+      return checkoutDiff.subscribe(connection, message);
+    }
+    if (message['type'] == UnsubscribeCheckoutDiffRequest.type) {
+      checkoutDiff.unsubscribe(connection.id, message);
+      return v2HandledNoResponse;
+    }
     final prStatusResponse = await checkoutPrStatus.handle(message);
     if (prStatusResponse != null) return prStatusResponse;
     final checkoutRefreshResponse = await checkoutRefresh.handle(message);
@@ -1749,6 +1761,7 @@ Future<DaemonServerHandle> startDaemonServer({
     terminals.onConnectionClosed(connection.id);
     terminalV2.onConnectionClosed(connection.id);
     workspaceV2.onConnectionClosed(connection.id);
+    checkoutDiff.onConnectionClosed(connection.id);
     fileExplorer.onConnectionClosed(connection.id);
     fileTransfers.onConnectionClosed(connection.id);
   };
@@ -1770,6 +1783,7 @@ Future<DaemonServerHandle> startDaemonServer({
     speechService?.stop();
     voiceBridge.clear();
     workspaceScripts.dispose();
+    checkoutDiff.dispose();
     await workspaceGitObserverBackend.disposeAndWait();
     await manager.dispose();
     fileExplorer.close();

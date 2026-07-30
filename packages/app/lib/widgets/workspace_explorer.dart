@@ -165,6 +165,8 @@ class _WorkspaceExplorerState extends ConsumerState<WorkspaceExplorer> {
         Expanded(
           child: switch (resolvedTab) {
             WorkspaceExplorerTab.changes => DiffPane(
+              serverId: widget.serverId,
+              workspaceId: widget.workspaceId,
               cwd: widget.cwd,
               compact: true,
             ),

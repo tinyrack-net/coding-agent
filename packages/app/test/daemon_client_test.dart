@@ -1597,6 +1597,45 @@ void main() {
     expect(event.payload.aheadBehind?.behind, 2);
   });
 
+  test('checkout diff updates are decoded onto a typed stream', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final eventFuture = client.checkoutDiffUpdates.first;
+    conn.socket.add(
+      jsonEncode({
+        'type': 'session',
+        'message': const CheckoutDiffUpdate(
+          CheckoutDiffPayload(
+            subscriptionId: 'sub-1',
+            cwd: '/repo',
+            files: [
+              CheckoutDiffFile(
+                path: 'changed.txt',
+                isNew: true,
+                isDeleted: false,
+                additions: 1,
+                deletions: 0,
+                hunks: [],
+              ),
+            ],
+            error: null,
+          ),
+        ).toJson(),
+      }),
+    );
+
+    final event = await eventFuture;
+    expect(event.payload.subscriptionId, 'sub-1');
+    expect(event.payload.files.single.path, 'changed.txt');
+  });
+
   test('disconnect: server closing the socket surfaces disconnected state '
       'and pending requests fail', () async {
     client = DaemonClient(uri: server.uri);

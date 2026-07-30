@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../core/daemon_client.dart';
 import 'daemon_providers.dart';
 import 'host_registry_provider.dart';
+import 'working_diff_provider.dart';
 
 typedef WorkspaceCheckoutStatusKey = ({String serverId, String cwd});
 
@@ -18,6 +19,13 @@ final class CheckoutStatusPushCacheNotifier
   void apply(String serverId, CheckoutStatusUpdate update) {
     final key = (serverId: serverId, cwd: update.payload.cwd);
     state = Map.unmodifiable({...state, key: update});
+    ref
+        .read(workingDiffOverrideProvider.notifier)
+        .expireIfDirtyChanged(
+          serverId: serverId,
+          cwd: update.payload.cwd,
+          isDirty: update.payload.isGit && update.payload.isDirty == true,
+        );
     ref
         .read(checkoutCommitsInvalidationProvider.notifier)
         .invalidate(serverId, update.payload.cwd);
@@ -130,6 +138,13 @@ final class WorkspaceCheckoutStatusNotifier
         ).toJson(),
       ),
     );
+    ref
+        .read(workingDiffOverrideProvider.notifier)
+        .expireIfDirtyChanged(
+          serverId: key.serverId,
+          cwd: key.cwd,
+          isDirty: response.payload.isGit && response.payload.isDirty == true,
+        );
     return response.payload;
   }
 }

@@ -74,6 +74,7 @@ class DaemonClient {
       StreamController<DirectoryUpdateEvent>.broadcast();
   final _checkoutStatusUpdates =
       StreamController<CheckoutStatusUpdate>.broadcast();
+  final _checkoutDiffUpdates = StreamController<CheckoutDiffUpdate>.broadcast();
   final _daemonConfigChanges =
       StreamController<DaemonConfigChangedStatus>.broadcast();
   final _workspaceSetupProgress =
@@ -104,6 +105,8 @@ class DaemonClient {
       _directoryUpdateEvents.stream;
   Stream<CheckoutStatusUpdate> get checkoutStatusUpdates =>
       _checkoutStatusUpdates.stream;
+  Stream<CheckoutDiffUpdate> get checkoutDiffUpdates =>
+      _checkoutDiffUpdates.stream;
   Stream<DaemonConfigChangedStatus> get daemonConfigChanges =>
       _daemonConfigChanges.stream;
   Stream<WorkspaceSetupProgress> get workspaceSetupProgress =>
@@ -1253,6 +1256,12 @@ class DaemonClient {
       } catch (_) {}
       return;
     }
+    if (message['type'] == CheckoutDiffUpdate.type) {
+      try {
+        _checkoutDiffUpdates.add(CheckoutDiffUpdate.fromJson(message));
+      } catch (_) {}
+      return;
+    }
     if (message['type'] == 'fs.file.update' && nativePayload is Map) {
       final subscriptionId = nativePayload['subscriptionId'];
       final version = nativePayload['version'];
@@ -1334,6 +1343,7 @@ class DaemonClient {
     _agentStreamEvents.close();
     _directoryUpdateEvents.close();
     _checkoutStatusUpdates.close();
+    _checkoutDiffUpdates.close();
     _workspaceSetupProgress.close();
     _providersSnapshotUpdates.close();
     _serverInfoUpdates.close();

@@ -407,10 +407,15 @@ class GitService {
 
   /// Structured diff. Without [baseRef]: working tree vs HEAD plus untracked
   /// files synthesized as added. With [baseRef]: `git diff <baseRef>`.
-  Future<DiffResponse> diff(String cwd, {String? baseRef}) async {
+  Future<DiffResponse> diff(
+    String cwd, {
+    String? baseRef,
+    bool ignoreWhitespace = false,
+  }) async {
     if (baseRef != null) {
       final result = await runner.run([
         'diff',
+        if (ignoreWhitespace) '-w',
         baseRef,
         '--no-color',
       ], cwd: cwd);
@@ -426,12 +431,46 @@ class GitService {
       check: false,
     )).ok;
     if (hasHead) {
-      final result = await runner.run(['diff', 'HEAD', '--no-color'], cwd: cwd);
+      final result = await runner.run([
+        'diff',
+        if (ignoreWhitespace) '-w',
+        'HEAD',
+        '--no-color',
+      ], cwd: cwd);
       files.addAll(parseUnifiedDiff(result.stdout));
     }
 
     files.addAll(await _untrackedAsAdded(cwd));
     return DiffResponse(files: files);
+  }
+
+  /// Frozen checkout-diff semantics. Base mode compares the merge base to
+  /// HEAD and deliberately excludes untracked working-tree files.
+  Future<DiffResponse> checkoutDiff(
+    String cwd,
+    CheckoutDiffCompare compare,
+  ) async {
+    final normalized = compare.normalized();
+    if (normalized.mode == CheckoutDiffMode.uncommitted) {
+      return diff(cwd, ignoreWhitespace: normalized.ignoreWhitespace);
+    }
+    final baseRef = normalized.baseRef ?? 'HEAD';
+    final mergeBase = await runner.run(
+      ['merge-base', baseRef, 'HEAD'],
+      cwd: cwd,
+      check: false,
+    );
+    final resolved = mergeBase.ok && mergeBase.stdout.trim().isNotEmpty
+        ? mergeBase.stdout.trim()
+        : baseRef;
+    final result = await runner.run([
+      'diff',
+      if (normalized.ignoreWhitespace) '-w',
+      resolved,
+      'HEAD',
+      '--no-color',
+    ], cwd: cwd);
+    return DiffResponse(files: parseUnifiedDiff(result.stdout));
   }
 
   /// Synthesizes an all-added [DiffFile] for every untracked file.

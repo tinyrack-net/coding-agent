@@ -5051,13 +5051,14 @@
     {
       "id": "source-unit:packages/app/src/git/checkout-status-cache.ts",
       "status": "partial",
-      "implementation": "packages/app/lib/core/daemon_client.dart; packages/app/lib/state/workspace_checkout_status_provider.dart",
+      "implementation": "packages/app/lib/core/daemon_client.dart; packages/app/lib/state/workspace_checkout_status_provider.dart; packages/app/lib/state/working_diff_provider.dart",
       "evidence": [
         "packages/app/test/daemon_client_test.dart",
         "packages/app/test/workspace_checkout_status_provider_test.dart",
-        "packages/app/test/pull_request_data_test.dart"
+        "packages/app/test/pull_request_data_test.dart",
+        "packages/app/test/working_diff_provider_test.dart"
       ],
-      "notes": "Typed checkout-status requests and matching host/cwd pushes populate one shared Riverpod cache. Every push increments a checkout-scoped commit invalidation token; embedded PR payloads update the PR pane cache, preserve timeline data when only requestId changes, and invalidate/refetch timeline and pipeline details when semantic PR state changes. Frozen dirty-review reactions and cache-only query helper APIs remain."
+      "notes": "Typed checkout-status requests and matching host/cwd pushes populate one shared Riverpod cache. Every fetch and push expires dirty-state-stale diff-mode overrides; pushes also invalidate checkout-scoped commits and synchronize embedded PR, timeline, and pipeline caches. Frozen cache-only query helper APIs remain."
     },
     {
       "id": "source-unit:packages/app/src/git/client-forge-module.ts",
@@ -5552,10 +5553,13 @@
     },
     {
       "id": "source-unit:packages/app/src/git/use-diff-query.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/working_diff_provider.dart; packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/app/test/working_diff_provider_test.dart",
+        "packages/app/test/daemon_client_test.dart"
+      ],
+      "notes": "Host/cwd/normalized-compare keyed queries use deterministic subscriptions, consume typed pushes, unsubscribe on disposal, and retain the latest value while disconnected. Frozen optional review queryScope and persistent cache timing remain."
     },
     {
       "id": "source-unit:packages/app/src/git/use-forge-search-query.ts",
@@ -5585,10 +5589,13 @@
     },
     {
       "id": "source-unit:packages/app/src/git/use-working-diff.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/working_diff_provider.dart; packages/app/lib/state/workspace_checkout_status_provider.dart; packages/app/lib/widgets/diff/diff_pane.dart",
+      "evidence": [
+        "packages/app/test/working_diff_provider_test.dart",
+        "packages/app/test/workspace_checkout_status_provider_test.dart"
+      ],
+      "notes": "Dirty checkouts default to uncommitted diff, clean checkouts default to base diff, explicit choices are scoped by host/cwd and expire on dirty flips, and the Changes pane exposes both modes. Review-draft scoped ignore-whitespace state remains."
     },
     {
       "id": "source-unit:packages/app/src/git/workspace-actions.tsx",
@@ -6808,10 +6815,12 @@
     },
     {
       "id": "source-unit:packages/app/src/review/state.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/working_diff_provider.dart",
+      "evidence": [
+        "packages/app/test/working_diff_provider_test.dart"
+      ],
+      "notes": "Frozen diff-mode override selection, dirty-state validation, and targeted expiry are implemented. Review drafts, comments, mention targets, and persistence remain."
     },
     {
       "id": "source-unit:packages/app/src/review/store.ts",
@@ -13100,10 +13109,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/checkout-diff-manager.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/workspace/checkout_diff_service.dart; packages/daemon/lib/src/workspace/polling_workspace_git_backend.dart; packages/daemon/lib/src/git/git_service.dart",
+      "evidence": [
+        "packages/daemon/test/workspace/checkout_diff_service_test.dart"
+      ],
+      "notes": "Session-scoped subscription replacement, shared cwd observation, 150ms debounce, serialized refresh, fingerprint suppression, disconnect cleanup, uncommitted/base merge-base semantics, and error payloads are implemented. Native filesystem watch latency and highlighted token generation remain."
     },
     {
       "id": "source-unit:packages/server/src/server/checkout-git-utils.ts",
@@ -15274,10 +15285,14 @@
     },
     {
       "id": "wire-message:checkout_diff_update",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/checkout_diff.dart; packages/daemon/lib/src/workspace/checkout_diff_service.dart; packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_diff_test.dart",
+        "packages/daemon/test/workspace/checkout_diff_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
+      ],
+      "notes": "Changed snapshots are emitted with the frozen checkout_diff_update envelope and decoded on a typed client stream."
     },
     {
       "id": "wire-message:checkout_merge_from_base_request",
@@ -16393,17 +16408,24 @@
     },
     {
       "id": "wire-message:subscribe_checkout_diff_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/checkout_diff.dart; packages/daemon/lib/src/workspace/checkout_diff_service.dart; packages/app/lib/state/working_diff_provider.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_diff_test.dart",
+        "packages/daemon/test/workspace/checkout_diff_service_test.dart",
+        "packages/app/test/working_diff_provider_test.dart"
+      ],
+      "notes": "Subscription id, cwd, normalized uncommitted/base compare, baseRef, ignoreWhitespace, and requestId match Paseo 0.2.0."
     },
     {
       "id": "wire-message:subscribe_checkout_diff_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/checkout_diff.dart; packages/daemon/lib/src/workspace/checkout_diff_service.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_diff_test.dart",
+        "packages/daemon/test/workspace/checkout_diff_service_test.dart"
+      ],
+      "notes": "Initial parsed files or checkout error and nested requestId use the frozen response payload."
     },
     {
       "id": "wire-message:subscribe_terminal_request",
@@ -16437,10 +16459,14 @@
     },
     {
       "id": "wire-message:unsubscribe_checkout_diff_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/checkout_diff.dart; packages/daemon/lib/src/workspace/checkout_diff_service.dart; packages/app/lib/state/working_diff_provider.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_diff_test.dart",
+        "packages/daemon/test/workspace/checkout_diff_service_test.dart",
+        "packages/app/test/working_diff_provider_test.dart"
+      ],
+      "notes": "Fire-and-forget unsubscribe removes only the matching connection/subscription pair; disconnect cleanup removes the remainder."
     },
     {
       "id": "wire-message:unsubscribe_terminal_request",
