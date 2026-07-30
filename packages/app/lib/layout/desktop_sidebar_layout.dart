@@ -1,6 +1,7 @@
 const defaultSidebarWidth = 320.0;
 const minSidebarWidth = 200.0;
 const maxSidebarWidth = 600.0;
+const compactFormFactorWidth = 500.0;
 
 const defaultExplorerSidebarWidth = 400.0;
 const minExplorerSidebarWidth = 280.0;

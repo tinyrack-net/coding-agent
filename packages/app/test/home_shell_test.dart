@@ -16,6 +16,7 @@ import 'package:coding_agent_app/state/command_center_provider.dart';
 import 'package:coding_agent_app/state/daemon_lifecycle_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
+import 'package:coding_agent_app/state/app_sidebar_visibility_provider.dart';
 import 'package:coding_agent_app/state/host_registry_provider.dart';
 import 'package:coding_agent_app/state/sidebar_callout_provider.dart';
 import 'package:coding_agent_app/state/sidebar_callout_state.dart';
@@ -225,7 +226,13 @@ Future<ProviderContainer> pumpHomeShell(
   Map<String, List<WorktreeInfo>> worktreesByProject = const {},
   Completer<List<ProjectInfo>>? projectListGate,
   HostProfile? activeHost,
+  Size? surfaceSize,
 }) async {
+  if (surfaceSize != null) {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = surfaceSize;
+    addTearDown(tester.view.reset);
+  }
   SharedPreferences.setMockInitialValues({});
   final client = FakeDaemonClient(
     agents: agents,
@@ -268,6 +275,91 @@ Future<ProviderContainer> pumpHomeShell(
 }
 
 void main() {
+  testWidgets('compact shell starts closed and opens a full-width sidebar', (
+    tester,
+  ) async {
+    final container = await pumpHomeShell(
+      tester,
+      surfaceSize: const Size(500, 700),
+    );
+
+    expect(container.read(mobileSidebarVisibilityProvider), isFalse);
+    expect(find.byKey(const ValueKey('menu-button')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('left-sidebar-resize-handle')),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('menu-button')));
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(container.read(mobileSidebarVisibilityProvider), isTrue);
+    expect(find.byKey(const ValueKey('sidebar-close')), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('mobile-left-sidebar'))),
+      const Size(500, 700),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('sidebar-close')));
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(container.read(mobileSidebarVisibilityProvider), isFalse);
+  });
+
+  testWidgets('compact sidebar supports open and close swipe gestures', (
+    tester,
+  ) async {
+    final container = await pumpHomeShell(
+      tester,
+      surfaceSize: const Size(500, 700),
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey('mobile-agent-surface')),
+      const Offset(100, 0),
+    );
+    await tester.pump();
+    expect(container.read(mobileSidebarVisibilityProvider), isTrue);
+
+    await tester.drag(
+      find.byKey(const ValueKey('mobile-left-sidebar')),
+      const Offset(-100, 0),
+    );
+    await tester.pump();
+    expect(container.read(mobileSidebarVisibilityProvider), isFalse);
+  });
+
+  testWidgets('compact sidebar closes before route navigation', (tester) async {
+    final container = await pumpHomeShell(
+      tester,
+      surfaceSize: const Size(500, 700),
+    );
+    await tester.tap(find.byKey(const ValueKey('menu-button')));
+    await tester.pump(const Duration(milliseconds: 120));
+
+    await tester.tap(find.byKey(const ValueKey('sidebar-sessions')));
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(container.read(mobileSidebarVisibilityProvider), isFalse);
+    expect(find.byType(SessionsScreen), findsOneWidget);
+  });
+
+  testWidgets('width above compact breakpoint keeps the desktop sidebar', (
+    tester,
+  ) async {
+    final container = await pumpHomeShell(
+      tester,
+      surfaceSize: const Size(501, 700),
+    );
+
+    expect(container.read(appCompactLayoutProvider), isFalse);
+    expect(find.byKey(const ValueKey('left-sidebar')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('left-sidebar-resize-handle')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('menu-button')), findsNothing);
+  });
+
   testWidgets('sidebar drag resizes, clamps, and commits the width', (
     tester,
   ) async {

@@ -664,6 +664,33 @@ void main() {
     expect(container.read(workspaceExplorerVisibilityProvider(path)), isTrue);
   });
 
+  testWidgets('sidebar shortcuts target the mobile panel in compact layout', (
+    tester,
+  ) async {
+    final (container, _) = await _pumpHost(tester);
+    container.read(appCompactLayoutProvider.notifier).setCompact(true);
+    expect(container.read(mobileSidebarVisibilityProvider), isFalse);
+    expect(container.read(appSidebarVisibilityProvider), isTrue);
+
+    await _sendShortcut(
+      tester,
+      LogicalKeyboardKey.keyB,
+      physicalKey: PhysicalKeyboardKey.keyB,
+      control: true,
+    );
+    expect(container.read(mobileSidebarVisibilityProvider), isTrue);
+    expect(container.read(appSidebarVisibilityProvider), isTrue);
+
+    await _sendShortcut(
+      tester,
+      LogicalKeyboardKey.period,
+      physicalKey: PhysicalKeyboardKey.period,
+      control: true,
+    );
+    expect(container.read(mobileSidebarVisibilityProvider), isFalse);
+    expect(container.read(appSidebarVisibilityProvider), isTrue);
+  });
+
   testWidgets('message-input focus scope routes focus and mode shortcuts', (
     tester,
   ) async {

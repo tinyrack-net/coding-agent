@@ -3130,7 +3130,7 @@
         "packages/app/test/home_shell_test.dart",
         "packages/app/test/app_command_center_host_test.dart"
       ],
-      "notes": "Desktop header order and active routes, contextual new-workspace navigation, Workspaces search, Add project, Hosts, Home, Help, Settings, callout/footer placement, resizing, retained workspace navigation, and conflict removal are implemented and stability-tested. Compact mobile overlay/close gesture, manual pull refresh, full display-preferences behavior, complete help actions, and exact golden evidence remain."
+      "notes": "Desktop header order and active routes, contextual new-workspace navigation, Workspaces search, Add project, Hosts, Home, Help, Settings, callout/footer placement, resizing, retained workspace navigation, and conflict removal are implemented and stability-tested. At 500px and below the sidebar starts closed, opens full-width from the Paseo menu trigger, exposes the mobile close action, supports horizontal open/close gestures, closes before route and workspace navigation, and receives compact sidebar shortcuts. Manual pull refresh, persisted multi-host display preferences, complete help actions, transition animation/revision semantics, and exact golden evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/components/markdown-text-selection.tsx",
@@ -3605,7 +3605,7 @@
       "evidence": [
         "packages/app/test/home_shell_test.dart"
       ],
-      "notes": "Compact icon/label rows, active route state, hover state, fixed order, accessibility keys, and navigation are implemented. Shortcut badges, mobile close coordination, and exact golden evidence remain."
+      "notes": "Compact icon/label rows, active route state, hover state, fixed order, accessibility keys, navigation, and mobile close-before-navigation coordination are implemented. Shortcut badges and exact golden evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar/sidebar-help-menu.tsx",
@@ -6412,31 +6412,41 @@
     },
     {
       "id": "source-unit:packages/app/src/mobile-panels/gestures.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/screens/home_shell.dart",
+      "evidence": [
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "The compact agent surface opens on a rightward horizontal gesture and the full-width agent-list panel closes on a leftward gesture with deterministic thresholds. Frozen velocity projection, animation progress, interruption handling, and revision-aware settling remain."
     },
     {
       "id": "source-unit:packages/app/src/mobile-panels/model.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/app_sidebar_visibility_provider.dart; packages/app/lib/screens/home_shell.dart",
+      "evidence": [
+        "packages/app/test/home_shell_test.dart",
+        "packages/app/test/app_command_center_host_test.dart"
+      ],
+      "notes": "Compact layout has an independent default-closed agent-list state and routes layout-aware sidebar shortcuts to it without mutating desktop visibility. File-explorer selection and frozen revision counters remain."
     },
     {
       "id": "source-unit:packages/app/src/mobile-panels/presentation.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/screens/home_shell.dart; packages/app/lib/layout/desktop_sidebar_layout.dart",
+      "evidence": [
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "At the frozen 500px breakpoint the agent list is presented as a full-window sidebar overlay with backdrop, open-menu trigger, close action, and no desktop resize handle. Exact translated animation, safe-area geometry, backdrop interaction during transitions, and golden evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/mobile-panels/provider.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/app_sidebar_visibility_provider.dart; packages/app/lib/screens/home_shell.dart; packages/app/lib/widgets/app_command_center_host.dart",
+      "evidence": [
+        "packages/app/test/home_shell_test.dart",
+        "packages/app/test/app_command_center_host_test.dart"
+      ],
+      "notes": "Flutter exposes independent compact visibility and layout providers, default-closed lifecycle, explicit show/hide/toggle actions, close-before-navigation behavior, and shortcut integration. The complete agent/file-explorer target provider and revisioned transition ownership remain."
     },
     {
       "id": "source-unit:packages/app/src/native/ios-hardware-keyboard-submit.ios.ts",
@@ -7629,7 +7639,7 @@
         "packages/app/test/desktop_sidebar_layout_test.dart",
         "packages/app/test/home_shell_test.dart"
       ],
-      "notes": "Desktop sidebar visibility, focus mode, persisted sidebar width, viewport-aware rendering, and explorer actions are live. Remaining compact/mobile panel selection, explorer persisted width/split/sort migration, and the unified versioned store contract are pending."
+      "notes": "Desktop sidebar visibility, focus mode, persisted sidebar width, viewport-aware rendering, explorer actions, and independent default-closed compact agent-list visibility are live. Compact sidebar shortcuts and navigation close semantics are wired. Remaining mobile file-explorer selection/revisions, explorer persisted width/split/sort migration, and the unified versioned store contract are pending."
     },
     {
       "id": "source-unit:packages/app/src/stores/panel-store/state.ts",
@@ -7641,7 +7651,7 @@
         "packages/app/test/sidebar_width_provider_test.dart",
         "packages/app/test/desktop_sidebar_layout_test.dart"
       ],
-      "notes": "Desktop visibility, focus state, exact sidebar width constants/clamping, explorer render constraints, and sidebar width persistence are modeled. Mobile revisioned selection plus the remaining explorer tab/path/width/split/sort fields and migrations remain."
+      "notes": "Desktop visibility, focus state, exact sidebar width constants/clamping, explorer render constraints, sidebar width persistence, the 500px compact breakpoint, and independent mobile agent-list visibility are modeled. Mobile revisioned agent/file-explorer selection plus the remaining explorer tab/path/width/split/sort fields and migrations remain."
     },
     {
       "id": "source-unit:packages/app/src/stores/provider-settings-store.ts",

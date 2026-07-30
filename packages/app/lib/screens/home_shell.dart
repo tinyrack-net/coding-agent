@@ -51,6 +51,13 @@ class HomeShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sidebarVisible = ref.watch(appSidebarVisibilityProvider);
     final focusMode = ref.watch(workspaceFocusModeProvider);
+    final compact = MediaQuery.sizeOf(context).width <= compactFormFactorWidth;
+    final recordedCompact = ref.watch(appCompactLayoutProvider);
+    if (recordedCompact != compact) {
+      scheduleMicrotask(
+        () => ref.read(appCompactLayoutProvider.notifier).setCompact(compact),
+      );
+    }
     final content = _HomeContentDeck(
       routeChild: child,
       routeLocation: routeLocation,
@@ -60,12 +67,104 @@ class HomeShell extends ConsumerWidget {
       children: [
         Container(
           color: FluentTheme.of(context).scaffoldBackgroundColor,
-          child: sidebarVisible && !focusMode
+          child: compact
+              ? _CompactHomeLayout(content: content)
+              : sidebarVisible && !focusMode
               ? _ResizableHomeLayout(content: content)
               : content,
         ),
         const AddProjectFlowHost(),
         const ProviderSettingsHost(),
+      ],
+    );
+  }
+}
+
+class _CompactHomeLayout extends ConsumerStatefulWidget {
+  const _CompactHomeLayout({required this.content});
+
+  final Widget content;
+
+  @override
+  ConsumerState<_CompactHomeLayout> createState() => _CompactHomeLayoutState();
+}
+
+class _CompactHomeLayoutState extends ConsumerState<_CompactHomeLayout> {
+  double _horizontalDrag = 0;
+
+  void _beginDrag(DragStartDetails _) => _horizontalDrag = 0;
+
+  void _updateDrag(DragUpdateDetails details) {
+    _horizontalDrag += details.primaryDelta ?? 0;
+  }
+
+  void _finishOpenDrag(DragEndDetails _) {
+    if (_horizontalDrag >= 72) {
+      ref.read(mobileSidebarVisibilityProvider.notifier).show();
+    }
+    _horizontalDrag = 0;
+  }
+
+  void _finishCloseDrag(DragEndDetails _) {
+    if (_horizontalDrag <= -72) {
+      ref.read(mobileSidebarVisibilityProvider.notifier).hide();
+    }
+    _horizontalDrag = 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = ref.watch(mobileSidebarVisibilityProvider);
+    final visibility = ref.read(mobileSidebarVisibilityProvider.notifier);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        GestureDetector(
+          key: const ValueKey('mobile-agent-surface'),
+          behavior: HitTestBehavior.translucent,
+          onHorizontalDragStart: visible ? null : _beginDrag,
+          onHorizontalDragUpdate: visible ? null : _updateDrag,
+          onHorizontalDragEnd: visible ? null : _finishOpenDrag,
+          child: widget.content,
+        ),
+        if (!visible)
+          Positioned(
+            top: 8,
+            left: 8,
+            child: Tooltip(
+              message: 'Open menu',
+              child: IconButton(
+                key: const ValueKey('menu-button'),
+                icon: const Icon(FluentIcons.global_nav_button, size: 16),
+                onPressed: visibility.show,
+              ),
+            ),
+          ),
+        if (visible) ...[
+          Positioned.fill(
+            child: GestureDetector(
+              key: const ValueKey('agent-list-backdrop'),
+              behavior: HitTestBehavior.opaque,
+              onTap: visibility.hide,
+              child: ColoredBox(color: Colors.black.withValues(alpha: 0.5)),
+            ),
+          ),
+          Positioned.fill(
+            key: const ValueKey('mobile-left-sidebar'),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragStart: _beginDrag,
+              onHorizontalDragUpdate: _updateDrag,
+              onHorizontalDragEnd: _finishCloseDrag,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: context.paseoPalette.surfaceSidebar,
+                ),
+                child: _Sidebar(compact: true, onClose: visibility.hide),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -624,7 +723,10 @@ class _SectionLabel extends StatelessWidget {
 }
 
 class _Sidebar extends ConsumerStatefulWidget {
-  const _Sidebar();
+  const _Sidebar({this.compact = false, this.onClose});
+
+  final bool compact;
+  final VoidCallback? onClose;
 
   @override
   ConsumerState<_Sidebar> createState() => _SidebarState();
@@ -785,6 +887,7 @@ class _SidebarState extends ConsumerState<_Sidebar> {
     };
 
     void selectRow(SidebarWorktreeRow row) {
+      widget.onClose?.call();
       ref.read(selectedWorktreeProvider.notifier).select(row.key);
       // Selecting only updates state — it has no visible effect unless the
       // content area is actually showing HomeChatPane. Without this, a
@@ -796,14 +899,19 @@ class _SidebarState extends ConsumerState<_Sidebar> {
       }
     }
 
-    return Column(
+    void pushRoute(String route) {
+      widget.onClose?.call();
+      context.push(route);
+    }
+
+    final sidebar = Column(
       children: [
         const SizedBox(height: 4),
         _SidebarHeaderRow(
           icon: FluentIcons.add,
           label: 'New workspace',
           testId: 'sidebar-global-new-workspace',
-          onTap: () => context.push(
+          onTap: () => pushRoute(
             _newWorkspaceRoute(
               selected: selected,
               groups: groups,
@@ -817,14 +925,14 @@ class _SidebarState extends ConsumerState<_Sidebar> {
           label: 'Sessions',
           testId: 'sidebar-sessions',
           active: location == buildSessionsRoute(),
-          onTap: () => context.push(buildSessionsRoute()),
+          onTap: () => pushRoute(buildSessionsRoute()),
         ),
         _SidebarHeaderRow(
           icon: FluentIcons.calendar_week,
           label: 'Schedules',
           testId: 'sidebar-schedules',
           active: location == buildSchedulesRoute(),
-          onTap: () => context.push(buildSchedulesRoute()),
+          onTap: () => pushRoute(buildSchedulesRoute()),
         ),
         const Divider(),
         _WorkspacesSectionHeader(
@@ -961,7 +1069,7 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                             onTap: () => _toggleProject(project.path),
                             onNewWorkspace:
                                 action is SidebarProjectNewWorkspaceAction
-                                ? () => context.push(
+                                ? () => pushRoute(
                                     buildNewWorkspaceRoute(
                                       NewWorkspaceRouteOptions(
                                         serverId: action.target.serverId,
@@ -1011,7 +1119,26 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                 ),
         ),
         const SidebarCalloutSlot(),
-        const _SidebarFooter(),
+        _SidebarFooter(onBeforeNavigate: widget.onClose),
+      ],
+    );
+    if (!widget.compact) return sidebar;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        sidebar,
+        Positioned(
+          top: 8,
+          right: 8,
+          child: Tooltip(
+            message: 'Close sidebar',
+            child: IconButton(
+              key: const ValueKey('sidebar-close'),
+              icon: const Icon(FluentIcons.chrome_close, size: 14),
+              onPressed: widget.onClose,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1317,7 +1444,9 @@ class _RunStateIndicator extends StatelessWidget {
 }
 
 class _SidebarFooter extends ConsumerStatefulWidget {
-  const _SidebarFooter();
+  const _SidebarFooter({this.onBeforeNavigate});
+
+  final VoidCallback? onBeforeNavigate;
 
   @override
   ConsumerState<_SidebarFooter> createState() => _SidebarFooterState();
@@ -1352,9 +1481,12 @@ class _SidebarFooterState extends ConsumerState<_SidebarFooter> {
             key: const ValueKey('sidebar-help-diagnostics'),
             leading: const Icon(FluentIcons.diagnostic, size: 16),
             text: const Text('Diagnostics'),
-            onPressed: () => context.push(
-              buildSettingsSectionRoute(SettingsSectionSlug.diagnostics),
-            ),
+            onPressed: () {
+              widget.onBeforeNavigate?.call();
+              context.push(
+                buildSettingsSectionRoute(SettingsSectionSlug.diagnostics),
+              );
+            },
           ),
           const MenuFlyoutSeparator(),
           MenuFlyoutItem(text: const Text('Report an issue'), onPressed: null),
@@ -1380,9 +1512,12 @@ class _SidebarFooterState extends ConsumerState<_SidebarFooter> {
           ))
         activeHost,
     ];
-    void openHostSettings(String serverId) => context.push(
-      buildSettingsHostSectionRoute(serverId, HostSectionSlug.connections),
-    );
+    void openHostSettings(String serverId) {
+      widget.onBeforeNavigate?.call();
+      context.push(
+        buildSettingsHostSectionRoute(serverId, HostSectionSlug.connections),
+      );
+    }
 
     return Container(
       decoration: BoxDecoration(
@@ -1394,11 +1529,14 @@ class _SidebarFooterState extends ConsumerState<_SidebarFooter> {
           Expanded(
             child: HoverButton(
               key: const ValueKey('sidebar-add-project'),
-              onPressed: () => unawaited(
-                ref
-                    .read(addProjectFlowProvider.notifier)
-                    .open(preferredHostId: activeHost?.serverId),
-              ),
+              onPressed: () {
+                widget.onBeforeNavigate?.call();
+                unawaited(
+                  ref
+                      .read(addProjectFlowProvider.notifier)
+                      .open(preferredHostId: activeHost?.serverId),
+                );
+              },
               builder: (context, states) => Container(
                 constraints: const BoxConstraints(minHeight: 32),
                 decoration: BoxDecoration(
@@ -1437,9 +1575,14 @@ class _SidebarFooterState extends ConsumerState<_SidebarFooter> {
             value: '',
             onSelect: openHostSettings,
             includeAddHost: true,
-            onAddHost: () => context.push(
-              buildSettingsAddHostRoute(DateTime.now().millisecondsSinceEpoch),
-            ),
+            onAddHost: () {
+              widget.onBeforeNavigate?.call();
+              context.push(
+                buildSettingsAddHostRoute(
+                  DateTime.now().millisecondsSinceEpoch,
+                ),
+              );
+            },
             showActiveConnection: true,
             onOpenHostSettings: openHostSettings,
             searchable: true,
@@ -1459,7 +1602,10 @@ class _SidebarFooterState extends ConsumerState<_SidebarFooter> {
             key: const ValueKey('sidebar-home'),
             label: 'Home',
             icon: FluentIcons.home,
-            onPressed: () => context.push(buildOpenProjectRoute()),
+            onPressed: () {
+              widget.onBeforeNavigate?.call();
+              context.push(buildOpenProjectRoute());
+            },
           ),
           const SizedBox(width: 8),
           FlyoutTarget(
@@ -1476,7 +1622,10 @@ class _SidebarFooterState extends ConsumerState<_SidebarFooter> {
             key: const ValueKey('sidebar-settings'),
             label: 'Settings',
             icon: FluentIcons.settings,
-            onPressed: () => context.push(buildSettingsRoute()),
+            onPressed: () {
+              widget.onBeforeNavigate?.call();
+              context.push(buildSettingsRoute());
+            },
           ),
         ],
       ),

@@ -62,6 +62,7 @@ class _AppCommandCenterHostState extends ConsumerState<AppCommandCenterHost> {
       defaultTargetPlatform == TargetPlatform.iOS;
 
   bool get _isMobile =>
+      ref.read(appCompactLayoutProvider) ||
       defaultTargetPlatform == TargetPlatform.android ||
       defaultTargetPlatform == TargetPlatform.iOS;
 
@@ -248,9 +249,17 @@ class _AppCommandCenterHostState extends ConsumerState<AppCommandCenterHost> {
   bool _runShortcutCallback(ShortcutCallbackName name) {
     switch (name) {
       case ShortcutCallbackName.toggleAgentList:
-        ref.read(appSidebarVisibilityProvider.notifier).toggle();
+        if (ref.read(appCompactLayoutProvider)) {
+          ref.read(mobileSidebarVisibilityProvider.notifier).toggle();
+        } else {
+          ref.read(appSidebarVisibilityProvider.notifier).toggle();
+        }
         return true;
       case ShortcutCallbackName.toggleBothSidebars:
+        if (ref.read(appCompactLayoutProvider)) {
+          ref.read(mobileSidebarVisibilityProvider.notifier).toggle();
+          return true;
+        }
         final leftVisible = ref.read(appSidebarVisibilityProvider);
         final path = ref.read(selectedWorktreeProvider);
         final rightVisible =
