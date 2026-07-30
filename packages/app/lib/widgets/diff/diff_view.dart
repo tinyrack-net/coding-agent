@@ -472,7 +472,396 @@ class _FileDiffBody extends StatelessWidget {
         ],
       ],
     );
-    return wrapLines ? contents : DiffScroll(child: contents);
+    return wrapLines
+        ? contents
+        : _ScrollableUnifiedDiffBody(file: file, review: review);
+  }
+}
+
+_ReviewTarget? _reviewTargetForLine(String filePath, DiffLine line) =>
+    switch (line.type) {
+      DiffLineType.del when line.oldLineNo != null => _ReviewTarget(
+        filePath: filePath,
+        side: ReviewAttachmentSide.old,
+        lineNumber: line.oldLineNo!,
+      ),
+      DiffLineType.add when line.newLineNo != null => _ReviewTarget(
+        filePath: filePath,
+        side: ReviewAttachmentSide.newLine,
+        lineNumber: line.newLineNo!,
+      ),
+      DiffLineType.context when line.newLineNo != null => _ReviewTarget(
+        filePath: filePath,
+        side: ReviewAttachmentSide.newLine,
+        lineNumber: line.newLineNo!,
+      ),
+      _ => null,
+    };
+
+class _ScrollableUnifiedDiffBody extends StatefulWidget {
+  const _ScrollableUnifiedDiffBody({required this.file, required this.review});
+
+  final DiffFile file;
+  final _ReviewViewModel? review;
+
+  @override
+  State<_ScrollableUnifiedDiffBody> createState() =>
+      _ScrollableUnifiedDiffBodyState();
+}
+
+class _ScrollableUnifiedDiffBodyState
+    extends State<_ScrollableUnifiedDiffBody> {
+  String? _hoveredTargetKey;
+  String? _dismissedTargetKey;
+
+  bool get _isPointerFirstPlatform =>
+      kIsWeb ||
+      switch (defaultTargetPlatform) {
+        TargetPlatform.windows ||
+        TargetPlatform.macOS ||
+        TargetPlatform.linux => true,
+        _ => false,
+      };
+
+  void _startReview(_ReviewTarget target) {
+    final review = widget.review;
+    if (review == null) return;
+    setState(() => _dismissedTargetKey = target.key);
+    review.onStart(target);
+  }
+
+  void _setHoveredTarget(String? key) {
+    setState(() {
+      _hoveredTargetKey = key;
+      if (key == null) _dismissedTargetKey = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          key: const ValueKey('diff-fixed-gutter'),
+          width: 113,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final hunk in widget.file.hunks) ...[
+                const _FixedGutterHeader(),
+                for (final line in hunk.lines)
+                  _UnifiedGutterBlock(
+                    key: ValueKey(
+                      'diff-gutter-block-'
+                      '${_reviewTargetForLine(widget.file.path, line)?.key ?? line.text}',
+                    ),
+                    line: line,
+                    target: _reviewTargetForLine(widget.file.path, line),
+                    review: widget.review,
+                    hoveredTargetKey: _hoveredTargetKey,
+                    dismissedTargetKey: _dismissedTargetKey,
+                    onStartReview: _startReview,
+                  ),
+              ],
+            ],
+          ),
+        ),
+        Expanded(
+          child: DiffScroll(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final hunk in widget.file.hunks) ...[
+                  _HunkHeader(header: hunk.header),
+                  for (final line in hunk.lines)
+                    _UnifiedCodeBlock(
+                      key: ValueKey(
+                        'diff-code-block-'
+                        '${_reviewTargetForLine(widget.file.path, line)?.key ?? line.text}',
+                      ),
+                      filePath: widget.file.path,
+                      line: line,
+                      review: widget.review,
+                      pointerFirst: _isPointerFirstPlatform,
+                      onHoverTargetChanged: _setHoveredTarget,
+                      onStartReview: _startReview,
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FixedGutterHeader extends StatelessWidget {
+  const _FixedGutterHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 24,
+      decoration: BoxDecoration(
+        color: context.tokens.surfaceContainerHighest,
+        border: Border(
+          right: BorderSide(color: context.paseoPalette.borderAccent),
+        ),
+      ),
+    );
+  }
+}
+
+class _UnifiedGutterBlock extends StatelessWidget {
+  const _UnifiedGutterBlock({
+    super.key,
+    required this.line,
+    required this.target,
+    required this.review,
+    required this.hoveredTargetKey,
+    required this.dismissedTargetKey,
+    required this.onStartReview,
+  });
+
+  final DiffLine line;
+  final _ReviewTarget? target;
+  final _ReviewViewModel? review;
+  final String? hoveredTargetKey;
+  final String? dismissedTargetKey;
+  final ValueChanged<_ReviewTarget> onStartReview;
+
+  @override
+  Widget build(BuildContext context) {
+    final threadState = _reviewThreadState(target, review);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _FixedUnifiedGutterRow(
+          line: line,
+          target: target,
+          hasComments: threadState?.comments.isNotEmpty ?? false,
+          showReviewAction:
+              target != null &&
+              review != null &&
+              hoveredTargetKey == target!.key &&
+              dismissedTargetKey != target!.key,
+          onAddReview: target == null ? null : () => onStartReview(target!),
+        ),
+        if ((threadState?.height ?? 0) > 0)
+          SizedBox(
+            height: threadState!.height,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: context.paseoPalette.surface1,
+                border: Border(
+                  right: BorderSide(color: context.paseoPalette.borderAccent),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _FixedUnifiedGutterRow extends StatelessWidget {
+  const _FixedUnifiedGutterRow({
+    required this.line,
+    required this.target,
+    required this.hasComments,
+    required this.showReviewAction,
+    required this.onAddReview,
+  });
+
+  final DiffLine line;
+  final _ReviewTarget? target;
+  final bool hasComments;
+  final bool showReviewAction;
+  final VoidCallback? onAddReview;
+
+  static const _monoStyle = TextStyle(fontFamily: 'monospace', fontSize: 12.5);
+
+  @override
+  Widget build(BuildContext context) {
+    final background = switch (line.type) {
+      DiffLineType.add => Colors.green.withValues(alpha: 0.12),
+      DiffLineType.del => Colors.red.withValues(alpha: 0.12),
+      DiffLineType.context => null,
+    };
+    final outline = context.tokens.outline;
+    return Container(
+      height: 24,
+      decoration: BoxDecoration(
+        color: background,
+        border: Border(
+          right: BorderSide(color: context.paseoPalette.borderAccent),
+        ),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 32,
+            height: 24,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: hasComments ? context.paseoPalette.surface2 : null,
+              ),
+              child: showReviewAction
+                  ? Tooltip(
+                      message: 'Add review comment',
+                      child: IconButton(
+                        key: ValueKey('review-add-${target!.key}'),
+                        icon: const Icon(FluentIcons.add, size: 16),
+                        onPressed: onAddReview,
+                      ),
+                    )
+                  : null,
+            ),
+          ),
+          SizedBox(
+            width: 40,
+            child: Text(
+              formatDiffGutterText(line.oldLineNo),
+              textAlign: TextAlign.right,
+              style: _monoStyle.copyWith(color: outline),
+            ),
+          ),
+          SizedBox(
+            width: 40,
+            child: Text(
+              formatDiffGutterText(line.newLineNo),
+              textAlign: TextAlign.right,
+              style: _monoStyle.copyWith(color: outline),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UnifiedCodeBlock extends StatelessWidget {
+  const _UnifiedCodeBlock({
+    super.key,
+    required this.filePath,
+    required this.line,
+    required this.review,
+    required this.pointerFirst,
+    required this.onHoverTargetChanged,
+    required this.onStartReview,
+  });
+
+  final String filePath;
+  final DiffLine line;
+  final _ReviewViewModel? review;
+  final bool pointerFirst;
+  final ValueChanged<String?> onHoverTargetChanged;
+  final ValueChanged<_ReviewTarget> onStartReview;
+
+  @override
+  Widget build(BuildContext context) {
+    final target = _reviewTargetForLine(filePath, line);
+    final threadState = _reviewThreadState(target, review);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _ScrollableCodeLine(
+          key: ValueKey('diff-code-${target?.key ?? line.text}'),
+          line: line,
+          target: target,
+          canReview: target != null && review != null,
+          onHoverTargetChanged: onHoverTargetChanged,
+          onTap: !pointerFirst && target != null && review != null
+              ? () => onStartReview(target)
+              : null,
+        ),
+        if (target != null &&
+            review != null &&
+            threadState != null &&
+            threadState.height > 0)
+          SizedBox(
+            height: threadState.height,
+            child: _InlineReviewThread(
+              target: target,
+              comments: threadState.comments,
+              editor: threadState.editor,
+              review: review!,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ScrollableCodeLine extends StatelessWidget {
+  const _ScrollableCodeLine({
+    super.key,
+    required this.line,
+    required this.target,
+    required this.canReview,
+    required this.onHoverTargetChanged,
+    required this.onTap,
+  });
+
+  final DiffLine line;
+  final _ReviewTarget? target;
+  final bool canReview;
+  final ValueChanged<String?> onHoverTargetChanged;
+  final VoidCallback? onTap;
+
+  static const _monoStyle = TextStyle(fontFamily: 'monospace', fontSize: 12.5);
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = FluentTheme.of(context).brightness == Brightness.dark;
+    final (background, marker, textColor) = switch (line.type) {
+      DiffLineType.add => (
+        Colors.green.withValues(alpha: 0.12),
+        '+',
+        dark ? Colors.green.light : Colors.green.dark,
+      ),
+      DiffLineType.del => (
+        Colors.red.withValues(alpha: 0.12),
+        '-',
+        dark ? Colors.red.light : Colors.red.dark,
+      ),
+      DiffLineType.context => (null, ' ', null),
+    };
+    return Semantics(
+      button: canReview,
+      label: target == null ? null : 'Add review comment',
+      child: MouseRegion(
+        onEnter: (_) => onHoverTargetChanged(target?.key),
+        onExit: (_) => onHoverTargetChanged(null),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Container(
+            height: 24,
+            color: background,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 12,
+                  child: Text(
+                    marker,
+                    style: _monoStyle.copyWith(color: textColor),
+                  ),
+                ),
+                Text(
+                  formatDiffContentText(line.text),
+                  softWrap: false,
+                  style: _monoStyle.copyWith(color: textColor),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -644,22 +1033,18 @@ class _SplitFileDiffBody extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: DiffScroll(
-            child: _SplitDiffColumn(
-              rows: rows,
-              side: ReviewAttachmentSide.old,
-              review: review,
-            ),
+          child: _ScrollableSplitColumn(
+            rows: rows,
+            side: ReviewAttachmentSide.old,
+            review: review,
           ),
         ),
         Container(width: 1, color: context.paseoPalette.borderAccent),
         Expanded(
-          child: DiffScroll(
-            child: _SplitDiffColumn(
-              rows: rows,
-              side: ReviewAttachmentSide.newLine,
-              review: review,
-            ),
+          child: _ScrollableSplitColumn(
+            rows: rows,
+            side: ReviewAttachmentSide.newLine,
+            review: review,
           ),
         ),
       ],
@@ -845,8 +1230,8 @@ class _SplitReviewSlot extends StatelessWidget {
   }
 }
 
-class _SplitDiffColumn extends StatelessWidget {
-  const _SplitDiffColumn({
+class _ScrollableSplitColumn extends StatefulWidget {
+  const _ScrollableSplitColumn({
     required this.rows,
     required this.side,
     required this.review,
@@ -857,47 +1242,123 @@ class _SplitDiffColumn extends StatelessWidget {
   final _ReviewViewModel? review;
 
   @override
+  State<_ScrollableSplitColumn> createState() => _ScrollableSplitColumnState();
+}
+
+class _ScrollableSplitColumnState extends State<_ScrollableSplitColumn> {
+  String? _hoveredTargetKey;
+  String? _dismissedTargetKey;
+
+  bool get _isPointerFirstPlatform =>
+      kIsWeb ||
+      switch (defaultTargetPlatform) {
+        TargetPlatform.windows ||
+        TargetPlatform.macOS ||
+        TargetPlatform.linux => true,
+        _ => false,
+      };
+
+  void _startReview(_ReviewTarget target) {
+    final review = widget.review;
+    if (review == null) return;
+    setState(() => _dismissedTargetKey = target.key);
+    review.onStart(target);
+  }
+
+  void _setHoveredTarget(String? key) {
+    setState(() {
+      _hoveredTargetKey = key;
+      if (key == null) _dismissedTargetKey = null;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final isLeft = side == ReviewAttachmentSide.old;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final isLeft = widget.side == ReviewAttachmentSide.old;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (var index = 0; index < rows.length; index++)
-          switch (rows[index]) {
-            final _SplitDiffHeaderRow header => _HunkHeader(
-              key: ValueKey('split-${isLeft ? 'left' : 'right'}-header-$index'),
-              header: header.header,
+        SizedBox(
+          key: ValueKey('split-${isLeft ? 'left' : 'right'}-fixed-gutter'),
+          width: 77,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var index = 0; index < widget.rows.length; index++)
+                switch (widget.rows[index]) {
+                  _SplitDiffHeaderRow() => const _FixedGutterHeader(),
+                  final _SplitDiffPairRow pair => _SplitGutterBlock(
+                    key: ValueKey(
+                      'split-${isLeft ? 'left' : 'right'}-gutter-row-$index',
+                    ),
+                    pair: pair,
+                    cell: isLeft ? pair.left : pair.right,
+                    review: widget.review,
+                    hoveredTargetKey: _hoveredTargetKey,
+                    dismissedTargetKey: _dismissedTargetKey,
+                    onStartReview: _startReview,
+                  ),
+                },
+            ],
+          ),
+        ),
+        Expanded(
+          child: DiffScroll(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var index = 0; index < widget.rows.length; index++)
+                  switch (widget.rows[index]) {
+                    final _SplitDiffHeaderRow header => _HunkHeader(
+                      key: ValueKey(
+                        'split-${isLeft ? 'left' : 'right'}-header-$index',
+                      ),
+                      header: header.header,
+                    ),
+                    final _SplitDiffPairRow pair => _SplitCodeBlock(
+                      key: ValueKey(
+                        'split-${isLeft ? 'left' : 'right'}-row-$index',
+                      ),
+                      pair: pair,
+                      cell: isLeft ? pair.left : pair.right,
+                      side: widget.side,
+                      review: widget.review,
+                      pointerFirst: _isPointerFirstPlatform,
+                      onHoverTargetChanged: _setHoveredTarget,
+                      onStartReview: _startReview,
+                    ),
+                  },
+              ],
             ),
-            final _SplitDiffPairRow pair => _SplitDiffPairCell(
-              key: ValueKey('split-${isLeft ? 'left' : 'right'}-row-$index'),
-              cell: isLeft ? pair.left : pair.right,
-              pairedCell: isLeft ? pair.right : pair.left,
-              side: side,
-              review: review,
-            ),
-          },
+          ),
+        ),
       ],
     );
   }
 }
 
-class _SplitDiffPairCell extends StatelessWidget {
-  const _SplitDiffPairCell({
+class _SplitGutterBlock extends StatelessWidget {
+  const _SplitGutterBlock({
     super.key,
+    required this.pair,
     required this.cell,
-    required this.pairedCell,
-    required this.side,
     required this.review,
+    required this.hoveredTargetKey,
+    required this.dismissedTargetKey,
+    required this.onStartReview,
   });
 
+  final _SplitDiffPairRow pair;
   final _SplitDiffCell? cell;
-  final _SplitDiffCell? pairedCell;
-  final ReviewAttachmentSide side;
   final _ReviewViewModel? review;
+  final String? hoveredTargetKey;
+  final String? dismissedTargetKey;
+  final ValueChanged<_ReviewTarget> onStartReview;
 
   @override
   Widget build(BuildContext context) {
     final ownState = _reviewThreadState(cell?.target, review);
+    final pairedCell = identical(cell, pair.left) ? pair.right : pair.left;
     final pairedState = _reviewThreadState(pairedCell?.target, review);
     final reservedHeight = (ownState?.height ?? 0) > (pairedState?.height ?? 0)
         ? ownState?.height ?? 0
@@ -905,24 +1366,139 @@ class _SplitDiffPairCell extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (cell case final value?)
-          _ReviewableDiffLine(
-            filePath: value.target.filePath,
-            line: value.line,
-            review: review,
-            reviewTarget: value.target,
-            splitSide: side,
-            showThread: false,
-            wrapLines: false,
-          )
-        else
-          Container(
-            key: ValueKey(
-              'split-empty-${side == ReviewAttachmentSide.old ? 'left' : 'right'}',
+        _FixedSplitGutterRow(
+          cell: cell,
+          hasComments: ownState?.comments.isNotEmpty ?? false,
+          showReviewAction:
+              cell != null &&
+              review != null &&
+              hoveredTargetKey == cell!.target.key &&
+              dismissedTargetKey != cell!.target.key,
+          onAddReview: cell == null ? null : () => onStartReview(cell!.target),
+        ),
+        if (reservedHeight > 0)
+          SizedBox(
+            height: reservedHeight,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: context.paseoPalette.surface1,
+                border: Border(
+                  right: BorderSide(color: context.paseoPalette.borderAccent),
+                ),
+              ),
             ),
-            height: 24,
-            color: context.paseoPalette.surface1,
           ),
+      ],
+    );
+  }
+}
+
+class _FixedSplitGutterRow extends StatelessWidget {
+  const _FixedSplitGutterRow({
+    required this.cell,
+    required this.hasComments,
+    required this.showReviewAction,
+    required this.onAddReview,
+  });
+
+  final _SplitDiffCell? cell;
+  final bool hasComments;
+  final bool showReviewAction;
+  final VoidCallback? onAddReview;
+
+  static const _monoStyle = TextStyle(fontFamily: 'monospace', fontSize: 12.5);
+
+  @override
+  Widget build(BuildContext context) {
+    final line = cell?.line;
+    final background = switch (line?.type) {
+      DiffLineType.add => Colors.green.withValues(alpha: 0.12),
+      DiffLineType.del => Colors.red.withValues(alpha: 0.12),
+      _ => null,
+    };
+    return Container(
+      height: 24,
+      decoration: BoxDecoration(
+        color: background ?? context.paseoPalette.surface1,
+        border: Border(
+          right: BorderSide(color: context.paseoPalette.borderAccent),
+        ),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 32,
+            height: 24,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: hasComments ? context.paseoPalette.surface2 : null,
+              ),
+              child: showReviewAction
+                  ? Tooltip(
+                      message: 'Add review comment',
+                      child: IconButton(
+                        key: ValueKey('review-add-${cell!.target.key}'),
+                        icon: const Icon(FluentIcons.add, size: 16),
+                        onPressed: onAddReview,
+                      ),
+                    )
+                  : null,
+            ),
+          ),
+          SizedBox(
+            width: 44,
+            child: Text(
+              formatDiffGutterText(cell?.target.lineNumber),
+              textAlign: TextAlign.right,
+              style: _monoStyle.copyWith(color: context.tokens.outline),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SplitCodeBlock extends StatelessWidget {
+  const _SplitCodeBlock({
+    super.key,
+    required this.pair,
+    required this.cell,
+    required this.side,
+    required this.review,
+    required this.pointerFirst,
+    required this.onHoverTargetChanged,
+    required this.onStartReview,
+  });
+
+  final _SplitDiffPairRow pair;
+  final _SplitDiffCell? cell;
+  final ReviewAttachmentSide side;
+  final _ReviewViewModel? review;
+  final bool pointerFirst;
+  final ValueChanged<String?> onHoverTargetChanged;
+  final ValueChanged<_ReviewTarget> onStartReview;
+
+  @override
+  Widget build(BuildContext context) {
+    final ownState = _reviewThreadState(cell?.target, review);
+    final pairedCell = identical(cell, pair.left) ? pair.right : pair.left;
+    final pairedState = _reviewThreadState(pairedCell?.target, review);
+    final reservedHeight = (ownState?.height ?? 0) > (pairedState?.height ?? 0)
+        ? ownState?.height ?? 0
+        : pairedState?.height ?? 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _ScrollableSplitCodeLine(
+          cell: cell,
+          side: side,
+          canReview: cell != null && review != null,
+          onHoverTargetChanged: onHoverTargetChanged,
+          onTap: !pointerFirst && cell != null && review != null
+              ? () => onStartReview(cell!.target)
+              : null,
+        ),
         if (reservedHeight > 0)
           SizedBox(
             height: reservedHeight,
@@ -941,6 +1517,90 @@ class _SplitDiffPairCell extends StatelessWidget {
                 : null,
           ),
       ],
+    );
+  }
+}
+
+class _ScrollableSplitCodeLine extends StatelessWidget {
+  const _ScrollableSplitCodeLine({
+    required this.cell,
+    required this.side,
+    required this.canReview,
+    required this.onHoverTargetChanged,
+    required this.onTap,
+  });
+
+  final _SplitDiffCell? cell;
+  final ReviewAttachmentSide side;
+  final bool canReview;
+  final ValueChanged<String?> onHoverTargetChanged;
+  final VoidCallback? onTap;
+
+  static const _monoStyle = TextStyle(fontFamily: 'monospace', fontSize: 12.5);
+
+  @override
+  Widget build(BuildContext context) {
+    final value = cell;
+    if (value == null) {
+      return Container(
+        key: ValueKey(
+          'split-empty-${side == ReviewAttachmentSide.old ? 'left' : 'right'}',
+        ),
+        height: 24,
+        color: context.paseoPalette.surface1,
+      );
+    }
+    final dark = FluentTheme.of(context).brightness == Brightness.dark;
+    final (background, marker, textColor) = switch (value.line.type) {
+      DiffLineType.add => (
+        Colors.green.withValues(alpha: 0.12),
+        '+',
+        dark ? Colors.green.light : Colors.green.dark,
+      ),
+      DiffLineType.del => (
+        Colors.red.withValues(alpha: 0.12),
+        '-',
+        dark ? Colors.red.light : Colors.red.dark,
+      ),
+      DiffLineType.context => (null, ' ', null),
+    };
+    return Semantics(
+      button: canReview,
+      label: 'Add review comment',
+      child: MouseRegion(
+        onEnter: (_) => onHoverTargetChanged(value.target.key),
+        onExit: (_) => onHoverTargetChanged(null),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Container(
+            key: ValueKey(
+              'split-line-'
+              '${side == ReviewAttachmentSide.old ? 'left' : 'right'}-'
+              '${value.target.key}',
+            ),
+            height: 24,
+            color: background,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 12,
+                  child: Text(
+                    marker,
+                    style: _monoStyle.copyWith(color: textColor),
+                  ),
+                ),
+                Text(
+                  formatDiffContentText(value.line.text),
+                  softWrap: false,
+                  style: _monoStyle.copyWith(color: textColor),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1416,6 +2076,8 @@ class _HunkHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     return Container(
+      constraints: const BoxConstraints(minHeight: 24),
+      alignment: Alignment.centerLeft,
       color: tokens.surfaceContainerHighest,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Text(

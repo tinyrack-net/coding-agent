@@ -249,8 +249,12 @@ void main() {
 
     final leftPair = find.byKey(const ValueKey('split-left-row-2'));
     final rightPair = find.byKey(const ValueKey('split-right-row-2'));
+    final leftGutter = find.byKey(const ValueKey('split-left-gutter-row-2'));
+    final rightGutter = find.byKey(const ValueKey('split-right-gutter-row-2'));
     expect(tester.getSize(leftPair).height, tester.getSize(rightPair).height);
     expect(tester.getSize(leftPair).height, 172);
+    expect(tester.getSize(leftGutter).height, 172);
+    expect(tester.getSize(rightGutter).height, 172);
     expect(
       find.byKey(const ValueKey('review-thread-lib/changed.dart:old:2')),
       findsOneWidget,
@@ -375,6 +379,22 @@ void main() {
           widget.key.toString().contains('review-comment-'),
     );
     expect(tester.getSize(commentBlock).height, 72);
+    expect(
+      tester
+          .getSize(
+            find.byKey(
+              const ValueKey('diff-gutter-block-lib/new_file.dart:new:1'),
+            ),
+          )
+          .height,
+      tester
+          .getSize(
+            find.byKey(
+              const ValueKey('diff-code-block-lib/new_file.dart:new:1'),
+            ),
+          )
+          .height,
+    );
 
     final editButton = find.byWidgetPredicate(
       (widget) =>
@@ -576,6 +596,12 @@ void main() {
     final text = tester.widget<Text>(find.text(longLine));
     expect(text.softWrap, isFalse);
     final scrollFinder = find.byKey(const ValueKey('diff-horizontal-scroll'));
+    final gutterFinder = find.byKey(const ValueKey('diff-fixed-gutter'));
+    final gutterOrigin = tester.getTopLeft(gutterFinder);
+    expect(
+      tester.getTopLeft(scrollFinder).dx,
+      tester.getTopRight(gutterFinder).dx,
+    );
     final scrollable = tester.state<ScrollableState>(
       find.descendant(of: scrollFinder, matching: find.byType(Scrollable)),
     );
@@ -584,6 +610,61 @@ void main() {
     await tester.drag(scrollFinder, const Offset(-160, 0));
     await tester.pumpAndSettle();
     expect(scrollable.position.pixels, greaterThan(0));
+    expect(tester.getTopLeft(gutterFinder), gutterOrigin);
+  });
+
+  testWidgets('split scroll mode keeps each line-number gutter fixed', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final longLine = List.filled(120, 'scrollable').join('-');
+    final diff = DiffResponse(
+      files: [
+        DiffFile(
+          path: 'lib/split_scroll.dart',
+          status: DiffFileStatus.modified,
+          additions: 1,
+          deletions: 1,
+          hunks: [
+            DiffHunk(
+              header: '@@ -1 +1 @@',
+              lines: [
+                DiffLine(type: DiffLineType.del, text: longLine, oldLineNo: 1),
+                DiffLine(type: DiffLineType.add, text: longLine, newLineNo: 1),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.binding.setSurfaceSize(const Size(1000, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _wrap(
+        DiffView(diff: diff, layout: ChangesLayout.split),
+        size: const Size(1000, 600),
+      ),
+    );
+    await tester.tap(find.text('lib/split_scroll.dart'));
+    await tester.pumpAndSettle();
+
+    final leftGutter = find.byKey(const ValueKey('split-left-fixed-gutter'));
+    final scrolls = find.byKey(const ValueKey('diff-horizontal-scroll'));
+    expect(scrolls, findsNWidgets(2));
+    final leftScroll = scrolls.first;
+    final gutterOrigin = tester.getTopLeft(leftGutter);
+    expect(tester.getTopLeft(leftScroll).dx, tester.getTopRight(leftGutter).dx);
+    final scrollable = tester.state<ScrollableState>(
+      find.descendant(of: leftScroll, matching: find.byType(Scrollable)),
+    );
+    expect(scrollable.position.maxScrollExtent, greaterThan(0));
+
+    await tester.drag(leftScroll, const Offset(-160, 0));
+    await tester.pumpAndSettle();
+    expect(scrollable.position.pixels, greaterThan(0));
+    expect(tester.getTopLeft(leftGutter), gutterOrigin);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('wrapLines grows unified rows without horizontal scrolling', (
