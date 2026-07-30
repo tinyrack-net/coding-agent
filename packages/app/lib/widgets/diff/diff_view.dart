@@ -539,6 +539,10 @@ class _ScrollableUnifiedDiffBodyState
 
   @override
   Widget build(BuildContext context) {
+    final pinnedReviews = _unifiedPinnedReviewEntries(
+      widget.file,
+      widget.review,
+    );
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -568,28 +572,48 @@ class _ScrollableUnifiedDiffBodyState
           ),
         ),
         Expanded(
-          child: DiffScroll(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final hunk in widget.file.hunks) ...[
-                  _HunkHeader(header: hunk.header),
-                  for (final line in hunk.lines)
-                    _UnifiedCodeBlock(
-                      key: ValueKey(
-                        'diff-code-block-'
-                        '${_reviewTargetForLine(widget.file.path, line)?.key ?? line.text}',
-                      ),
-                      filePath: widget.file.path,
-                      line: line,
-                      review: widget.review,
-                      pointerFirst: _isPointerFirstPlatform,
-                      onHoverTargetChanged: _setHoveredTarget,
-                      onStartReview: _startReview,
-                    ),
-                ],
-              ],
-            ),
+          child: Stack(
+            key: const ValueKey('diff-code-viewport'),
+            clipBehavior: Clip.hardEdge,
+            children: [
+              DiffScroll(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final hunk in widget.file.hunks) ...[
+                      _HunkHeader(header: hunk.header),
+                      for (final line in hunk.lines)
+                        _UnifiedCodeBlock(
+                          key: ValueKey(
+                            'diff-code-block-'
+                            '${_reviewTargetForLine(widget.file.path, line)?.key ?? line.text}',
+                          ),
+                          filePath: widget.file.path,
+                          line: line,
+                          review: widget.review,
+                          pointerFirst: _isPointerFirstPlatform,
+                          onHoverTargetChanged: _setHoveredTarget,
+                          onStartReview: _startReview,
+                        ),
+                    ],
+                  ],
+                ),
+              ),
+              for (final entry in pinnedReviews)
+                Positioned(
+                  key: ValueKey('pinned-review-slot-${entry.target.key}'),
+                  top: entry.top,
+                  left: 0,
+                  right: 0,
+                  height: entry.height,
+                  child: _InlineReviewThread(
+                    target: entry.target,
+                    comments: entry.state.comments,
+                    editor: entry.state.editor,
+                    review: widget.review!,
+                  ),
+                ),
+            ],
           ),
         ),
       ],
@@ -781,15 +805,7 @@ class _UnifiedCodeBlock extends StatelessWidget {
             review != null &&
             threadState != null &&
             threadState.height > 0)
-          SizedBox(
-            height: threadState.height,
-            child: _InlineReviewThread(
-              target: target,
-              comments: threadState.comments,
-              editor: threadState.editor,
-              review: review!,
-            ),
-          ),
+          SizedBox(height: threadState.height),
       ],
     );
   }
@@ -981,6 +997,13 @@ typedef _ReviewThreadState = ({
   double height,
 });
 
+typedef _PinnedReviewEntry = ({
+  double top,
+  double height,
+  _ReviewTarget target,
+  _ReviewThreadState state,
+});
+
 _ReviewThreadState? _reviewThreadState(
   _ReviewTarget? target,
   _ReviewViewModel? review,
@@ -1009,6 +1032,68 @@ _ReviewThreadState? _reviewThreadState(
     editor: editor,
     height: 16 + contentHeight + (blockCount - 1) * 6,
   );
+}
+
+List<_PinnedReviewEntry> _unifiedPinnedReviewEntries(
+  DiffFile file,
+  _ReviewViewModel? review,
+) {
+  var top = 0.0;
+  final entries = <_PinnedReviewEntry>[];
+  for (final hunk in file.hunks) {
+    top += 24;
+    for (final line in hunk.lines) {
+      final target = _reviewTargetForLine(file.path, line);
+      final state = _reviewThreadState(target, review);
+      top += 24;
+      if (target != null && state != null && state.height > 0) {
+        entries.add((
+          top: top,
+          height: state.height,
+          target: target,
+          state: state,
+        ));
+        top += state.height;
+      }
+    }
+  }
+  return entries;
+}
+
+List<_PinnedReviewEntry> _splitPinnedReviewEntries(
+  List<_SplitDiffRow> rows,
+  ReviewAttachmentSide side,
+  _ReviewViewModel? review,
+) {
+  var top = 0.0;
+  final entries = <_PinnedReviewEntry>[];
+  for (final row in rows) {
+    switch (row) {
+      case _SplitDiffHeaderRow():
+        top += 24;
+      case final _SplitDiffPairRow pair:
+        final cell = side == ReviewAttachmentSide.old ? pair.left : pair.right;
+        final pairedCell = side == ReviewAttachmentSide.old
+            ? pair.right
+            : pair.left;
+        final state = _reviewThreadState(cell?.target, review);
+        final pairedState = _reviewThreadState(pairedCell?.target, review);
+        final reservedHeight = (state?.height ?? 0) > (pairedState?.height ?? 0)
+            ? state?.height ?? 0
+            : pairedState?.height ?? 0;
+        top += 24;
+        if (cell != null && state != null && state.height > 0) {
+          entries.add((
+            top: top,
+            height: reservedHeight,
+            target: cell.target,
+            state: state,
+          ));
+        }
+        top += reservedHeight;
+    }
+  }
+  return entries;
 }
 
 class _SplitFileDiffBody extends StatelessWidget {
@@ -1275,6 +1360,11 @@ class _ScrollableSplitColumnState extends State<_ScrollableSplitColumn> {
   @override
   Widget build(BuildContext context) {
     final isLeft = widget.side == ReviewAttachmentSide.old;
+    final pinnedReviews = _splitPinnedReviewEntries(
+      widget.rows,
+      widget.side,
+      widget.review,
+    );
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1303,33 +1393,54 @@ class _ScrollableSplitColumnState extends State<_ScrollableSplitColumn> {
           ),
         ),
         Expanded(
-          child: DiffScroll(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var index = 0; index < widget.rows.length; index++)
-                  switch (widget.rows[index]) {
-                    final _SplitDiffHeaderRow header => _HunkHeader(
-                      key: ValueKey(
-                        'split-${isLeft ? 'left' : 'right'}-header-$index',
-                      ),
-                      header: header.header,
-                    ),
-                    final _SplitDiffPairRow pair => _SplitCodeBlock(
-                      key: ValueKey(
-                        'split-${isLeft ? 'left' : 'right'}-row-$index',
-                      ),
-                      pair: pair,
-                      cell: isLeft ? pair.left : pair.right,
-                      side: widget.side,
-                      review: widget.review,
-                      pointerFirst: _isPointerFirstPlatform,
-                      onHoverTargetChanged: _setHoveredTarget,
-                      onStartReview: _startReview,
-                    ),
-                  },
-              ],
-            ),
+          child: Stack(
+            key: ValueKey('split-${isLeft ? 'left' : 'right'}-code-viewport'),
+            clipBehavior: Clip.hardEdge,
+            children: [
+              DiffScroll(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var index = 0; index < widget.rows.length; index++)
+                      switch (widget.rows[index]) {
+                        final _SplitDiffHeaderRow header => _HunkHeader(
+                          key: ValueKey(
+                            'split-${isLeft ? 'left' : 'right'}-header-$index',
+                          ),
+                          header: header.header,
+                        ),
+                        final _SplitDiffPairRow pair => _SplitCodeBlock(
+                          key: ValueKey(
+                            'split-${isLeft ? 'left' : 'right'}-row-$index',
+                          ),
+                          pair: pair,
+                          cell: isLeft ? pair.left : pair.right,
+                          side: widget.side,
+                          review: widget.review,
+                          pointerFirst: _isPointerFirstPlatform,
+                          onHoverTargetChanged: _setHoveredTarget,
+                          onStartReview: _startReview,
+                        ),
+                      },
+                  ],
+                ),
+              ),
+              for (final entry in pinnedReviews)
+                Positioned(
+                  key: ValueKey('pinned-review-slot-${entry.target.key}'),
+                  top: entry.top,
+                  left: 0,
+                  right: 0,
+                  height: entry.height,
+                  child: _InlineReviewThread(
+                    target: entry.target,
+                    comments: entry.state.comments,
+                    editor: entry.state.editor,
+                    review: widget.review!,
+                    split: true,
+                  ),
+                ),
+            ],
           ),
         ),
       ],
@@ -1499,23 +1610,7 @@ class _SplitCodeBlock extends StatelessWidget {
               ? () => onStartReview(cell!.target)
               : null,
         ),
-        if (reservedHeight > 0)
-          SizedBox(
-            height: reservedHeight,
-            child:
-                cell != null &&
-                    ownState != null &&
-                    ownState.height > 0 &&
-                    review != null
-                ? _InlineReviewThread(
-                    target: cell!.target,
-                    comments: ownState.comments,
-                    editor: ownState.editor,
-                    review: review!,
-                    split: true,
-                  )
-                : null,
-          ),
+        if (reservedHeight > 0) SizedBox(height: reservedHeight),
       ],
     );
   }

@@ -568,6 +568,8 @@ void main() {
   testWidgets('long diff lines remain single-line and scroll horizontally', (
     tester,
   ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final longLine = 'final value = "${List.filled(160, 'x').join()}";';
     final diff = DiffResponse(
       files: [
@@ -589,7 +591,9 @@ void main() {
     );
     await tester.binding.setSurfaceSize(const Size(900, 400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(_wrap(DiffView(diff: diff)));
+    await tester.pumpWidget(
+      _wrap(DiffView(diff: diff, reviewDraftKey: 'long-review')),
+    );
 
     await tester.tap(find.text('lib/long.dart'));
     await tester.pumpAndSettle();
@@ -607,10 +611,37 @@ void main() {
     );
     expect(scrollable.position.maxScrollExtent, greaterThan(0));
 
-    await tester.drag(scrollFinder, const Offset(-160, 0));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(
+      tester.getTopLeft(
+            find.byKey(const ValueKey('diff-code-lib/long.dart:new:1')),
+          ) +
+          const Offset(24, 12),
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey('review-add-lib/long.dart:new:1')),
+    );
+    await tester.pumpAndSettle();
+    final thread = find.byKey(
+      const ValueKey('review-thread-lib/long.dart:new:1'),
+    );
+    final viewport = find.byKey(const ValueKey('diff-code-viewport'));
+    final threadOrigin = tester.getTopLeft(thread);
+    expect(threadOrigin.dx, tester.getTopLeft(viewport).dx);
+    expect(tester.getSize(thread).width, tester.getSize(viewport).width);
+
+    await tester.dragFrom(
+      tester.getTopLeft(viewport) + const Offset(80, 12),
+      const Offset(-160, 0),
+    );
     await tester.pumpAndSettle();
     expect(scrollable.position.pixels, greaterThan(0));
     expect(tester.getTopLeft(gutterFinder), gutterOrigin);
+    expect(tester.getTopLeft(thread), threadOrigin);
+    await mouse.removePointer();
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('split scroll mode keeps each line-number gutter fixed', (
@@ -642,7 +673,11 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       _wrap(
-        DiffView(diff: diff, layout: ChangesLayout.split),
+        DiffView(
+          diff: diff,
+          layout: ChangesLayout.split,
+          reviewDraftKey: 'split-scroll-review',
+        ),
         size: const Size(1000, 600),
       ),
     );
@@ -660,10 +695,38 @@ void main() {
     );
     expect(scrollable.position.maxScrollExtent, greaterThan(0));
 
-    await tester.drag(leftScroll, const Offset(-160, 0));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(
+      tester.getTopLeft(
+            find.byKey(
+              const ValueKey('split-line-left-lib/split_scroll.dart:old:1'),
+            ),
+          ) +
+          const Offset(24, 12),
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey('review-add-lib/split_scroll.dart:old:1')),
+    );
+    await tester.pumpAndSettle();
+    final thread = find.byKey(
+      const ValueKey('review-thread-lib/split_scroll.dart:old:1'),
+    );
+    final viewport = find.byKey(const ValueKey('split-left-code-viewport'));
+    final threadOrigin = tester.getTopLeft(thread);
+    expect(threadOrigin.dx, tester.getTopLeft(viewport).dx);
+    expect(tester.getSize(thread).width, tester.getSize(viewport).width);
+
+    await tester.dragFrom(
+      tester.getTopLeft(viewport) + const Offset(80, 12),
+      const Offset(-160, 0),
+    );
     await tester.pumpAndSettle();
     expect(scrollable.position.pixels, greaterThan(0));
     expect(tester.getTopLeft(leftGutter), gutterOrigin);
+    expect(tester.getTopLeft(thread), threadOrigin);
+    await mouse.removePointer();
     debugDefaultTargetPlatformOverride = null;
   });
 
