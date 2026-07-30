@@ -109,6 +109,120 @@ Color? _rowBackground(WidgetTester tester, String lineText) {
 }
 
 void main() {
+  testWidgets('focus requests scroll once and replay for a new request id', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 360));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final files = [
+      for (var index = 0; index < 30; index++)
+        DiffFile(
+          path: 'lib/file_${index.toString().padLeft(2, '0')}.dart',
+          status: DiffFileStatus.modified,
+        ),
+    ];
+    const targetPath = 'lib/file_15.dart';
+    var requestId = 1;
+    late StateSetter rebuild;
+
+    await tester.pumpWidget(
+      _wrap(
+        StatefulBuilder(
+          builder: (context, setState) {
+            rebuild = setState;
+            return SizedBox(
+              height: 240,
+              child: DiffView(
+                diff: DiffResponse(files: files),
+                focusPath: targetPath,
+                focusRequestId: requestId,
+              ),
+            );
+          },
+        ),
+        size: const Size(900, 360),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final scroll = find.byKey(const ValueKey('git-diff-scroll'));
+    double targetTop() =>
+        tester.getTopLeft(find.byKey(const ValueKey('diff-file-15'))).dy;
+    final viewportTop = tester.getTopLeft(scroll).dy;
+    expect(targetTop(), closeTo(viewportTop, 1));
+
+    await tester.drag(scroll, const Offset(0, 140));
+    await tester.pumpAndSettle();
+    expect(targetTop(), greaterThan(viewportTop + 80));
+
+    rebuild(() {});
+    await tester.pumpAndSettle();
+    expect(targetTop(), greaterThan(viewportTop + 80));
+
+    rebuild(() => requestId = 2);
+    await tester.pumpAndSettle();
+    expect(targetTop(), closeTo(viewportTop, 1));
+  });
+
+  testWidgets('a pending focus request waits for its file to arrive', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 360));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const targetPath = 'lib/file_15.dart';
+    var files = [
+      for (var index = 0; index < 5; index++)
+        DiffFile(
+          path: 'lib/file_${index.toString().padLeft(2, '0')}.dart',
+          status: DiffFileStatus.modified,
+        ),
+    ];
+    late StateSetter rebuild;
+
+    await tester.pumpWidget(
+      _wrap(
+        StatefulBuilder(
+          builder: (context, setState) {
+            rebuild = setState;
+            return SizedBox(
+              height: 240,
+              child: DiffView(
+                diff: DiffResponse(files: files),
+                focusPath: targetPath,
+                focusRequestId: 7,
+              ),
+            );
+          },
+        ),
+        size: const Size(900, 360),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text(targetPath), findsNothing);
+
+    rebuild(
+      () => files = [
+        ...files,
+        for (var index = 5; index < 30; index++)
+          if (index != 15)
+            DiffFile(
+              path: 'lib/file_${index.toString().padLeft(2, '0')}.dart',
+              status: DiffFileStatus.modified,
+            ),
+        const DiffFile(path: targetPath, status: DiffFileStatus.modified),
+      ],
+    );
+    await tester.pumpAndSettle();
+
+    final viewportTop = tester
+        .getTopLeft(find.byKey(const ValueKey('git-diff-scroll')))
+        .dy;
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('diff-file-15'))).dy,
+      closeTo(viewportTop, 1),
+    );
+  });
+
   testWidgets('too-large placeholders explain why hunks are omitted', (
     tester,
   ) async {

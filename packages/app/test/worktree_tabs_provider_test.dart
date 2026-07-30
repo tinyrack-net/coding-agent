@@ -748,6 +748,71 @@ void main() {
     expect(firstDiffTabId, 'working_diff');
   });
 
+  test(
+    'working diff open intents update the singleton focus request',
+    () async {
+      final container = await makeContainer();
+      final provider = worktreeTabsProvider(_worktreePath);
+      final notifier = container.read(provider.notifier);
+
+      final firstId = notifier.focusOpenIntentTarget(
+        const WorkspaceWorkingDiffTabTarget(
+          focusPath: 'lib/first.dart',
+          focusRequestId: 1,
+        ),
+      );
+      final secondId = notifier.focusOpenIntentTarget(
+        const WorkspaceWorkingDiffTabTarget(
+          focusPath: 'lib/second.dart',
+          focusRequestId: 2,
+        ),
+      );
+      var diffTabs = container
+          .read(provider)
+          .layout
+          .tabs
+          .where((tab) => tab.kind == WorktreeTabKind.diff)
+          .toList();
+
+      expect(firstId, 'working_diff');
+      expect(secondId, firstId);
+      expect(diffTabs, hasLength(1));
+      expect(diffTabs.single.diffFocusPath, 'lib/second.dart');
+      expect(diffTabs.single.diffFocusRequestId, 2);
+      expect(
+        workspaceTabTargetsEqual(
+          diffTabs.single.workspaceTarget!,
+          const WorkspaceWorkingDiffTabTarget(
+            focusPath: 'lib/second.dart',
+            focusRequestId: 2,
+          ),
+        ),
+        isTrue,
+      );
+      expect(WorktreeTab.fromJson(diffTabs.single.toJson()), diffTabs.single);
+
+      notifier.showDiffTab(focusPath: r' lib\third.dart ', focusRequestId: -1);
+      diffTabs = container
+          .read(provider)
+          .layout
+          .tabs
+          .where((tab) => tab.kind == WorktreeTabKind.diff)
+          .toList();
+      expect(diffTabs.single.diffFocusPath, 'lib/third.dart');
+      expect(diffTabs.single.diffFocusRequestId, isNull);
+
+      notifier.showDiffTab();
+      diffTabs = container
+          .read(provider)
+          .layout
+          .tabs
+          .where((tab) => tab.kind == WorktreeTabKind.diff)
+          .toList();
+      expect(diffTabs.single.diffFocusPath, isNull);
+      expect(diffTabs.single.diffFocusRequestId, isNull);
+    },
+  );
+
   test('openFile reuses path identity and advances line navigation', () async {
     final container = await makeContainer();
     final notifier = container.read(

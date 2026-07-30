@@ -77,6 +77,8 @@ class WorktreeTab {
     this.lineEnd,
     this.fileNavigationRevision = 0,
     this.setupWorkspaceId,
+    this.diffFocusPath,
+    this.diffFocusRequestId,
   });
 
   final String tabId;
@@ -96,6 +98,8 @@ class WorktreeTab {
   final int? lineEnd;
   final int fileNavigationRevision;
   final String? setupWorkspaceId;
+  final String? diffFocusPath;
+  final int? diffFocusRequestId;
 
   WorkspaceTabTarget? get workspaceTarget => switch (kind) {
     WorktreeTabKind.draft => WorkspaceDraftTabTarget(draftId: tabId),
@@ -111,7 +115,10 @@ class WorktreeTab {
     WorktreeTabKind.terminal => WorkspaceTerminalTabTarget(
       terminalId: lastKnownTerminalId ?? tabId,
     ),
-    WorktreeTabKind.diff => const WorkspaceWorkingDiffTabTarget(),
+    WorktreeTabKind.diff => WorkspaceWorkingDiffTabTarget(
+      focusPath: diffFocusPath,
+      focusRequestId: diffFocusRequestId,
+    ),
     WorktreeTabKind.file =>
       filePath == null
           ? null
@@ -146,22 +153,57 @@ class WorktreeTab {
     fileNavigationRevision:
         fileNavigationRevision ?? this.fileNavigationRevision,
     setupWorkspaceId: setupWorkspaceId ?? this.setupWorkspaceId,
+    diffFocusPath: diffFocusPath,
+    diffFocusRequestId: diffFocusRequestId,
   );
 
-  static WorktreeTab fromJson(Map<String, Object?> json) => WorktreeTab(
-    tabId: json['tabId'] as String,
-    kind: WorktreeTabKind.values.byName(json['kind'] as String),
-    agentId: json['agentId'] as String?,
-    parentAgentId: json['parentAgentId'] as String?,
-    subagentId: json['subagentId'] as String?,
-    lastKnownTerminalId: json['lastKnownTerminalId'] as String?,
-    filePath: json['filePath'] as String?,
-    lineStart: (json['lineStart'] as num?)?.toInt(),
-    lineEnd: (json['lineEnd'] as num?)?.toInt(),
-    fileNavigationRevision:
-        (json['fileNavigationRevision'] as num?)?.toInt() ?? 0,
-    setupWorkspaceId: json['setupWorkspaceId'] as String?,
+  WorktreeTab withDiffFocus({
+    required String? focusPath,
+    required int? focusRequestId,
+  }) => WorktreeTab(
+    tabId: tabId,
+    kind: kind,
+    agentId: agentId,
+    parentAgentId: parentAgentId,
+    subagentId: subagentId,
+    lastKnownTerminalId: lastKnownTerminalId,
+    filePath: filePath,
+    lineStart: lineStart,
+    lineEnd: lineEnd,
+    fileNavigationRevision: fileNavigationRevision,
+    setupWorkspaceId: setupWorkspaceId,
+    diffFocusPath: focusPath,
+    diffFocusRequestId: focusRequestId,
   );
+
+  static WorktreeTab fromJson(Map<String, Object?> json) {
+    final kind = WorktreeTabKind.values.byName(json['kind'] as String);
+    final normalizedDiffTarget = kind == WorktreeTabKind.diff
+        ? normalizeWorkspaceTabTarget(
+                WorkspaceWorkingDiffTabTarget(
+                  focusPath: json['diffFocusPath'] as String?,
+                  focusRequestId: (json['diffFocusRequestId'] as num?)?.toInt(),
+                ),
+              )
+              as WorkspaceWorkingDiffTabTarget
+        : null;
+    return WorktreeTab(
+      tabId: json['tabId'] as String,
+      kind: kind,
+      agentId: json['agentId'] as String?,
+      parentAgentId: json['parentAgentId'] as String?,
+      subagentId: json['subagentId'] as String?,
+      lastKnownTerminalId: json['lastKnownTerminalId'] as String?,
+      filePath: json['filePath'] as String?,
+      lineStart: (json['lineStart'] as num?)?.toInt(),
+      lineEnd: (json['lineEnd'] as num?)?.toInt(),
+      fileNavigationRevision:
+          (json['fileNavigationRevision'] as num?)?.toInt() ?? 0,
+      setupWorkspaceId: json['setupWorkspaceId'] as String?,
+      diffFocusPath: normalizedDiffTarget?.focusPath,
+      diffFocusRequestId: normalizedDiffTarget?.focusRequestId,
+    );
+  }
 
   Map<String, Object?> toJson() => {
     'tabId': tabId,
@@ -176,6 +218,8 @@ class WorktreeTab {
     if (fileNavigationRevision != 0)
       'fileNavigationRevision': fileNavigationRevision,
     if (setupWorkspaceId != null) 'setupWorkspaceId': setupWorkspaceId,
+    if (diffFocusPath != null) 'diffFocusPath': diffFocusPath,
+    if (diffFocusRequestId != null) 'diffFocusRequestId': diffFocusRequestId,
   };
 
   @override
@@ -191,7 +235,9 @@ class WorktreeTab {
       other.lineStart == lineStart &&
       other.lineEnd == lineEnd &&
       other.fileNavigationRevision == fileNavigationRevision &&
-      other.setupWorkspaceId == setupWorkspaceId;
+      other.setupWorkspaceId == setupWorkspaceId &&
+      other.diffFocusPath == diffFocusPath &&
+      other.diffFocusRequestId == diffFocusRequestId;
 
   @override
   int get hashCode => Object.hash(
@@ -206,6 +252,8 @@ class WorktreeTab {
     lineEnd,
     fileNavigationRevision,
     setupWorkspaceId,
+    diffFocusPath,
+    diffFocusRequestId,
   );
 }
 
@@ -686,12 +734,34 @@ class WorktreeTabsNotifier extends Notifier<WorktreeTabLayoutState> {
 
   /// Activates the existing "diff" tab, or inserts+activates one if none is
   /// open yet.
-  void showDiffTab() {
+  void showDiffTab({String? focusPath, int? focusRequestId}) {
+    final normalizedTarget =
+        normalizeWorkspaceTabTarget(
+              WorkspaceWorkingDiffTabTarget(
+                focusPath: focusPath,
+                focusRequestId: focusRequestId,
+              ),
+            )
+            as WorkspaceWorkingDiffTabTarget;
+    final normalizedFocusPath = normalizedTarget.focusPath;
+    final normalizedFocusRequestId = normalizedTarget.focusRequestId;
     final existing = state.layout.tabs
         .where((t) => t.kind == WorktreeTabKind.diff)
         .firstOrNull;
     if (existing != null) {
-      setActiveTab(existing.tabId);
+      _mutate(
+        (tabs) => [
+          for (final tab in tabs)
+            if (tab.tabId == existing.tabId)
+              tab.withDiffFocus(
+                focusPath: normalizedFocusPath,
+                focusRequestId: normalizedFocusRequestId,
+              )
+            else
+              tab,
+        ],
+        nextActive: (_) => existing.tabId,
+      );
       return;
     }
     final tabId = buildDeterministicWorkspaceTabId(
@@ -700,7 +770,12 @@ class WorktreeTabsNotifier extends Notifier<WorktreeTabLayoutState> {
     _mutate(
       (tabs) => [
         ...tabs,
-        WorktreeTab(tabId: tabId, kind: WorktreeTabKind.diff),
+        WorktreeTab(
+          tabId: tabId,
+          kind: WorktreeTabKind.diff,
+          diffFocusPath: normalizedFocusPath,
+          diffFocusRequestId: normalizedFocusRequestId,
+        ),
       ],
       nextActive: (_) => tabId,
     );
@@ -1221,7 +1296,10 @@ class WorktreeTabsNotifier extends Notifier<WorktreeTabLayoutState> {
         );
         return buildDeterministicWorkspaceTabId(target);
       case WorkspaceWorkingDiffTabTarget():
-        showDiffTab();
+        showDiffTab(
+          focusPath: target.focusPath,
+          focusRequestId: target.focusRequestId,
+        );
         return buildDeterministicWorkspaceTabId(target);
       case WorkspaceProviderSubagentTabTarget():
         focusProviderSubagent(target.parentAgentId, target.subagentId);

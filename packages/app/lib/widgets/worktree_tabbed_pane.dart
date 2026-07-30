@@ -266,6 +266,8 @@ class WorktreeTabbedPane extends ConsumerWidget {
           ref.watch(activeHostProvider)?.serverId ??
           ref.watch(daemonClientProvider).serverInfo?.serverId,
       workspaceId: workspaceId,
+      focusPath: tab.diffFocusPath,
+      focusRequestId: tab.diffFocusRequestId,
       onOpenWorkspaceFile: onOpenWorkspaceFile,
     ),
     WorktreeTabKind.terminal => TerminalPane(

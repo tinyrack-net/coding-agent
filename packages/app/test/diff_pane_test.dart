@@ -111,6 +111,8 @@ Future<ProviderContainer> pumpDiffPane(
   FakeDaemonClient? client,
   bool live = false,
   bool compact = false,
+  String? focusPath,
+  int? focusRequestId,
   ValueChanged<WorkspaceFileOpenRequest>? onOpenWorkspaceFile,
   ExternalUrlLauncher? launcher,
 }) async {
@@ -136,6 +138,8 @@ Future<ProviderContainer> pumpDiffPane(
             serverId: live ? 'server-1' : null,
             workspaceId: live ? 'workspace-1' : null,
             compact: compact,
+            focusPath: focusPath,
+            focusRequestId: focusRequestId,
             onOpenWorkspaceFile: onOpenWorkspaceFile,
           ),
         ),
@@ -148,6 +152,35 @@ Future<ProviderContainer> pumpDiffPane(
 }
 
 void main() {
+  testWidgets('forwards a file focus request into the diff viewport', (
+    tester,
+  ) async {
+    final files = [
+      for (var index = 0; index < 30; index++)
+        DiffFile(
+          path: 'lib/file_${index.toString().padLeft(2, '0')}.dart',
+          status: DiffFileStatus.modified,
+        ),
+    ];
+    const targetPath = 'lib/file_15.dart';
+
+    await pumpDiffPane(
+      tester,
+      client: FakeDaemonClient(diff: DiffResponse(files: files)),
+      focusPath: targetPath,
+      focusRequestId: 1,
+    );
+    await tester.pumpAndSettle();
+
+    final viewportTop = tester
+        .getTopLeft(find.byKey(const ValueKey('git-diff-scroll')))
+        .dy;
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('diff-file-15'))).dy,
+      closeTo(viewportTop, 1),
+    );
+  });
+
   testWidgets('renders the diff and the cwd label', (tester) async {
     await pumpDiffPane(tester);
 

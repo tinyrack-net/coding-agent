@@ -109,6 +109,8 @@ class DiffView extends ConsumerStatefulWidget {
     this.codeFontSize = 12,
     this.monoFontFamily = '',
     this.controller,
+    this.focusPath,
+    this.focusRequestId,
     this.onOpenFile,
     this.onCopyPath,
     this.onDownload,
@@ -123,6 +125,8 @@ class DiffView extends ConsumerStatefulWidget {
   final double codeFontSize;
   final String monoFontFamily;
   final DiffViewController? controller;
+  final String? focusPath;
+  final int? focusRequestId;
   final ValueChanged<String>? onOpenFile;
   final ValueChanged<String>? onCopyPath;
   final ValueChanged<String>? onDownload;
@@ -140,6 +144,8 @@ class _DiffViewState extends ConsumerState<DiffView> {
   final _folderKeys = <String, GlobalKey>{};
   DiffResponse? _highlightSource;
   DiffResponse? _highlightedDiff;
+  String? _consumedFocusRequest;
+  String? _pendingFocusRequest;
   _ReviewEditorTarget? _reviewEditor;
 
   @override
@@ -168,6 +174,10 @@ class _DiffViewState extends ConsumerState<DiffView> {
     }
     if (oldWidget.reviewDraftKey != widget.reviewDraftKey) {
       _reviewEditor = null;
+    }
+    if (oldWidget.focusPath != widget.focusPath ||
+        oldWidget.focusRequestId != widget.focusRequestId) {
+      _pendingFocusRequest = null;
     }
     _controller.reconcile(widget.diff.files);
   }
@@ -225,6 +235,50 @@ class _DiffViewState extends ConsumerState<DiffView> {
     if (identical(_highlightSource, widget.diff)) return _highlightedDiff!;
     _highlightSource = widget.diff;
     return _highlightedDiff = highlightLegacyDiff(widget.diff);
+  }
+
+  void _scheduleFocusRequest(List<DiffFlatItem> items) {
+    final path = widget.focusPath;
+    if (path == null || path.isEmpty) return;
+    final requestKey = '${widget.focusRequestId ?? 'initial'}:$path';
+    if (_consumedFocusRequest == requestKey ||
+        _pendingFocusRequest == requestKey) {
+      return;
+    }
+    final hasTarget = items.any(
+      (item) => item is DiffFlatHeaderItem && item.file.path == path,
+    );
+    if (!hasTarget) return;
+
+    _pendingFocusRequest = requestKey;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          _pendingFocusRequest != requestKey ||
+          widget.focusPath != path ||
+          '${widget.focusRequestId ?? 'initial'}:${widget.focusPath}' !=
+              requestKey) {
+        return;
+      }
+      final renderObject = _headerKey(path).currentContext?.findRenderObject();
+      if (!_scrollController.hasClients ||
+          renderObject == null ||
+          !renderObject.attached) {
+        _pendingFocusRequest = null;
+        return;
+      }
+      final viewport = RenderAbstractViewport.maybeOf(renderObject);
+      if (viewport == null) {
+        _pendingFocusRequest = null;
+        return;
+      }
+      final position = _scrollController.position;
+      final offset = viewport.getOffsetToReveal(renderObject, 0).offset;
+      _scrollController.jumpTo(
+        offset.clamp(position.minScrollExtent, position.maxScrollExtent),
+      );
+      _consumedFocusRequest = requestKey;
+      _pendingFocusRequest = null;
+    });
   }
 
   @override
@@ -309,6 +363,7 @@ class _DiffViewState extends ConsumerState<DiffView> {
             collapsedFolders: _controller.collapsedFolders,
             expandedPaths: _controller.expandedPaths,
           );
+          _scheduleFocusRequest(result.items);
           final stickyIndices = result.stickyHeaderIndices.toSet();
           return CustomScrollView(
             key: const ValueKey('git-diff-scroll'),

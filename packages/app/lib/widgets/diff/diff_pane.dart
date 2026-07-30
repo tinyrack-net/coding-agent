@@ -28,6 +28,8 @@ class DiffPane extends ConsumerStatefulWidget {
     this.serverId,
     this.workspaceId,
     this.compact = false,
+    this.focusPath,
+    this.focusRequestId,
     this.onOpenWorkspaceFile,
   });
 
@@ -35,6 +37,8 @@ class DiffPane extends ConsumerStatefulWidget {
   final String? serverId;
   final String? workspaceId;
   final bool compact;
+  final String? focusPath;
+  final int? focusRequestId;
   final ValueChanged<WorkspaceFileOpenRequest>? onOpenWorkspaceFile;
 
   @override
@@ -71,6 +75,8 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
         workspaceId: widget.workspaceId,
         cwd: widget.cwd,
         compact: widget.compact,
+        focusPath: widget.focusPath,
+        focusRequestId: widget.focusRequestId,
         diffViewController: _diffViewController,
         onOpenWorkspaceFile: widget.onOpenWorkspaceFile,
       );
@@ -220,6 +226,8 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
               codeFontSize: codeAppearance.codeFontSize,
               monoFontFamily: codeAppearance.monoFontFamily,
               controller: _diffViewController,
+              focusPath: widget.focusPath,
+              focusRequestId: widget.focusRequestId,
               onOpenFile: widget.onOpenWorkspaceFile == null ? null : _openFile,
               onCopyPath: _copyPath,
               onDownload: _download,
@@ -270,6 +278,8 @@ class _LiveDiffPane extends ConsumerWidget {
     required this.workspaceId,
     required this.cwd,
     required this.compact,
+    required this.focusPath,
+    required this.focusRequestId,
     required this.diffViewController,
     required this.onOpenWorkspaceFile,
   });
@@ -278,6 +288,8 @@ class _LiveDiffPane extends ConsumerWidget {
   final String? workspaceId;
   final String cwd;
   final bool compact;
+  final String? focusPath;
+  final int? focusRequestId;
   final DiffViewController diffViewController;
   final ValueChanged<WorkspaceFileOpenRequest>? onOpenWorkspaceFile;
 
@@ -493,6 +505,8 @@ class _LiveDiffPane extends ConsumerWidget {
                 codeFontSize: codeAppearance.codeFontSize,
                 monoFontFamily: codeAppearance.monoFontFamily,
                 controller: diffViewController,
+                focusPath: focusPath,
+                focusRequestId: focusRequestId,
                 onOpenFile: onOpenWorkspaceFile == null
                     ? null
                     : (path) => onOpenWorkspaceFile!(

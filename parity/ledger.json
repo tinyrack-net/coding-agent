@@ -1278,10 +1278,14 @@
     },
     {
       "id": "release-feature:004-open-the-complete-changes-view-as-a-workspace-tab",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/worktree_tabs_provider.dart; packages/app/lib/widgets/worktree_tabbed_pane.dart; packages/app/lib/widgets/diff/diff_pane.dart; packages/app/lib/widgets/diff/diff_view.dart",
+      "evidence": [
+        "packages/app/test/worktree_tabs_provider_test.dart",
+        "packages/app/test/diff_pane_test.dart",
+        "packages/app/test/diff_view_test.dart"
+      ],
+      "notes": "The complete working Changes surface renders as a deterministic, persisted singleton workspace tab. Repeated file-target requests retain the tab id, replace the focusPath/focusRequestId intent, and scroll the matching file header exactly once after it becomes available. The frozen explorer action/toggle that opens and closes this tab plus remaining panel chrome still need parity."
     },
     {
       "id": "release-feature:005-add-files-to-chat-directly-from-files-and-changes",
@@ -5122,7 +5126,7 @@
     {
       "id": "source-unit:packages/app/src/git/diff-pane.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/widgets/diff/diff_pane.dart; packages/app/lib/widgets/diff/diff_view.dart; packages/app/lib/widgets/file_actions_menu.dart; packages/app/lib/widgets/syntax_token_styles.dart; packages/app/lib/core/daemon_client.dart; packages/app/lib/core/diff_flat_items.dart; packages/app/lib/core/diff_highlight.dart; packages/app/lib/core/diff_order.dart; packages/app/lib/core/diff_layout.dart; packages/app/lib/core/diff_rendering.dart; packages/app/lib/core/diff_tree.dart; packages/app/lib/state/changes_preferences_provider.dart; packages/protocol/lib/src/messages/diff.dart; packages/protocol/lib/src/messages/checkout_diff.dart",
+      "implementation": "packages/app/lib/widgets/diff/diff_pane.dart; packages/app/lib/widgets/diff/diff_view.dart; packages/app/lib/widgets/worktree_tabbed_pane.dart; packages/app/lib/widgets/file_actions_menu.dart; packages/app/lib/widgets/syntax_token_styles.dart; packages/app/lib/core/daemon_client.dart; packages/app/lib/core/diff_flat_items.dart; packages/app/lib/core/diff_highlight.dart; packages/app/lib/core/diff_order.dart; packages/app/lib/core/diff_layout.dart; packages/app/lib/core/diff_rendering.dart; packages/app/lib/core/diff_tree.dart; packages/app/lib/state/changes_preferences_provider.dart; packages/app/lib/state/worktree_tabs_provider.dart; packages/protocol/lib/src/messages/diff.dart; packages/protocol/lib/src/messages/checkout_diff.dart",
       "evidence": [
         "packages/app/test/diff_pane_test.dart",
         "packages/app/test/diff_view_test.dart",
@@ -5131,10 +5135,11 @@
         "packages/app/test/diff_tree_test.dart",
         "packages/app/test/daemon_client_test.dart",
         "packages/app/test/diff_highlight_test.dart",
+        "packages/app/test/worktree_tabs_provider_test.dart",
         "packages/protocol/test/messages_diff_test.dart",
         "packages/protocol/test/checkout_diff_test.dart"
       ],
-      "notes": "The Flutter diff pane has live base/uncommitted mode selection, a Paseo-shaped options menu for persisted whitespace and line wrapping plus refresh, layout and flat/tree selection, deterministic path ordering, the single expandable diff list on every form factor, compressed tree folders, per-file expansion, expand/collapse-all, unified hunks, binary/too-large/empty states, horizontal scrolling, stable blank-row geometry, and old/new-side inline review threads. Wrapped unified rows grow without horizontal scrolling; wrapped split replacement cells share code-row height before synchronized review slots. In non-wrapped mode, unified and both split sides separate fixed line/review gutters from code-only horizontal scrollers, share hover targets between code and gutter, reserve matching inline-review spacer heights, and pin interactive review surfaces to the visible code viewport while code scrolls behind them. Diff typography now follows the persisted 9-22px code-size and monospace-family settings, derives the Paseo 1.5x row height, and sizes each file gutter from its largest displayed line number with the frozen digit-width formula. The desktop split renderer duplicates context, pairs replacement runs, preserves unmatched blank cells, scrolls both columns independently, and falls back to unified below the supported desktop width. Review affordances are hover-only on pointer platforms and whole-line taps on touch platforms, with fixed thread geometry and exact editor shortcuts. File headers now match the frozen action availability/order and parent-toggle isolation, including deleted-file Copy path, absolute path copying, workspace-tab opening, deduplicated chat attachment, and one-time-token daemon downloads. Expanded working-diff file headers now use native pinned slivers, retain the frozen surface treatment, and collapse through the exact offscreen-anchor visibility rule using actual render viewport offsets and extents; visible headers and folders do not jump. Structured checkout-to-legacy conversion now preserves server tokens, legacy responses receive frozen whole-document local highlighting, and unified/split plus wrapped/scroll rows render the exact light/dark semantic token colors with visible-token and base-color fallback behavior. Capability-gated refresh, focus-path requests, measured virtual-list optimization, and remaining orchestration remain."
+      "notes": "The Flutter diff pane has live base/uncommitted mode selection, a Paseo-shaped options menu for persisted whitespace and line wrapping plus refresh, layout and flat/tree selection, deterministic path ordering, the single expandable diff list on every form factor, compressed tree folders, per-file expansion, expand/collapse-all, unified hunks, binary/too-large/empty states, horizontal scrolling, stable blank-row geometry, and old/new-side inline review threads. Wrapped unified rows grow without horizontal scrolling; wrapped split replacement cells share code-row height before synchronized review slots. In non-wrapped mode, unified and both split sides separate fixed line/review gutters from code-only horizontal scrollers, share hover targets between code and gutter, reserve matching inline-review spacer heights, and pin interactive review surfaces to the visible code viewport while code scrolls behind them. Diff typography now follows the persisted 9-22px code-size and monospace-family settings, derives the Paseo 1.5x row height, and sizes each file gutter from its largest displayed line number with the frozen digit-width formula. The desktop split renderer duplicates context, pairs replacement runs, preserves unmatched blank cells, scrolls both columns independently, and falls back to unified below the supported desktop width. Review affordances are hover-only on pointer platforms and whole-line taps on touch platforms, with fixed thread geometry and exact editor shortcuts. File headers now match the frozen action availability/order and parent-toggle isolation, including deleted-file Copy path, absolute path copying, workspace-tab opening, deduplicated chat attachment, and one-time-token daemon downloads. Expanded working-diff file headers now use native pinned slivers, retain the frozen surface treatment, and collapse through the exact offscreen-anchor visibility rule using actual render viewport offsets and extents; visible headers and folders do not jump. Structured checkout-to-legacy conversion now preserves server tokens, legacy responses receive frozen whole-document local highlighting, and unified/split plus wrapped/scroll rows render the exact light/dark semantic token colors with visible-token and base-color fallback behavior. Working-tab focus requests now persist through the legacy layout adapter, wait for their file header, scroll without animation, consume once per request key, and replay only for a new focusRequestId. Capability-gated refresh, measured virtual-list optimization, and remaining orchestration remain."
     },
     {
       "id": "source-unit:packages/app/src/git/diff-scroll.ts",
@@ -6581,10 +6586,14 @@
     },
     {
       "id": "source-unit:packages/app/src/panels/diff-panel.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/widgets/diff/diff_pane.dart; packages/app/lib/widgets/diff/diff_view.dart; packages/app/lib/widgets/worktree_tabbed_pane.dart; packages/app/lib/state/worktree_tabs_provider.dart",
+      "evidence": [
+        "packages/app/test/diff_pane_test.dart",
+        "packages/app/test/diff_view_test.dart",
+        "packages/app/test/worktree_tabs_provider_test.dart"
+      ],
+      "notes": "The working-diff panel composes the live query, mode/options toolbar, full shared diff view, persisted singleton workspace tab, file focus intents, file actions, and review attachment publication. Commit-diff panels, retained-panel activity gating, capability-gated refresh, exact state copy, and frozen responsive panel chrome remain."
     },
     {
       "id": "source-unit:packages/app/src/panels/draft-panel-descriptor.ts",
@@ -7843,7 +7852,7 @@
         "packages/app/test/worktree_tabs_provider_test.dart",
         "packages/app/test/workspace_pane_layout_test.dart"
       ],
-      "notes": "Pane trees, normalized sizes, focused panes, indexed tab moves, and intentional empty split targets persist with legacy flat-layout reconciliation; the remaining upstream store surface is incomplete."
+      "notes": "Pane trees, normalized sizes, focused panes, indexed tab moves, and intentional empty split targets persist with legacy flat-layout reconciliation. Deterministic working-diff tabs now replace their persisted focus target in place while retaining the singleton tab id, matching upstream openTabFocused behavior. The remaining upstream store surface is incomplete."
     },
     {
       "id": "source-unit:packages/app/src/stores/workspace-setup-store.ts",
