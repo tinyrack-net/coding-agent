@@ -34,6 +34,7 @@ void main() {
     expect(page.entries.single.serverLabel, 'Local');
     expect(page.entries.single.pendingPermissionCount, 2);
     expect(page.nextCursorByServerId, {'server-a': 'next-a'});
+    expect(page.failedServerIds, {'server-b'});
     expect(good.cursors, [null]);
 
     final next = await fetchAgentHistoryBatch(
@@ -52,6 +53,7 @@ void main() {
       cursorByServerId: const {'server-a': 'next-a'},
     );
     expect(next.entries.single.agent.agentId, 'next');
+    expect(next.failedServerIds, isEmpty);
     expect(good.cursors, [null, 'next-a']);
   });
 
@@ -99,6 +101,7 @@ void main() {
     final copied = page.copyWith(loadingMore: true);
     expect(copied.entries, same(page.entries));
     expect(copied.nextCursorByServerId, same(page.nextCursorByServerId));
+    expect(copied.failedServerIds, same(page.failedServerIds));
     expect(copied.loadingMore, isTrue);
   });
 
@@ -186,6 +189,65 @@ void main() {
       isEmpty,
     );
   });
+
+  test(
+    'manual refresh preserves visible history when its host fails',
+    () async {
+      final client = _HistoryClient([_page(agentId: 'visible')]);
+      final container = _historyContainer(client);
+      addTearDown(container.dispose);
+
+      final initial = await container.read(agentHistoryProvider.future);
+      client.fail = true;
+      await container
+          .read(agentHistoryProvider.notifier)
+          .refreshPreservingData();
+
+      final refreshed = container.read(agentHistoryProvider).requireValue;
+      expect(refreshed.entries, initial.entries);
+      expect(refreshed.failedServerIds, {'server-a'});
+    },
+  );
+
+  test(
+    'host-scoped refresh replaces only that host and preserves cursors',
+    () async {
+      final first = _HistoryClient([
+        _page(agentId: 'a-before', nextCursor: 'a-next', hasMore: true),
+        _page(agentId: 'a-after'),
+      ]);
+      final second = _HistoryClient([
+        _page(agentId: 'b-stays', nextCursor: 'b-next', hasMore: true),
+      ]);
+      final container = ProviderContainer(
+        overrides: [
+          hostRegistryProvider.overrideWith(_TwoHistoryRegistry.new),
+          hostRuntimeClientsProvider.overrideWithValue({
+            'server-a': first,
+            'server-b': second,
+          }),
+          hostConnectionStateProvider.overrideWith(
+            (ref, serverId) => Stream.value(DaemonConnectionState.connected),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(agentHistoryProvider.future);
+      await container
+          .read(agentHistoryProvider.notifier)
+          .refreshPreservingData(serverId: 'server-a');
+
+      final refreshed = container.read(agentHistoryProvider).requireValue;
+      expect(refreshed.entries.map((entry) => entry.agent.agentId).toSet(), {
+        'a-after',
+        'b-stays',
+      });
+      expect(refreshed.nextCursorByServerId, {'server-b': 'b-next'});
+      expect(first.cursors, [null, null]);
+      expect(second.cursors, [null]);
+    },
+  );
 }
 
 final class _HistoryClient extends DaemonClient {
@@ -246,6 +308,30 @@ final class _HistoryRegistry extends HostRegistryNotifier {
     loaded: true,
   );
 }
+
+final class _TwoHistoryRegistry extends HostRegistryNotifier {
+  @override
+  HostRegistryState build() => HostRegistryState(
+    hosts: [
+      _historyHost('server-a', 'Local', 'localhost:6868'),
+      _historyHost('server-b', 'Remote', 'remote.example:6868'),
+    ],
+    activeServerId: 'server-a',
+    loaded: true,
+  );
+}
+
+HostProfile _historyHost(String id, String label, String endpoint) =>
+    HostProfile(
+      serverId: id,
+      label: label,
+      connections: [
+        DirectTcpHostConnection(id: 'direct:$endpoint', endpoint: endpoint),
+      ],
+      preferredConnectionId: 'direct:$endpoint',
+      createdAt: '2026-07-28T00:00:00.000Z',
+      updatedAt: '2026-07-28T00:00:00.000Z',
+    );
 
 FetchAgentHistoryResponse _page({
   String agentId = 'agent',

@@ -29,11 +29,13 @@ final class AgentHistoryState {
   const AgentHistoryState({
     this.entries = const [],
     this.nextCursorByServerId = const {},
+    this.failedServerIds = const {},
     this.loadingMore = false,
   });
 
   final List<AgentHistoryEntry> entries;
   final Map<String, String> nextCursorByServerId;
+  final Set<String> failedServerIds;
   final bool loadingMore;
 
   bool get hasMore => nextCursorByServerId.isNotEmpty;
@@ -41,10 +43,12 @@ final class AgentHistoryState {
   AgentHistoryState copyWith({
     List<AgentHistoryEntry>? entries,
     Map<String, String>? nextCursorByServerId,
+    Set<String>? failedServerIds,
     bool? loadingMore,
   }) => AgentHistoryState(
     entries: entries ?? this.entries,
     nextCursorByServerId: nextCursorByServerId ?? this.nextCursorByServerId,
+    failedServerIds: failedServerIds ?? this.failedServerIds,
     loadingMore: loadingMore ?? this.loadingMore,
   );
 }
@@ -92,14 +96,70 @@ class AgentHistoryNotifier extends AsyncNotifier<AgentHistoryState> {
     state = await AsyncValue.guard(() => fetchAgentHistoryBatch(_hosts));
   }
 
-  Future<void> loadMore() async {
+  Future<void> refreshPreservingData({String? serverId}) async {
+    final current = state.value;
+    if (current == null) {
+      await reload();
+      return;
+    }
+    final selectedHosts = serverId == null
+        ? _hosts
+        : _hosts.where((host) => host.serverId == serverId).toList();
+    if (selectedHosts.isEmpty) return;
+    final selectedIds = selectedHosts.map((host) => host.serverId).toSet();
+    try {
+      final refreshed = await fetchAgentHistoryBatch(selectedHosts);
+      if (serverId == null) {
+        state = AsyncData(refreshed);
+        return;
+      }
+      final entries = <String, AgentHistoryEntry>{
+        for (final entry in current.entries)
+          if (!selectedIds.contains(entry.serverId))
+            '${entry.serverId}:${entry.agent.agentId}': entry,
+        for (final entry in refreshed.entries)
+          '${entry.serverId}:${entry.agent.agentId}': entry,
+      }.values.toList()..sort(_compareHistoryEntries);
+      final next = {...current.nextCursorByServerId}
+        ..removeWhere((id, _) => selectedIds.contains(id))
+        ..addAll(refreshed.nextCursorByServerId);
+      final failed = {...current.failedServerIds}
+        ..removeAll(selectedIds)
+        ..addAll(refreshed.failedServerIds);
+      state = AsyncData(
+        AgentHistoryState(
+          entries: List.unmodifiable(entries),
+          nextCursorByServerId: Map.unmodifiable(next),
+          failedServerIds: Set.unmodifiable(failed),
+        ),
+      );
+    } on Object {
+      state = AsyncData(
+        current.copyWith(
+          failedServerIds: Set.unmodifiable({
+            ...current.failedServerIds,
+            ...selectedIds,
+          }),
+        ),
+      );
+    }
+  }
+
+  Future<void> loadMore({String? serverId}) async {
     final current = state.value;
     if (current == null || current.loadingMore || !current.hasMore) return;
+    final cursors = serverId == null
+        ? current.nextCursorByServerId
+        : switch (current.nextCursorByServerId[serverId]) {
+            final cursor? => {serverId: cursor},
+            null => const <String, String>{},
+          };
+    if (cursors.isEmpty) return;
     state = AsyncData(current.copyWith(loadingMore: true));
     try {
       final page = await fetchAgentHistoryBatch(
         _hosts,
-        cursorByServerId: current.nextCursorByServerId,
+        cursorByServerId: cursors,
       );
       final merged = <String, AgentHistoryEntry>{
         for (final entry in current.entries)
@@ -107,10 +167,17 @@ class AgentHistoryNotifier extends AsyncNotifier<AgentHistoryState> {
         for (final entry in page.entries)
           '${entry.serverId}:${entry.agent.agentId}': entry,
       }.values.toList()..sort(_compareHistoryEntries);
+      final next = {...current.nextCursorByServerId}
+        ..removeWhere((serverId, _) => cursors.containsKey(serverId))
+        ..addAll(page.nextCursorByServerId);
+      final failed = {...current.failedServerIds}
+        ..removeAll(cursors.keys)
+        ..addAll(page.failedServerIds);
       state = AsyncData(
         AgentHistoryState(
           entries: List.unmodifiable(merged),
-          nextCursorByServerId: page.nextCursorByServerId,
+          nextCursorByServerId: Map.unmodifiable(next),
+          failedServerIds: Set.unmodifiable(failed),
         ),
       );
     } on Object {
@@ -144,36 +211,47 @@ Future<AgentHistoryState> fetchAgentHistoryBatch(
       _fetchHostHistory(
         host,
         cursor: cursorByServerId?[host.serverId],
-      ).then<(AgentHistoryHost, FetchAgentHistoryResponse)?>(
-        (page) => (host, page),
-        onError: (_) => null,
+      ).then<_AgentHistoryFetchResult>(
+        (page) => _AgentHistoryFetchResult(host: host, page: page),
+        onError: (_) => _AgentHistoryFetchResult(host: host),
       ),
   ]);
-  final pages = results
-      .whereType<(AgentHistoryHost, FetchAgentHistoryResponse)>();
+  final pages = results.where((result) => result.page != null);
   if (selectedHosts.isNotEmpty && pages.isEmpty) {
     throw StateError('No connected hosts could load agent history');
   }
   final entries = <AgentHistoryEntry>[
-    for (final (host, page) in pages)
-      for (final entry in page.entries)
+    for (final result in pages)
+      for (final entry in result.page!.entries)
         AgentHistoryEntry(
-          serverId: host.serverId,
-          serverLabel: host.serverLabel,
+          serverId: result.host.serverId,
+          serverLabel: result.host.serverLabel,
           agent: entry.agent,
           project: entry.project,
           pendingPermissionCount: entry.pendingPermissions.length,
         ),
   ]..sort(_compareHistoryEntries);
   final next = <String, String>{
-    for (final (host, page) in pages)
-      if (page.pageInfo.hasMore && page.pageInfo.nextCursor != null)
-        host.serverId: page.pageInfo.nextCursor!,
+    for (final result in pages)
+      if (result.page!.pageInfo.hasMore &&
+          result.page!.pageInfo.nextCursor != null)
+        result.host.serverId: result.page!.pageInfo.nextCursor!,
   };
   return AgentHistoryState(
     entries: List.unmodifiable(entries),
     nextCursorByServerId: Map.unmodifiable(next),
+    failedServerIds: Set.unmodifiable({
+      for (final result in results)
+        if (result.page == null) result.host.serverId,
+    }),
   );
+}
+
+final class _AgentHistoryFetchResult {
+  const _AgentHistoryFetchResult({required this.host, this.page});
+
+  final AgentHistoryHost host;
+  final FetchAgentHistoryResponse? page;
 }
 
 Future<FetchAgentHistoryResponse> _fetchHostHistory(

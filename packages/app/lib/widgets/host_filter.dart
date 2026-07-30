@@ -31,6 +31,7 @@ class HostFilter extends StatelessWidget {
       includeAllHost: true,
       title: 'Filter by host',
       triggerKey: triggerKey,
+      hostOptionKey: (id) => ValueKey('host-filter-option-$id'),
       triggerBuilder: (context, onOpen, open) => Semantics(
         button: true,
         label: 'Filter: $label',

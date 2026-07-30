@@ -2947,12 +2947,13 @@
     {
       "id": "source-unit:packages/app/src/components/hosts/host-filter.tsx",
       "status": "verified",
-      "implementation": "packages/app/lib/widgets/host_filter.dart;packages/app/lib/screens/schedules_screen.dart",
+      "implementation": "packages/app/lib/widgets/host_filter.dart;packages/app/lib/screens/schedules_screen.dart;packages/app/lib/screens/sessions_screen.dart",
       "evidence": [
         "packages/app/test/host_picker_test.dart",
-        "packages/app/test/schedules_screen_test.dart"
+        "packages/app/test/schedules_screen_test.dart",
+        "packages/app/test/sessions_screen_test.dart"
       ],
-      "notes": "The shared All hosts/selected host filter pill uses the frozen label semantics, host status slot, 32px surface/border geometry, anchored picker behavior, and replaces the schedules-specific implementation."
+      "notes": "The shared All hosts/selected host filter pill uses the frozen label semantics, host status slot, 32px surface/border geometry, anchored picker behavior, stable option keys, and is shared by the Schedules and Sessions screens."
     },
     {
       "id": "source-unit:packages/app/src/components/hosts/host-picker-constants.ts",
@@ -5749,7 +5750,7 @@
         "packages/app/test/daemon_client_test.dart",
         "packages/app/test/daemon_client_v2_e2e_test.dart"
       ],
-      "notes": "Connected hosts load frozen history pages concurrently, retain independent cursors, tolerate partial host failure, sort and deduplicate merged pages, preserve loaded rows after incremental failure, and rebuild on connection changes. Exact TanStack query cache timings and opaque frozen cursors remain."
+      "notes": "Connected hosts load frozen history pages concurrently, retain independent opaque cursors, expose per-host failures, sort and deduplicate merged pages, preserve loaded rows after all-host incremental or manual-refresh failure, support host-scoped refresh and pagination, and rebuild on connection changes. Exact TanStack stale/cache timing remains."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-agent-initialization.ts",
@@ -7082,13 +7083,15 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/sessions-screen.tsx",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/screens/sessions_screen.dart; packages/app/lib/core/app_router.dart; packages/app/lib/screens/home_shell.dart; packages/app/lib/state/agent_history_provider.dart",
       "evidence": [
         "packages/app/test/sessions_screen_test.dart",
-        "packages/app/test/agent_history_provider_test.dart"
+        "packages/app/test/agent_history_provider_test.dart",
+        "packages/app/test/agent_list_test.dart",
+        "packages/app/test/host_picker_test.dart"
       ],
-      "notes": "The Sessions route, sidebar entry, all-host/per-host filter, archived and active rows, loading/error/empty states, recovery navigation, and paginated loading are implemented. Exact visual geometry, date grouping, search, provider-unavailable treatment, and golden evidence remain."
+      "notes": "Matches the frozen focused Sessions body across initial loading, all-host and host-scoped history, partial host failure, retry, global and filtered empty states, stable newest-first ordering, pull refresh without dropping visible rows, scoped pagination with Loading copy, and the exact open-project and agent navigation routes. The multi-host filter uses the frozen adaptive 12/24px inset and 32px pill, resets removed selections permanently to All hosts, and the list always exposes the host column while suppressing attention badges as upstream does."
     },
     {
       "id": "source-unit:packages/app/src/screens/settings-screen.tsx",
