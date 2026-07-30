@@ -260,7 +260,14 @@ class WorktreeTabbedPane extends ConsumerWidget {
       isWorktree: isWorktree,
       isPaneFocused: isActive,
     ),
-    WorktreeTabKind.diff => DiffPane(cwd: worktreePath),
+    WorktreeTabKind.diff => DiffPane(
+      cwd: worktreePath,
+      serverId:
+          ref.watch(activeHostProvider)?.serverId ??
+          ref.watch(daemonClientProvider).serverInfo?.serverId,
+      workspaceId: workspaceId,
+      onOpenWorkspaceFile: onOpenWorkspaceFile,
+    ),
     WorktreeTabKind.terminal => TerminalPane(
       worktreePath: worktreePath,
       tabId: tab.tabId,

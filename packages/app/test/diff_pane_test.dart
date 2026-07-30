@@ -1,8 +1,11 @@
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
+import 'package:coding_agent_app/core/external_url_launcher.dart';
 import 'package:coding_agent_app/state/changes_preferences_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
+import 'package:coding_agent_app/state/workspace_attachments_provider.dart';
 import 'package:coding_agent_app/widgets/diff/diff_pane.dart';
+import 'package:coding_agent_app/workspace/workspace_file_open.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +20,17 @@ class FakeDaemonClient extends DaemonClient {
   final sessionRequests = <Map<String, Object?>>[];
   final DiffResponse diff;
   bool failNextGet = false;
+  final downloadRequests = <(String, String)>[];
+
+  @override
+  Future<Uri> requestFileDownloadUri({
+    required String cwd,
+    required String path,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    downloadRequests.add((cwd, path));
+    return Uri.parse('http://fake/api/files/download?token=once');
+  }
 
   @override
   Stream<RpcEvent> get events => const Stream.empty();
@@ -97,6 +111,8 @@ Future<ProviderContainer> pumpDiffPane(
   FakeDaemonClient? client,
   bool live = false,
   bool compact = false,
+  ValueChanged<WorkspaceFileOpenRequest>? onOpenWorkspaceFile,
+  ExternalUrlLauncher? launcher,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -104,6 +120,8 @@ Future<ProviderContainer> pumpDiffPane(
       changesPreferencesStorageProvider.overrideWithValue(
         _MemoryChangesStorage(),
       ),
+      if (launcher != null)
+        externalUrlLauncherProvider.overrideWithValue(launcher),
     ],
   );
   addTearDown(container.dispose);
@@ -118,6 +136,7 @@ Future<ProviderContainer> pumpDiffPane(
             serverId: live ? 'server-1' : null,
             workspaceId: live ? 'workspace-1' : null,
             compact: compact,
+            onOpenWorkspaceFile: onOpenWorkspaceFile,
           ),
         ),
       ),
@@ -338,6 +357,63 @@ void main() {
     expect(find.byKey(const ValueKey('changes-options-menu')), findsOneWidget);
     expect(find.byKey(const ValueKey('changes-toggle-layout')), findsNothing);
   });
+
+  testWidgets(
+    'file actions open, attach, and download through workspace APIs',
+    (tester) async {
+      const diff = DiffResponse(
+        files: [
+          DiffFile(
+            path: 'lib/change.dart',
+            status: DiffFileStatus.modified,
+            additions: 1,
+          ),
+        ],
+      );
+      final client = FakeDaemonClient(diff: diff);
+      final launcher = _FakeExternalUrlLauncher();
+      WorkspaceFileOpenRequest? opened;
+      final container = await pumpDiffPane(
+        tester,
+        client: client,
+        launcher: launcher,
+        onOpenWorkspaceFile: (request) => opened = request,
+      );
+
+      Future<void> choose(String label) async {
+        await tester.tap(find.byKey(const ValueKey('diff-file-0-actions')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(label));
+        await tester.pumpAndSettle();
+      }
+
+      await choose('Open file');
+      expect(opened?.location.path, 'lib/change.dart');
+      expect(opened?.disposition, OpenFileDisposition.main);
+
+      await choose('Add to chat');
+      final attachment = container
+          .read(workspaceAttachmentsProvider(_cwd))
+          .single;
+      expect(attachment.kind, 'file');
+      expect(attachment.id, 'lib/change.dart');
+      expect(attachment.title, 'change.dart');
+
+      await choose('Download');
+      expect(client.downloadRequests, [(_cwd, 'lib/change.dart')]);
+      expect(launcher.opened, ['http://fake/api/files/download?token=once']);
+    },
+  );
+}
+
+final class _FakeExternalUrlLauncher implements ExternalUrlLauncher {
+  final opened = <String>[];
+
+  @override
+  Future<bool> open(String url) async {
+    opened.add(url);
+    return true;
+  }
 }
 
 final class _MemoryChangesStorage implements ChangesPreferencesStorage {

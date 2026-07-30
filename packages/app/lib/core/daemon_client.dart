@@ -278,6 +278,42 @@ class DaemonClient {
     );
   }
 
+  Future<Uri> requestFileDownloadUri({
+    required String cwd,
+    required String path,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final requestId = _uuid.v4();
+    final response = await requestSessionMessage({
+      'type': 'file_download_token_request',
+      'cwd': cwd,
+      'path': path,
+      'requestId': requestId,
+    }, timeout: timeout);
+    if (response['type'] != 'file_download_token_response') {
+      throw const FormatException('Unexpected file download response');
+    }
+    final payload = Map<String, Object?>.from(response['payload'] as Map);
+    if (payload['requestId'] != requestId ||
+        payload['cwd'] != cwd ||
+        payload['path'] != path) {
+      throw const FormatException('File download response mismatch');
+    }
+    if (payload['error'] case final String error when error.isNotEmpty) {
+      throw StateError(error);
+    }
+    final token = payload['token'];
+    if (token is! String || token.isEmpty) {
+      throw const FormatException('Missing file download token');
+    }
+    return uri.replace(
+      scheme: uri.scheme == 'wss' ? 'https' : 'http',
+      path: '/api/files/download',
+      queryParameters: {'token': token},
+      fragment: '',
+    );
+  }
+
   Future<ReadProjectConfigResponse> readProjectConfig(
     String repoRoot, {
     String? requestId,

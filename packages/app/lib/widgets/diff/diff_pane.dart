@@ -3,15 +3,19 @@ import 'dart:async';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
+import '../../core/external_url_launcher.dart';
 import '../../core/theme.dart';
 import '../../state/changes_preferences_provider.dart';
 import '../../state/code_appearance_provider.dart';
+import '../../state/daemon_providers.dart';
 import '../../state/review_draft_provider.dart';
 import '../../state/working_diff_provider.dart';
 import '../../state/workspace_checkout_status_provider.dart';
 import '../../state/workspace_attachments_provider.dart';
 import '../../state/workspace_providers.dart';
+import '../../workspace/workspace_file_open.dart';
 import 'diff_view.dart';
 
 /// Diff of a worktree's working directory with a manual refresh action.
@@ -24,12 +28,14 @@ class DiffPane extends ConsumerStatefulWidget {
     this.serverId,
     this.workspaceId,
     this.compact = false,
+    this.onOpenWorkspaceFile,
   });
 
   final String cwd;
   final String? serverId;
   final String? workspaceId;
   final bool compact;
+  final ValueChanged<WorkspaceFileOpenRequest>? onOpenWorkspaceFile;
 
   @override
   ConsumerState<DiffPane> createState() => _DiffPaneState();
@@ -66,6 +72,7 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
         cwd: widget.cwd,
         compact: widget.compact,
         diffViewController: _diffViewController,
+        onOpenWorkspaceFile: widget.onOpenWorkspaceFile,
       );
     }
     final diffAsync = ref.watch(diffProvider(widget.cwd));
@@ -213,10 +220,46 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
               codeFontSize: codeAppearance.codeFontSize,
               monoFontFamily: codeAppearance.monoFontFamily,
               controller: _diffViewController,
+              onOpenFile: widget.onOpenWorkspaceFile == null ? null : _openFile,
+              onCopyPath: _copyPath,
+              onDownload: _download,
+              onAddToChat: _addToChat,
             ),
           ),
         ),
       ],
+    );
+  }
+
+  void _openFile(String path) => widget.onOpenWorkspaceFile!(
+    WorkspaceFileOpenRequest(
+      location: WorkspaceFileLocation(path: path),
+      disposition: OpenFileDisposition.main,
+    ),
+  );
+
+  void _copyPath(String path) {
+    final resolved = resolveWorkspaceFilePaths(
+      path: path,
+      workspaceRoot: widget.cwd,
+    );
+    Clipboard.setData(ClipboardData(text: resolved?.absolutePath ?? path));
+  }
+
+  void _addToChat(String path) {
+    ref
+        .read(workspaceAttachmentsProvider(widget.cwd).notifier)
+        .add(_workspaceFileAttachment(path));
+  }
+
+  void _download(String path) {
+    unawaited(
+      ref
+          .read(daemonClientProvider)
+          .requestFileDownloadUri(cwd: widget.cwd, path: path)
+          .then(
+            (uri) => ref.read(externalUrlLauncherProvider).open(uri.toString()),
+          ),
     );
   }
 }
@@ -228,6 +271,7 @@ class _LiveDiffPane extends ConsumerWidget {
     required this.cwd,
     required this.compact,
     required this.diffViewController,
+    required this.onOpenWorkspaceFile,
   });
 
   final String serverId;
@@ -235,6 +279,7 @@ class _LiveDiffPane extends ConsumerWidget {
   final String cwd;
   final bool compact;
   final DiffViewController diffViewController;
+  final ValueChanged<WorkspaceFileOpenRequest>? onOpenWorkspaceFile;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -448,6 +493,36 @@ class _LiveDiffPane extends ConsumerWidget {
                 codeFontSize: codeAppearance.codeFontSize,
                 monoFontFamily: codeAppearance.monoFontFamily,
                 controller: diffViewController,
+                onOpenFile: onOpenWorkspaceFile == null
+                    ? null
+                    : (path) => onOpenWorkspaceFile!(
+                        WorkspaceFileOpenRequest(
+                          location: WorkspaceFileLocation(path: path),
+                          disposition: OpenFileDisposition.main,
+                        ),
+                      ),
+                onCopyPath: (path) {
+                  final resolved = resolveWorkspaceFilePaths(
+                    path: path,
+                    workspaceRoot: cwd,
+                  );
+                  Clipboard.setData(
+                    ClipboardData(text: resolved?.absolutePath ?? path),
+                  );
+                },
+                onDownload: (path) => unawaited(
+                  ref
+                      .read(daemonClientProvider)
+                      .requestFileDownloadUri(cwd: cwd, path: path)
+                      .then(
+                        (uri) => ref
+                            .read(externalUrlLauncherProvider)
+                            .open(uri.toString()),
+                      ),
+                ),
+                onAddToChat: (path) => ref
+                    .read(workspaceAttachmentsProvider(cwd).notifier)
+                    .add(_workspaceFileAttachment(path)),
               );
             },
           ),
@@ -455,6 +530,20 @@ class _LiveDiffPane extends ConsumerWidget {
       ],
     );
   }
+}
+
+WorkspaceContextAttachment _workspaceFileAttachment(String path) {
+  final normalized = path.replaceAll(r'\', '/');
+  final title = normalized.split('/').last;
+  return WorkspaceContextAttachment(
+    kind: 'file',
+    id: normalized,
+    title: title,
+    subtitle: normalized,
+    text: normalized,
+    url: null,
+    semanticAttachment: TextAgentAttachment(title: title, text: normalized),
+  );
 }
 
 class _DiffLayoutToggle extends StatelessWidget {

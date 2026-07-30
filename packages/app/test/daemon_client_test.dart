@@ -262,6 +262,48 @@ void main() {
     expect((response['payload'] as Map)['cwd'], '/repo');
   });
 
+  test('file download URI uses a correlated one-time daemon token', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    unawaited(
+      conn.nextRequest('file_download_token_request').then((frame) {
+        expect(frame['cwd'], '/repo');
+        expect(frame['path'], 'lib/main.dart');
+        conn.respondNative(
+          'file_download_token_response',
+          frame['requestId'] as String,
+          const {
+            'cwd': '/repo',
+            'path': 'lib/main.dart',
+            'token': 'one-time-token',
+            'fileName': 'main.dart',
+            'mimeType': 'text/plain',
+            'size': 42,
+            'error': null,
+          },
+        );
+      }),
+    );
+
+    final uri = await client.requestFileDownloadUri(
+      cwd: '/repo',
+      path: 'lib/main.dart',
+    );
+
+    expect(uri.scheme, 'http');
+    expect(uri.host, '127.0.0.1');
+    expect(uri.port, server.uri.port);
+    expect(uri.path, '/api/files/download');
+    expect(uri.queryParameters, {'token': 'one-time-token'});
+  });
+
   test('reads project config via typed correlated RPC', () async {
     client = DaemonClient(uri: server.uri);
     final connFuture = nextConnection(server);

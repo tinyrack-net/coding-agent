@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/foundation.dart';
@@ -11,6 +13,7 @@ import '../../core/diff_tree.dart';
 import '../../core/theme.dart';
 import '../../state/changes_preferences_provider.dart';
 import '../../state/review_draft_provider.dart';
+import '../file_actions_menu.dart';
 import '../code_insets.dart';
 import '../shortcut_badge.dart';
 import 'diff_scroll.dart';
@@ -102,6 +105,10 @@ class DiffView extends ConsumerStatefulWidget {
     this.codeFontSize = 12,
     this.monoFontFamily = '',
     this.controller,
+    this.onOpenFile,
+    this.onCopyPath,
+    this.onDownload,
+    this.onAddToChat,
   });
 
   final DiffResponse diff;
@@ -112,6 +119,10 @@ class DiffView extends ConsumerStatefulWidget {
   final double codeFontSize;
   final String monoFontFamily;
   final DiffViewController? controller;
+  final ValueChanged<String>? onOpenFile;
+  final ValueChanged<String>? onCopyPath;
+  final ValueChanged<String>? onDownload;
+  final ValueChanged<String>? onAddToChat;
 
   @override
   ConsumerState<DiffView> createState() => _DiffViewState();
@@ -253,6 +264,10 @@ class _DiffViewState extends ConsumerState<DiffView> {
                 item: header,
                 showDirectory: widget.viewMode == ChangesViewMode.flat,
                 onToggle: () => _controller.toggleFile(header.file.path),
+                onOpenFile: widget.onOpenFile,
+                onCopyPath: widget.onCopyPath,
+                onDownload: widget.onDownload,
+                onAddToChat: widget.onAddToChat,
               ),
               final DiffFlatBodyItem body => Padding(
                 key: ValueKey('diff-file-${body.fileIndex}-body'),
@@ -385,33 +400,64 @@ class _DiffFolderRow extends StatelessWidget {
   }
 }
 
-class _DiffFileHeader extends StatelessWidget {
+class _DiffFileHeader extends StatefulWidget {
   const _DiffFileHeader({
     required this.item,
     required this.showDirectory,
     required this.onToggle,
+    this.onOpenFile,
+    this.onCopyPath,
+    this.onDownload,
+    this.onAddToChat,
   });
 
   final DiffFlatHeaderItem item;
   final bool showDirectory;
   final VoidCallback onToggle;
+  final ValueChanged<String>? onOpenFile;
+  final ValueChanged<String>? onCopyPath;
+  final ValueChanged<String>? onDownload;
+  final ValueChanged<String>? onAddToChat;
+
+  @override
+  State<_DiffFileHeader> createState() => _DiffFileHeaderState();
+}
+
+class _DiffFileHeaderState extends State<_DiffFileHeader> {
+  final _actionsKey = GlobalKey<FileActionsMenuState>();
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      key: ValueKey('diff-file-${item.fileIndex}'),
-      padding: EdgeInsets.only(left: item.depth * 16.0),
-      child: ListTile(
-        onPressed: onToggle,
-        leading: Icon(
-          item.isExpanded
-              ? FluentIcons.chevron_down
-              : FluentIcons.chevron_right,
-          size: 12,
-        ),
-        title: _FileRowLabel(
-          file: item.file,
-          pathLabel: showDirectory ? null : _treeFileLabel(item.file),
+      key: ValueKey('diff-file-${widget.item.fileIndex}'),
+      padding: EdgeInsets.only(left: widget.item.depth * 16.0),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onSecondaryTap: () => unawaited(_actionsKey.currentState?.show()),
+        child: ListTile(
+          onPressed: widget.onToggle,
+          leading: Icon(
+            widget.item.isExpanded
+                ? FluentIcons.chevron_down
+                : FluentIcons.chevron_right,
+            size: 12,
+          ),
+          title: _FileRowLabel(
+            file: widget.item.file,
+            pathLabel: widget.showDirectory
+                ? null
+                : _treeFileLabel(widget.item.file),
+            actions: FileActionsMenu(
+              key: _actionsKey,
+              path: widget.item.file.path,
+              fileExists: widget.item.file.status != DiffFileStatus.deleted,
+              testIdPrefix: 'diff-file-${widget.item.fileIndex}',
+              onOpenFile: widget.onOpenFile,
+              onCopyPath: widget.onCopyPath,
+              onDownload: widget.onDownload,
+              onAddToChat: widget.onAddToChat,
+            ),
+          ),
         ),
       ),
     );
@@ -420,10 +466,11 @@ class _DiffFileHeader extends StatelessWidget {
 
 /// Status icon + path + add/del counts; shared by both layouts.
 class _FileRowLabel extends StatelessWidget {
-  const _FileRowLabel({required this.file, this.pathLabel});
+  const _FileRowLabel({required this.file, this.pathLabel, this.actions});
 
   final DiffFile file;
   final String? pathLabel;
+  final Widget? actions;
 
   @override
   Widget build(BuildContext context) {
@@ -447,6 +494,7 @@ class _FileRowLabel extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         DiffStat(additions: file.additions, deletions: file.deletions),
+        if (actions != null) ...[const SizedBox(width: 4), actions!],
       ],
     );
   }

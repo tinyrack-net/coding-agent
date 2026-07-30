@@ -959,4 +959,77 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('a changed'), findsOneWidget);
   });
+
+  testWidgets('file actions match Paseo order without toggling the file', (
+    tester,
+  ) async {
+    final actions = <String>[];
+    await tester.pumpWidget(
+      _wrap(
+        DiffView(
+          diff: _diff,
+          onOpenFile: (path) => actions.add('open:$path'),
+          onCopyPath: (path) => actions.add('copy:$path'),
+          onDownload: (path) => actions.add('download:$path'),
+          onAddToChat: (path) => actions.add('chat:$path'),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('diff-file-1-actions')));
+    await tester.pumpAndSettle();
+    expect(find.text('Open file'), findsOneWidget);
+    expect(find.text('Copy path'), findsOneWidget);
+    expect(find.text('Download'), findsOneWidget);
+    expect(find.text('Add to chat'), findsOneWidget);
+    await tester.tap(find.text('Open file'));
+    await tester.pumpAndSettle();
+
+    expect(actions, ['open:lib/changed.dart']);
+    expect(find.text('new line'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('diff-file-1-actions')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add to chat'));
+    await tester.pumpAndSettle();
+    expect(actions.last, 'chat:lib/changed.dart');
+    expect(find.text('new line'), findsNothing);
+  });
+
+  testWidgets('deleted file actions keep only copy path', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        DiffView(
+          diff: _diff,
+          onOpenFile: (_) {},
+          onCopyPath: (_) {},
+          onDownload: (_) {},
+          onAddToChat: (_) {},
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('diff-file-2-actions')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Copy path'), findsOneWidget);
+    expect(find.text('Open file'), findsNothing);
+    expect(find.text('Download'), findsNothing);
+    expect(find.text('Add to chat'), findsNothing);
+  });
+
+  testWidgets('secondary click opens actions without toggling the file', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_wrap(DiffView(diff: _diff, onCopyPath: (_) {})));
+
+    await tester.tap(
+      find.byKey(const ValueKey('diff-file-1')),
+      buttons: kSecondaryButton,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Copy path'), findsOneWidget);
+    expect(find.text('new line'), findsNothing);
+  });
 }
