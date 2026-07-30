@@ -1,5 +1,83 @@
+import 'package:agent_protocol/agent_protocol.dart';
+
 import 'highlight_cache.dart';
 import 'tool_call_parsers.dart';
+
+DiffResponse highlightLegacyDiff(DiffResponse diff) {
+  var changed = false;
+  final files = <DiffFile>[];
+  for (final file in diff.files) {
+    final highlighted = highlightLegacyDiffFile(file);
+    changed = changed || !identical(highlighted, file);
+    files.add(highlighted);
+  }
+  return changed ? DiffResponse(files: files) : diff;
+}
+
+DiffFile highlightLegacyDiffFile(DiffFile file) {
+  final sourceLines = [
+    for (final hunk in file.hunks)
+      for (final line in hunk.lines)
+        ToolDiffLine(
+          type: switch (line.type) {
+            DiffLineType.add => ToolDiffLineType.add,
+            DiffLineType.del => ToolDiffLineType.remove,
+            DiffLineType.context => ToolDiffLineType.context,
+          },
+          content: line.text,
+          tokens: line.tokens
+              ?.map(
+                (token) => ToolDiffToken(text: token.text, style: token.style),
+              )
+              .toList(),
+        ),
+  ];
+  final highlighted = highlightDiffLines(sourceLines, file.path);
+  if (identical(highlighted, sourceLines)) return file;
+
+  var lineIndex = 0;
+  var changed = false;
+  final hunks = [
+    for (final hunk in file.hunks)
+      DiffHunk(
+        header: hunk.header,
+        lines: [
+          for (final line in hunk.lines)
+            () {
+              final highlightedLine = highlighted[lineIndex++];
+              final tokens =
+                  line.tokens ??
+                  highlightedLine.tokens
+                      ?.map(
+                        (token) =>
+                            DiffToken(text: token.text, style: token.style),
+                      )
+                      .toList();
+              if (tokens == null) return line;
+              changed = true;
+              return DiffLine(
+                type: line.type,
+                text: line.text,
+                oldLineNo: line.oldLineNo,
+                newLineNo: line.newLineNo,
+                tokens: tokens,
+              );
+            }(),
+        ],
+      ),
+  ];
+  if (!changed) return file;
+  return DiffFile(
+    path: file.path,
+    status: file.status,
+    oldPath: file.oldPath,
+    binary: file.binary,
+    tooLarge: file.tooLarge,
+    additions: file.additions,
+    deletions: file.deletions,
+    hunks: hunks,
+  );
+}
 
 List<ToolDiffLine> highlightDiffLines(
   List<ToolDiffLine> diffLines,

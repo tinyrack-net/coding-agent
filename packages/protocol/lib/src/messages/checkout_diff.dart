@@ -353,6 +353,12 @@ CheckoutDiffFile _fromLegacyFile(DiffFile file) => CheckoutDiffFile(
               DiffLineType.context => CheckoutDiffLineType.context,
             },
             content: line.text,
+            tokens: line.tokens
+                ?.map(
+                  (token) =>
+                      CheckoutDiffToken(text: token.text, style: token.style),
+                )
+                .toList(),
           ),
         ),
       ],
@@ -388,6 +394,7 @@ DiffFile _toLegacyFile(CheckoutDiffFile file) => DiffFile(
               type: DiffLineType.add,
               text: line.content,
               newLineNo: newLine++,
+              tokens: _toLegacyTokens(line.tokens),
             ),
           );
         case CheckoutDiffLineType.remove:
@@ -396,6 +403,7 @@ DiffFile _toLegacyFile(CheckoutDiffFile file) => DiffFile(
               type: DiffLineType.del,
               text: line.content,
               oldLineNo: oldLine++,
+              tokens: _toLegacyTokens(line.tokens),
             ),
           );
         case CheckoutDiffLineType.context:
@@ -405,6 +413,7 @@ DiffFile _toLegacyFile(CheckoutDiffFile file) => DiffFile(
               text: line.content,
               oldLineNo: oldLine++,
               newLineNo: newLine++,
+              tokens: _toLegacyTokens(line.tokens),
             ),
           );
         case CheckoutDiffLineType.header:
@@ -419,6 +428,10 @@ DiffFile _toLegacyFile(CheckoutDiffFile file) => DiffFile(
     );
   }).toList(),
 );
+
+List<DiffToken>? _toLegacyTokens(List<CheckoutDiffToken>? tokens) => tokens
+    ?.map((token) => DiffToken(text: token.text, style: token.style))
+    .toList();
 
 Map<String, Object?> _requiredMap(Map<String, Object?> json, String key) {
   final value = json[key];

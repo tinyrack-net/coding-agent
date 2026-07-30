@@ -14,12 +14,20 @@ void main() {
         text: '+ hello',
         oldLineNo: 3,
         newLineNo: 4,
+        tokens: [
+          DiffToken(text: 'hello', style: 'string'),
+          DiffToken(text: '!', style: null),
+        ],
       );
       final decoded = DiffLine.fromJson(roundTrip(line.toJson()));
       expect(decoded.type, DiffLineType.add);
       expect(decoded.text, '+ hello');
       expect(decoded.oldLineNo, 3);
       expect(decoded.newLineNo, 4);
+      expect(decoded.tokens, hasLength(2));
+      expect(decoded.tokens!.first.text, 'hello');
+      expect(decoded.tokens!.first.style, 'string');
+      expect(decoded.tokens!.last.style, isNull);
     });
 
     test('omits null line numbers from json', () {
@@ -27,6 +35,7 @@ void main() {
       final json = line.toJson();
       expect(json.containsKey('oldLineNo'), isFalse);
       expect(json.containsKey('newLineNo'), isFalse);
+      expect(json.containsKey('tokens'), isFalse);
     });
 
     test('fromJson applies defaults for missing fields', () {

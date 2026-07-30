@@ -1085,4 +1085,65 @@ void main() {
     expect(scroll.controller!.offset, closeTo(0, 1));
     expect(find.text('line 0'), findsNothing);
   });
+
+  testWidgets('syntax tokens render in unified, split, and wrapped rows', (
+    tester,
+  ) async {
+    const code = 'const value = 1;';
+    const diff = DiffResponse(
+      files: [
+        DiffFile(
+          path: 'lib/token.dart',
+          status: DiffFileStatus.modified,
+          additions: 1,
+          hunks: [
+            DiffHunk(
+              header: '@@ -0,0 +1 @@',
+              lines: [
+                DiffLine(type: DiffLineType.add, text: code, newLineNo: 1),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.binding.setSurfaceSize(const Size(1000, 400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    for (final configuration in [
+      (layout: ChangesLayout.unified, wrap: false),
+      (layout: ChangesLayout.unified, wrap: true),
+      (layout: ChangesLayout.split, wrap: false),
+      (layout: ChangesLayout.split, wrap: true),
+    ]) {
+      await tester.pumpWidget(
+        _wrap(
+          DiffView(
+            key: UniqueKey(),
+            diff: diff,
+            layout: configuration.layout,
+            wrapLines: configuration.wrap,
+          ),
+        ),
+      );
+      await tester.tap(find.text('lib/token.dart'));
+      await tester.pumpAndSettle();
+
+      final highlighted = tester.widget<Text>(
+        find.byWidgetPredicate(
+          (widget) => widget is Text && widget.textSpan?.toPlainText() == code,
+        ),
+      );
+      final span = highlighted.textSpan! as TextSpan;
+      expect(span.toPlainText(), code);
+      expect(
+        span.children!
+            .whereType<TextSpan>()
+            .firstWhere((token) => token.text == 'const')
+            .style
+            ?.color,
+        const Color(0xFFCF222E),
+      );
+    }
+  });
 }

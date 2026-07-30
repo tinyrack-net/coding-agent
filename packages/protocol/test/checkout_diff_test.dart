@@ -109,7 +109,12 @@ void main() {
                     newLineNo: 3,
                   ),
                   DiffLine(type: DiffLineType.del, text: 'old', oldLineNo: 4),
-                  DiffLine(type: DiffLineType.add, text: 'new', newLineNo: 4),
+                  DiffLine(
+                    type: DiffLineType.add,
+                    text: 'new',
+                    newLineNo: 4,
+                    tokens: [DiffToken(text: 'new', style: 'variable')],
+                  ),
                 ],
               ),
             ],
@@ -123,6 +128,8 @@ void main() {
     expect(restored.hunks.single.lines[0].oldLineNo, 3);
     expect(restored.hunks.single.lines[1].oldLineNo, 4);
     expect(restored.hunks.single.lines[2].newLineNo, 4);
+    expect(restored.hunks.single.lines[2].tokens!.single.text, 'new');
+    expect(restored.hunks.single.lines[2].tokens!.single.style, 'variable');
   });
 
   test('too-large placeholders survive both conversion directions', () {

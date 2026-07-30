@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/diff_flat_items.dart';
+import '../../core/diff_highlight.dart';
 import '../../core/diff_order.dart';
 import '../../core/diff_rendering.dart';
 import '../../core/diff_scroll.dart';
@@ -18,6 +19,7 @@ import '../../state/review_draft_provider.dart';
 import '../file_actions_menu.dart';
 import '../code_insets.dart';
 import '../shortcut_badge.dart';
+import '../syntax_token_styles.dart';
 import 'diff_scroll.dart';
 import 'diff_stat.dart';
 
@@ -136,6 +138,8 @@ class _DiffViewState extends ConsumerState<DiffView> {
   final _scrollController = ScrollController();
   final _headerKeys = <String, GlobalKey>{};
   final _folderKeys = <String, GlobalKey>{};
+  DiffResponse? _highlightSource;
+  DiffResponse? _highlightedDiff;
   _ReviewEditorTarget? _reviewEditor;
 
   @override
@@ -217,9 +221,15 @@ class _DiffViewState extends ConsumerState<DiffView> {
     );
   }
 
+  DiffResponse _resolveHighlightedDiff() {
+    if (identical(_highlightSource, widget.diff)) return _highlightedDiff!;
+    _highlightSource = widget.diff;
+    return _highlightedDiff = highlightLegacyDiff(widget.diff);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final files = orderLegacyDiffFiles(widget.diff.files);
+    final files = orderLegacyDiffFiles(_resolveHighlightedDiff().files);
     if (files.isEmpty) return const _NoChanges();
     _controller.reconcile(files);
     final reviewKey = widget.reviewDraftKey;
@@ -1103,8 +1113,8 @@ class _ScrollableCodeLine extends StatelessWidget {
                     style: metrics.textStyle.copyWith(color: textColor),
                   ),
                 ),
-                Text(
-                  formatDiffContentText(line.text),
+                _DiffContentText(
+                  line: line,
                   softWrap: false,
                   style: metrics.textStyle.copyWith(color: textColor),
                 ),
@@ -1903,8 +1913,8 @@ class _ScrollableSplitCodeLine extends StatelessWidget {
                     style: metrics.textStyle.copyWith(color: textColor),
                   ),
                 ),
-                Text(
-                  formatDiffContentText(value.line.text),
+                _DiffContentText(
+                  line: value.line,
                   softWrap: false,
                   style: metrics.textStyle.copyWith(color: textColor),
                 ),
@@ -2478,16 +2488,16 @@ class _SplitDiffLineRow extends StatelessWidget {
           ),
           if (wrapLines)
             Expanded(
-              child: Text(
-                formatDiffContentText(line.text),
+              child: _DiffContentText(
+                line: line,
                 softWrap: true,
                 overflow: TextOverflow.visible,
                 style: metrics.textStyle.copyWith(color: textColor),
               ),
             )
           else
-            Text(
-              formatDiffContentText(line.text),
+            _DiffContentText(
+              line: line,
               softWrap: false,
               style: metrics.textStyle.copyWith(color: textColor),
             ),
@@ -2563,21 +2573,70 @@ class _DiffLineRow extends StatelessWidget {
           ),
           if (wrapLines)
             Expanded(
-              child: Text(
-                formatDiffContentText(line.text),
+              child: _DiffContentText(
+                line: line,
                 softWrap: true,
                 overflow: TextOverflow.visible,
                 style: metrics.textStyle.copyWith(color: textColor),
               ),
             )
           else
-            Text(
-              formatDiffContentText(line.text),
+            _DiffContentText(
+              line: line,
               softWrap: false,
               style: metrics.textStyle.copyWith(color: textColor),
             ),
         ],
       ),
+    );
+  }
+}
+
+class _DiffContentText extends StatelessWidget {
+  const _DiffContentText({
+    required this.line,
+    required this.softWrap,
+    required this.style,
+    this.overflow,
+  });
+
+  final DiffLine line;
+  final bool softWrap;
+  final TextStyle style;
+  final TextOverflow? overflow;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = line.tokens;
+    if (tokens == null || !tokens.any((token) => token.text.isNotEmpty)) {
+      return Text(
+        formatDiffContentText(line.text),
+        softWrap: softWrap,
+        overflow: overflow,
+        style: style,
+      );
+    }
+    final brightness = FluentTheme.of(context).brightness;
+    final baseColor = context.paseoPalette.foreground;
+    return Text.rich(
+      TextSpan(
+        children: [
+          for (final token in tokens)
+            TextSpan(
+              text: token.text,
+              style: TextStyle(
+                color: syntaxTokenColorFor(
+                  token.style,
+                  brightness: brightness,
+                  baseColor: baseColor,
+                ),
+              ),
+            ),
+        ],
+      ),
+      style: style.copyWith(color: baseColor),
+      softWrap: softWrap,
+      overflow: overflow ?? TextOverflow.clip,
     );
   }
 }

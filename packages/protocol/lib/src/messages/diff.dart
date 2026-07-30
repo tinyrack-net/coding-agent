@@ -6,24 +6,46 @@ enum DiffFileStatus { added, modified, deleted, renamed }
 
 enum DiffLineType { context, add, del }
 
+final class DiffToken {
+  const DiffToken({required this.text, this.style});
+
+  final String text;
+  final String? style;
+
+  static DiffToken fromJson(Map<String, Object?> json) => DiffToken(
+    text: (json['text'] as String?) ?? '',
+    style: json['style'] as String?,
+  );
+
+  Map<String, Object?> toJson() => {'text': text, 'style': style};
+}
+
 final class DiffLine {
   const DiffLine({
     required this.type,
     required this.text,
     this.oldLineNo,
     this.newLineNo,
+    this.tokens,
   });
 
   final DiffLineType type;
   final String text;
   final int? oldLineNo;
   final int? newLineNo;
+  final List<DiffToken>? tokens;
 
   static DiffLine fromJson(Map<String, Object?> json) => DiffLine(
     type: DiffLineType.values.byName((json['type'] as String?) ?? 'context'),
     text: (json['text'] as String?) ?? '',
     oldLineNo: (json['oldLineNo'] as num?)?.toInt(),
     newLineNo: (json['newLineNo'] as num?)?.toInt(),
+    tokens: json['tokens'] == null
+        ? null
+        : (json['tokens'] as List)
+              .cast<Map<String, Object?>>()
+              .map(DiffToken.fromJson)
+              .toList(),
   );
 
   Map<String, Object?> toJson() => {
@@ -31,6 +53,8 @@ final class DiffLine {
     'text': text,
     if (oldLineNo != null) 'oldLineNo': oldLineNo,
     if (newLineNo != null) 'newLineNo': newLineNo,
+    if (tokens != null)
+      'tokens': tokens!.map((token) => token.toJson()).toList(),
   };
 }
 
