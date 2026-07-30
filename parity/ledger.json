@@ -3221,12 +3221,12 @@
     {
       "id": "source-unit:packages/app/src/components/model-browser.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/composer/provider_model_selection.dart; packages/app/lib/widgets/combined_model_selector.dart",
+      "implementation": "packages/app/lib/composer/provider_model_selection.dart;packages/app/lib/widgets/combined_model_selector.dart;packages/app/lib/widgets/provider_icon.dart;packages/app/lib/state/provider_settings_provider.dart",
       "evidence": [
         "packages/app/test/provider_model_selection_test.dart",
         "packages/app/test/combined_model_selector_test.dart"
       ],
-      "notes": "Enabled provider rows, favorites overview, provider drilldown/back, loading/error/retry/empty states, favorite-first ordering, and frozen multi-field fuzzy model search are implemented. Exact provider branding, settings navigation, mobile behavior, and visual geometry remain."
+      "notes": "Enabled provider rows, exact provider glyphs, favorites overview, provider drilldown/back, host-gated provider settings navigation, loading/error/retry/empty states, favorite-first ordering, and frozen multi-field fuzzy search are implemented. Adaptive mobile sheet behavior and exact visual geometry remain."
     },
     {
       "id": "source-unit:packages/app/src/components/pair-link-modal.tsx",
@@ -3311,10 +3311,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/provider-settings-host.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/provider_settings_host.dart;packages/app/lib/state/provider_settings_provider.dart;packages/app/lib/screens/home_shell.dart",
+      "evidence": [
+        "packages/app/test/provider_settings_sheet_test.dart",
+        "packages/app/test/combined_model_selector_test.dart"
+      ],
+      "notes": "A root-owned host presents the retained server/provider target, closes through the global state, and serves both Settings rows and Model Browser without dismissing the underlying selector."
     },
     {
       "id": "source-unit:packages/app/src/components/question-form-card-core.ts",
@@ -7184,12 +7187,13 @@
     {
       "id": "source-unit:packages/app/src/screens/settings/providers-section.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/screens/host_providers_settings_section.dart;packages/app/lib/screens/host_settings_route_screen.dart",
+      "implementation": "packages/app/lib/screens/host_providers_settings_section.dart;packages/app/lib/screens/host_settings_route_screen.dart;packages/app/lib/state/provider_settings_provider.dart",
       "evidence": [
         "packages/app/test/host_settings_route_screen_test.dart",
-        "packages/app/test/provider_catalog_list_test.dart"
+        "packages/app/test/provider_catalog_list_test.dart",
+        "packages/app/test/provider_settings_sheet_test.dart"
       ],
-      "notes": "Per-host snapshot rows, enable/remove controls, catalog install and refresh are connected; provider detail settings and complete custom ACP runtime remain."
+      "notes": "Per-host snapshot rows, row-level provider detail routing, enable/remove controls, catalog install, and refresh are connected. Complete generic custom ACP runtime parity remains."
     },
     {
       "id": "source-unit:packages/app/src/screens/settings/settings-group.tsx",
@@ -7607,10 +7611,13 @@
     },
     {
       "id": "source-unit:packages/app/src/stores/provider-settings-store.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/state/provider_settings_provider.dart",
+      "evidence": [
+        "packages/app/test/provider_settings_sheet_test.dart",
+        "packages/app/test/combined_model_selector_test.dart"
+      ],
+      "notes": "Open atomically replaces server/provider and makes the host visible; close hides while retaining the last target exactly like the frozen Zustand store."
     },
     {
       "id": "source-unit:packages/app/src/stores/session-store-hooks/index.ts",

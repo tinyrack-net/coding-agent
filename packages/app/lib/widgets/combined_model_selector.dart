@@ -2,8 +2,11 @@ import 'dart:async';
 
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../composer/provider_model_selection.dart';
+import '../state/provider_settings_provider.dart';
+import 'provider_icon.dart';
 
 typedef ProviderModelSelectionCallback =
     void Function(String provider, String modelId);
@@ -43,6 +46,7 @@ class CombinedModelSelector extends StatefulWidget {
     this.onOpen,
     this.onClose,
     this.onRetryProvider,
+    this.serverId,
     this.isLoading = false,
     this.isRetryingProvider = false,
     this.disabled = false,
@@ -59,6 +63,7 @@ class CombinedModelSelector extends StatefulWidget {
   final VoidCallback? onOpen;
   final VoidCallback? onClose;
   final ValueChanged<String>? onRetryProvider;
+  final String? serverId;
   final bool isLoading;
   final bool isRetryingProvider;
   final bool disabled;
@@ -85,6 +90,7 @@ class _CombinedModelSelectorState extends State<CombinedModelSelector> {
         favoriteKeys: widget.favoriteKeys,
         onToggleFavorite: widget.onToggleFavorite,
         onRetryProvider: widget.onRetryProvider,
+        serverId: widget.serverId,
         isRetryingProvider: widget.isRetryingProvider,
       ),
     );
@@ -196,6 +202,7 @@ class _ModelBrowserDialog extends StatefulWidget {
     required this.favoriteKeys,
     required this.onToggleFavorite,
     required this.onRetryProvider,
+    required this.serverId,
     required this.isRetryingProvider,
   });
 
@@ -205,6 +212,7 @@ class _ModelBrowserDialog extends StatefulWidget {
   final Set<String> favoriteKeys;
   final ProviderModelSelectionCallback? onToggleFavorite;
   final ValueChanged<String>? onRetryProvider;
+  final String? serverId;
   final bool isRetryingProvider;
 
   @override
@@ -271,6 +279,14 @@ class _ModelBrowserDialogState extends State<_ModelBrowserDialog> {
     });
   }
 
+  void _openProviderSettings(ProviderModelsView view) {
+    final serverId = widget.serverId;
+    if (serverId == null || serverId.isEmpty) return;
+    ProviderScope.containerOf(context)
+        .read(providerSettingsProvider.notifier)
+        .open(serverId: serverId, provider: view.providerId);
+  }
+
   @override
   Widget build(BuildContext context) {
     final view = _view;
@@ -287,7 +303,26 @@ class _ModelBrowserDialogState extends State<_ModelBrowserDialog> {
             ),
             const SizedBox(width: 8),
           ],
+          if (providerView) ...[
+            ProviderIcon(
+              provider: view.providerId,
+              size: 20,
+              color: FluentTheme.of(context).resources.textFillColorPrimary,
+            ),
+            const SizedBox(width: 8),
+          ],
           Expanded(child: Text(providerView ? view.providerLabel : 'Models')),
+          if (providerView)
+            Tooltip(
+              message: '${view.providerLabel} provider settings',
+              child: IconButton(
+                key: ValueKey('selector-header-settings-${view.providerId}'),
+                icon: const Icon(FluentIcons.settings, size: 14),
+                onPressed: widget.serverId?.isNotEmpty == true
+                    ? () => _openProviderSettings(view)
+                    : null,
+              ),
+            ),
         ],
       ),
       content: SizedBox(
@@ -454,7 +489,11 @@ class _ProviderRow extends StatelessWidget {
     };
     return ListTile(
       key: ValueKey('model-provider-${provider.id}'),
-      leading: const Icon(FluentIcons.robot),
+      leading: ProviderIcon(
+        provider: provider.id,
+        size: 16,
+        color: FluentTheme.of(context).resources.textFillColorSecondary,
+      ),
       title: Text(provider.label),
       subtitle: Text(state),
       trailing: const Icon(FluentIcons.chevron_right, size: 12),
@@ -481,7 +520,11 @@ class _ModelRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListTile(
     key: ValueKey('model-row-${row.provider}-${row.modelId}'),
-    leading: const Icon(FluentIcons.robot, size: 16),
+    leading: ProviderIcon(
+      provider: row.provider,
+      size: 16,
+      color: FluentTheme.of(context).resources.textFillColorSecondary,
+    ),
     title: Text(row.modelLabel),
     subtitle: row.description == null ? null : Text(row.description!),
     onPressed: onSelect,

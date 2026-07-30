@@ -1066,6 +1066,7 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: CombinedModelSelector(
+                        serverId: serverId,
                         providers: modelSelectorProviders,
                         selectedProvider: selectedProvider.provider,
                         selectedModel: effectiveModel,

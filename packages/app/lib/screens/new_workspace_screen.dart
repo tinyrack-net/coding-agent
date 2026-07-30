@@ -947,6 +947,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: CombinedModelSelector(
+                                    serverId: serverId,
                                     providers: modelSelectorProviders,
                                     selectedProvider: selectedProvider.provider,
                                     selectedModel: effectiveModel,

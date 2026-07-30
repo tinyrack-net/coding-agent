@@ -1,7 +1,10 @@
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/composer/provider_model_selection.dart';
+import 'package:coding_agent_app/state/provider_settings_provider.dart';
 import 'package:coding_agent_app/widgets/combined_model_selector.dart';
+import 'package:coding_agent_app/widgets/provider_icon.dart';
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _snapshots = [
@@ -39,6 +42,80 @@ const _snapshots = [
 ];
 
 void main() {
+  testWidgets('provider header opens the global provider settings target', (
+    tester,
+  ) async {
+    late ProviderContainer container;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: Builder(
+          builder: (context) {
+            container = ProviderScope.containerOf(context);
+            return FluentApp(
+              home: CombinedModelSelector(
+                serverId: 'server-a',
+                providers: buildSelectableProviderSelectorProviders(_snapshots),
+                selectedProvider: 'claude',
+                selectedModel: 'sonnet',
+                onSelect: (_, _) {},
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('combined-model-selector')));
+    await tester.pumpAndSettle();
+    final settings = find.byKey(
+      const ValueKey('selector-header-settings-claude'),
+    );
+    expect(settings, findsOneWidget);
+    expect(tester.widget<IconButton>(settings).onPressed, isNotNull);
+    expect(
+      tester
+          .widgetList<ProviderIcon>(find.byType(ProviderIcon))
+          .any((icon) => icon.provider == 'claude'),
+      isTrue,
+    );
+
+    await tester.tap(settings);
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(container.read(providerSettingsProvider).visible, isTrue);
+    expect(
+      container.read(providerSettingsProvider).target,
+      const ProviderSettingsTarget(serverId: 'server-a', provider: 'claude'),
+    );
+    expect(find.byType(ContentDialog), findsOneWidget);
+  });
+
+  testWidgets('provider settings action is disabled without a host', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      FluentApp(
+        home: CombinedModelSelector(
+          providers: buildSelectableProviderSelectorProviders(_snapshots),
+          selectedProvider: 'claude',
+          selectedModel: 'sonnet',
+          onSelect: (_, _) {},
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('combined-model-selector')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const ValueKey('selector-header-settings-claude')),
+          )
+          .onPressed,
+      isNull,
+    );
+  });
+
   testWidgets('opens the selected provider, searches, favorites, and selects', (
     tester,
   ) async {

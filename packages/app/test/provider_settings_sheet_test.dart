@@ -3,6 +3,8 @@ import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/core/theme.dart';
 import 'package:coding_agent_app/screens/host_providers_settings_section.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
+import 'package:coding_agent_app/state/provider_settings_provider.dart';
+import 'package:coding_agent_app/widgets/provider_settings_host.dart';
 import 'package:coding_agent_app/widgets/provider_settings_sheet.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -114,6 +116,26 @@ final class _ProviderClient extends DaemonClient {
 }
 
 void main() {
+  test('provider settings state retains its target when closed', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final notifier = container.read(providerSettingsProvider.notifier);
+
+    notifier.open(serverId: 'server-a', provider: 'claude');
+    expect(container.read(providerSettingsProvider).visible, isTrue);
+    expect(
+      container.read(providerSettingsProvider).target,
+      const ProviderSettingsTarget(serverId: 'server-a', provider: 'claude'),
+    );
+
+    notifier.close();
+    expect(container.read(providerSettingsProvider).visible, isFalse);
+    expect(
+      container.read(providerSettingsProvider).target,
+      const ProviderSettingsTarget(serverId: 'server-a', provider: 'claude'),
+    );
+  });
+
   testWidgets('provider sheet uses frozen compact 65 percent snap', (
     tester,
   ) async {
@@ -251,6 +273,16 @@ void main() {
     );
     expect(find.text('Discovered'), findsOneWidget);
     expect(find.text('Custom models'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('adaptive-modal-sheet-close')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('provider-settings-sheet')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('installed-provider-claude')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('provider-settings-sheet')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('add model sheet disables blank and duplicate ids', (
@@ -370,6 +402,12 @@ Future<void> _pump(WidgetTester tester, DaemonClient? client, Widget home) =>
         overrides: [
           if (client != null) daemonClientProvider.overrideWithValue(client),
         ],
-        child: FluentApp(theme: buildAppTheme(), home: home),
+        child: FluentApp(
+          theme: buildAppTheme(),
+          home: Stack(
+            fit: StackFit.expand,
+            children: [home, const ProviderSettingsHost()],
+          ),
+        ),
       ),
     );

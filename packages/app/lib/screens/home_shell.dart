@@ -29,6 +29,7 @@ import '../state/workspace_providers.dart';
 import '../state/worktree_tabs_provider.dart';
 import '../state/worktree_titles_provider.dart';
 import '../widgets/fluent/toast.dart';
+import '../widgets/provider_settings_host.dart';
 import '../widgets/sidebar_agent_list_skeleton.dart';
 import '../widgets/sidebar_callout_slot.dart';
 import '../widgets/sidebar_resize_handle.dart';
@@ -47,11 +48,17 @@ class HomeShell extends ConsumerWidget {
     final sidebarVisible = ref.watch(appSidebarVisibilityProvider);
     final focusMode = ref.watch(workspaceFocusModeProvider);
     final content = _HomeContentDeck(routeChild: child);
-    return Container(
-      color: FluentTheme.of(context).scaffoldBackgroundColor,
-      child: sidebarVisible && !focusMode
-          ? _ResizableHomeLayout(content: content)
-          : content,
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Container(
+          color: FluentTheme.of(context).scaffoldBackgroundColor,
+          child: sidebarVisible && !focusMode
+              ? _ResizableHomeLayout(content: content)
+              : content,
+        ),
+        const ProviderSettingsHost(),
+      ],
     );
   }
 }

@@ -1601,6 +1601,7 @@ class _ScheduleFormDialogState extends ConsumerState<_ScheduleFormDialog> {
         _labeledControl(
           'Model',
           CombinedModelSelector(
+            serverId: _serverId,
             providers: selectorProviders,
             selectedProvider: selection.provider,
             selectedModel: selection.model,

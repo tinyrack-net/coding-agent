@@ -6,6 +6,7 @@ param(
     [ValidateSet('all', 'protocol', 'relay', 'daemon_lifecycle', 'daemon', 'app')]
     [string]$Package = 'all',
     [string[]]$TestPath = @(),
+    [string]$TestName = '',
     [int]$Concurrency = 0,
     [ValidateRange(1, 20)]
     [int]$Repeat = 1
@@ -102,11 +103,17 @@ function Invoke-TestSelection {
             }
             if ($Definition.Flutter) {
                 $args = @('test', '-j', "$jobs", '-r', 'compact')
+                if (-not [string]::IsNullOrWhiteSpace($TestName)) {
+                    $args += "--name=$TestName"
+                }
                 $args += $Paths
                 flutter @args
             }
             else {
                 $args = @('test', "--concurrency=$jobs", '-r', 'compact')
+                if (-not [string]::IsNullOrWhiteSpace($TestName)) {
+                    $args += "--name=$TestName"
+                }
                 $args += $Paths
                 dart @args
             }

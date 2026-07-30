@@ -9,9 +9,9 @@ import '../providers/providers_snapshot.dart';
 import '../state/daemon_config_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/providers_snapshot_provider.dart';
+import '../state/provider_settings_provider.dart';
 import '../widgets/provider_catalog_list.dart';
 import '../widgets/provider_icon.dart';
-import '../widgets/provider_settings_sheet.dart';
 
 class HostProvidersSettingsSection extends ConsumerStatefulWidget {
   const HostProvidersSettingsSection({super.key, required this.serverId});
@@ -136,12 +136,11 @@ class _HostProvidersSettingsSectionState
     }
   }
 
-  Future<void> _openProviderSettings(ProviderSnapshotEntry entry) =>
-      showProviderSettingsSheet(
-        context: context,
-        serverId: widget.serverId,
-        provider: entry.provider,
-      );
+  void _openProviderSettings(ProviderSnapshotEntry entry) {
+    ref
+        .read(providerSettingsProvider.notifier)
+        .open(serverId: widget.serverId, provider: entry.provider);
+  }
 
   @override
   Widget build(BuildContext context) {
