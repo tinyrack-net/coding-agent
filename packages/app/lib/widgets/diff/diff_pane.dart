@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
 import '../../state/changes_preferences_provider.dart';
+import '../../state/code_appearance_provider.dart';
 import '../../state/review_draft_provider.dart';
 import '../../state/working_diff_provider.dart';
 import '../../state/workspace_checkout_status_provider.dart';
@@ -71,6 +72,7 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
     final changesPreferences =
         ref.watch(changesPreferencesProvider).value ??
         const ChangesPreferences();
+    final codeAppearance = ref.watch(codeAppearanceProvider);
     final files = diffAsync.value?.files ?? const <DiffFile>[];
 
     return Column(
@@ -208,6 +210,8 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
               layout: changesPreferences.layout,
               viewMode: changesPreferences.viewMode,
               wrapLines: changesPreferences.wrapLines,
+              codeFontSize: codeAppearance.codeFontSize,
+              monoFontFamily: codeAppearance.monoFontFamily,
               controller: _diffViewController,
             ),
           ),
@@ -240,6 +244,7 @@ class _LiveDiffPane extends ConsumerWidget {
     final changesPreferences =
         ref.watch(changesPreferencesProvider).value ??
         const ChangesPreferences();
+    final codeAppearance = ref.watch(codeAppearanceProvider);
     final ignoreWhitespace = changesPreferences.hideWhitespace;
     final scopeKey = buildWorkingDiffScopeKey(
       serverId: serverId,
@@ -440,6 +445,8 @@ class _LiveDiffPane extends ConsumerWidget {
                 layout: changesPreferences.layout,
                 viewMode: changesPreferences.viewMode,
                 wrapLines: changesPreferences.wrapLines,
+                codeFontSize: codeAppearance.codeFontSize,
+                monoFontFamily: codeAppearance.monoFontFamily,
                 controller: diffViewController,
               );
             },

@@ -11,6 +11,7 @@ import '../../core/diff_tree.dart';
 import '../../core/theme.dart';
 import '../../state/changes_preferences_provider.dart';
 import '../../state/review_draft_provider.dart';
+import '../code_insets.dart';
 import '../shortcut_badge.dart';
 import 'diff_scroll.dart';
 import 'diff_stat.dart';
@@ -98,6 +99,8 @@ class DiffView extends ConsumerStatefulWidget {
     this.layout = ChangesLayout.unified,
     this.viewMode = ChangesViewMode.flat,
     this.wrapLines = false,
+    this.codeFontSize = 12,
+    this.monoFontFamily = '',
     this.controller,
   });
 
@@ -106,6 +109,8 @@ class DiffView extends ConsumerStatefulWidget {
   final ChangesLayout layout;
   final ChangesViewMode viewMode;
   final bool wrapLines;
+  final double codeFontSize;
+  final String monoFontFamily;
   final DiffViewController? controller;
 
   @override
@@ -214,51 +219,107 @@ class _DiffViewState extends ConsumerState<DiffView> {
             },
           );
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final layout =
-            widget.layout == ChangesLayout.split &&
-                constraints.maxWidth >= 840 &&
-                (kIsWeb ||
-                    defaultTargetPlatform == TargetPlatform.windows ||
-                    defaultTargetPlatform == TargetPlatform.macOS ||
-                    defaultTargetPlatform == TargetPlatform.linux)
-            ? ChangesLayout.split
-            : ChangesLayout.unified;
-        final result = buildDiffFlatItems(
-          files: files,
-          treeView: widget.viewMode == ChangesViewMode.tree,
-          collapsedFolders: _controller.collapsedFolders,
-          expandedPaths: _controller.expandedPaths,
-        );
-        return ListView.builder(
-          key: const ValueKey('git-diff-scroll'),
-          itemCount: result.items.length,
-          itemBuilder: (context, index) => switch (result.items[index]) {
-            final DiffFlatFolderItem folder => _DiffFolderRow(
-              folder: folder,
-              onToggle: () => _controller.toggleFolder(folder.dirPath),
-            ),
-            final DiffFlatHeaderItem header => _DiffFileHeader(
-              item: header,
-              showDirectory: widget.viewMode == ChangesViewMode.flat,
-              onToggle: () => _controller.toggleFile(header.file.path),
-            ),
-            final DiffFlatBodyItem body => Padding(
-              key: ValueKey('diff-file-${body.fileIndex}-body'),
-              padding: EdgeInsets.only(left: body.depth * 16.0),
-              child: _FileDiffBody(
-                file: body.file,
-                review: review,
-                layout: layout,
-                wrapLines: widget.wrapLines,
+    return _DiffMetricsScope(
+      metrics: _DiffMetrics(
+        fontSize: widget.codeFontSize,
+        monoFontFamily: widget.monoFontFamily,
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final layout =
+              widget.layout == ChangesLayout.split &&
+                  constraints.maxWidth >= 840 &&
+                  (kIsWeb ||
+                      defaultTargetPlatform == TargetPlatform.windows ||
+                      defaultTargetPlatform == TargetPlatform.macOS ||
+                      defaultTargetPlatform == TargetPlatform.linux)
+              ? ChangesLayout.split
+              : ChangesLayout.unified;
+          final result = buildDiffFlatItems(
+            files: files,
+            treeView: widget.viewMode == ChangesViewMode.tree,
+            collapsedFolders: _controller.collapsedFolders,
+            expandedPaths: _controller.expandedPaths,
+          );
+          return ListView.builder(
+            key: const ValueKey('git-diff-scroll'),
+            itemCount: result.items.length,
+            itemBuilder: (context, index) => switch (result.items[index]) {
+              final DiffFlatFolderItem folder => _DiffFolderRow(
+                folder: folder,
+                onToggle: () => _controller.toggleFolder(folder.dirPath),
               ),
-            ),
-          },
-        );
-      },
+              final DiffFlatHeaderItem header => _DiffFileHeader(
+                item: header,
+                showDirectory: widget.viewMode == ChangesViewMode.flat,
+                onToggle: () => _controller.toggleFile(header.file.path),
+              ),
+              final DiffFlatBodyItem body => Padding(
+                key: ValueKey('diff-file-${body.fileIndex}-body'),
+                padding: EdgeInsets.only(left: body.depth * 16.0),
+                child: _FileDiffBody(
+                  file: body.file,
+                  review: review,
+                  layout: layout,
+                  wrapLines: widget.wrapLines,
+                ),
+              ),
+            },
+          );
+        },
+      ),
     );
   }
+}
+
+final class _DiffMetrics {
+  _DiffMetrics({required double fontSize, required String monoFontFamily})
+    : fontSize = fontSize.floorToDouble().clamp(9, 22),
+      fontFamily = monoFontFamily.trim().isEmpty
+          ? 'monospace'
+          : monoFontFamily.trim();
+
+  final double fontSize;
+  final String fontFamily;
+
+  double get lineHeight => (fontSize * 1.5).roundToDouble();
+
+  TextStyle get textStyle => TextStyle(
+    fontFamily: fontFamily,
+    fontSize: fontSize,
+    height: lineHeight / fontSize,
+  );
+}
+
+class _DiffMetricsScope extends InheritedWidget {
+  const _DiffMetricsScope({required this.metrics, required super.child});
+
+  final _DiffMetrics metrics;
+
+  static _DiffMetrics of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_DiffMetricsScope>()!.metrics;
+
+  @override
+  bool updateShouldNotify(_DiffMetricsScope oldWidget) =>
+      metrics.fontSize != oldWidget.metrics.fontSize ||
+      metrics.fontFamily != oldWidget.metrics.fontFamily;
+}
+
+class _FileDiffMetricsScope extends InheritedWidget {
+  const _FileDiffMetricsScope({
+    required this.gutterWidth,
+    required super.child,
+  });
+
+  final double gutterWidth;
+
+  static double of(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<_FileDiffMetricsScope>()!
+      .gutterWidth;
+
+  @override
+  bool updateShouldNotify(_FileDiffMetricsScope oldWidget) =>
+      gutterWidth != oldWidget.gutterWidth;
 }
 
 class _NoChanges extends StatelessWidget {
@@ -450,31 +511,46 @@ class _FileDiffBody extends StatelessWidget {
         ),
       );
     }
+    final metrics = _DiffMetricsScope.of(context);
+    final maxLineNumber = file.hunks
+        .expand((hunk) => hunk.lines)
+        .fold<int>(
+          0,
+          (maximum, line) => [
+            maximum,
+            line.oldLineNo ?? 0,
+            line.newLineNo ?? 0,
+          ].reduce((left, right) => left > right ? left : right),
+        );
+    final gutterWidth = lineNumberGutterWidth(maxLineNumber, metrics.fontSize);
+    final Widget contents;
     if (layout == ChangesLayout.split) {
-      return _SplitFileDiffBody(
+      contents = _SplitFileDiffBody(
         file: file,
         review: review,
         wrapLines: wrapLines,
       );
-    }
-    final contents = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final hunk in file.hunks) ...[
-          _HunkHeader(header: hunk.header),
-          for (final line in hunk.lines)
-            _ReviewableDiffLine(
-              filePath: file.path,
-              line: line,
-              review: review,
-              wrapLines: wrapLines,
-            ),
+    } else {
+      final unified = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final hunk in file.hunks) ...[
+            _HunkHeader(header: hunk.header),
+            for (final line in hunk.lines)
+              _ReviewableDiffLine(
+                filePath: file.path,
+                line: line,
+                review: review,
+                wrapLines: wrapLines,
+              ),
+          ],
         ],
-      ],
-    );
-    return wrapLines
-        ? contents
-        : _ScrollableUnifiedDiffBody(file: file, review: review);
+      );
+      contents = wrapLines
+          ? unified
+          : _ScrollableUnifiedDiffBody(file: file, review: review);
+    }
+    return _FileDiffMetricsScope(gutterWidth: gutterWidth, child: contents);
   }
 }
 
@@ -497,6 +573,9 @@ _ReviewTarget? _reviewTargetForLine(String filePath, DiffLine line) =>
       ),
       _ => null,
     };
+
+int? _unifiedLineNumber(DiffLine line) =>
+    line.type == DiffLineType.del ? line.oldLineNo : line.newLineNo;
 
 class _ScrollableUnifiedDiffBody extends StatefulWidget {
   const _ScrollableUnifiedDiffBody({required this.file, required this.review});
@@ -539,16 +618,19 @@ class _ScrollableUnifiedDiffBodyState
 
   @override
   Widget build(BuildContext context) {
+    final metrics = _DiffMetricsScope.of(context);
+    final gutterWidth = _FileDiffMetricsScope.of(context);
     final pinnedReviews = _unifiedPinnedReviewEntries(
       widget.file,
       widget.review,
+      metrics.lineHeight,
     );
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
           key: const ValueKey('diff-fixed-gutter'),
-          width: 113,
+          width: gutterWidth,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -626,8 +708,9 @@ class _FixedGutterHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final metrics = _DiffMetricsScope.of(context);
     return Container(
-      height: 24,
+      height: metrics.lineHeight,
       decoration: BoxDecoration(
         color: context.tokens.surfaceContainerHighest,
         border: Border(
@@ -705,10 +788,9 @@ class _FixedUnifiedGutterRow extends StatelessWidget {
   final bool showReviewAction;
   final VoidCallback? onAddReview;
 
-  static const _monoStyle = TextStyle(fontFamily: 'monospace', fontSize: 12.5);
-
   @override
   Widget build(BuildContext context) {
+    final metrics = _DiffMetricsScope.of(context);
     final background = switch (line.type) {
       DiffLineType.add => Colors.green.withValues(alpha: 0.12),
       DiffLineType.del => Colors.red.withValues(alpha: 0.12),
@@ -716,50 +798,74 @@ class _FixedUnifiedGutterRow extends StatelessWidget {
     };
     final outline = context.tokens.outline;
     return Container(
-      height: 24,
+      height: metrics.lineHeight,
       decoration: BoxDecoration(
         color: background,
         border: Border(
           right: BorderSide(color: context.paseoPalette.borderAccent),
         ),
       ),
-      child: Row(
+      child: _ReviewGutterContent(
+        lineNumber: _unifiedLineNumber(line),
+        textStyle: metrics.textStyle.copyWith(color: outline),
+        hasComments: hasComments,
+        showReviewAction: showReviewAction,
+        reviewTarget: target,
+        onAddReview: onAddReview,
+      ),
+    );
+  }
+}
+
+class _ReviewGutterContent extends StatelessWidget {
+  const _ReviewGutterContent({
+    required this.lineNumber,
+    required this.textStyle,
+    required this.hasComments,
+    required this.showReviewAction,
+    required this.reviewTarget,
+    required this.onAddReview,
+  });
+
+  final int? lineNumber;
+  final TextStyle textStyle;
+  final bool hasComments;
+  final bool showReviewAction;
+  final _ReviewTarget? reviewTarget;
+  final VoidCallback? onAddReview;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: hasComments ? context.paseoPalette.surface2 : Colors.transparent,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          SizedBox(
-            width: 32,
-            height: 24,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: hasComments ? context.paseoPalette.surface2 : null,
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                formatDiffGutterText(lineNumber),
+                maxLines: 1,
+                style: textStyle,
               ),
-              child: showReviewAction
-                  ? Tooltip(
-                      message: 'Add review comment',
-                      child: IconButton(
-                        key: ValueKey('review-add-${target!.key}'),
-                        icon: const Icon(FluentIcons.add, size: 16),
-                        onPressed: onAddReview,
-                      ),
-                    )
-                  : null,
             ),
           ),
-          SizedBox(
-            width: 40,
-            child: Text(
-              formatDiffGutterText(line.oldLineNo),
-              textAlign: TextAlign.right,
-              style: _monoStyle.copyWith(color: outline),
+          if (showReviewAction)
+            Tooltip(
+              message: 'Add review comment',
+              child: GestureDetector(
+                key: ValueKey('review-add-${reviewTarget!.key}'),
+                behavior: HitTestBehavior.opaque,
+                onTap: onAddReview,
+                child: Icon(
+                  FluentIcons.add,
+                  size: 16,
+                  color: context.paseoPalette.accentBright,
+                ),
+              ),
             ),
-          ),
-          SizedBox(
-            width: 40,
-            child: Text(
-              formatDiffGutterText(line.newLineNo),
-              textAlign: TextAlign.right,
-              style: _monoStyle.copyWith(color: outline),
-            ),
-          ),
         ],
       ),
     );
@@ -827,10 +933,9 @@ class _ScrollableCodeLine extends StatelessWidget {
   final ValueChanged<String?> onHoverTargetChanged;
   final VoidCallback? onTap;
 
-  static const _monoStyle = TextStyle(fontFamily: 'monospace', fontSize: 12.5);
-
   @override
   Widget build(BuildContext context) {
+    final metrics = _DiffMetricsScope.of(context);
     final dark = FluentTheme.of(context).brightness == Brightness.dark;
     final (background, marker, textColor) = switch (line.type) {
       DiffLineType.add => (
@@ -855,7 +960,7 @@ class _ScrollableCodeLine extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           onTap: onTap,
           child: Container(
-            height: 24,
+            height: metrics.lineHeight,
             color: background,
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Row(
@@ -864,13 +969,13 @@ class _ScrollableCodeLine extends StatelessWidget {
                   width: 12,
                   child: Text(
                     marker,
-                    style: _monoStyle.copyWith(color: textColor),
+                    style: metrics.textStyle.copyWith(color: textColor),
                   ),
                 ),
                 Text(
                   formatDiffContentText(line.text),
                   softWrap: false,
-                  style: _monoStyle.copyWith(color: textColor),
+                  style: metrics.textStyle.copyWith(color: textColor),
                 ),
               ],
             ),
@@ -1037,15 +1142,16 @@ _ReviewThreadState? _reviewThreadState(
 List<_PinnedReviewEntry> _unifiedPinnedReviewEntries(
   DiffFile file,
   _ReviewViewModel? review,
+  double lineHeight,
 ) {
   var top = 0.0;
   final entries = <_PinnedReviewEntry>[];
   for (final hunk in file.hunks) {
-    top += 24;
+    top += lineHeight;
     for (final line in hunk.lines) {
       final target = _reviewTargetForLine(file.path, line);
       final state = _reviewThreadState(target, review);
-      top += 24;
+      top += lineHeight;
       if (target != null && state != null && state.height > 0) {
         entries.add((
           top: top,
@@ -1064,13 +1170,14 @@ List<_PinnedReviewEntry> _splitPinnedReviewEntries(
   List<_SplitDiffRow> rows,
   ReviewAttachmentSide side,
   _ReviewViewModel? review,
+  double lineHeight,
 ) {
   var top = 0.0;
   final entries = <_PinnedReviewEntry>[];
   for (final row in rows) {
     switch (row) {
       case _SplitDiffHeaderRow():
-        top += 24;
+        top += lineHeight;
       case final _SplitDiffPairRow pair:
         final cell = side == ReviewAttachmentSide.old ? pair.left : pair.right;
         final pairedCell = side == ReviewAttachmentSide.old
@@ -1081,7 +1188,7 @@ List<_PinnedReviewEntry> _splitPinnedReviewEntries(
         final reservedHeight = (state?.height ?? 0) > (pairedState?.height ?? 0)
             ? state?.height ?? 0
             : pairedState?.height ?? 0;
-        top += 24;
+        top += lineHeight;
         if (cell != null && state != null && state.height > 0) {
           entries.add((
             top: top,
@@ -1272,8 +1379,9 @@ class _WrappedSplitLineCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final value = cell;
     if (value == null) {
+      final metrics = _DiffMetricsScope.of(context);
       return Container(
-        constraints: const BoxConstraints(minHeight: 24),
+        constraints: BoxConstraints(minHeight: metrics.lineHeight),
         color: context.paseoPalette.surface1,
       );
     }
@@ -1360,17 +1468,20 @@ class _ScrollableSplitColumnState extends State<_ScrollableSplitColumn> {
   @override
   Widget build(BuildContext context) {
     final isLeft = widget.side == ReviewAttachmentSide.old;
+    final metrics = _DiffMetricsScope.of(context);
+    final gutterWidth = _FileDiffMetricsScope.of(context);
     final pinnedReviews = _splitPinnedReviewEntries(
       widget.rows,
       widget.side,
       widget.review,
+      metrics.lineHeight,
     );
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
           key: ValueKey('split-${isLeft ? 'left' : 'right'}-fixed-gutter'),
-          width: 77,
+          width: gutterWidth,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -1517,10 +1628,9 @@ class _FixedSplitGutterRow extends StatelessWidget {
   final bool showReviewAction;
   final VoidCallback? onAddReview;
 
-  static const _monoStyle = TextStyle(fontFamily: 'monospace', fontSize: 12.5);
-
   @override
   Widget build(BuildContext context) {
+    final metrics = _DiffMetricsScope.of(context);
     final line = cell?.line;
     final background = switch (line?.type) {
       DiffLineType.add => Colors.green.withValues(alpha: 0.12),
@@ -1528,43 +1638,20 @@ class _FixedSplitGutterRow extends StatelessWidget {
       _ => null,
     };
     return Container(
-      height: 24,
+      height: metrics.lineHeight,
       decoration: BoxDecoration(
         color: background ?? context.paseoPalette.surface1,
         border: Border(
           right: BorderSide(color: context.paseoPalette.borderAccent),
         ),
       ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 32,
-            height: 24,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: hasComments ? context.paseoPalette.surface2 : null,
-              ),
-              child: showReviewAction
-                  ? Tooltip(
-                      message: 'Add review comment',
-                      child: IconButton(
-                        key: ValueKey('review-add-${cell!.target.key}'),
-                        icon: const Icon(FluentIcons.add, size: 16),
-                        onPressed: onAddReview,
-                      ),
-                    )
-                  : null,
-            ),
-          ),
-          SizedBox(
-            width: 44,
-            child: Text(
-              formatDiffGutterText(cell?.target.lineNumber),
-              textAlign: TextAlign.right,
-              style: _monoStyle.copyWith(color: context.tokens.outline),
-            ),
-          ),
-        ],
+      child: _ReviewGutterContent(
+        lineNumber: cell?.target.lineNumber,
+        textStyle: metrics.textStyle.copyWith(color: context.tokens.outline),
+        hasComments: hasComments,
+        showReviewAction: showReviewAction,
+        reviewTarget: cell?.target,
+        onAddReview: onAddReview,
       ),
     );
   }
@@ -1631,17 +1718,16 @@ class _ScrollableSplitCodeLine extends StatelessWidget {
   final ValueChanged<String?> onHoverTargetChanged;
   final VoidCallback? onTap;
 
-  static const _monoStyle = TextStyle(fontFamily: 'monospace', fontSize: 12.5);
-
   @override
   Widget build(BuildContext context) {
+    final metrics = _DiffMetricsScope.of(context);
     final value = cell;
     if (value == null) {
       return Container(
         key: ValueKey(
           'split-empty-${side == ReviewAttachmentSide.old ? 'left' : 'right'}',
         ),
-        height: 24,
+        height: metrics.lineHeight,
         color: context.paseoPalette.surface1,
       );
     }
@@ -1674,7 +1760,7 @@ class _ScrollableSplitCodeLine extends StatelessWidget {
               '${side == ReviewAttachmentSide.old ? 'left' : 'right'}-'
               '${value.target.key}',
             ),
-            height: 24,
+            height: metrics.lineHeight,
             color: background,
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Row(
@@ -1683,13 +1769,13 @@ class _ScrollableSplitCodeLine extends StatelessWidget {
                   width: 12,
                   child: Text(
                     marker,
-                    style: _monoStyle.copyWith(color: textColor),
+                    style: metrics.textStyle.copyWith(color: textColor),
                   ),
                 ),
                 Text(
                   formatDiffContentText(value.line.text),
                   softWrap: false,
-                  style: _monoStyle.copyWith(color: textColor),
+                  style: metrics.textStyle.copyWith(color: textColor),
                 ),
               ],
             ),
@@ -2170,18 +2256,16 @@ class _HunkHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final metrics = _DiffMetricsScope.of(context);
     return Container(
-      constraints: const BoxConstraints(minHeight: 24),
+      height: metrics.lineHeight,
       alignment: Alignment.centerLeft,
       color: tokens.surfaceContainerHighest,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Text(
         header,
-        style: TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 12,
-          color: tokens.onSurfaceVariant,
-        ),
+        maxLines: 1,
+        style: metrics.textStyle.copyWith(color: tokens.onSurfaceVariant),
       ),
     );
   }
@@ -2206,10 +2290,10 @@ class _SplitDiffLineRow extends StatelessWidget {
   final VoidCallback? onAddReview;
   final bool wrapLines;
 
-  static const _monoStyle = TextStyle(fontFamily: 'monospace', fontSize: 12.5);
-
   @override
   Widget build(BuildContext context) {
+    final metrics = _DiffMetricsScope.of(context);
+    final gutterWidth = _FileDiffMetricsScope.of(context);
     final dark = FluentTheme.of(context).brightness == Brightness.dark;
     final (background, marker, textColor) = switch (line.type) {
       DiffLineType.add => (
@@ -2232,43 +2316,34 @@ class _SplitDiffLineRow extends StatelessWidget {
         'split-line-${side == ReviewAttachmentSide.old ? 'left' : 'right'}-'
         '${reviewTarget?.key ?? 'empty'}',
       ),
-      height: wrapLines ? null : 24,
-      constraints: const BoxConstraints(minHeight: 24),
+      height: wrapLines ? null : metrics.lineHeight,
+      constraints: BoxConstraints(minHeight: metrics.lineHeight),
       color: background,
       padding: const EdgeInsets.only(right: 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 32,
-            height: 24,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: hasComments ? context.paseoPalette.surface2 : null,
+            width: gutterWidth,
+            height: metrics.lineHeight,
+            child: _ReviewGutterContent(
+              lineNumber: lineNumber,
+              textStyle: metrics.textStyle.copyWith(
+                color: context.tokens.outline,
               ),
-              child: showReviewAction
-                  ? Tooltip(
-                      message: 'Add review comment',
-                      child: IconButton(
-                        key: ValueKey('review-add-${reviewTarget!.key}'),
-                        icon: const Icon(FluentIcons.add, size: 16),
-                        onPressed: onAddReview,
-                      ),
-                    )
-                  : null,
-            ),
-          ),
-          SizedBox(
-            width: 44,
-            child: Text(
-              formatDiffGutterText(lineNumber),
-              textAlign: TextAlign.right,
-              style: _monoStyle.copyWith(color: context.tokens.outline),
+              hasComments: hasComments,
+              showReviewAction: showReviewAction,
+              reviewTarget: reviewTarget,
+              onAddReview: onAddReview,
             ),
           ),
           const SizedBox(width: 8),
           SizedBox(
             width: 12,
-            child: Text(marker, style: _monoStyle.copyWith(color: textColor)),
+            child: Text(
+              marker,
+              style: metrics.textStyle.copyWith(color: textColor),
+            ),
           ),
           if (wrapLines)
             Expanded(
@@ -2276,14 +2351,14 @@ class _SplitDiffLineRow extends StatelessWidget {
                 formatDiffContentText(line.text),
                 softWrap: true,
                 overflow: TextOverflow.visible,
-                style: _monoStyle.copyWith(color: textColor),
+                style: metrics.textStyle.copyWith(color: textColor),
               ),
             )
           else
             Text(
               formatDiffContentText(line.text),
               softWrap: false,
-              style: _monoStyle.copyWith(color: textColor),
+              style: metrics.textStyle.copyWith(color: textColor),
             ),
         ],
       ),
@@ -2308,11 +2383,11 @@ class _DiffLineRow extends StatelessWidget {
   final VoidCallback? onAddReview;
   final bool wrapLines;
 
-  static const _monoStyle = TextStyle(fontFamily: 'monospace', fontSize: 12.5);
-
   @override
   Widget build(BuildContext context) {
     final theme = FluentTheme.of(context);
+    final metrics = _DiffMetricsScope.of(context);
+    final gutterWidth = _FileDiffMetricsScope.of(context);
     final outline = context.tokens.outline;
     final dark = theme.brightness == Brightness.dark;
     final (background, marker, textColor) = switch (line.type) {
@@ -2328,53 +2403,32 @@ class _DiffLineRow extends StatelessWidget {
       ),
       DiffLineType.context => (null, ' ', null),
     };
-    final numberStyle = _monoStyle.copyWith(color: outline);
     return Container(
       color: background,
-      constraints: const BoxConstraints(minHeight: 24),
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      constraints: BoxConstraints(minHeight: metrics.lineHeight),
+      padding: const EdgeInsets.only(right: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 32,
-            height: 24,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: hasComments ? context.paseoPalette.surface2 : null,
-              ),
-              child: showReviewAction
-                  ? Tooltip(
-                      message: 'Add review comment',
-                      child: IconButton(
-                        key: ValueKey('review-add-${reviewTarget!.key}'),
-                        icon: const Icon(FluentIcons.add, size: 16),
-                        onPressed: onAddReview,
-                      ),
-                    )
-                  : null,
-            ),
-          ),
-          SizedBox(
-            width: 40,
-            child: Text(
-              formatDiffGutterText(line.oldLineNo),
-              textAlign: TextAlign.right,
-              style: numberStyle,
-            ),
-          ),
-          SizedBox(
-            width: 40,
-            child: Text(
-              formatDiffGutterText(line.newLineNo),
-              textAlign: TextAlign.right,
-              style: numberStyle,
+            width: gutterWidth,
+            height: metrics.lineHeight,
+            child: _ReviewGutterContent(
+              lineNumber: _unifiedLineNumber(line),
+              textStyle: metrics.textStyle.copyWith(color: outline),
+              hasComments: hasComments,
+              showReviewAction: showReviewAction,
+              reviewTarget: reviewTarget,
+              onAddReview: onAddReview,
             ),
           ),
           const SizedBox(width: 8),
           SizedBox(
             width: 12,
-            child: Text(marker, style: _monoStyle.copyWith(color: textColor)),
+            child: Text(
+              marker,
+              style: metrics.textStyle.copyWith(color: textColor),
+            ),
           ),
           if (wrapLines)
             Expanded(
@@ -2382,14 +2436,14 @@ class _DiffLineRow extends StatelessWidget {
                 formatDiffContentText(line.text),
                 softWrap: true,
                 overflow: TextOverflow.visible,
-                style: _monoStyle.copyWith(color: textColor),
+                style: metrics.textStyle.copyWith(color: textColor),
               ),
             )
           else
             Text(
               formatDiffContentText(line.text),
               softWrap: false,
-              style: _monoStyle.copyWith(color: textColor),
+              style: metrics.textStyle.copyWith(color: textColor),
             ),
         ],
       ),

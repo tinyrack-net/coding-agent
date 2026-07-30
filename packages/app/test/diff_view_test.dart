@@ -232,6 +232,22 @@ void main() {
       find.byKey(const ValueKey('split-line-right-lib/changed.dart:new:2')),
       findsOneWidget,
     );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('split-left-fixed-gutter')))
+          .width,
+      28,
+    );
+    expect(
+      tester
+          .getSize(
+            find.byKey(
+              const ValueKey('split-line-left-lib/changed.dart:old:2'),
+            ),
+          )
+          .height,
+      18,
+    );
     expect(find.byKey(const ValueKey('split-empty-left')), findsOneWidget);
 
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
@@ -252,9 +268,9 @@ void main() {
     final leftGutter = find.byKey(const ValueKey('split-left-gutter-row-2'));
     final rightGutter = find.byKey(const ValueKey('split-right-gutter-row-2'));
     expect(tester.getSize(leftPair).height, tester.getSize(rightPair).height);
-    expect(tester.getSize(leftPair).height, 172);
-    expect(tester.getSize(leftGutter).height, 172);
-    expect(tester.getSize(rightGutter).height, 172);
+    expect(tester.getSize(leftPair).height, 166);
+    expect(tester.getSize(leftGutter).height, 166);
+    expect(tester.getSize(rightGutter).height, 166);
     expect(
       find.byKey(const ValueKey('review-thread-lib/changed.dart:old:2')),
       findsOneWidget,
@@ -611,13 +627,17 @@ void main() {
     );
     expect(scrollable.position.maxScrollExtent, greaterThan(0));
 
+    final viewport = find.byKey(const ValueKey('diff-code-viewport'));
+    final codeLine = find.byKey(
+      const ValueKey('diff-code-lib/long.dart:new:1'),
+    );
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     await mouse.addPointer(location: Offset.zero);
     await mouse.moveTo(
-      tester.getTopLeft(
-            find.byKey(const ValueKey('diff-code-lib/long.dart:new:1')),
-          ) +
-          const Offset(24, 12),
+      Offset(
+        tester.getTopLeft(viewport).dx + 40,
+        tester.getCenter(codeLine).dy,
+      ),
     );
     await tester.pump();
     await tester.tap(
@@ -627,7 +647,6 @@ void main() {
     final thread = find.byKey(
       const ValueKey('review-thread-lib/long.dart:new:1'),
     );
-    final viewport = find.byKey(const ValueKey('diff-code-viewport'));
     final threadOrigin = tester.getTopLeft(thread);
     expect(threadOrigin.dx, tester.getTopLeft(viewport).dx);
     expect(tester.getSize(thread).width, tester.getSize(viewport).width);
@@ -643,6 +662,55 @@ void main() {
     await mouse.removePointer();
     debugDefaultTargetPlatformOverride = null;
   });
+
+  testWidgets(
+    'code typography drives row height and line-number gutter width',
+    (tester) async {
+      const metricsDiff = DiffResponse(
+        files: [
+          DiffFile(
+            path: 'lib/metrics.dart',
+            status: DiffFileStatus.modified,
+            additions: 1,
+            hunks: [
+              DiffHunk(
+                header: '@@ -1234 +1234 @@',
+                lines: [
+                  DiffLine(
+                    type: DiffLineType.add,
+                    text: 'metrics',
+                    newLineNo: 1234,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        _wrap(
+          const DiffView(
+            diff: metricsDiff,
+            codeFontSize: 20,
+            monoFontFamily: 'Consolas',
+          ),
+        ),
+      );
+      await tester.tap(find.text('lib/metrics.dart'));
+      await tester.pumpAndSettle();
+
+      final gutter = find.byKey(const ValueKey('diff-fixed-gutter'));
+      final codeLine = find.byKey(
+        const ValueKey('diff-code-lib/metrics.dart:new:1234'),
+      );
+      expect(tester.getSize(gutter).width, 64);
+      expect(tester.getSize(codeLine).height, 30);
+      final text = tester.widget<Text>(find.text('metrics'));
+      expect(text.style?.fontSize, 20);
+      expect(text.style?.fontFamily, 'Consolas');
+      expect(text.style?.height, 1.5);
+    },
+  );
 
   testWidgets('split scroll mode keeps each line-number gutter fixed', (
     tester,
@@ -695,15 +763,17 @@ void main() {
     );
     expect(scrollable.position.maxScrollExtent, greaterThan(0));
 
+    final viewport = find.byKey(const ValueKey('split-left-code-viewport'));
+    final codeLine = find.byKey(
+      const ValueKey('split-line-left-lib/split_scroll.dart:old:1'),
+    );
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     await mouse.addPointer(location: Offset.zero);
     await mouse.moveTo(
-      tester.getTopLeft(
-            find.byKey(
-              const ValueKey('split-line-left-lib/split_scroll.dart:old:1'),
-            ),
-          ) +
-          const Offset(24, 12),
+      Offset(
+        tester.getTopLeft(viewport).dx + 40,
+        tester.getCenter(codeLine).dy,
+      ),
     );
     await tester.pump();
     await tester.tap(
@@ -713,7 +783,6 @@ void main() {
     final thread = find.byKey(
       const ValueKey('review-thread-lib/split_scroll.dart:old:1'),
     );
-    final viewport = find.byKey(const ValueKey('split-left-code-viewport'));
     final threadOrigin = tester.getTopLeft(thread);
     expect(threadOrigin.dx, tester.getTopLeft(viewport).dx);
     expect(tester.getSize(thread).width, tester.getSize(viewport).width);

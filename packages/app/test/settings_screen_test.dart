@@ -4,6 +4,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/screens/settings_screen.dart';
 import 'package:coding_agent_app/state/connection_settings_provider.dart';
+import 'package:coding_agent_app/state/code_appearance_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/host_registry_provider.dart';
 import 'package:coding_agent_app/state/tool_call_detail_level_provider.dart';
@@ -158,7 +159,28 @@ void main() {
 
     expect(find.text('Appearance'), findsOneWidget);
     expect(find.text('Tool call detail'), findsOneWidget);
+    expect(find.text('Code font size'), findsOneWidget);
+    expect(find.text('12 px'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('appearance-mono-font-family')),
+      findsOneWidget,
+    );
     expect(find.text('Detailed'), findsOneWidget);
+
+    await tester.tap(find.text('12 px'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('18 px').last);
+    await tester.enterText(
+      find.byKey(const ValueKey('appearance-mono-font-family')),
+      'Cascadia Code',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(container.read(codeAppearanceProvider).codeFontSize, 18);
+    expect(
+      container.read(codeAppearanceProvider).monoFontFamily,
+      'Cascadia Code',
+    );
 
     await tester.tap(find.text('Detailed'));
     await tester.pumpAndSettle();

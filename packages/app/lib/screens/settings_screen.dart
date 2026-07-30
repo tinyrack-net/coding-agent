@@ -12,6 +12,7 @@ import '../core/provider_display.dart';
 import '../core/theme.dart';
 import '../state/agents_provider.dart';
 import '../state/appearance_provider.dart';
+import '../state/code_appearance_provider.dart';
 import '../state/connection_settings_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/desktop_settings_provider.dart';
@@ -65,6 +66,7 @@ class _AppearanceSettingsSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = ref.watch(appearanceProvider);
+    final codeAppearance = ref.watch(codeAppearanceProvider);
     final detailLevel = ref.watch(toolCallDetailLevelProvider);
     return ScaffoldPage(
       header: const PageHeader(title: Text('Appearance')),
@@ -89,6 +91,33 @@ class _AppearanceSettingsSection extends ConsumerWidget {
                 ],
                 onChanged: (value) =>
                     ref.read(appearanceProvider.notifier).setTheme(value),
+              ),
+              const SizedBox(height: 12),
+              _SelectSettingsRow<int>(
+                title: 'Code font size',
+                subtitle: 'Set the text size used by diffs.',
+                value: codeAppearance.codeFontSize.round(),
+                items: [
+                  for (
+                    var size = minimumCodeFontSize.toInt();
+                    size <= maximumCodeFontSize.toInt();
+                    size++
+                  )
+                    ComboBoxItem(value: size, child: Text('$size px')),
+                ],
+                onChanged: (value) => ref
+                    .read(codeAppearanceProvider.notifier)
+                    .setCodeFontSize(value),
+              ),
+              const SizedBox(height: 12),
+              _TextSettingsRow(
+                title: 'Monospace font',
+                subtitle: 'Override the font family used by diffs.',
+                value: codeAppearance.monoFontFamily,
+                placeholder: 'System monospace',
+                onSubmitted: (value) => ref
+                    .read(codeAppearanceProvider.notifier)
+                    .setMonoFontFamily(value),
               ),
               const SizedBox(height: 12),
               _SelectSettingsRow<ToolCallDetailLevel>(
@@ -117,6 +146,76 @@ class _AppearanceSettingsSection extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _TextSettingsRow extends StatefulWidget {
+  const _TextSettingsRow({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.placeholder,
+    required this.onSubmitted,
+  });
+
+  final String title;
+  final String subtitle;
+  final String value;
+  final String placeholder;
+  final ValueChanged<String> onSubmitted;
+
+  @override
+  State<_TextSettingsRow> createState() => _TextSettingsRowState();
+}
+
+class _TextSettingsRowState extends State<_TextSettingsRow> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant _TextSettingsRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.value != oldWidget.value &&
+        widget.value != _controller.text.trim()) {
+      _controller.text = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.title),
+            Text(widget.subtitle, style: context.textStyles.bodySmall),
+          ],
+        ),
+      ),
+      const SizedBox(width: 16),
+      SizedBox(
+        width: 160,
+        child: TextBox(
+          key: const ValueKey('appearance-mono-font-family'),
+          controller: _controller,
+          placeholder: widget.placeholder,
+          onSubmitted: widget.onSubmitted,
+        ),
+      ),
+    ],
+  );
 }
 
 class _SelectSettingsRow<T> extends StatelessWidget {
@@ -771,6 +870,7 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
         content: const Text(
           'This will:\n'
           '• Clear the daemon host, port, and token (back to defaults)\n'
+          '• Reset code font and appearance preferences\n'
           '• Reset desktop startup and tray preferences\n'
           '• Remove every stored LLM provider API key\n'
           '• Wipe every conversation (agent timelines, history)\n\n'
@@ -812,6 +912,11 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
       await ref.read(connectionSettingsProvider.notifier).reset();
     } catch (e) {
       failures.add('connection settings: $e');
+    }
+    try {
+      await ref.read(codeAppearanceProvider.notifier).reset();
+    } catch (e) {
+      failures.add('code appearance: $e');
     }
     if (isDesktopShell) {
       try {
@@ -893,10 +998,10 @@ class _DataResetSectionState extends ConsumerState<_DataResetSection> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Clears the daemon connection, desktop preferences, every saved '
-            'provider API key, and every conversation (agent timelines + '
-            'history). The app will reconnect to the default localhost '
-            'daemon.',
+            'Clears the daemon connection, appearance and desktop preferences, '
+            'every saved provider API key, and every conversation (agent '
+            'timelines + history). The app will reconnect to the default '
+            'localhost daemon.',
             style: context.textStyles.bodySmall?.copyWith(
               color: tokens.onErrorContainer,
             ),
