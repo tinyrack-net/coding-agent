@@ -17,6 +17,7 @@ import '../keyboard/shortcut_focus_scope.dart';
 import '../keyboard/shortcut_flutter_adapter.dart';
 import '../keyboard/shortcut_routing.dart';
 import '../state/agents_provider.dart';
+import '../state/add_project_flow_provider.dart';
 import '../state/appearance_provider.dart';
 import '../state/app_sidebar_visibility_provider.dart';
 import '../state/command_center_provider.dart';
@@ -225,7 +226,7 @@ class _AppCommandCenterHostState extends ConsumerState<AppCommandCenterHost> {
         widget.router.push(action.route);
         return true;
       case OpenProjectPickerRoutedShortcutAction():
-        widget.router.push(buildNewWorkspaceRoute());
+        unawaited(ref.read(addProjectFlowProvider.notifier).open());
         return true;
       case CallbackRoutedShortcutAction():
         return _runShortcutCallback(action.name);
@@ -462,7 +463,8 @@ class _AppCommandCenterHostState extends ConsumerState<AppCommandCenterHost> {
                   ['mod', 'O'],
                 ],
               ),
-              run: () => widget.router.push(buildNewWorkspaceRoute()),
+              run: () =>
+                  unawaited(ref.read(addProjectFlowProvider.notifier).open()),
             ),
             CommandCenterContribution(
               id: 'home',
@@ -602,6 +604,13 @@ class _AppCommandCenterHostState extends ConsumerState<AppCommandCenterHost> {
   Widget build(BuildContext context) {
     ref.watch(effectiveKeyboardShortcutBindingsProvider);
     ref.watch(commandCenterRegistryProvider);
+    ref.listen(commandCenterOverlayRequestProvider, (previous, next) {
+      if (next == null || next.serial == previous?.serial) return;
+      setState(() {
+        _commandCenterOpen = next.overlay == CommandCenterOverlay.commandCenter;
+        _shortcutsOpen = next.overlay == CommandCenterOverlay.shortcuts;
+      });
+    });
     final selectedPath = ref.watch(selectedWorktreeProvider);
     final agents = ref.watch(agentsProvider);
     final providers = ref.watch(providerListProvider).value ?? const [];

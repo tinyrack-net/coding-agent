@@ -5,6 +5,7 @@ import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/keyboard/shortcut_engine.dart';
 import 'package:coding_agent_app/keyboard/shortcut_focus_scope.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
+import 'package:coding_agent_app/state/add_project_flow_provider.dart';
 import 'package:coding_agent_app/state/appearance_provider.dart';
 import 'package:coding_agent_app/state/app_sidebar_visibility_provider.dart';
 import 'package:coding_agent_app/state/command_center_provider.dart';
@@ -233,6 +234,28 @@ void main() {
     await tester.sendKeyDownEvent(LogicalKeyboardKey.escape);
     await tester.pump();
     expect(find.byKey(const ValueKey('command-center-search')), findsNothing);
+  });
+
+  testWidgets('sidebar overlay requests open command center and shortcuts', (
+    tester,
+  ) async {
+    final (container, _) = await _pumpHost(tester);
+
+    container
+        .read(commandCenterOverlayRequestProvider.notifier)
+        .openCommandCenter();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('command-center-search')), findsOneWidget);
+
+    container
+        .read(commandCenterOverlayRequestProvider.notifier)
+        .openShortcuts();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('command-center-search')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('keyboard-shortcuts-search')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('root contributions unregister with their owning host', (
@@ -786,7 +809,7 @@ void main() {
       physicalKey: PhysicalKeyboardKey.keyO,
       control: true,
     );
-    expect(router.routeInformationProvider.value.uri.path, '/new');
+    expect(container.read(addProjectFlowProvider).request, isNotNull);
 
     await _sendShortcut(
       tester,

@@ -5,9 +5,14 @@ import 'package:coding_agent_app/core/app_router.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/screens/agent_chat_screen.dart';
 import 'package:coding_agent_app/screens/home_shell.dart';
+import 'package:coding_agent_app/screens/host_settings_route_screen.dart';
 import 'package:coding_agent_app/screens/new_workspace_screen.dart';
+import 'package:coding_agent_app/screens/projects_screen.dart';
+import 'package:coding_agent_app/screens/schedules_screen.dart';
+import 'package:coding_agent_app/screens/sessions_screen.dart';
 import 'package:coding_agent_app/screens/settings_screen.dart';
-import 'package:coding_agent_app/screens/status_screen.dart';
+import 'package:coding_agent_app/state/add_project_flow_provider.dart';
+import 'package:coding_agent_app/state/command_center_provider.dart';
 import 'package:coding_agent_app/state/daemon_lifecycle_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
@@ -232,7 +237,7 @@ Future<ProviderContainer> pumpHomeShell(
     overrides: [
       daemonClientProvider.overrideWithValue(client),
       if (activeHost != null) activeHostProvider.overrideWithValue(activeHost),
-      // Otherwise navigating to StatusScreen/SettingsScreen watches the real
+      // Otherwise navigating to SettingsScreen watches the real
       // daemonLifecycleProvider, which spins up an actual DaemonSupervisor
       // probing the network on this (real Windows) test host.
       desktopShellProvider.overrideWithValue(false),
@@ -299,7 +304,7 @@ void main() {
     await tester.pump();
 
     final callout = find.byKey(const ValueKey('shell-callout'));
-    final footer = find.text('Daemon connected');
+    final footer = find.byKey(const ValueKey('sidebar-add-project'));
     expect(callout, findsOneWidget);
     expect(footer, findsOneWidget);
     expect(
@@ -452,7 +457,9 @@ void main() {
   ) async {
     await pumpHomeShell(tester);
 
-    await tester.tap(find.text('New workspace'));
+    await tester.tap(
+      find.byKey(const ValueKey('sidebar-global-new-workspace')),
+    );
     await tester.pumpAndSettle();
 
     expect(find.byType(NewWorkspaceScreen), findsOneWidget);
@@ -504,23 +511,47 @@ void main() {
     },
   );
 
-  testWidgets('the Status row navigates to StatusScreen', (tester) async {
+  testWidgets('global navigation matches Paseo and omits conflicting rows', (
+    tester,
+  ) async {
     await pumpHomeShell(tester);
 
-    await tester.tap(find.text('Status'));
-    await tester.pumpAndSettle();
+    expect(find.text('Projects & worktrees'), findsNothing);
+    expect(find.text('Status'), findsNothing);
+    expect(find.text('New workspace'), findsOneWidget);
+    expect(find.text('Sessions'), findsOneWidget);
+    expect(find.text('Schedules'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('New workspace')).dy,
+      lessThan(tester.getTopLeft(find.text('Sessions')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Sessions')).dy,
+      lessThan(tester.getTopLeft(find.text('Schedules')).dy),
+    );
 
-    expect(find.byType(StatusScreen), findsOneWidget);
+    await tester.tap(find.text('Sessions'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SessionsScreen), findsOneWidget);
+
+    await tester.tap(find.text('Schedules'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SchedulesScreen), findsOneWidget);
   });
 
-  testWidgets('the settings icon navigates to SettingsScreen', (tester) async {
+  testWidgets('footer exposes Paseo actions and settings navigation', (
+    tester,
+  ) async {
     await pumpHomeShell(tester);
 
-    await tester.tap(
-      find.byWidgetPredicate(
-        (w) => w is Tooltip && w.message == 'Connection settings',
-      ),
-    );
+    expect(find.byKey(const ValueKey('sidebar-add-project')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sidebar-hosts-trigger')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sidebar-home')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sidebar-help')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sidebar-settings')), findsOneWidget);
+    expect(find.text('Daemon connected'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('sidebar-settings')));
     await tester.pumpAndSettle();
 
     expect(find.byType(SettingsScreen), findsOneWidget);
@@ -533,10 +564,158 @@ void main() {
     }
   });
 
-  testWidgets('connection footer reflects the connected state', (tester) async {
+  testWidgets('Add project opens the shared project flow', (tester) async {
+    final container = await pumpHomeShell(tester);
+
+    expect(container.read(addProjectFlowProvider).request, isNull);
+    await tester.tap(find.byKey(const ValueKey('sidebar-add-project')));
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(container.read(addProjectFlowProvider).request, isNotNull);
+    expect(find.byKey(const ValueKey('add-project-flow')), findsOneWidget);
+  });
+
+  testWidgets('Help opens the Paseo help surface', (tester) async {
     await pumpHomeShell(tester);
 
-    expect(find.text('Daemon connected'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('sidebar-help')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Keyboard shortcuts'), findsOneWidget);
+    expect(find.text('Diagnostics'), findsOneWidget);
+    expect(find.text('Report an issue'), findsOneWidget);
+    expect(find.text('Tinyrack v0.1.0'), findsOneWidget);
+  });
+
+  testWidgets('global New workspace keeps the selected project context', (
+    tester,
+  ) async {
+    final container = await pumpHomeShell(
+      tester,
+      agents: const [_projectAgent1],
+      projects: const [_projectA],
+      worktreesByProject: const {
+        '/repo-a': [_mainWorktreeA],
+      },
+      activeHost: const HostProfile(
+        serverId: 'server-1',
+        label: 'Test host',
+        connections: [],
+        preferredConnectionId: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      ),
+    );
+
+    container.read(selectedWorktreeProvider.notifier).select('/repo-a');
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey('sidebar-global-new-workspace')),
+    );
+    await tester.pumpAndSettle();
+
+    final screen = find.byType(NewWorkspaceScreen);
+    expect(screen, findsOneWidget);
+    final uri = GoRouterState.of(tester.element(screen)).uri;
+    expect(uri.path, '/new');
+    expect(uri.queryParameters, {
+      'serverId': 'server-1',
+      'dir': '/repo-a',
+      'name': 'repo-a',
+      'projectId': '/repo-a',
+    });
+  });
+
+  testWidgets('Home opens the canonical open-project route', (tester) async {
+    await pumpHomeShell(tester);
+
+    await tester.tap(find.byKey(const ValueKey('sidebar-home')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ProjectsScreen), findsOneWidget);
+    expect(
+      GoRouterState.of(tester.element(find.byType(ProjectsScreen))).uri.path,
+      '/open-project',
+    );
+  });
+
+  testWidgets('workspace search requests the command center overlay', (
+    tester,
+  ) async {
+    final container = await pumpHomeShell(tester);
+
+    expect(container.read(commandCenterOverlayRequestProvider), isNull);
+    await tester.tap(
+      find.byKey(const ValueKey('sidebar-command-center-search')),
+    );
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(
+      container.read(commandCenterOverlayRequestProvider)?.overlay,
+      CommandCenterOverlay.commandCenter,
+    );
+  });
+
+  testWidgets('display preferences switch status grouping and branch titles', (
+    tester,
+  ) async {
+    await pumpHomeShell(
+      tester,
+      agents: const [_projectAgent1, _attentionAgent],
+      projects: const [_projectA],
+      worktreesByProject: const {
+        '/repo-a': [_mainWorktreeA],
+      },
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('sidebar-display-preferences-menu')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sidebar-grouping-status')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ready to review'), findsOneWidget);
+    expect(find.text('Done'), findsOneWidget);
+    expect(find.text('Repo A agent'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('sidebar-display-preferences-menu')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('sidebar-workspace-title-source-branch')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('main'), findsOneWidget);
+    expect(find.text('Repo A agent'), findsNothing);
+  });
+
+  testWidgets('Hosts routes add and host settings actions', (tester) async {
+    await pumpHomeShell(
+      tester,
+      activeHost: const HostProfile(
+        serverId: 'server-1',
+        label: 'Test host',
+        connections: [],
+        preferredConnectionId: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('sidebar-hosts-trigger')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sidebar-host-row-server-1')));
+    await tester.pumpAndSettle();
+
+    final settings = find.byType(HostSettingsRouteScreen);
+    expect(settings, findsOneWidget);
+    expect(
+      GoRouterState.of(tester.element(settings)).uri.path,
+      '/settings/hosts/server-1/connections',
+    );
   });
 
   testWidgets(

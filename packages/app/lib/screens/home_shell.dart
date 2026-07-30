@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../core/daemon_client.dart';
 import '../core/host_routes.dart';
 import '../core/theme.dart';
 import '../core/worktree_actions.dart';
@@ -16,6 +15,8 @@ import '../sidebar/sidebar_gesture_interaction.dart';
 import '../sidebar/sidebar_reorder.dart';
 import '../sidebar/workspace_agent_activity.dart';
 import '../state/agents_provider.dart';
+import '../state/add_project_flow_provider.dart';
+import '../state/command_center_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/host_registry_provider.dart';
 import '../state/app_sidebar_visibility_provider.dart';
@@ -30,6 +31,7 @@ import '../state/worktree_tabs_provider.dart';
 import '../state/worktree_titles_provider.dart';
 import '../widgets/fluent/toast.dart';
 import '../widgets/add_project_flow_host.dart';
+import '../widgets/host_picker.dart';
 import '../widgets/provider_settings_host.dart';
 import '../widgets/sidebar_agent_list_skeleton.dart';
 import '../widgets/sidebar_callout_slot.dart';
@@ -40,15 +42,19 @@ import '../workspace/workspace_deck_retention.dart';
 /// Desktop-style shell: agent sidebar on the left, persistent across every
 /// route, with [child] (the currently routed page) filling the rest.
 class HomeShell extends ConsumerWidget {
-  const HomeShell({super.key, required this.child});
+  const HomeShell({super.key, required this.child, this.routeLocation});
 
   final Widget child;
+  final String? routeLocation;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sidebarVisible = ref.watch(appSidebarVisibilityProvider);
     final focusMode = ref.watch(workspaceFocusModeProvider);
-    final content = _HomeContentDeck(routeChild: child);
+    final content = _HomeContentDeck(
+      routeChild: child,
+      routeLocation: routeLocation,
+    );
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -198,13 +204,18 @@ final workspaceDeckControllerProvider =
     );
 
 class _HomeContentDeck extends ConsumerWidget {
-  const _HomeContentDeck({required this.routeChild});
+  const _HomeContentDeck({
+    required this.routeChild,
+    required this.routeLocation,
+  });
 
   final Widget routeChild;
+  final String? routeLocation;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isWorkspaceRoute = GoRouterState.of(context).matchedLocation == '/';
+    final isWorkspaceRoute =
+        (routeLocation ?? GoRouterState.of(context).matchedLocation) == '/';
     final selected = ref.watch(selectedWorktreeProvider);
     if (!isWorkspaceRoute || selected == null) {
       return routeChild;
@@ -341,29 +352,34 @@ class _SidebarHeaderRow extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.active = false,
+    this.testId,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final bool active;
+  final String? testId;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
       child: HoverButton(
+        key: testId == null ? null : ValueKey(testId!),
         onPressed: onTap,
         builder: (context, states) {
           final hovering = states.contains(WidgetState.hovered);
           return Container(
-            color: hovering
+            color: hovering || active
                 ? context.tokens.surfaceContainerHighest
                 : Colors.transparent,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             child: Row(
               children: [
                 Icon(icon, size: 16),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     label,
@@ -375,6 +391,139 @@ class _SidebarHeaderRow extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+enum _SidebarGroupMode { project, status }
+
+enum _SidebarWorkspaceTitleSource { title, branch }
+
+class _WorkspacesSectionHeader extends StatefulWidget {
+  const _WorkspacesSectionHeader({
+    required this.onSearch,
+    required this.groupMode,
+    required this.titleSource,
+    required this.onGroupModeChanged,
+    required this.onTitleSourceChanged,
+  });
+
+  final VoidCallback onSearch;
+  final _SidebarGroupMode groupMode;
+  final _SidebarWorkspaceTitleSource titleSource;
+  final ValueChanged<_SidebarGroupMode> onGroupModeChanged;
+  final ValueChanged<_SidebarWorkspaceTitleSource> onTitleSourceChanged;
+
+  @override
+  State<_WorkspacesSectionHeader> createState() =>
+      _WorkspacesSectionHeaderState();
+}
+
+class _WorkspacesSectionHeaderState extends State<_WorkspacesSectionHeader> {
+  final _preferencesController = FlyoutController();
+
+  @override
+  void dispose() {
+    _preferencesController.dispose();
+    super.dispose();
+  }
+
+  Widget _selectedIcon(bool selected) => SizedBox.square(
+    dimension: 16,
+    child: selected
+        ? const Icon(FluentIcons.check_mark, size: 12)
+        : const SizedBox.shrink(),
+  );
+
+  Future<void> _showPreferences() async {
+    if (!_preferencesController.isAttached || _preferencesController.isOpen) {
+      return;
+    }
+    await _preferencesController.showFlyout<void>(
+      placementMode: FlyoutPlacementMode.bottomRight,
+      builder: (context) => MenuFlyout(
+        constraints: const BoxConstraints.tightFor(width: 220),
+        items: [
+          MenuFlyoutItem(text: const Text('Group by'), onPressed: null),
+          MenuFlyoutItem(
+            key: const ValueKey('sidebar-grouping-project'),
+            leading: _selectedIcon(
+              widget.groupMode == _SidebarGroupMode.project,
+            ),
+            text: const Text('Project'),
+            onPressed: () =>
+                widget.onGroupModeChanged(_SidebarGroupMode.project),
+          ),
+          MenuFlyoutItem(
+            key: const ValueKey('sidebar-grouping-status'),
+            leading: _selectedIcon(
+              widget.groupMode == _SidebarGroupMode.status,
+            ),
+            text: const Text('Status'),
+            onPressed: () =>
+                widget.onGroupModeChanged(_SidebarGroupMode.status),
+          ),
+          const MenuFlyoutSeparator(),
+          MenuFlyoutItem(text: const Text('Workspace title'), onPressed: null),
+          MenuFlyoutItem(
+            key: const ValueKey('sidebar-workspace-title-source-title'),
+            leading: _selectedIcon(
+              widget.titleSource == _SidebarWorkspaceTitleSource.title,
+            ),
+            text: const Text('Title'),
+            onPressed: () =>
+                widget.onTitleSourceChanged(_SidebarWorkspaceTitleSource.title),
+          ),
+          MenuFlyoutItem(
+            key: const ValueKey('sidebar-workspace-title-source-branch'),
+            leading: _selectedIcon(
+              widget.titleSource == _SidebarWorkspaceTitleSource.branch,
+            ),
+            text: const Text('Branch name'),
+            onPressed: () => widget.onTitleSourceChanged(
+              _SidebarWorkspaceTitleSource.branch,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Workspaces',
+              style: context.textStyles.bodySmall?.copyWith(
+                color: context.paseoPalette.foregroundMuted,
+              ),
+            ),
+          ),
+          Tooltip(
+            message: 'Search',
+            child: IconButton(
+              key: const ValueKey('sidebar-command-center-search'),
+              icon: const Icon(FluentIcons.search, size: 14),
+              onPressed: widget.onSearch,
+            ),
+          ),
+          FlyoutTarget(
+            controller: _preferencesController,
+            child: Tooltip(
+              message: 'Display preferences',
+              child: IconButton(
+                key: const ValueKey('sidebar-display-preferences-menu'),
+                icon: const Icon(FluentIcons.settings, size: 14),
+                onPressed: () => unawaited(_showPreferences()),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -483,6 +632,37 @@ class _Sidebar extends ConsumerStatefulWidget {
 
 class _SidebarState extends ConsumerState<_Sidebar> {
   final _collapsedProjectPaths = <String>{};
+  _SidebarGroupMode _groupMode = _SidebarGroupMode.project;
+  _SidebarWorkspaceTitleSource _titleSource =
+      _SidebarWorkspaceTitleSource.title;
+
+  String _newWorkspaceRoute({
+    required String? selected,
+    required SidebarGroups groups,
+    required String? serverId,
+    required bool supportsMultiplicity,
+  }) {
+    if (serverId == null) return buildNewWorkspaceRoute();
+    if (selected != null) {
+      for (final section in groups.projectSections) {
+        if (section.rows.any((row) => row.key == selected) &&
+            (supportsMultiplicity || section.project.isGitRepo)) {
+          final displayName = section.project.name.isEmpty
+              ? section.project.path
+              : section.project.name;
+          return buildNewWorkspaceRoute(
+            NewWorkspaceRouteOptions(
+              serverId: serverId,
+              sourceDirectory: section.project.path,
+              displayName: displayName,
+              projectId: section.project.path,
+            ),
+          );
+        }
+      }
+    }
+    return buildNewWorkspaceRoute(NewWorkspaceRouteOptions(serverId: serverId));
+  }
 
   void _toggleProject(String projectPath) {
     setState(() {
@@ -577,6 +757,32 @@ class _SidebarState extends ConsumerState<_Sidebar> {
         projects.isLoading &&
         (projects.value?.isEmpty ?? true) &&
         groups.isEmpty;
+    final location = GoRouterState.of(context).matchedLocation;
+    final statusRows = <SidebarWorktreeRow>[
+      for (final section in groups.projectSections) ...section.rows,
+      ...groups.other,
+    ];
+    final statusRowsByBucket =
+        <WorkspaceStateBucket, List<SidebarWorktreeRow>>{};
+    for (final row in statusRows) {
+      final bucket =
+          _aggregateStateBucket(row.agents) ?? WorkspaceStateBucket.done;
+      statusRowsByBucket.putIfAbsent(bucket, () => []).add(row);
+    }
+    const statusOrder = [
+      WorkspaceStateBucket.needsInput,
+      WorkspaceStateBucket.failed,
+      WorkspaceStateBucket.attention,
+      WorkspaceStateBucket.running,
+      WorkspaceStateBucket.done,
+    ];
+    const statusLabels = {
+      WorkspaceStateBucket.needsInput: 'Needs input',
+      WorkspaceStateBucket.failed: 'Failed',
+      WorkspaceStateBucket.attention: 'Ready to review',
+      WorkspaceStateBucket.running: 'Working',
+      WorkspaceStateBucket.done: 'Done',
+    };
 
     void selectRow(SidebarWorktreeRow row) {
       ref.read(selectedWorktreeProvider.notifier).select(row.key);
@@ -596,29 +802,41 @@ class _SidebarState extends ConsumerState<_Sidebar> {
         _SidebarHeaderRow(
           icon: FluentIcons.add,
           label: 'New workspace',
-          onTap: () => context.push(buildNewWorkspaceRoute()),
-        ),
-        _SidebarHeaderRow(
-          icon: FluentIcons.branch_fork2,
-          label: 'Projects & worktrees',
-          onTap: () => context.push('/projects'),
-        ),
-        _SidebarHeaderRow(
-          icon: FluentIcons.calendar_week,
-          label: 'Schedules',
-          onTap: () => context.push('/schedules'),
+          testId: 'sidebar-global-new-workspace',
+          onTap: () => context.push(
+            _newWorkspaceRoute(
+              selected: selected,
+              groups: groups,
+              serverId: serverId,
+              supportsMultiplicity: supportsMultiplicity,
+            ),
+          ),
         ),
         _SidebarHeaderRow(
           icon: FluentIcons.history,
           label: 'Sessions',
-          onTap: () => context.push('/sessions'),
+          testId: 'sidebar-sessions',
+          active: location == buildSessionsRoute(),
+          onTap: () => context.push(buildSessionsRoute()),
         ),
         _SidebarHeaderRow(
-          icon: FluentIcons.health,
-          label: 'Status',
-          onTap: () => context.push('/status'),
+          icon: FluentIcons.calendar_week,
+          label: 'Schedules',
+          testId: 'sidebar-schedules',
+          active: location == buildSchedulesRoute(),
+          onTap: () => context.push(buildSchedulesRoute()),
         ),
         const Divider(),
+        _WorkspacesSectionHeader(
+          onSearch: () => ref
+              .read(commandCenterOverlayRequestProvider.notifier)
+              .openCommandCenter(),
+          groupMode: _groupMode,
+          titleSource: _titleSource,
+          onGroupModeChanged: (mode) => setState(() => _groupMode = mode),
+          onTitleSourceChanged: (source) =>
+              setState(() => _titleSource = source),
+        ),
         Expanded(
           child: isInitialLoad
               ? const SidebarAgentListSkeleton()
@@ -628,6 +846,34 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                     'No agents yet',
                     style: TextStyle(color: context.tokens.outline),
                   ),
+                )
+              : _groupMode == _SidebarGroupMode.status
+              ? ListView(
+                  padding: EdgeInsets.zero,
+                  children: [
+                    if (groups.pinned.isNotEmpty) ...[
+                      const _SectionLabel('Pinned'),
+                      for (final row in groups.pinned)
+                        _SidebarWorktreeRow(
+                          row: row,
+                          selected: row.key == selected,
+                          titleSource: _titleSource,
+                          onTap: () => selectRow(row),
+                        ),
+                    ],
+                    for (final bucket in statusOrder)
+                      if (statusRowsByBucket[bucket] case final rows?
+                          when rows.isNotEmpty) ...[
+                        _SectionLabel(statusLabels[bucket]!),
+                        for (final row in rows)
+                          _SidebarWorktreeRow(
+                            row: row,
+                            selected: row.key == selected,
+                            titleSource: _titleSource,
+                            onTap: () => selectRow(row),
+                          ),
+                      ],
+                  ],
                 )
               : ReorderableListView.builder(
                   buildDefaultDragHandles: false,
@@ -642,6 +888,7 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                               _SidebarWorktreeRow(
                                 row: row,
                                 selected: row.key == selected,
+                                titleSource: _titleSource,
                                 onTap: () => selectRow(row),
                               ),
                           ],
@@ -655,6 +902,7 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                               _SidebarWorktreeRow(
                                 row: row,
                                 selected: row.key == selected,
+                                titleSource: _titleSource,
                                 onTap: () => selectRow(row),
                               ),
                           ],
@@ -751,6 +999,7 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                                 child: _SidebarWorktreeRow(
                                   row: row,
                                   selected: row.key == selected,
+                                  titleSource: _titleSource,
                                   onTap: () => selectRow(row),
                                 ),
                               );
@@ -762,8 +1011,7 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                 ),
         ),
         const SidebarCalloutSlot(),
-        const Divider(),
-        const _ConnectionFooter(),
+        const _SidebarFooter(),
       ],
     );
   }
@@ -796,11 +1044,13 @@ class _SidebarWorktreeRow extends ConsumerStatefulWidget {
   const _SidebarWorktreeRow({
     required this.row,
     required this.selected,
+    required this.titleSource,
     required this.onTap,
   });
 
   final SidebarWorktreeRow row;
   final bool selected;
+  final _SidebarWorkspaceTitleSource titleSource;
   final VoidCallback onTap;
 
   @override
@@ -813,6 +1063,11 @@ class _SidebarWorktreeRowState extends ConsumerState<_SidebarWorktreeRow> {
   final _menuButtonKey = GlobalKey();
 
   String get _fallbackName {
+    if (widget.titleSource == _SidebarWorkspaceTitleSource.branch) {
+      final branch =
+          widget.row.worktree?.branch ?? widget.row.agents.firstOrNull?.branch;
+      if (branch != null && branch.isNotEmpty) return branch;
+    }
     // A single session's own title is more informative than the branch name
     // (preserves the pre-unification per-agent row's look); branch/path is
     // only a fallback for empty or multi-session rows.
@@ -1061,49 +1316,192 @@ class _RunStateIndicator extends StatelessWidget {
   }
 }
 
-class _ConnectionFooter extends ConsumerWidget {
-  const _ConnectionFooter();
+class _SidebarFooter extends ConsumerStatefulWidget {
+  const _SidebarFooter();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final connection =
-        ref.watch(connectionStateProvider).value ??
-        DaemonConnectionState.connecting;
-    final (color, label) = switch (connection) {
-      DaemonConnectionState.connected => (Colors.green, 'Daemon connected'),
-      DaemonConnectionState.connecting => (Colors.yellow, 'Connecting…'),
-      DaemonConnectionState.disconnected => (
-        Colors.red,
-        'Daemon offline (retrying)',
-      ),
-      DaemonConnectionState.versionMismatch => (
-        Colors.orange,
-        'Daemon version incompatible',
-      ),
-    };
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-      child: Row(
-        children: [
-          Icon(FluentIcons.circle_fill, size: 10, color: color),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              label,
-              style: context.textStyles.bodySmall,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+  ConsumerState<_SidebarFooter> createState() => _SidebarFooterState();
+}
+
+class _SidebarFooterState extends ConsumerState<_SidebarFooter> {
+  final _helpController = FlyoutController();
+
+  @override
+  void dispose() {
+    _helpController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _showHelp() async {
+    if (!_helpController.isAttached || _helpController.isOpen) return;
+    await _helpController.showFlyout<void>(
+      placementMode: FlyoutPlacementMode.topRight,
+      builder: (context) => MenuFlyout(
+        constraints: const BoxConstraints.tightFor(width: 280),
+        items: [
+          MenuFlyoutItem(text: const Text('Help'), onPressed: null),
+          MenuFlyoutItem(
+            key: const ValueKey('sidebar-help-shortcuts'),
+            leading: const Icon(FluentIcons.keyboard_classic, size: 16),
+            text: const Text('Keyboard shortcuts'),
+            onPressed: () => ref
+                .read(commandCenterOverlayRequestProvider.notifier)
+                .openShortcuts(),
+          ),
+          MenuFlyoutItem(
+            key: const ValueKey('sidebar-help-diagnostics'),
+            leading: const Icon(FluentIcons.diagnostic, size: 16),
+            text: const Text('Diagnostics'),
+            onPressed: () => context.push(
+              buildSettingsSectionRoute(SettingsSectionSlug.diagnostics),
             ),
           ),
-          Tooltip(
-            message: 'Connection settings',
-            child: IconButton(
-              icon: const Icon(FluentIcons.settings, size: 16),
-              onPressed: () => context.go('/settings'),
-            ),
+          const MenuFlyoutSeparator(),
+          MenuFlyoutItem(text: const Text('Report an issue'), onPressed: null),
+          MenuFlyoutItem(
+            key: const ValueKey('sidebar-help-version'),
+            text: const Text('Tinyrack v0.1.0'),
+            onPressed: null,
           ),
         ],
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final registry = ref.watch(hostRegistryProvider);
+    final activeHost = ref.watch(activeHostProvider);
+    final hosts = <HostProfile>[
+      ...registry.hosts,
+      if (activeHost != null &&
+          !registry.hosts.any(
+            (candidate) => candidate.serverId == activeHost.serverId,
+          ))
+        activeHost,
+    ];
+    void openHostSettings(String serverId) => context.push(
+      buildSettingsHostSectionRoute(serverId, HostSectionSlug.connections),
+    );
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: context.paseoPalette.border)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: HoverButton(
+              key: const ValueKey('sidebar-add-project'),
+              onPressed: () => unawaited(
+                ref
+                    .read(addProjectFlowProvider.notifier)
+                    .open(preferredHostId: activeHost?.serverId),
+              ),
+              builder: (context, states) => Container(
+                constraints: const BoxConstraints(minHeight: 32),
+                decoration: BoxDecoration(
+                  color: states.contains(WidgetState.hovered)
+                      ? context.paseoPalette.surfaceSidebarHover
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: Row(
+                  children: [
+                    Icon(
+                      FluentIcons.new_folder,
+                      size: 16,
+                      color: context.paseoPalette.foregroundMuted,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Add project',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.textStyles.bodyMedium?.copyWith(
+                          color: context.paseoPalette.foregroundMuted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          HostPicker(
+            hosts: hosts,
+            value: '',
+            onSelect: openHostSettings,
+            includeAddHost: true,
+            onAddHost: () => context.push(
+              buildSettingsAddHostRoute(DateTime.now().millisecondsSinceEpoch),
+            ),
+            showActiveConnection: true,
+            onOpenHostSettings: openHostSettings,
+            searchable: true,
+            desktopPlacement: FlyoutPlacementMode.topLeft,
+            desktopMinWidth: 240,
+            hostOptionKey: (id) => ValueKey('sidebar-host-row-$id'),
+            addHostKey: const ValueKey('sidebar-host-add'),
+            triggerBuilder: (context, onOpen, open) => _FooterIconButton(
+              key: const ValueKey('sidebar-hosts-trigger'),
+              label: 'Hosts',
+              icon: FluentIcons.server,
+              onPressed: onOpen,
+            ),
+          ),
+          const SizedBox(width: 8),
+          _FooterIconButton(
+            key: const ValueKey('sidebar-home'),
+            label: 'Home',
+            icon: FluentIcons.home,
+            onPressed: () => context.push(buildOpenProjectRoute()),
+          ),
+          const SizedBox(width: 8),
+          FlyoutTarget(
+            controller: _helpController,
+            child: _FooterIconButton(
+              key: const ValueKey('sidebar-help'),
+              label: 'Help',
+              icon: FluentIcons.help,
+              onPressed: () => unawaited(_showHelp()),
+            ),
+          ),
+          const SizedBox(width: 8),
+          _FooterIconButton(
+            key: const ValueKey('sidebar-settings'),
+            label: 'Settings',
+            icon: FluentIcons.settings,
+            onPressed: () => context.push(buildSettingsRoute()),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FooterIconButton extends StatelessWidget {
+  const _FooterIconButton({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: label,
+    child: SizedBox.square(
+      dimension: 28,
+      child: IconButton(icon: Icon(icon, size: 16), onPressed: onPressed),
+    ),
+  );
 }

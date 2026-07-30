@@ -3124,10 +3124,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/left-sidebar.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/screens/home_shell.dart; packages/app/lib/state/command_center_provider.dart; packages/app/lib/widgets/app_command_center_host.dart",
+      "evidence": [
+        "packages/app/test/home_shell_test.dart",
+        "packages/app/test/app_command_center_host_test.dart"
+      ],
+      "notes": "Desktop header order and active routes, contextual new-workspace navigation, Workspaces search, Add project, Hosts, Home, Help, Settings, callout/footer placement, resizing, retained workspace navigation, and conflict removal are implemented and stability-tested. Compact mobile overlay/close gesture, manual pull refresh, full display-preferences behavior, complete help actions, and exact golden evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/components/markdown-text-selection.tsx",
@@ -3581,10 +3584,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar/sidebar-display-preferences-menu.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/screens/home_shell.dart",
+      "evidence": [
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "Project/status grouping, frozen status bucket labels/order, selected-option state, and title/branch workspace naming are implemented. Persisted preferences, multi-host filters, and exact menu golden evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar/sidebar-group-toggle-row.tsx",
@@ -3595,17 +3600,22 @@
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar/sidebar-header-row.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/screens/home_shell.dart",
+      "evidence": [
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "Compact icon/label rows, active route state, hover state, fixed order, accessibility keys, and navigation are implemented. Shortcut badges, mobile close coordination, and exact golden evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar/sidebar-help-menu.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/screens/home_shell.dart; packages/app/lib/state/command_center_provider.dart; packages/app/lib/widgets/app_command_center_host.dart",
+      "evidence": [
+        "packages/app/test/home_shell_test.dart",
+        "packages/app/test/app_command_center_host_test.dart"
+      ],
+      "notes": "Help flyout placement, keyboard-shortcuts overlay, diagnostics route, report-issue section, and Tinyrack version identity are implemented. External changelog/community/report actions, live host version hints, and exact golden evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar/sidebar-model.tsx",

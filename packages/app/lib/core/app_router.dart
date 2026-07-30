@@ -19,7 +19,8 @@ GoRouter buildAppRouter({String initialLocation = '/'}) {
     initialLocation: initialLocation,
     routes: [
       ShellRoute(
-        builder: (context, state, child) => HomeShell(child: child),
+        builder: (context, state, child) =>
+            HomeShell(routeLocation: state.uri.path, child: child),
         routes: [
           GoRoute(path: '/', builder: (context, state) => const HomeChatPane()),
           GoRoute(
