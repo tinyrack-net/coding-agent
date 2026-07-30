@@ -101,6 +101,36 @@ final class PollingWorkspaceGitBackend implements WorkspaceGitObserverBackend {
   WorkspaceForgeSnapshot? peekForgeSnapshot(String cwd) =>
       _targets[p.normalize(p.absolute(cwd))]?.forgeSnapshot;
 
+  /// Returns a fresh snapshot for an arbitrary checkout while sharing an
+  /// in-flight refresh with any workspace observer already owning that cwd.
+  ///
+  /// A failed `git status` is the frozen non-Git result, not an exception.
+  Future<WorkspaceLocalGitSnapshot?> getSnapshot(
+    String cwd, {
+    String? baseRef,
+  }) async {
+    if (_disposed) throw StateError('Workspace Git backend is disposed');
+    final normalized = p.normalize(p.absolute(cwd));
+    final target = _targets.putIfAbsent(
+      normalized,
+      () => _PollingGitTarget(cwd: normalized),
+    );
+    final normalizedBaseRef = baseRef?.trim();
+    if (normalizedBaseRef != null && normalizedBaseRef.isNotEmpty) {
+      target.baseRef = normalizedBaseRef;
+    }
+    try {
+      await refreshNow(normalized);
+      return target.snapshot;
+    } finally {
+      if (target.listeners.isEmpty &&
+          identical(_targets[normalized], target) &&
+          target.refreshInFlight == null) {
+        _targets.remove(normalized);
+      }
+    }
+  }
+
   void setBaseRef(String cwd, String? baseRef) {
     final normalized = p.normalize(p.absolute(cwd));
     final target = _targets.putIfAbsent(

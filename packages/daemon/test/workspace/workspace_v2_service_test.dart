@@ -1226,9 +1226,11 @@ void main() {
                     true,
           ),
         );
+        final workspaceMessage = broadcasts
+            .lastWhere((entry) => entry.$1['type'] == 'workspace_update')
+            .$1;
         final update =
-            WorkspaceUpdate.fromJson(broadcasts.last.$1)
-                as WorkspaceUpsertUpdate;
+            WorkspaceUpdate.fromJson(workspaceMessage) as WorkspaceUpsertUpdate;
         expect(update.workspace.gitRuntime?.currentBranch, 'feature');
         expect(update.workspace.gitRuntime?.isDirty, isTrue);
         expect(update.workspace.gitRuntime?.aheadBehind?.ahead, 1);
@@ -1241,6 +1243,16 @@ void main() {
           (update.workspace.githubRuntime?['pullRequest'] as Map)['number'],
           11,
         );
+        final checkoutUpdate = CheckoutStatusUpdate.fromJson(
+          broadcasts
+              .lastWhere(
+                (entry) => entry.$1['type'] == CheckoutStatusUpdate.type,
+              )
+              .$1,
+        );
+        expect(checkoutUpdate.payload.cwd, projectDirectory.path);
+        expect(checkoutUpdate.payload.isDirty, isTrue);
+        expect(checkoutUpdate.payload.currentBranch, 'feature');
       },
     );
 

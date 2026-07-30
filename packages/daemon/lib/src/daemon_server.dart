@@ -84,6 +84,7 @@ import 'workspace/service_proxy_http.dart';
 import 'workspace/service_proxy_route_registry.dart';
 import 'workspace/service_proxy_standalone.dart';
 import 'workspace/script_health_monitor.dart';
+import 'workspace/checkout_status_service.dart';
 import 'workspace/polling_workspace_git_backend.dart';
 import 'workspace/project_github_clone_service.dart';
 import 'workspace/github_repository_search_service.dart';
@@ -832,6 +833,11 @@ Future<DaemonServerHandle> startDaemonServer({
   final forgeStatus = WorkspaceForgeStatusService(resolver: forgeResolver);
   final workspaceGitObserverBackend = PollingWorkspaceGitBackend(
     forgeStatus: forgeStatus,
+  );
+  final checkoutStatus = CheckoutStatusService(
+    loadSnapshot: workspaceGitObserverBackend.getSnapshot,
+    resolveWorkspace: (cwd) =>
+        resolveCheckoutStatusWorkspace(workspaceRegistries.workspaces, cwd),
   );
   final forgeSearch = ForgeSearchService(resolver: forgeResolver);
   final pullRequestTimeline = PullRequestTimelineService(
@@ -1719,6 +1725,8 @@ Future<DaemonServerHandle> startDaemonServer({
     if (providerResponse != null) return providerResponse;
     final forgeActionResponse = await forgeActions.handle(message);
     if (forgeActionResponse != null) return forgeActionResponse;
+    final checkoutStatusResponse = await checkoutStatus.handle(message);
+    if (checkoutStatusResponse != null) return checkoutStatusResponse;
     final prStatusResponse = await checkoutPrStatus.handle(message);
     if (prStatusResponse != null) return prStatusResponse;
     final checkoutRefreshResponse = await checkoutRefresh.handle(message);

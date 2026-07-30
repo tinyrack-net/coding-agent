@@ -35,6 +35,7 @@ export 'src/messages/checkout_pr.dart';
 export 'src/messages/checkout_refresh.dart';
 export 'src/messages/checkout_check_details.dart';
 export 'src/messages/checkout_pr_status.dart';
+export 'src/messages/checkout_status.dart';
 export 'src/messages/chat.dart';
 export 'src/messages/diff.dart';
 export 'src/messages/daemon_config.dart';

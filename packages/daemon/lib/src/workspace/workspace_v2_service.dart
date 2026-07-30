@@ -17,6 +17,7 @@ import '../server/connection.dart';
 import '../terminal/terminal_manager.dart';
 import '../utils/path_identity.dart';
 import 'mnemonic_worktree_slug.dart';
+import 'checkout_status_service.dart';
 import 'polling_workspace_git_backend.dart';
 import 'project_directory_service.dart';
 import 'workspace_git_observer_service.dart';
@@ -1705,12 +1706,14 @@ final class WorkspaceV2Service {
 
   Future<void> _emitGitSnapshotUpdate(String cwd) async {
     if (_workspaceSubscribers.isEmpty) return;
+    final snapshot = gitSnapshots?.peekSnapshot(cwd);
     final projects = {
       for (final project in await registries.projects.list())
         if (project.archivedAt == null) project.projectId: project,
     };
     final agents = _listAgents().toList(growable: false);
     final terminals = _listTerminalContributions().toList(growable: false);
+    var emittedCheckoutStatus = false;
     for (final workspace in await registries.workspaces.list()) {
       final project = projects[workspace.projectId];
       if (workspace.archivedAt != null ||
@@ -1724,6 +1727,20 @@ final class WorkspaceV2Service {
         ).toJson(),
         Set.unmodifiable(_workspaceSubscribers),
       );
+      if (!emittedCheckoutStatus && snapshot != null) {
+        emittedCheckoutStatus = true;
+        _broadcast(
+          CheckoutStatusUpdate(
+            payload: projectCheckoutStatusPayload(
+              cwd: workspace.cwd,
+              requestId: 'subscription:${workspace.cwd}',
+              snapshot: snapshot,
+              workspace: workspace,
+            ),
+          ).toJson(),
+          Set.unmodifiable(_workspaceSubscribers),
+        );
+      }
     }
   }
 

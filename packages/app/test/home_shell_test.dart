@@ -193,12 +193,14 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
     this.projects = const [],
     this.worktreesByProject = const {},
     this.projectListGate,
+    this.checkoutGitByCwd = const {},
   }) : super(uri: Uri.parse('ws://fake'));
 
   final List<AgentSummary> agents;
   final List<ProjectInfo> projects;
   final Map<String, List<WorktreeInfo>> worktreesByProject;
   final Completer<List<ProjectInfo>>? projectListGate;
+  final Map<String, bool> checkoutGitByCwd;
 
   @override
   Stream<RpcEvent> get events => const Stream.empty();
@@ -209,6 +211,43 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
   @override
   Stream<DaemonConnectionState> get connectionState =>
       Stream.value(DaemonConnectionState.connected);
+
+  @override
+  Future<Map<String, Object?>> requestSessionMessage(
+    Map<String, Object?> message, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    if (message['type'] == CheckoutStatusRequest.type) {
+      final cwd = message['cwd']! as String;
+      if (checkoutGitByCwd[cwd] == false) {
+        return CheckoutStatusResponse(
+          CheckoutStatusNotGit(
+            cwd: cwd,
+            error: null,
+            requestId: message['requestId']! as String,
+          ),
+        ).toJson();
+      }
+      return CheckoutStatusResponse(
+        CheckoutStatusGitNonPaseo(
+          cwd: cwd,
+          repoRoot: cwd,
+          mainRepoRoot: null,
+          currentBranch: 'main',
+          isDirty: false,
+          baseRef: null,
+          aheadBehind: null,
+          aheadOfOrigin: 0,
+          behindOfOrigin: 0,
+          hasRemote: false,
+          remoteUrl: null,
+          error: null,
+          requestId: message['requestId']! as String,
+        ),
+      ).toJson();
+    }
+    throw StateError('unexpected session request: ${message['type']}');
+  }
 
   @override
   Future<Map<String, Object?>> request(
@@ -252,6 +291,7 @@ Future<ProviderContainer> pumpHomeShell(
   Completer<List<ProjectInfo>>? projectListGate,
   HostProfile? activeHost,
   Map<String, List<WorkspaceDescriptor>> workspaceCatalogByServer = const {},
+  Map<String, bool>? checkoutGitByCwd,
   Size? surfaceSize,
 }) async {
   if (surfaceSize != null) {
@@ -265,6 +305,14 @@ Future<ProviderContainer> pumpHomeShell(
     projects: projects,
     worktreesByProject: worktreesByProject,
     projectListGate: projectListGate,
+    checkoutGitByCwd:
+        checkoutGitByCwd ??
+        {
+          for (final workspaces in workspaceCatalogByServer.values)
+            for (final workspace in workspaces)
+              workspace.workspaceDirectory:
+                  workspace.projectKind == WorkspaceProjectKind.git,
+        },
   );
   final container = ProviderContainer(
     overrides: [
@@ -462,6 +510,35 @@ void main() {
     await settleMobilePanel(tester);
     expect(container.read(mobilePanelProvider).target, MobilePanelView.agent);
   });
+
+  testWidgets(
+    'compact explorer trusts live checkout status over catalog kind',
+    (tester) async {
+      final container = await pumpHomeShell(
+        tester,
+        agents: const [_workspaceRoot],
+        activeHost: _testHost,
+        workspaceCatalogByServer: const {
+          'server-1': [_workspaceSharedDescriptor],
+        },
+        checkoutGitByCwd: const {'/work/shared': false},
+        surfaceSize: const Size(500, 700),
+      );
+      container.read(selectedWorktreeProvider.notifier).select('/work/shared');
+      await tester.pump();
+      await tester.pump();
+
+      container.read(mobilePanelProvider.notifier).showFileExplorer();
+      await settleMobilePanel(tester);
+
+      expect(find.byKey(const ValueKey('explorer-tab-files')), findsOneWidget);
+      expect(find.byKey(const ValueKey('explorer-tab-changes')), findsNothing);
+      expect(
+        tester.widget<WorkspaceExplorer>(find.byType(WorkspaceExplorer)).isGit,
+        isFalse,
+      );
+    },
+  );
 
   testWidgets('newer compact command supersedes an in-flight gesture', (
     tester,

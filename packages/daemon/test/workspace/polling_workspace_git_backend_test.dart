@@ -142,6 +142,23 @@ void main() {
   });
 
   test(
+    'one-shot checkout snapshots do not retain an observer target',
+    () async {
+      final snapshot = await backend.getSnapshot(repo.path, baseRef: 'main');
+
+      expect(snapshot?.currentBranch, 'main');
+      expect(snapshot?.isDirty, isFalse);
+      expect(snapshot?.baseRef, 'main');
+      expect(backend.peekSnapshot(repo.path), isNull);
+
+      final directory = Directory.systemTemp.createTempSync('not-git-status-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      expect(await backend.getSnapshot(directory.path), isNull);
+      expect(backend.peekSnapshot(directory.path), isNull);
+    },
+  );
+
+  test(
     'refreshes pending forge checks at 20s and settled state at 120s',
     () async {
       backend.dispose();

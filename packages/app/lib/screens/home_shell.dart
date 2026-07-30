@@ -23,6 +23,7 @@ import '../state/daemon_providers.dart';
 import '../state/host_registry_provider.dart';
 import '../state/app_sidebar_visibility_provider.dart';
 import '../state/workspace_focus_mode_provider.dart';
+import '../state/workspace_checkout_status_provider.dart';
 import '../state/workspace_catalog_provider.dart';
 import '../state/workspace_agent_activity_provider.dart';
 import '../state/sidebar_grouping_provider.dart';
@@ -349,6 +350,12 @@ class _CompactHomeLayoutState extends ConsumerState<_CompactHomeLayout>
             serverId: serverId,
             workspaceId: workspaceId,
           );
+    final checkoutStatusKey = workspace == null || serverId.isEmpty
+        ? null
+        : (serverId: serverId, cwd: workspace.workspaceDirectory);
+    final checkoutStatus = checkoutStatusKey == null
+        ? null
+        : ref.watch(workspaceCheckoutStatusProvider(checkoutStatusKey)).value;
     final resolvedExplorerModel = resolveCompactExplorerSidebarHostModel(
       previous: explorerOpen ? _retainedExplorerModel : null,
       selection: explorerSelection,
@@ -357,9 +364,7 @@ class _CompactHomeLayoutState extends ConsumerState<_CompactHomeLayout>
           : CompactExplorerWorkspaceSnapshot(
               workspaceDirectory: workspace.workspaceDirectory,
             ),
-      isGit: workspace != null
-          ? workspace.projectKind == WorkspaceProjectKind.git
-          : agentContext?.projectPath != null,
+      isGit: checkoutStatus?.isGit ?? false,
     );
     if (explorerSelection == null) {
       _retainedExplorerModel = null;

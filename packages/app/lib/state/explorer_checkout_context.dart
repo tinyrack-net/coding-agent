@@ -9,4 +9,14 @@ final class ExplorerCheckoutContext {
   final String serverId;
   final String cwd;
   final bool isGit;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ExplorerCheckoutContext &&
+      other.serverId == serverId &&
+      other.cwd == cwd &&
+      other.isGit == isGit;
+
+  @override
+  int get hashCode => Object.hash(serverId, cwd, isGit);
 }

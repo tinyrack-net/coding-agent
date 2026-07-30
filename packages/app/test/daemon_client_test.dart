@@ -1555,6 +1555,48 @@ void main() {
     );
   });
 
+  test('checkout status updates are decoded onto a typed stream', () async {
+    client = DaemonClient(uri: server.uri);
+    final connFuture = nextConnection(server);
+    unawaited(client.connect());
+    final conn = await connFuture;
+    await conn.respondToHello(
+      const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final eventFuture = client.checkoutStatusUpdates.first;
+    conn.socket.add(
+      jsonEncode({
+        'type': 'session',
+        'message': CheckoutStatusUpdate(
+          payload: const CheckoutStatusGitNonPaseo(
+            cwd: '/repo',
+            repoRoot: '/repo',
+            mainRepoRoot: null,
+            currentBranch: 'main',
+            isDirty: true,
+            baseRef: null,
+            aheadBehind: CheckoutAheadBehind(ahead: 1, behind: 2),
+            aheadOfOrigin: 3,
+            behindOfOrigin: 4,
+            hasRemote: true,
+            remoteUrl: 'https://example.test/repo.git',
+            error: null,
+            requestId: 'subscription:/repo',
+          ),
+        ).toJson(),
+      }),
+    );
+
+    final event = await eventFuture;
+    expect(event.payload.cwd, '/repo');
+    expect(event.payload.isGit, isTrue);
+    expect(event.payload.isDirty, isTrue);
+    expect(event.payload.aheadBehind?.ahead, 1);
+    expect(event.payload.aheadBehind?.behind, 2);
+  });
+
   test('disconnect: server closing the socket surfaces disconnected state '
       'and pending requests fail', () async {
     client = DaemonClient(uri: server.uri);

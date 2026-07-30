@@ -2637,14 +2637,15 @@
     },
     {
       "id": "source-unit:packages/app/src/components/compact-explorer-sidebar-host.tsx",
-      "status": "partial",
-      "implementation": "packages/app/lib/screens/home_shell.dart; packages/app/lib/widgets/workspace_explorer.dart; packages/app/lib/widgets/worktree_tabbed_pane.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/screens/home_shell.dart; packages/app/lib/state/workspace_checkout_status_provider.dart; packages/app/lib/widgets/workspace_explorer.dart; packages/app/lib/widgets/worktree_tabbed_pane.dart",
       "evidence": [
         "packages/app/test/home_shell_test.dart",
+        "packages/app/test/workspace_checkout_status_provider_test.dart",
         "packages/app/test/explorer_tab_memory_provider_test.dart",
         "packages/app/test/pull_request_pane_test.dart"
       ],
-      "notes": "The active compact workspace resolves canonical host/workspace identity and Git capability from the catalog with agent identity fallback, retains that owner across transient catalog loss, exposes the frozen right-side overlay through a left swipe and layout-aware explorer shortcut, renders the shared explorer, returns to the agent on close, and opens selected files into the canonical workspace layout before closing. Non-Git workspaces expose Files only and checkout-scoped tab intent survives remounts. Exact checkout-status refresh ownership remains."
+      "notes": "The active compact workspace resolves canonical host/workspace identity with agent fallback, retains that owner across transient catalog loss, and derives Git capability from the frozen checkout-status query rather than stale catalog metadata. It exposes the right-side overlay through a left swipe and layout-aware shortcut, renders the shared explorer, returns to the agent on close, opens selected files into the canonical workspace layout before closing, gates non-Git tabs, and retains checkout-scoped tab intent across remounts. A conflict regression proves live checkout status wins over the current implementation's catalog kind."
     },
     {
       "id": "source-unit:packages/app/src/components/context-window-meter.tsx",
@@ -5049,10 +5050,13 @@
     },
     {
       "id": "source-unit:packages/app/src/git/checkout-status-cache.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/daemon_client.dart; packages/app/lib/state/workspace_checkout_status_provider.dart",
+      "evidence": [
+        "packages/app/test/daemon_client_test.dart",
+        "packages/app/test/workspace_checkout_status_provider_test.dart"
+      ],
+      "notes": "Typed checkout-status requests and matching cwd push updates populate the checkout-scoped Riverpod cache. Frozen embedded PR cache synchronization, commit invalidation, dirty-review reactions, and query-client-wide helper APIs remain."
     },
     {
       "id": "source-unit:packages/app/src/git/client-forge-module.ts",
@@ -7304,10 +7308,13 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/workspace/use-workspace-checkout-status.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/state/workspace_checkout_status_provider.dart; packages/app/lib/screens/home_shell.dart",
+      "evidence": [
+        "packages/app/test/workspace_checkout_status_provider_test.dart",
+        "packages/app/test/home_shell_test.dart"
+      ],
+      "notes": "The family provider uses server and cwd identity, is disabled without a connected focused client or valid workspace directory, fetches on mount, retains an observable error, and applies only matching checkout-status pushes. The compact host consumes its live isGit result with the same loading fallback."
     },
     {
       "id": "source-unit:packages/app/src/screens/workspace/use-workspace-tab-layout.ts",
@@ -13692,8 +13699,10 @@
     {
       "id": "source-unit:packages/server/src/server/session/checkout/checkout-session.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/forge",
+      "implementation": "packages/daemon/lib/src/forge; packages/daemon/lib/src/workspace/checkout_status_service.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart",
       "evidence": [
+        "packages/daemon/test/workspace/checkout_status_service_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
         "packages/daemon/test/forge/forge_action_service_test.dart",
         "packages/daemon/test/forge/checkout_refresh_service_test.dart",
         "packages/daemon/test/forge/checkout_pr_status_service_test.dart",
@@ -13701,7 +13710,7 @@
         "packages/daemon/test/forge/pull_request_timeline_service_test.dart",
         "packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
       ],
-      "notes": "PR/MR status, create, direct-merge, auto-merge, manual refresh, pull-request timeline, and modern/legacy check-details request handling are implemented, including shared snapshot projection, GitHub compatibility facts, timeline identity validation, forge/auth resolution, exact response fields, git/remote/auth context resolution, push-before-create, refresh capability advertisement, git validation, observer refresh, fresh status validation, errors, and cache invalidation. The remaining checkout handlers, structured metadata generation, full push-target/base-context semantics, and mutation broadcasts remain."
+      "notes": "Checkout status request/response and observer-driven update broadcasts now project non-Git, owned-worktree, and non-owned Git snapshots. PR/MR status, create, direct-merge, auto-merge, manual refresh, pull-request timeline, and modern/legacy check-details request handling are implemented, including shared snapshot projection, GitHub compatibility facts, timeline identity validation, forge/auth resolution, exact response fields, git/remote/auth context resolution, push-before-create, refresh capability advertisement, git validation, observer refresh, fresh status validation, errors, and cache invalidation. Embedded PR status on checkout updates, remaining checkout handlers, structured metadata generation, full push-target/base-context semantics, and other mutation broadcasts remain."
     },
     {
       "id": "source-unit:packages/server/src/server/session/checkout/git-metadata-generator.ts",
@@ -14970,10 +14979,13 @@
     },
     {
       "id": "source-unit:packages/server/src/utils/checkout-git.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/workspace/polling_workspace_git_backend.dart; packages/daemon/lib/src/workspace/checkout_status_service.dart",
+      "evidence": [
+        "packages/daemon/test/workspace/polling_workspace_git_backend_test.dart",
+        "packages/daemon/test/workspace/checkout_status_service_test.dart"
+      ],
+      "notes": "One-shot and observed snapshots cover repository roots, linked worktree main roots, branches including detached HEAD, dirty state, ahead/behind, origin divergence, and remote metadata for checkout-status projection. Frozen diff aggregation, commit/stash/branch operations, structured failure taxonomy, and the remaining utility surface remain."
     },
     {
       "id": "source-unit:packages/server/src/utils/directory-suggestions.ts",
@@ -15377,24 +15389,34 @@
     },
     {
       "id": "wire-message:checkout_status_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/checkout_status.dart; packages/daemon/lib/src/workspace/checkout_status_service.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_status_test.dart",
+        "packages/daemon/test/workspace/checkout_status_service_test.dart"
+      ],
+      "notes": "Matches the frozen cwd and requestId request shape and routes through the daemon checkout session."
     },
     {
       "id": "wire-message:checkout_status_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/checkout_status.dart; packages/daemon/lib/src/workspace/checkout_status_service.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_status_test.dart",
+        "packages/daemon/test/workspace/checkout_status_service_test.dart"
+      ],
+      "notes": "The sealed Dart model and daemon projection enforce the frozen non-Git, non-owned Git, and owned-worktree discriminants, nullable fields, roots, base ref, divergence, remote metadata, errors, and request correlation."
     },
     {
       "id": "wire-message:checkout_status_update",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/checkout_status.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_status_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
+      ],
+      "notes": "Observer changes emit the frozen checkout payload with the subscription cwd request identity, the protocol accepts optional embedded PR status, and the Flutter client decodes it onto a typed broadcast stream."
     },
     {
       "id": "wire-message:checkout_switch_branch_request",
