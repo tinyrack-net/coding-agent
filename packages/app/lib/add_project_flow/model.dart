@@ -70,12 +70,14 @@ final class AddProjectHostPage extends AddProjectSearchPage {
 final class AddProjectMethodPage extends AddProjectSearchPage {
   const AddProjectMethodPage({
     required this.hostId,
+    this.isSubmitting = false,
     super.query = '',
     super.activeIndex = 0,
     super.error,
   });
 
   final String hostId;
+  final bool isSubmitting;
 }
 
 final class AddProjectDirectorySearchPage extends AddProjectSearchPage {
@@ -390,10 +392,12 @@ AddProjectFlowState _copyState(
 AddProjectPage _copyPageWithInput(AddProjectPage page, String value) =>
     switch (page) {
       AddProjectHostPage() => AddProjectHostPage(query: value),
-      AddProjectMethodPage(:final hostId) => AddProjectMethodPage(
-        hostId: hostId,
-        query: value,
-      ),
+      AddProjectMethodPage(:final hostId, :final isSubmitting) =>
+        AddProjectMethodPage(
+          hostId: hostId,
+          isSubmitting: isSubmitting,
+          query: value,
+        ),
       AddProjectDirectorySearchPage(:final hostId, :final isSubmitting) =>
         AddProjectDirectorySearchPage(
           hostId: hostId,
@@ -437,9 +441,15 @@ AddProjectPage _copyPageWithActiveIndex(AddProjectPage page, int activeIndex) =>
         activeIndex: activeIndex,
         error: error,
       ),
-      AddProjectMethodPage(:final hostId, :final query, :final error) =>
+      AddProjectMethodPage(
+        :final hostId,
+        :final isSubmitting,
+        :final query,
+        :final error,
+      ) =>
         AddProjectMethodPage(
           hostId: hostId,
+          isSubmitting: isSubmitting,
           query: query,
           activeIndex: activeIndex,
           error: error,

@@ -767,6 +767,37 @@ class DaemonClient {
     return response;
   }
 
+  Future<ProjectGithubCloneResponse> cloneGithubProject({
+    required String repo,
+    required String targetDirectory,
+    ProjectGithubCloneProtocol? cloneProtocol,
+    Duration timeout = const Duration(minutes: 5),
+  }) async {
+    final requestId = _uuid.v4();
+    final response = ProjectGithubCloneResponse.fromJson(
+      await requestSessionMessage(
+        ProjectGithubCloneRequest(
+          requestId: requestId,
+          repo: repo,
+          targetDirectory: targetDirectory,
+          cloneProtocol: cloneProtocol,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != requestId) {
+      throw FormatException(
+        'GitHub clone response requestId mismatch: ${response.requestId}',
+      );
+    }
+    if (response.repo != repo.trim()) {
+      throw FormatException(
+        'GitHub clone response repo mismatch: ${response.repo}',
+      );
+    }
+    return response;
+  }
+
   Future<ImportAgentStatusResponse> importProviderSession({
     required String providerId,
     required String providerHandleId,

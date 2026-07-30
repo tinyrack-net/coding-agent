@@ -625,6 +625,52 @@ void main() {
     },
   );
 
+  test(
+    'cloneGithubProject sends and validates the typed clone request',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      unawaited(
+        conn.nextRequest(ProjectGithubCloneRequest.type).then((frame) {
+          expect(frame['repo'], 'tinyrack/coding-agent');
+          expect(frame['cloneProtocol'], 'ssh');
+          expect(frame['targetDirectory'], r'C:\src');
+          conn.respondNative(
+            ProjectGithubCloneResponse.type,
+            frame['requestId'] as String,
+            {
+              'repo': 'tinyrack/coding-agent',
+              'checkoutPath': r'C:\src\coding-agent',
+              'project': {
+                'projectId': 'project-1',
+                'projectDisplayName': 'coding-agent',
+                'projectRootPath': r'C:\src\coding-agent',
+                'projectKind': 'git',
+              },
+              'error': null,
+            },
+          );
+        }),
+      );
+
+      final response = await client.cloneGithubProject(
+        repo: 'tinyrack/coding-agent',
+        cloneProtocol: ProjectGithubCloneProtocol.ssh,
+        targetDirectory: r'C:\src',
+      );
+
+      expect(response.repo, 'tinyrack/coding-agent');
+      expect(response.project?.projectId, 'project-1');
+    },
+  );
+
   test('fetchAgentTimeline sends and parses the typed Paseo page', () async {
     client = DaemonClient(uri: server.uri);
     final connFuture = nextConnection(server);

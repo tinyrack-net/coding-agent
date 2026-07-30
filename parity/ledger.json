@@ -2470,17 +2470,25 @@
     },
     {
       "id": "source-unit:packages/app/src/components/add-project-flow-host.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/add_project_flow_host.dart;packages/app/lib/screens/home_shell.dart;packages/app/lib/state/add_project_flow_provider.dart",
+      "evidence": [
+        "packages/app/test/add_project_flow_host_test.dart",
+        "packages/app/test/new_workspace_screen_test.dart"
+      ],
+      "notes": "The root host renders exactly one request-keyed flow, returns the selected project to the caller, and unmounts immediately on close or backdrop dismissal."
     },
     {
       "id": "source-unit:packages/app/src/components/add-project-flow.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/widgets/add_project_flow_host.dart;packages/app/lib/add_project_flow/model.dart;packages/app/lib/add_project_flow/options.dart;packages/app/lib/add_project_flow/project_picker_options.dart;packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/app/test/add_project_flow_host_test.dart",
+        "packages/app/test/add_project_flow_model_test.dart",
+        "packages/app/test/new_workspace_screen_test.dart",
+        "packages/daemon/test/ws_server_test.dart"
+      ],
+      "notes": "Global multi-host flow, capability-gated methods, page history, keyboard-ready selection state, debounced directory suggestions, direct path registration, desktop Browse wiring, manual URL/owner-repo GitHub clone, progress/error/empty states, result adoption, and responsive overflow-safe panel geometry are implemented. GitHub account repository search, create-directory wire/service, Add Host routing, exact platform-adaptive presentation, and visual golden evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/components/agent-list.tsx",
@@ -3258,10 +3266,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/project-picker-options.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/add_project_flow/project_picker_options.dart",
+      "evidence": [
+        "packages/app/test/add_project_flow_host_test.dart"
+      ],
+      "notes": "POSIX, tilde, Windows drive, and UNC direct paths are recognized and prepended without duplicating daemon-ranked suggestions."
     },
     {
       "id": "source-unit:packages/app/src/components/provider-catalog-list.tsx",
@@ -7458,10 +7468,12 @@
     },
     {
       "id": "source-unit:packages/app/src/stores/add-project-flow-store.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/state/add_project_flow_provider.dart",
+      "evidence": [
+        "packages/app/test/add_project_flow_host_test.dart"
+      ],
+      "notes": "Open allocates a monotonic request id with an optional normalized preferred host, replaces any previous request, and close clears the request; the Dart caller additionally receives the completed project result."
     },
     {
       "id": "source-unit:packages/app/src/stores/browser-store/index.ts",
@@ -9059,10 +9071,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/working-directory-suggestions.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/add_project_flow/project_picker_options.dart",
+      "evidence": [
+        "packages/app/test/add_project_flow_host_test.dart"
+      ],
+      "notes": "Recommendation deduplication, fuzzy basename matching, path-query delegation, tilde behavior, and preservation of daemon ranking match the frozen helper."
     },
     {
       "id": "source-unit:packages/app/src/utils/workspace-agent-activity.ts",

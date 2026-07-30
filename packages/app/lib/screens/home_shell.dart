@@ -29,6 +29,7 @@ import '../state/workspace_providers.dart';
 import '../state/worktree_tabs_provider.dart';
 import '../state/worktree_titles_provider.dart';
 import '../widgets/fluent/toast.dart';
+import '../widgets/add_project_flow_host.dart';
 import '../widgets/provider_settings_host.dart';
 import '../widgets/sidebar_agent_list_skeleton.dart';
 import '../widgets/sidebar_callout_slot.dart';
@@ -57,6 +58,7 @@ class HomeShell extends ConsumerWidget {
               ? _ResizableHomeLayout(content: content)
               : content,
         ),
+        const AddProjectFlowHost(),
         const ProviderSettingsHost(),
       ],
     );

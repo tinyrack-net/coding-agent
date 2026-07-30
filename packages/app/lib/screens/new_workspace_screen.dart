@@ -21,10 +21,12 @@ import '../import_sessions/import_session_dialog.dart';
 import '../providers/draft_provider_features.dart';
 import '../providers/providers_snapshot.dart';
 import '../state/agents_provider.dart';
+import '../state/add_project_flow_provider.dart';
 import '../state/create_flow_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/draft_provider_features_provider.dart';
 import '../state/providers_snapshot_provider.dart';
+import '../state/host_registry_provider.dart';
 import '../state/queued_messages_provider.dart';
 import '../state/timeline_provider.dart';
 import '../state/workspace_attachments_provider.dart';
@@ -33,7 +35,6 @@ import '../state/worktree_tabs_provider.dart';
 import '../workspace/workspace_tab_model.dart';
 import '../widgets/fluent/page_back_button.dart';
 import '../widgets/fluent/search_picker_dialog.dart';
-import '../widgets/fluent/toast.dart';
 import '../widgets/composer_image_preview.dart';
 import '../widgets/combined_model_selector.dart';
 import '../widgets/draft_feature_control.dart';
@@ -355,53 +356,25 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
   }
 
   Future<void> _addProject() async {
-    final controller = TextEditingController();
-    final path = await showDialog<String>(
-      context: context,
-      builder: (context) => ContentDialog(
-        title: const Text('Add project'),
-        // Without this, TextBox greedily fills ContentDialog's unconstrained
-        // body height instead of sizing to its single line of text.
-        content: IntrinsicHeight(
-          child: InfoLabel(
-            label: 'Project path',
-            child: TextBox(
-              controller: controller,
-              autofocus: true,
-              placeholder: r'C:\path\to\repo',
-              onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
-            ),
-          ),
-        ),
-        actions: [
-          Button(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (path == null || path.isEmpty) return;
-    try {
-      final project = await ref.read(projectsProvider.notifier).add(path);
+    final preferredHostId =
+        ref.read(activeHostProvider)?.serverId ??
+        ref.read(daemonClientProvider).serverInfo?.serverId;
+    final result = await ref
+        .read(addProjectFlowProvider.notifier)
+        .open(preferredHostId: preferredHostId);
+    if (!mounted || result == null) return;
+    final registry = ref.read(hostRegistryProvider);
+    if (registry.activeServerId != result.serverId &&
+        registry.hosts.any((host) => host.serverId == result.serverId)) {
+      await ref.read(hostRegistryProvider.notifier).selectHost(result.serverId);
       if (!mounted) return;
-      setState(() {
-        _projectChoice = project.path;
-        _baseRef = null;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      AppToast.show(
-        context,
-        'Failed to add project: $e',
-        severity: InfoBarSeverity.error,
-      );
+      ref.invalidate(projectsProvider);
     }
+    ref.read(projectsProvider.notifier).upsert(result.project);
+    setState(() {
+      _projectChoice = result.project.path;
+      _baseRef = null;
+    });
   }
 
   Future<void> _pickProject() async {

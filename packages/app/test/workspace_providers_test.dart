@@ -142,6 +142,34 @@ void main() {
       expect(projects.map((p) => p.path), containsAll(['/repo', '/other']));
     });
 
+    test('upsert() adopts a host-flow result without another RPC', () async {
+      final client = FakeDaemonClient();
+      client.onRequest = (type, payload) => {
+        'projects': [_proj.toJson()],
+      };
+      final container = makeContainer(client);
+      keepAlive(container, container.listen(projectsProvider, (_, _) {}));
+      await pump();
+      await container.read(projectsProvider.future);
+      final requestCount = client.requests.length;
+
+      container
+          .read(projectsProvider.notifier)
+          .upsert(
+            const ProjectInfo(
+              path: '/scratch',
+              name: 'scratch',
+              isGitRepo: false,
+            ),
+          );
+
+      expect(client.requests, hasLength(requestCount));
+      expect(
+        container.read(projectsProvider).value?.map((project) => project.path),
+        containsAll(['/repo', '/scratch']),
+      );
+    });
+
     test('add() replaces an existing project with the same path', () async {
       final client = FakeDaemonClient();
       client.onRequest = (type, payload) {

@@ -12,6 +12,7 @@ import 'package:coding_agent_app/state/create_flow_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/workspace_providers.dart';
 import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
+import 'package:coding_agent_app/widgets/add_project_flow_host.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -102,7 +103,12 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
       hostname: 'fake',
       version: '0.2.0',
       desktopManaged: false,
-      features: {'providersSnapshot': true},
+      features: {
+        'providersSnapshot': true,
+        'projectAdd': true,
+        'stableProjectIdentity': true,
+        'projectGithubClone': true,
+      },
     );
   }
 
@@ -136,6 +142,21 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
   @override
   Stream<DaemonConnectionState> get connectionState =>
       Stream.value(DaemonConnectionState.connected);
+
+  @override
+  Future<DirectorySuggestionsResponse> getDirectorySuggestions({
+    required String query,
+    String? cwd,
+    bool? includeFiles,
+    bool? includeDirectories,
+    DirectorySuggestionMatchMode? matchMode,
+    int? limit,
+    Duration timeout = const Duration(seconds: 30),
+  }) async => const DirectorySuggestionsResponse(
+    directories: [],
+    entries: [],
+    requestId: 'suggestions',
+  );
 
   @override
   Future<GetProvidersSnapshotResponse> fetchProvidersSnapshot({
@@ -302,16 +323,22 @@ Future<ProviderContainer> pumpNewWorkspaceScreen(
     UncontrolledProviderScope(
       container: container,
       child: FluentApp(
-        home: NewWorkspaceScreen(
-          imageAttachmentService:
-              imageAttachmentService ??
-              ComposerImageAttachmentService(
-                store: () async => MemoryAttachmentStore(),
-              ),
-          draftStore: draftStore ?? _MemoryDraftStore(),
-          preferencesService:
-              preferencesService ??
-              CreateAgentPreferencesService(_MemoryPreferenceStorage()),
+        home: Stack(
+          fit: StackFit.expand,
+          children: [
+            NewWorkspaceScreen(
+              imageAttachmentService:
+                  imageAttachmentService ??
+                  ComposerImageAttachmentService(
+                    store: () async => MemoryAttachmentStore(),
+                  ),
+              draftStore: draftStore ?? _MemoryDraftStore(),
+              preferencesService:
+                  preferencesService ??
+                  CreateAgentPreferencesService(_MemoryPreferenceStorage()),
+            ),
+            const AddProjectFlowHost(),
+          ],
         ),
       ),
     ),
@@ -978,20 +1005,17 @@ void main() {
     await tester.tap(find.text('Add project'));
     await tester.pumpAndSettle();
 
-    // 'Project path' is an `InfoLabel` sibling of the box, not a descendant,
-    // so scope by the dialog instead of the label text.
+    await tester.tap(find.text('Search for directory'));
+    await tester.pump();
     await tester.enterText(
-      find.descendant(
-        of: find.byType(ContentDialog),
-        matching: find.byType(TextBox),
-      ),
+      find.byKey(const ValueKey('add-project-flow-input')),
       '/scratch',
     );
-    await tester.tap(find.text('Add'));
-    // A single short pump: enough to flush fluent_ui's internal 100ms
-    // press-state timer (`HoverButton`) without pumping all the way through
-    // the dialog's exit transition (which would rebuild the dialog's
-    // disposed local `TextEditingController` mid-flight).
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey('add-project-flow-path-/scratch')),
+    );
     await tester.pump(const Duration(milliseconds: 150));
 
     expect(

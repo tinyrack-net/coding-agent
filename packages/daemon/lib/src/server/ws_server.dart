@@ -487,6 +487,8 @@ class WsServer {
       'forgeProviders': true,
       'forgeCheckDetails': true,
       'checkoutRefresh': true,
+      'projectAdd': true,
+      'stableProjectIdentity': true,
       'projectGithubClone': true,
       'projectRemove': true,
     },

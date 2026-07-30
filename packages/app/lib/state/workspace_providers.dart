@@ -36,6 +36,14 @@ class ProjectsNotifier extends AsyncNotifier<List<ProjectInfo>> {
     return project;
   }
 
+  void upsert(ProjectInfo project) {
+    final current = state.value ?? const <ProjectInfo>[];
+    state = AsyncData([
+      ...current.where((candidate) => candidate.path != project.path),
+      project,
+    ]);
+  }
+
   Future<void> refresh() async => ref.invalidateSelf();
 }
 
