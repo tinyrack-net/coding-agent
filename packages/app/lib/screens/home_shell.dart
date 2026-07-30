@@ -486,7 +486,10 @@ class _CompactHomeLayoutState extends ConsumerState<_CompactHomeLayout>
                           color: context.paseoPalette.surfaceSidebar,
                         ),
                         child: WorkspaceExplorer(
+                          serverId: _activeExplorerModel!.serverId,
+                          workspaceId: _activeExplorerModel!.workspaceId,
                           cwd: _activeExplorerModel!.workspaceRoot,
+                          isGit: _activeExplorerModel!.isGit,
                           onClose: notifier.showAgent,
                           onOpenFile: openWorkspaceFile,
                         ),

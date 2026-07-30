@@ -6,6 +6,8 @@ import 'package:coding_agent_app/core/external_url_launcher.dart';
 import 'package:coding_agent_app/core/theme.dart';
 import 'package:coding_agent_app/state/appearance_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
+import 'package:coding_agent_app/state/explorer_checkout_context.dart';
+import 'package:coding_agent_app/state/explorer_tab_memory_provider.dart';
 import 'package:coding_agent_app/state/pull_request_provider.dart';
 import 'package:coding_agent_app/state/workspace_attachments_provider.dart';
 import 'package:coding_agent_app/widgets/pull_request_pane.dart';
@@ -665,6 +667,7 @@ Future<ProviderContainer> _pumpExplorer(
   WidgetTester tester,
   _FakeDaemonClient client, {
   _FakeExternalUrlLauncher? launcher,
+  bool isGit = true,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -682,10 +685,15 @@ Future<ProviderContainer> _pumpExplorer(
         theme: buildAppTheme(),
         darkTheme: buildAppTheme(),
         themeMode: ThemeMode.dark,
-        home: const SizedBox(
+        home: SizedBox(
           width: 380,
           height: 700,
-          child: WorkspaceExplorer(cwd: _cwd, onClose: _noop),
+          child: WorkspaceExplorer(
+            serverId: 'server-1',
+            cwd: _cwd,
+            isGit: isGit,
+            onClose: _noop,
+          ),
         ),
       ),
     ),
@@ -722,6 +730,51 @@ Future<void> _tapPullRequestTab(WidgetTester tester) =>
     tester.tap(find.byKey(const ValueKey('explorer-tab-pr')));
 
 void main() {
+  testWidgets('non-git explorer exposes only the Files capability', (
+    tester,
+  ) async {
+    final client = _FakeDaemonClient();
+    await _pumpExplorer(tester, client, isGit: false);
+
+    expect(find.byKey(const ValueKey('explorer-tab-changes')), findsNothing);
+    expect(find.byKey(const ValueKey('explorer-tab-files')), findsOneWidget);
+    expect(find.byKey(const ValueKey('explorer-tab-pr')), findsNothing);
+    expect(find.text('Files'), findsOneWidget);
+    expect(
+      client.nativeRequests.where(
+        (request) => request['type'] == CheckoutPrStatusRequest.type,
+      ),
+      isEmpty,
+    );
+  });
+
+  testWidgets('retains a selected PR tab while its status reloads', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    final container = await _pumpExplorer(
+      tester,
+      _FakeDaemonClient(statusGate: gate),
+    );
+
+    container
+        .read(explorerTabMemoryProvider.notifier)
+        .setForCheckout(
+          checkout: const ExplorerCheckoutContext(
+            serverId: 'server-1',
+            cwd: _cwd,
+            isGit: true,
+          ),
+          tab: WorkspaceExplorerTab.pullRequest,
+        );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('explorer-tab-pr')), findsOneWidget);
+    expect(find.text('—'), findsOneWidget);
+    gate.complete();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('shows the PR explorer tab and renders checks and activity', (
     tester,
   ) async {

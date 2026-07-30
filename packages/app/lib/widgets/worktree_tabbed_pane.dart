@@ -22,6 +22,7 @@ import '../state/terminal_providers.dart';
 import '../state/worktree_tabs_provider.dart';
 import '../state/workspace_modified_tabs_provider.dart';
 import '../state/workspace_focus_mode_provider.dart';
+import '../state/workspace_catalog_provider.dart';
 import '../state/workspace_tab_keyboard_drag_provider.dart';
 import '../state/workspace_setup_provider.dart';
 import '../workspace/workspace_file_open.dart';
@@ -304,6 +305,26 @@ class WorktreeTabbedPane extends ConsumerWidget {
       workspaceExplorerVisibilityProvider(worktreePath),
     );
     final focusMode = ref.watch(workspaceFocusModeProvider);
+    final daemonClient = ref.watch(daemonClientProvider);
+    final activeServerId = ref.watch(activeHostProvider)?.serverId.trim();
+    final helloServerId = daemonClient.serverInfo?.serverId.trim();
+    final serverId = activeServerId?.isNotEmpty == true
+        ? activeServerId!
+        : helloServerId?.isNotEmpty == true
+        ? helloServerId!
+        : 'local';
+    final catalog =
+        ref.watch(workspaceCatalogCacheProvider)[serverId] ?? const [];
+    final workspace = catalog
+        .where(
+          (candidate) =>
+              (workspaceId != null && candidate.id == workspaceId) ||
+              candidate.workspaceDirectory == worktreePath,
+        )
+        .firstOrNull;
+    final explorerIsGit = workspace != null
+        ? workspace.projectKind == WorkspaceProjectKind.git
+        : projectPath != null || isWorktree;
 
     return _WorkspacePaneShortcutHost(
       worktreePath: worktreePath,
@@ -382,7 +403,10 @@ class WorktreeTabbedPane extends ConsumerWidget {
               SizedBox(
                 width: explorerWidth,
                 child: WorkspaceExplorer(
+                  serverId: serverId,
+                  workspaceId: workspaceId,
                   cwd: worktreePath,
+                  isGit: explorerIsGit,
                   onOpenFile: openWorkspaceFile,
                   onClose: () => ref
                       .read(

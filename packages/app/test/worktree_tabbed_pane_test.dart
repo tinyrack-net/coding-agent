@@ -1395,7 +1395,11 @@ void main() {
 
   testWidgets('changes and files live in the workspace explorer instead of '
       'top-level tabs', (tester) async {
-    final container = await pumpPane(tester, agents: [_idleAgent]);
+    final container = await pumpPane(
+      tester,
+      agents: [_idleAgent],
+      projectPath: '/repo',
+    );
 
     final tabs = container
         .read(worktreeTabsProvider(_worktreePath))
@@ -1407,10 +1411,18 @@ void main() {
     expect(find.text('View diff'), findsNothing);
   });
 
+  testWidgets('non-git workspace explorer exposes only Files', (tester) async {
+    await pumpPane(tester, agents: [_idleAgent], projectPath: null);
+
+    expect(find.text('Changes'), findsNothing);
+    expect(find.text('Files'), findsOneWidget);
+    expect(find.byKey(const ValueKey('explorer-tab-pr')), findsNothing);
+  });
+
   testWidgets('the workspace explorer closes and reopens from tab actions', (
     tester,
   ) async {
-    await pumpPane(tester, agents: [_idleAgent]);
+    await pumpPane(tester, agents: [_idleAgent], projectPath: '/repo');
 
     await tester.tap(
       find.descendant(

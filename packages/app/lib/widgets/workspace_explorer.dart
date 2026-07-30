@@ -5,13 +5,13 @@ import 'package:uuid/uuid.dart';
 import '../core/daemon_client.dart';
 import '../core/theme.dart';
 import '../state/daemon_providers.dart';
+import '../state/explorer_checkout_context.dart';
+import '../state/explorer_tab_memory_provider.dart';
 import '../state/pull_request_provider.dart';
 import '../workspace/workspace_file_open.dart';
 import 'diff/diff_pane.dart';
 import 'pull_request_pane.dart';
 import 'pull_request_tab.dart';
-
-enum WorkspaceExplorerTab { changes, files, pullRequest }
 
 class WorkspaceExplorerVisibilityNotifier extends Notifier<bool> {
   WorkspaceExplorerVisibilityNotifier(this.cwd);
@@ -34,12 +34,18 @@ final workspaceExplorerVisibilityProvider =
 class WorkspaceExplorer extends ConsumerStatefulWidget {
   const WorkspaceExplorer({
     super.key,
+    required this.serverId,
     required this.cwd,
+    required this.isGit,
     required this.onClose,
+    this.workspaceId,
     this.onOpenFile,
   });
 
+  final String serverId;
+  final String? workspaceId;
   final String cwd;
+  final bool isGit;
   final VoidCallback onClose;
   final void Function(WorkspaceFileOpenRequest request)? onOpenFile;
 
@@ -48,15 +54,48 @@ class WorkspaceExplorer extends ConsumerStatefulWidget {
 }
 
 class _WorkspaceExplorerState extends ConsumerState<WorkspaceExplorer> {
-  WorkspaceExplorerTab _tab = WorkspaceExplorerTab.changes;
-
   @override
   Widget build(BuildContext context) {
-    final pullRequest = ref.watch(pullRequestPaneProvider(widget.cwd));
-    final status = pullRequest.value?.status;
-    if (_tab == WorkspaceExplorerTab.pullRequest && status == null) {
-      _tab = WorkspaceExplorerTab.changes;
+    final tabMemory = ref.watch(explorerTabMemoryProvider);
+    final activeTab = resolveExplorerTabForCheckout(
+      serverId: widget.serverId,
+      cwd: widget.cwd,
+      isGit: widget.isGit,
+      explorerTabByCheckout: tabMemory.byCheckout,
+    );
+    final pullRequest = widget.isGit
+        ? ref.watch(pullRequestPaneProvider(widget.cwd))
+        : null;
+    final status = pullRequest?.value?.status;
+    final showPullRequestTab =
+        widget.isGit &&
+        (status != null ||
+            (activeTab == WorkspaceExplorerTab.pullRequest &&
+                (pullRequest?.isLoading ?? false)));
+    final requestedTab =
+        !widget.isGit &&
+            (activeTab == WorkspaceExplorerTab.changes ||
+                activeTab == WorkspaceExplorerTab.pullRequest)
+        ? WorkspaceExplorerTab.files
+        : activeTab;
+    final resolvedTab =
+        requestedTab == WorkspaceExplorerTab.pullRequest && !showPullRequestTab
+        ? WorkspaceExplorerTab.changes
+        : requestedTab;
+
+    void selectTab(WorkspaceExplorerTab tab) {
+      ref
+          .read(explorerTabMemoryProvider.notifier)
+          .setForCheckout(
+            checkout: ExplorerCheckoutContext(
+              serverId: widget.serverId,
+              cwd: widget.cwd,
+              isGit: widget.isGit,
+            ),
+            tab: tab,
+          );
     }
+
     return Column(
       children: [
         Container(
@@ -69,42 +108,47 @@ class _WorkspaceExplorerState extends ConsumerState<WorkspaceExplorer> {
           ),
           child: Row(
             children: [
+              if (widget.isGit)
+                _ExplorerTabButton(
+                  key: const ValueKey('explorer-tab-changes'),
+                  label: 'Changes',
+                  selected: resolvedTab == WorkspaceExplorerTab.changes,
+                  onPressed: () {
+                    ref
+                        .read(pullRequestPaneProvider(widget.cwd).notifier)
+                        .setTimelineEnabled(false);
+                    selectTab(WorkspaceExplorerTab.changes);
+                  },
+                ),
               _ExplorerTabButton(
-                label: 'Changes',
-                selected: _tab == WorkspaceExplorerTab.changes,
-                onPressed: () {
-                  ref
-                      .read(pullRequestPaneProvider(widget.cwd).notifier)
-                      .setTimelineEnabled(false);
-                  setState(() => _tab = WorkspaceExplorerTab.changes);
-                },
-              ),
-              _ExplorerTabButton(
+                key: const ValueKey('explorer-tab-files'),
                 label: 'Files',
-                selected: _tab == WorkspaceExplorerTab.files,
+                selected: resolvedTab == WorkspaceExplorerTab.files,
                 onPressed: () {
-                  ref
-                      .read(pullRequestPaneProvider(widget.cwd).notifier)
-                      .setTimelineEnabled(false);
-                  setState(() => _tab = WorkspaceExplorerTab.files);
+                  if (widget.isGit) {
+                    ref
+                        .read(pullRequestPaneProvider(widget.cwd).notifier)
+                        .setTimelineEnabled(false);
+                  }
+                  selectTab(WorkspaceExplorerTab.files);
                 },
               ),
-              if (status != null)
+              if (showPullRequestTab)
                 _ExplorerTabButton(
                   key: const ValueKey('explorer-tab-pr'),
-                  label: formatPullRequestTabLabel(status.number),
+                  label: formatPullRequestTabLabel(status?.number),
                   leading: (color) => PullRequestTabIcon(
                     key: const ValueKey('explorer-tab-pr-icon'),
-                    forge: status.forge,
+                    forge: status?.forge ?? 'git',
                     size: 13,
                     color: color,
                   ),
-                  selected: _tab == WorkspaceExplorerTab.pullRequest,
+                  selected: resolvedTab == WorkspaceExplorerTab.pullRequest,
                   onPressed: () {
                     ref
                         .read(pullRequestPaneProvider(widget.cwd).notifier)
                         .setTimelineEnabled(true);
-                    setState(() => _tab = WorkspaceExplorerTab.pullRequest);
+                    selectTab(WorkspaceExplorerTab.pullRequest);
                   },
                 ),
               const Spacer(),
@@ -119,7 +163,7 @@ class _WorkspaceExplorerState extends ConsumerState<WorkspaceExplorer> {
           ),
         ),
         Expanded(
-          child: switch (_tab) {
+          child: switch (resolvedTab) {
             WorkspaceExplorerTab.changes => DiffPane(
               cwd: widget.cwd,
               compact: true,

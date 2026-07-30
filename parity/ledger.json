@@ -2640,9 +2640,11 @@
       "status": "partial",
       "implementation": "packages/app/lib/screens/home_shell.dart; packages/app/lib/widgets/workspace_explorer.dart; packages/app/lib/widgets/worktree_tabbed_pane.dart",
       "evidence": [
-        "packages/app/test/home_shell_test.dart"
+        "packages/app/test/home_shell_test.dart",
+        "packages/app/test/explorer_tab_memory_provider_test.dart",
+        "packages/app/test/pull_request_pane_test.dart"
       ],
-      "notes": "The active compact workspace resolves canonical host/workspace identity from the catalog with agent identity fallback, retains that owner across transient catalog loss, exposes the frozen right-side overlay through a left swipe and layout-aware explorer shortcut, renders the shared explorer, returns to the agent on close, and opens selected files into the canonical workspace layout before closing. Exact checkout-status refresh ownership and non-git explorer tab gating remain."
+      "notes": "The active compact workspace resolves canonical host/workspace identity and Git capability from the catalog with agent identity fallback, retains that owner across transient catalog loss, exposes the frozen right-side overlay through a left swipe and layout-aware explorer shortcut, renders the shared explorer, returns to the agent on close, and opens selected files into the canonical workspace layout before closing. Non-Git workspaces expose Files only and checkout-scoped tab intent survives remounts. Exact checkout-status refresh ownership remains."
     },
     {
       "id": "source-unit:packages/app/src/components/context-window-meter.tsx",
@@ -2801,10 +2803,12 @@
       "evidence": [
         "packages/app/test/pull_request_pane_test.dart",
         "packages/app/test/pull_request_tab_test.dart",
+        "packages/app/test/explorer_tab_memory_provider_test.dart",
+        "packages/app/test/worktree_tabbed_pane_test.dart",
         "packages/app/test/goldens/workspace_pr_explorer.png",
         "packages/app/test/goldens/workspace_gitlab_pipeline_explorer.png"
       ],
-      "notes": "Core Windows explorer and PR checks/activity flow plus the exact forge-aware PR tab icon, number-only or em-dash label, 13px geometry, active or muted foreground, and golden-covered GitHub/GitLab presentation are implemented. The shared explorer now renders as the full-width right compact overlay, closes through header/backdrop/rightward swipe, and returns to the agent after opening a file. Exact native retained activity/safe-area behavior, attachment drag/drop, and remaining explorer interactions keep the aggregate source unit partial."
+      "notes": "Core Windows explorer and PR checks/activity flow plus the exact forge-aware PR tab icon, number-only or em-dash label, 13px geometry, active or muted foreground, and golden-covered GitHub/GitLab presentation are implemented. Git capability gates Changes and PR, non-Git defaults and resolves to Files without issuing PR status RPC, and a selected PR remains mounted through status loading. Checkout-scoped tab memory is shared by compact and desktop explorer hosts. Exact native retained activity/safe-area behavior, attachment drag/drop, and remaining explorer interactions keep the aggregate source unit partial."
     },
     {
       "id": "source-unit:packages/app/src/components/file-actions-menu.tsx",
@@ -7591,17 +7595,22 @@
     },
     {
       "id": "source-unit:packages/app/src/stores/explorer-checkout-context.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/state/explorer_checkout_context.dart",
+      "evidence": [
+        "packages/app/test/explorer_tab_memory_provider_test.dart"
+      ],
+      "notes": "The immutable Dart context carries the same serverId, cwd, and isGit checkout identity and is consumed by the shared explorer tab store."
     },
     {
       "id": "source-unit:packages/app/src/stores/explorer-tab-memory.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/state/explorer_tab_memory_provider.dart",
+      "evidence": [
+        "packages/app/test/explorer_tab_memory_provider_test.dart",
+        "packages/app/test/pull_request_pane_test.dart"
+      ],
+      "notes": "The Dart port matches the frozen key trimming and rejection rules, Git and non-Git defaults, checkout-specific restoration, and changes-to-files coercion while preserving PR intent. SharedPreferences persists the active tab and checkout map, invalid boundary values are ignored, and late hydration cannot overwrite user interaction."
     },
     {
       "id": "source-unit:packages/app/src/stores/keyboard-shortcuts-store.ts",
