@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/diff_flat_items.dart';
+import '../../core/diff_order.dart';
 import '../../core/diff_rendering.dart';
 import '../../core/diff_tree.dart';
 import '../../core/theme.dart';
@@ -26,50 +28,135 @@ import 'diff_stat.dart';
       ),
     };
 
-/// Structured diff review: file list + unified per-file view.
-///
-/// Wide layouts show a file list on the left and the selected file's hunks on
-/// the right; narrow layouts fall back to collapsible per-file sections.
+class DiffViewController extends ChangeNotifier {
+  final Set<String> _expandedPaths = {};
+  final Set<String> _collapsedFolders = {};
+
+  Set<String> get expandedPaths => Set.unmodifiable(_expandedPaths);
+  Set<String> get collapsedFolders => Set.unmodifiable(_collapsedFolders);
+
+  void reconcile(List<DiffFile> files) {
+    final paths = files.map((file) => file.path).toSet();
+    final folders = collectDirPaths(
+      compressSingleChildChains(buildDiffTree(files)),
+    ).toSet();
+    _expandedPaths.retainAll(paths);
+    _collapsedFolders.retainAll(folders);
+  }
+
+  void toggleFile(String path) {
+    if (!_expandedPaths.remove(path)) _expandedPaths.add(path);
+    notifyListeners();
+  }
+
+  void toggleFolder(String path) {
+    if (!_collapsedFolders.remove(path)) _collapsedFolders.add(path);
+    notifyListeners();
+  }
+
+  void enterTreeView() {
+    if (_collapsedFolders.isEmpty) return;
+    _collapsedFolders.clear();
+    notifyListeners();
+  }
+
+  bool allExpanded(List<DiffFile> files, ChangesViewMode viewMode) {
+    if (files.isEmpty) return false;
+    final everyFile = files.every((file) => _expandedPaths.contains(file.path));
+    if (!everyFile || viewMode != ChangesViewMode.tree) return everyFile;
+    final folders = collectDirPaths(
+      compressSingleChildChains(buildDiffTree(files)),
+    ).toSet();
+    return _collapsedFolders.every((path) => !folders.contains(path));
+  }
+
+  void toggleExpandAll(List<DiffFile> files, ChangesViewMode viewMode) {
+    reconcile(files);
+    if (allExpanded(files, viewMode)) {
+      _expandedPaths.clear();
+      if (viewMode == ChangesViewMode.tree) {
+        _collapsedFolders.addAll(
+          collectDirPaths(compressSingleChildChains(buildDiffTree(files))),
+        );
+      }
+    } else {
+      _expandedPaths
+        ..clear()
+        ..addAll(files.map((file) => file.path));
+      if (viewMode == ChangesViewMode.tree) _collapsedFolders.clear();
+    }
+    notifyListeners();
+  }
+}
+
+/// Paseo-compatible expandable file diff list.
 class DiffView extends ConsumerStatefulWidget {
   const DiffView({
     super.key,
     required this.diff,
     this.reviewDraftKey,
     this.layout = ChangesLayout.unified,
+    this.viewMode = ChangesViewMode.flat,
+    this.controller,
   });
 
   final DiffResponse diff;
   final String? reviewDraftKey;
   final ChangesLayout layout;
+  final ChangesViewMode viewMode;
+  final DiffViewController? controller;
 
   @override
   ConsumerState<DiffView> createState() => _DiffViewState();
 }
 
 class _DiffViewState extends ConsumerState<DiffView> {
-  int _selectedIndex = 0;
-  final Set<String> _collapsedFolders = {};
+  late DiffViewController _controller;
+  late bool _ownsController;
   _ReviewEditorTarget? _reviewEditor;
+
+  @override
+  void initState() {
+    super.initState();
+    _attachController(widget.controller);
+  }
+
+  void _attachController(DiffViewController? controller) {
+    _controller = controller ?? DiffViewController();
+    _ownsController = controller == null;
+    _controller.addListener(_handleControllerChanged);
+  }
+
+  void _handleControllerChanged() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void didUpdateWidget(covariant DiffView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      _controller.removeListener(_handleControllerChanged);
+      if (_ownsController) _controller.dispose();
+      _attachController(widget.controller);
+    }
     if (oldWidget.reviewDraftKey != widget.reviewDraftKey) {
       _reviewEditor = null;
     }
-    if (_selectedIndex >= widget.diff.files.length) {
-      _selectedIndex = 0;
-    }
-    final directoryPaths = collectDirPaths(
-      compressSingleChildChains(buildDiffTree(widget.diff.files)),
-    );
-    _collapsedFolders.retainAll(directoryPaths);
+    _controller.reconcile(widget.diff.files);
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_handleControllerChanged);
+    if (_ownsController) _controller.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final files = widget.diff.files;
+    final files = orderLegacyDiffFiles(widget.diff.files);
     if (files.isEmpty) return const _NoChanges();
+    _controller.reconcile(files);
     final reviewKey = widget.reviewDraftKey;
     final comments = reviewKey == null
         ? const <ReviewDraftComment>[]
@@ -127,26 +214,6 @@ class _DiffViewState extends ConsumerState<DiffView> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < 640) {
-          // Narrow: collapsible section per file.
-          return ListView(
-            children: [
-              for (final file in files)
-                Padding(
-                  key: PageStorageKey('diff-${file.path}'),
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Expander(
-                    header: _FileRowLabel(file: file),
-                    content: _FileDiffBody(
-                      file: file,
-                      review: review,
-                      layout: ChangesLayout.unified,
-                    ),
-                  ),
-                ),
-            ],
-          );
-        }
         final layout =
             widget.layout == ChangesLayout.split &&
                 constraints.maxWidth >= 840 &&
@@ -156,35 +223,35 @@ class _DiffViewState extends ConsumerState<DiffView> {
                     defaultTargetPlatform == TargetPlatform.linux)
             ? ChangesLayout.split
             : ChangesLayout.unified;
-        final selected = files[_selectedIndex.clamp(0, files.length - 1)];
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(
-              width: 280,
-              child: _DiffTreeFileList(
-                files: files,
-                selected: selected,
-                collapsedFolders: _collapsedFolders,
-                onToggleFolder: (dirPath) => setState(() {
-                  if (!_collapsedFolders.remove(dirPath)) {
-                    _collapsedFolders.add(dirPath);
-                  }
-                }),
-                onSelectFile: (file) =>
-                    setState(() => _selectedIndex = files.indexOf(file)),
+        final result = buildDiffFlatItems(
+          files: files,
+          treeView: widget.viewMode == ChangesViewMode.tree,
+          collapsedFolders: _controller.collapsedFolders,
+          expandedPaths: _controller.expandedPaths,
+        );
+        return ListView.builder(
+          key: const ValueKey('git-diff-scroll'),
+          itemCount: result.items.length,
+          itemBuilder: (context, index) => switch (result.items[index]) {
+            final DiffFlatFolderItem folder => _DiffFolderRow(
+              folder: folder,
+              onToggle: () => _controller.toggleFolder(folder.dirPath),
+            ),
+            final DiffFlatHeaderItem header => _DiffFileHeader(
+              item: header,
+              showDirectory: widget.viewMode == ChangesViewMode.flat,
+              onToggle: () => _controller.toggleFile(header.file.path),
+            ),
+            final DiffFlatBodyItem body => Padding(
+              key: ValueKey('diff-file-${body.fileIndex}-body'),
+              padding: EdgeInsets.only(left: body.depth * 16.0),
+              child: _FileDiffBody(
+                file: body.file,
+                review: review,
+                layout: layout,
               ),
             ),
-            const Divider(direction: Axis.vertical),
-            Expanded(
-              child: ListView(
-                key: ValueKey('diff-body-${selected.path}'),
-                children: [
-                  _FileDiffBody(file: selected, review: review, layout: layout),
-                ],
-              ),
-            ),
-          ],
+          },
         );
       },
     );
@@ -215,96 +282,74 @@ class _NoChanges extends StatelessWidget {
   }
 }
 
-class _FileListTile extends StatelessWidget {
-  const _FileListTile({
-    required this.file,
-    required this.selected,
-    required this.onTap,
-    this.pathLabel,
-  });
+class _DiffFolderRow extends StatelessWidget {
+  const _DiffFolderRow({required this.folder, required this.onToggle});
 
-  final DiffFile file;
-  final bool selected;
-  final VoidCallback onTap;
-  final String? pathLabel;
+  final DiffFlatFolderItem folder;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
-    return ListTile.selectable(
-      selected: selected,
-      onPressed: onTap,
-      title: _FileRowLabel(file: file, pathLabel: pathLabel),
+    return Padding(
+      key: ValueKey('diff-folder-${folder.dirPath}'),
+      padding: EdgeInsets.only(left: folder.depth * 16.0),
+      child: ListTile(
+        onPressed: onToggle,
+        leading: Icon(
+          folder.collapsed
+              ? FluentIcons.chevron_right
+              : FluentIcons.chevron_down,
+          size: 12,
+        ),
+        title: Row(
+          children: [
+            const Icon(FluentIcons.folder, size: 16),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                folder.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            DiffStat(additions: folder.additions, deletions: folder.deletions),
+          ],
+        ),
+      ),
     );
   }
 }
 
-class _DiffTreeFileList extends StatelessWidget {
-  const _DiffTreeFileList({
-    required this.files,
-    required this.selected,
-    required this.collapsedFolders,
-    required this.onToggleFolder,
-    required this.onSelectFile,
+class _DiffFileHeader extends StatelessWidget {
+  const _DiffFileHeader({
+    required this.item,
+    required this.showDirectory,
+    required this.onToggle,
   });
 
-  final List<DiffFile> files;
-  final DiffFile selected;
-  final Set<String> collapsedFolders;
-  final ValueChanged<String> onToggleFolder;
-  final ValueChanged<DiffFile> onSelectFile;
+  final DiffFlatHeaderItem item;
+  final bool showDirectory;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
-    final tree = compressSingleChildChains(buildDiffTree(files));
-    final rows = flattenDiffTree(tree, collapsedFolders);
-    return ListView(
-      key: const ValueKey('diff-file-tree'),
-      children: [
-        for (final row in rows)
-          switch (row) {
-            final DiffTreeFolderRow folder => Padding(
-              key: ValueKey('diff-folder-${folder.dirPath}'),
-              padding: EdgeInsets.only(left: folder.depth * 16.0),
-              child: ListTile(
-                onPressed: () => onToggleFolder(folder.dirPath),
-                leading: Icon(
-                  collapsedFolders.contains(folder.dirPath)
-                      ? FluentIcons.chevron_right
-                      : FluentIcons.chevron_down,
-                  size: 12,
-                ),
-                title: Row(
-                  children: [
-                    const Icon(FluentIcons.folder, size: 16),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        folder.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    DiffStat(
-                      additions: folder.additions,
-                      deletions: folder.deletions,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            final DiffTreeFileRow fileRow => Padding(
-              key: ValueKey('diff-tree-file-${fileRow.file.path}'),
-              padding: EdgeInsets.only(left: fileRow.depth * 16.0),
-              child: _FileListTile(
-                file: fileRow.file,
-                pathLabel: _treeFileLabel(fileRow.file),
-                selected: identical(fileRow.file, selected),
-                onTap: () => onSelectFile(fileRow.file),
-              ),
-            ),
-          },
-      ],
+    return Padding(
+      key: ValueKey('diff-file-${item.fileIndex}'),
+      padding: EdgeInsets.only(left: item.depth * 16.0),
+      child: ListTile(
+        onPressed: onToggle,
+        leading: Icon(
+          item.isExpanded
+              ? FluentIcons.chevron_down
+              : FluentIcons.chevron_right,
+          size: 12,
+        ),
+        title: _FileRowLabel(
+          file: item.file,
+          pathLabel: showDirectory ? null : _treeFileLabel(item.file),
+        ),
+      ),
     );
   }
 }

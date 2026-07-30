@@ -14,7 +14,7 @@ import 'diff_view.dart';
 /// Diff of a worktree's working directory with a manual refresh action.
 /// Reflects git state directly, not any one agent conversation — a
 /// worktree's `diff`-kind tab is a singleton.
-class DiffPane extends ConsumerWidget {
+class DiffPane extends ConsumerStatefulWidget {
   const DiffPane({
     super.key,
     required this.cwd,
@@ -29,31 +29,58 @@ class DiffPane extends ConsumerWidget {
   final bool compact;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final host = serverId;
+  ConsumerState<DiffPane> createState() => _DiffPaneState();
+}
+
+class _DiffPaneState extends ConsumerState<DiffPane> {
+  final _diffViewController = DiffViewController();
+
+  @override
+  void initState() {
+    super.initState();
+    _diffViewController.addListener(_handleDiffViewChanged);
+  }
+
+  void _handleDiffViewChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _diffViewController
+      ..removeListener(_handleDiffViewChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final host = widget.serverId;
     if (host != null && host.isNotEmpty) {
       return _LiveDiffPane(
         serverId: host,
-        workspaceId: workspaceId,
-        cwd: cwd,
-        compact: compact,
+        workspaceId: widget.workspaceId,
+        cwd: widget.cwd,
+        compact: widget.compact,
+        diffViewController: _diffViewController,
       );
     }
-    final diffAsync = ref.watch(diffProvider(cwd));
+    final diffAsync = ref.watch(diffProvider(widget.cwd));
     final changesPreferences =
         ref.watch(changesPreferencesProvider).value ??
         const ChangesPreferences();
+    final files = diffAsync.value?.files ?? const <DiffFile>[];
 
     return Column(
       children: [
-        if (!compact) ...[
+        if (!widget.compact) ...[
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             child: Row(
               children: [
                 Expanded(
                   child: Text(
-                    cwd,
+                    widget.cwd,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: context.textStyles.bodySmall,
@@ -70,12 +97,39 @@ class DiffPane extends ConsumerWidget {
                             : ChangesLayout.unified,
                       ),
                 ),
+                if (files.isNotEmpty) ...[
+                  _DiffViewModeToggle(
+                    viewMode: changesPreferences.viewMode,
+                    onToggle: () {
+                      final next =
+                          changesPreferences.viewMode == ChangesViewMode.flat
+                          ? ChangesViewMode.tree
+                          : ChangesViewMode.flat;
+                      if (next == ChangesViewMode.tree) {
+                        _diffViewController.enterTreeView();
+                      }
+                      ref
+                          .read(changesPreferencesProvider.notifier)
+                          .updatePreferences(viewMode: next);
+                    },
+                  ),
+                  _DiffExpandAllToggle(
+                    allExpanded: _diffViewController.allExpanded(
+                      files,
+                      changesPreferences.viewMode,
+                    ),
+                    onToggle: () => _diffViewController.toggleExpandAll(
+                      files,
+                      changesPreferences.viewMode,
+                    ),
+                  ),
+                ],
                 Tooltip(
                   message: 'Refresh diff',
                   child: IconButton(
                     icon: const Icon(FluentIcons.refresh, size: 20),
                     onPressed: () =>
-                        ref.read(diffProvider(cwd).notifier).refresh(),
+                        ref.read(diffProvider(widget.cwd).notifier).refresh(),
                   ),
                 ),
               ],
@@ -92,7 +146,7 @@ class DiffPane extends ConsumerWidget {
                 child: IconButton(
                   icon: const Icon(FluentIcons.refresh, size: 14),
                   onPressed: () =>
-                      ref.read(diffProvider(cwd).notifier).refresh(),
+                      ref.read(diffProvider(widget.cwd).notifier).refresh(),
                 ),
               ),
             ),
@@ -101,8 +155,12 @@ class DiffPane extends ConsumerWidget {
           child: diffAsync.when(
             loading: () => const Center(child: ProgressRing()),
             error: (e, _) => Center(child: Text('Failed to load diff: $e')),
-            data: (diff) =>
-                DiffView(diff: diff, layout: changesPreferences.layout),
+            data: (diff) => DiffView(
+              diff: diff,
+              layout: changesPreferences.layout,
+              viewMode: changesPreferences.viewMode,
+              controller: _diffViewController,
+            ),
           ),
         ),
       ],
@@ -116,12 +174,14 @@ class _LiveDiffPane extends ConsumerWidget {
     required this.workspaceId,
     required this.cwd,
     required this.compact,
+    required this.diffViewController,
   });
 
   final String serverId;
   final String? workspaceId;
   final String cwd;
   final bool compact;
+  final DiffViewController diffViewController;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -176,6 +236,7 @@ class _LiveDiffPane extends ConsumerWidget {
       final value? when value.isNotEmpty => value,
       _ => 'base',
     };
+    final files = diffAsync.value?.toLegacyDiff().files ?? const <DiffFile>[];
 
     void selectMode(CheckoutDiffMode selected) {
       ref
@@ -235,6 +296,32 @@ class _LiveDiffPane extends ConsumerWidget {
                         : ChangesLayout.unified,
                   ),
             ),
+          if (!compact && files.isNotEmpty) ...[
+            _DiffViewModeToggle(
+              viewMode: changesPreferences.viewMode,
+              onToggle: () {
+                final next = changesPreferences.viewMode == ChangesViewMode.flat
+                    ? ChangesViewMode.tree
+                    : ChangesViewMode.flat;
+                if (next == ChangesViewMode.tree) {
+                  diffViewController.enterTreeView();
+                }
+                ref
+                    .read(changesPreferencesProvider.notifier)
+                    .updatePreferences(viewMode: next);
+              },
+            ),
+            _DiffExpandAllToggle(
+              allExpanded: diffViewController.allExpanded(
+                files,
+                changesPreferences.viewMode,
+              ),
+              onToggle: () => diffViewController.toggleExpandAll(
+                files,
+                changesPreferences.viewMode,
+              ),
+            ),
+          ],
           Tooltip(
             message: ignoreWhitespace
                 ? 'Show whitespace changes'
@@ -309,6 +396,8 @@ class _LiveDiffPane extends ConsumerWidget {
                 diff: diff,
                 reviewDraftKey: reviewDraftKey,
                 layout: changesPreferences.layout,
+                viewMode: changesPreferences.viewMode,
+                controller: diffViewController,
               );
             },
           ),
@@ -334,6 +423,53 @@ class _DiffLayoutToggle extends StatelessWidget {
         key: const ValueKey('changes-toggle-layout'),
         icon: Icon(
           split ? FluentIcons.align_justify : FluentIcons.column,
+          size: 16,
+        ),
+        onPressed: onToggle,
+      ),
+    );
+  }
+}
+
+class _DiffViewModeToggle extends StatelessWidget {
+  const _DiffViewModeToggle({required this.viewMode, required this.onToggle});
+
+  final ChangesViewMode viewMode;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final tree = viewMode == ChangesViewMode.tree;
+    final label = tree ? 'Show flat view' : 'Show tree view';
+    return Tooltip(
+      message: label,
+      child: IconButton(
+        key: const ValueKey('changes-toggle-view-mode'),
+        icon: Icon(tree ? FluentIcons.list : FluentIcons.folder, size: 16),
+        onPressed: onToggle,
+      ),
+    );
+  }
+}
+
+class _DiffExpandAllToggle extends StatelessWidget {
+  const _DiffExpandAllToggle({
+    required this.allExpanded,
+    required this.onToggle,
+  });
+
+  final bool allExpanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = allExpanded ? 'Collapse all' : 'Expand all';
+    return Tooltip(
+      message: label,
+      child: IconButton(
+        key: const ValueKey('changes-toggle-expand-all'),
+        icon: Icon(
+          allExpanded ? FluentIcons.collapse_content : FluentIcons.expand_all,
           size: 16,
         ),
         onPressed: onToggle,

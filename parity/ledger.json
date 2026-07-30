@@ -5092,29 +5092,35 @@
     },
     {
       "id": "source-unit:packages/app/src/git/diff-flat-items.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/diff_flat_items.dart",
+      "evidence": [
+        "packages/app/test/diff_flat_items_test.dart"
+      ],
+      "notes": "Ports the frozen flat/tree row model: path-stable file indices, compressed folder rows, post-collapse visibility, expanded header/body pairs, file-header-only sticky indices, and clamped cumulative height offsets."
     },
     {
       "id": "source-unit:packages/app/src/git/diff-folder-row.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/widgets/diff/diff_view.dart",
+      "evidence": [
+        "packages/app/test/diff_view_test.dart"
+      ],
+      "notes": "Flutter renders compressed directory labels, depth indentation, collapse state, and aggregate additions/deletions in the shared diff list. Exact hover geometry, drag surface, height reporting, and pixel-golden tokens remain."
     },
     {
       "id": "source-unit:packages/app/src/git/diff-order.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/diff_order.dart",
+      "evidence": [
+        "packages/app/test/diff_order_test.dart"
+      ],
+      "notes": "Ports deterministic path comparison, non-mutating path ordering, stable equal-path ordering, and the frozen same-list fast path for fewer than two files."
     },
     {
       "id": "source-unit:packages/app/src/git/diff-pane.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/widgets/diff/diff_pane.dart; packages/app/lib/widgets/diff/diff_view.dart; packages/app/lib/core/diff_layout.dart; packages/app/lib/core/diff_rendering.dart; packages/app/lib/core/diff_tree.dart; packages/app/lib/state/changes_preferences_provider.dart",
+      "implementation": "packages/app/lib/widgets/diff/diff_pane.dart; packages/app/lib/widgets/diff/diff_view.dart; packages/app/lib/core/diff_flat_items.dart; packages/app/lib/core/diff_order.dart; packages/app/lib/core/diff_layout.dart; packages/app/lib/core/diff_rendering.dart; packages/app/lib/core/diff_tree.dart; packages/app/lib/state/changes_preferences_provider.dart",
       "evidence": [
         "packages/app/test/diff_pane_test.dart",
         "packages/app/test/diff_view_test.dart",
@@ -5122,7 +5128,7 @@
         "packages/app/test/diff_rendering_test.dart",
         "packages/app/test/diff_tree_test.dart"
       ],
-      "notes": "The Flutter diff pane has live base/uncommitted mode selection, persisted whitespace filtering and layout selection, responsive file selection, a compressed tree navigator, unified hunks, binary/too-large/empty states, horizontal scrolling, stable blank-row geometry, and old/new-side inline review threads. Its desktop split renderer duplicates context, pairs replacement runs, preserves unmatched blank cells, scrolls both columns independently, and falls back to unified below the supported desktop width. Review affordances are hover-only on pointer platforms and whole-line taps on touch platforms, with fixed thread geometry, synchronized split-side thread heights, and exact editor shortcuts. The selection toolbar, tree/flat controls on every form factor, metrics, and remaining orchestration remain."
+      "notes": "The Flutter diff pane has live base/uncommitted mode selection, persisted whitespace filtering, layout and flat/tree selection, deterministic path ordering, the Paseo single expandable diff list on every form factor, compressed tree folders, per-file expansion, expand/collapse-all, unified hunks, binary/too-large/empty states, horizontal scrolling, stable blank-row geometry, and old/new-side inline review threads. Its desktop split renderer duplicates context, pairs replacement runs, preserves unmatched blank cells, scrolls both columns independently, and falls back to unified below the supported desktop width. Review affordances are hover-only on pointer platforms and whole-line taps on touch platforms, with fixed thread geometry, synchronized split-side thread heights, and exact editor shortcuts. Sticky file headers, collapse scroll anchoring integration, options-menu wrapping, exact metrics, file actions, and remaining orchestration remain."
     },
     {
       "id": "source-unit:packages/app/src/git/diff-scroll.ts",

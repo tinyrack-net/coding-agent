@@ -10,10 +10,12 @@ import 'package:flutter_test/flutter_test.dart';
 const _cwd = '/work/demo';
 
 class FakeDaemonClient extends DaemonClient {
-  FakeDaemonClient() : super(uri: Uri.parse('ws://fake'));
+  FakeDaemonClient({this.diff = const DiffResponse(files: [])})
+    : super(uri: Uri.parse('ws://fake'));
 
   final requests = <(String, Map<String, Object?>)>[];
   final sessionRequests = <Map<String, Object?>>[];
+  final DiffResponse diff;
   bool failNextGet = false;
 
   @override
@@ -45,7 +47,7 @@ class FakeDaemonClient extends DaemonClient {
         failNextGet = false;
         throw StateError('diff unavailable');
       }
-      return const DiffResponse(files: []).toJson();
+      return diff.toJson();
     }
     return const {};
   }
@@ -184,6 +186,82 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('view and expand controls drive the Paseo diff list', (
+    tester,
+  ) async {
+    const diff = DiffResponse(
+      files: [
+        DiffFile(
+          path: 'lib/nested/change.dart',
+          status: DiffFileStatus.modified,
+          additions: 1,
+          hunks: [
+            DiffHunk(
+              header: '@@ -0,0 +1 @@',
+              lines: [
+                DiffLine(
+                  type: DiffLineType.add,
+                  text: 'added line',
+                  newLineNo: 1,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    final container = await pumpDiffPane(
+      tester,
+      client: FakeDaemonClient(diff: diff),
+    );
+
+    expect(find.text('lib/nested/change.dart'), findsOneWidget);
+    expect(find.text('added line'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Tooltip && widget.message == 'Show tree view',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Tooltip && widget.message == 'Expand all',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('changes-toggle-expand-all')));
+    await tester.pumpAndSettle();
+    expect(find.text('added line'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Tooltip && widget.message == 'Collapse all',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('changes-toggle-view-mode')));
+    await tester.pumpAndSettle();
+    expect(
+      container.read(changesPreferencesProvider).requireValue.viewMode,
+      ChangesViewMode.tree,
+    );
+    expect(find.text('lib/nested'), findsOneWidget);
+    expect(find.text('change.dart'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Tooltip && widget.message == 'Show flat view',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('changes-toggle-expand-all')));
+    await tester.pumpAndSettle();
+    expect(find.text('added line'), findsNothing);
+    expect(find.text('change.dart'), findsNothing);
+    expect(find.text('lib/nested'), findsOneWidget);
   });
 
   testWidgets('live mode follows base status and toggles whitespace compare', (

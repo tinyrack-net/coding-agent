@@ -127,39 +127,35 @@ void main() {
         ),
       ),
     );
+    await tester.tap(find.text('generated.js'));
+    await tester.pumpAndSettle();
 
     expect(find.text('Diff too large'), findsOneWidget);
     expect(find.text('No textual changes'), findsNothing);
   });
 
-  testWidgets('wide layout: file rows with status colors and counts', (
-    tester,
-  ) async {
+  testWidgets('flat list expands file bodies independently', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(_wrap(const DiffView(diff: _diff)));
 
-    // All file rows are listed with their add/del counts.
-    expect(find.text('new_file.dart'), findsOneWidget);
-    expect(find.text('changed.dart'), findsOneWidget);
-    expect(find.text('gone.dart'), findsOneWidget);
-    expect(find.text('logo.png'), findsOneWidget);
-    expect(find.text('assets'), findsOneWidget);
-    expect(find.text('lib'), findsOneWidget);
+    // Flat mode shows path-sorted headers without folder rows.
+    expect(find.text('lib/new_file.dart'), findsOneWidget);
+    expect(find.text('lib/changed.dart'), findsOneWidget);
+    expect(find.text('lib/gone.dart'), findsOneWidget);
+    expect(find.text('assets/logo.png'), findsOneWidget);
+    expect(find.text('assets'), findsNothing);
+    expect(find.text('lib'), findsNothing);
     expect(find.text('+2'), findsNWidgets(2)); // added + modified files
     expect(find.text('-1'), findsNWidgets(2)); // modified + deleted files
 
-    // First file (added) selected by default: its hunk and lines render.
-    expect(find.text('@@ -0,0 +1,2 @@'), findsOneWidget);
-    expect(find.text('void main() {}'), findsOneWidget);
-    expect(
-      _rowBackground(tester, 'void main() {}'),
-      Colors.green.withValues(alpha: 0.12),
-    );
+    // Paseo starts with every file body collapsed.
+    expect(find.text('@@ -0,0 +1,2 @@'), findsNothing);
+    expect(find.text('void main() {}'), findsNothing);
 
-    // Select the modified file: both hunks, colored add/del rows, context
+    // Expand the modified file: both hunks, colored add/del rows, context
     // rows without a tint, and old/new line numbers.
-    await tester.tap(find.text('changed.dart'));
+    await tester.tap(find.text('lib/changed.dart'));
     await tester.pumpAndSettle();
     expect(find.text('@@ -1,3 +1,3 @@'), findsOneWidget);
     expect(find.text('@@ -10,1 +10,2 @@'), findsOneWidget);
@@ -175,17 +171,29 @@ void main() {
     expect(_rowBackground(tester, 'import "dart:io";'), isNull);
     expect(find.text('11'), findsOneWidget); // new line number of second hunk
 
-    // Deleted file.
-    await tester.tap(find.text('gone.dart'));
+    // A second file can be expanded without collapsing the first.
+    await tester.tap(find.text('lib/gone.dart'));
     await tester.pumpAndSettle();
     expect(find.text('deleted line'), findsOneWidget);
+    expect(find.text('new line'), findsOneWidget);
 
     // Binary file placeholder.
-    await tester.tap(find.text('logo.png'));
+    await tester.tap(find.text('assets/logo.png'));
     await tester.pumpAndSettle();
     expect(find.text('Binary file'), findsOneWidget);
+  });
 
-    // Folder rows aggregate stats and retain their stable path when collapsed.
+  testWidgets('tree list groups, aggregates, and collapses folders', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(const DiffView(diff: _diff, viewMode: ChangesViewMode.tree)),
+    );
+
+    expect(find.text('assets'), findsOneWidget);
+    expect(find.text('lib'), findsOneWidget);
+    expect(find.text('logo.png'), findsOneWidget);
+    expect(find.text('changed.dart'), findsOneWidget);
     expect(find.text('+4'), findsOneWidget);
     expect(find.text('-2'), findsOneWidget);
     await tester.tap(find.text('lib'));
@@ -199,6 +207,7 @@ void main() {
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     await tester.binding.setSurfaceSize(const Size(1200, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -210,7 +219,7 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('changed.dart'));
+    await tester.tap(find.text('lib/changed.dart'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('split-diff')), findsOneWidget);
@@ -261,6 +270,7 @@ void main() {
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     await tester.binding.setSurfaceSize(const Size(800, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -270,21 +280,22 @@ void main() {
       ),
     );
 
+    await tester.tap(find.text('lib/new_file.dart'));
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('split-diff')), findsNothing);
     expect(find.text('@@ -0,0 +1,2 @@'), findsOneWidget);
     debugDefaultTargetPlatformOverride = null;
   });
 
-  testWidgets('narrow layout: collapsible file sections', (tester) async {
+  testWidgets('narrow layout uses the same expandable file list', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(480, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(_wrap(const DiffView(diff: _diff)));
 
-    // Collapsed by default: file rows visible. Fluent's `Expander` keeps its
-    // content mounted (animating height via `SizeTransition`) rather than
-    // unmounting it like Material's `ExpansionTile`, so we only assert the
-    // row is present here and check content visibility after expanding.
     expect(find.text('lib/changed.dart'), findsOneWidget);
+    expect(find.text('new line'), findsNothing);
 
     await tester.tap(find.text('lib/changed.dart'));
     await tester.pumpAndSettle();
@@ -309,6 +320,8 @@ void main() {
     await tester.pumpWidget(
       _wrap(const DiffView(diff: _diff, reviewDraftKey: 'review-scope')),
     );
+    await tester.tap(find.text('lib/new_file.dart'));
+    await tester.pumpAndSettle();
 
     const addKey = ValueKey('review-add-lib/new_file.dart:new:1');
     expect(find.byKey(addKey), findsNothing);
@@ -440,6 +453,7 @@ void main() {
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final workspaceFocus = FocusNode(debugLabel: 'workspace-focus');
     addTearDown(workspaceFocus.dispose);
     await tester.binding.setSurfaceSize(const Size(1200, 800));
@@ -464,6 +478,8 @@ void main() {
         ),
       ),
     );
+    await tester.tap(find.text('lib/new_file.dart'));
+    await tester.pumpAndSettle();
     workspaceFocus.requestFocus();
     await tester.pump();
     expect(workspaceFocus.hasFocus, isTrue);
@@ -505,7 +521,7 @@ void main() {
     );
     await tester.pumpWidget(_wrap(const DiffView(diff: renamed)));
 
-    expect(find.text('old_name.dart → new_name.dart'), findsOneWidget);
+    expect(find.text('lib/old_name.dart → lib/new_name.dart'), findsOneWidget);
     expect(find.byIcon(FluentIcons.move_to_folder), findsOneWidget);
   });
 
@@ -524,6 +540,8 @@ void main() {
     );
     await tester.pumpWidget(_wrap(const DiffView(diff: noHunks)));
 
+    await tester.tap(find.text('lib/mode_only.dart'));
+    await tester.pumpAndSettle();
     expect(find.text('No textual changes'), findsOneWidget);
   });
 
@@ -553,6 +571,8 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(_wrap(DiffView(diff: diff)));
 
+    await tester.tap(find.text('lib/long.dart'));
+    await tester.pumpAndSettle();
     final text = tester.widget<Text>(find.text(longLine));
     expect(text.softWrap, isFalse);
     final scrollFinder = find.byKey(const ValueKey('diff-horizontal-scroll'));
@@ -566,76 +586,81 @@ void main() {
     expect(scrollable.position.pixels, greaterThan(0));
   });
 
-  testWidgets(
-    'didUpdateWidget resets the selected file index when the file list '
-    'shrinks below it',
-    (tester) async {
-      const twoFiles = DiffResponse(
-        files: [
-          DiffFile(
-            path: 'lib/a.dart',
-            status: DiffFileStatus.modified,
-            additions: 1,
-            deletions: 0,
-          ),
-          DiffFile(
-            path: 'lib/b.dart',
-            status: DiffFileStatus.modified,
-            additions: 1,
-            deletions: 0,
-            hunks: [
-              DiffHunk(
-                header: '@@ -1 +1 @@',
-                lines: [
-                  DiffLine(
-                    type: DiffLineType.add,
-                    text: 'b changed',
-                    newLineNo: 1,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      );
-      const oneFile = DiffResponse(
-        files: [
-          DiffFile(
-            path: 'lib/a.dart',
-            status: DiffFileStatus.modified,
-            additions: 1,
-            deletions: 0,
-            hunks: [
-              DiffHunk(
-                header: '@@ -1 +1 @@',
-                lines: [
-                  DiffLine(
-                    type: DiffLineType.add,
-                    text: 'a changed',
-                    newLineNo: 1,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      );
+  testWidgets('didUpdateWidget prunes expansion state for removed files', (
+    tester,
+  ) async {
+    const twoFiles = DiffResponse(
+      files: [
+        DiffFile(
+          path: 'lib/a.dart',
+          status: DiffFileStatus.modified,
+          additions: 1,
+          deletions: 0,
+        ),
+        DiffFile(
+          path: 'lib/b.dart',
+          status: DiffFileStatus.modified,
+          additions: 1,
+          deletions: 0,
+          hunks: [
+            DiffHunk(
+              header: '@@ -1 +1 @@',
+              lines: [
+                DiffLine(
+                  type: DiffLineType.add,
+                  text: 'b changed',
+                  newLineNo: 1,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    const oneFile = DiffResponse(
+      files: [
+        DiffFile(
+          path: 'lib/a.dart',
+          status: DiffFileStatus.modified,
+          additions: 1,
+          deletions: 0,
+          hunks: [
+            DiffHunk(
+              header: '@@ -1 +1 @@',
+              lines: [
+                DiffLine(
+                  type: DiffLineType.add,
+                  text: 'a changed',
+                  newLineNo: 1,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
 
-      await tester.binding.setSurfaceSize(const Size(1200, 800));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(_wrap(const DiffView(diff: twoFiles)));
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final controller = DiffViewController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      _wrap(DiffView(diff: twoFiles, controller: controller)),
+    );
 
-      // Select the second file (index 1).
-      await tester.tap(find.text('b.dart'));
-      await tester.pumpAndSettle();
-      expect(find.text('b changed'), findsOneWidget);
+    await tester.tap(find.text('lib/b.dart'));
+    await tester.pumpAndSettle();
+    expect(find.text('b changed'), findsOneWidget);
 
-      // Shrink the file list to one entry: didUpdateWidget must clamp the
-      // selected index back to 0 instead of throwing a range error.
-      await tester.pumpWidget(_wrap(const DiffView(diff: oneFile)));
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      _wrap(DiffView(diff: oneFile, controller: controller)),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('a changed'), findsOneWidget);
-    },
-  );
+    expect(controller.expandedPaths, isEmpty);
+    expect(find.text('b changed'), findsNothing);
+    await tester.tap(find.text('lib/a.dart'));
+    await tester.pumpAndSettle();
+    expect(find.text('a changed'), findsOneWidget);
+  });
 }
