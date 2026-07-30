@@ -467,6 +467,31 @@ void main() {
     },
   );
 
+  test('ready snapshots publish capability-aware modes and defaults', () async {
+    final claude = PaseoProviderManifest.find('claude')!;
+    final catalog = PaseoProviderCatalogRegistry(
+      definitions: [claude],
+      commandResolver: (_) async => '/bin/claude',
+      modeCatalogResolver: (definition, cwd) async => (
+        modes: [
+          for (final mode in definition.modes)
+            if (mode.mode.id != 'auto') mode.mode,
+        ],
+        defaultModeId: 'default',
+      ),
+    );
+
+    final entry = (await catalog.snapshot(cwd: '.')).single;
+    expect(entry.status, ProviderCatalogStatus.ready);
+    expect(entry.defaultModeId, 'default');
+    expect(entry.modes?.map((mode) => mode.id), [
+      'plan',
+      'default',
+      'acceptEdits',
+      'bypassPermissions',
+    ]);
+  });
+
   test('isolates ACP catalog probe failures in the provider entry', () async {
     final catalog = PaseoProviderCatalogRegistry(
       definitions: const [ready],

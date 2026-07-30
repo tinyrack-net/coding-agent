@@ -23,6 +23,7 @@ final class ClaudeAgentClient
     implements
         AgentClient,
         EnvironmentAgentClient,
+        DefaultModeResolvingAgentClient,
         ImportableAgentClient,
         DraftFeatureListingAgentClient {
   ClaudeAgentClient({
@@ -46,6 +47,19 @@ final class ClaudeAgentClient
   final ClaudeConnectionFactory _startConnection;
   final Map<String, String> _environment;
   final ProviderRuntimeSettingsResolver _runtimeSettingsResolver;
+
+  @override
+  Future<String> resolveDefaultModeId(
+    ResolveAgentDefaultModeInput input,
+  ) async {
+    final environment = _providerEnvironment(
+      _runtimeSettingsResolver(),
+      input.environment,
+    );
+    return _ineligibleAutoModeTransport(environment) == null
+        ? 'auto'
+        : 'default';
+  }
 
   @override
   Future<List<AgentFeature>> listFeatures(
@@ -131,12 +145,17 @@ final class ClaudeAgentClient
       systemPrompt: _normalize(systemPrompt),
       sessionId: _normalize(sessionId),
     );
+    final providerEnvironment = _providerEnvironment(
+      runtimeSettings,
+      environment,
+    );
+    _assertAutoModeEligible(config.permissionMode, providerEnvironment);
     final history = config.sessionId == null
         ? null
         : await loadClaudeHistorySnapshot(
             cwd: cwd,
             sessionId: config.sessionId!,
-            environment: _providerEnvironment(runtimeSettings, environment),
+            environment: providerEnvironment,
           );
     final connection = await _launch(
       launch,
@@ -393,6 +412,40 @@ String _modeId(AgentMode mode) => switch (mode) {
   AgentMode.normal => 'auto',
   AgentMode.fullAccess => 'bypassPermissions',
 };
+
+String? _ineligibleAutoModeTransport(Map<String, String> environment) {
+  if (_isTruthyEnvironmentValue(environment['CLAUDE_CODE_USE_BEDROCK'])) {
+    return 'Bedrock';
+  }
+  if (_isTruthyEnvironmentValue(environment['CLAUDE_CODE_USE_VERTEX'])) {
+    return 'Vertex';
+  }
+  return null;
+}
+
+bool _isTruthyEnvironmentValue(String? value) {
+  final normalized = value?.trim().toLowerCase();
+  return normalized != null &&
+      normalized.isNotEmpty &&
+      !const {'0', 'false', 'no', 'off'}.contains(normalized);
+}
+
+void _assertAutoModeEligible(
+  String permissionMode,
+  Map<String, String> environment,
+) {
+  if (permissionMode != 'auto') return;
+  final transport = _ineligibleAutoModeTransport(environment);
+  if (transport == null) return;
+  final variable = transport == 'Bedrock'
+      ? 'CLAUDE_CODE_USE_BEDROCK'
+      : 'CLAUDE_CODE_USE_VERTEX';
+  throw StateError(
+    'Claude Auto mode requires the Anthropic API and is not supported when '
+    'Claude Code uses $transport. Select another permission mode or unset the '
+    '$variable environment variable.',
+  );
+}
 
 String? _normalize(String? value) {
   final normalized = value?.trim();

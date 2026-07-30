@@ -164,7 +164,7 @@ String formatPairingInstructions({
 }
 
 String _formatQr(String? qr, int? columns) {
-  if (qr == null) {
+  if (qr == null || qr.isEmpty) {
     return 'QR code is unavailable. Use the pairing link below.';
   }
   if (columns == null) {

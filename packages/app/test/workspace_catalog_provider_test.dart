@@ -204,6 +204,29 @@ void main() {
     expect(renamed.single.projectRootPath, r'C:\renamed');
   });
 
+  test('keeps large subscription catalogs in deterministic server order', () {
+    final initial = [
+      for (var index = 1999; index >= 0; index--)
+        WorkspaceDescriptor.fromJson({
+          ..._workspace('workspace-${index.toString().padLeft(4, '0')}'),
+          'activityAt': '2026-07-30T00:00:00.000Z',
+        }),
+    ];
+    final newest = WorkspaceDescriptor.fromJson({
+      ..._workspace('workspace-newest'),
+      'activityAt': '2026-07-30T01:00:00.000Z',
+    });
+
+    final ordered = applyWorkspaceDirectoryUpdate(
+      initial,
+      WorkspaceDirectoryEvent(WorkspaceUpsertUpdate(newest)),
+    );
+
+    expect(ordered.first.id, 'workspace-newest');
+    expect(ordered[1].id, 'workspace-0000');
+    expect(ordered.last.id, 'workspace-1999');
+  });
+
   test('streams native workspace updates after snapshot hydration', () async {
     final client = FakeDaemonClient();
     addTearDown(client.dispose);

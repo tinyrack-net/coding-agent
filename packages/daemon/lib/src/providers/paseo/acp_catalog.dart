@@ -4,6 +4,7 @@ final class AcpProviderCatalog {
   const AcpProviderCatalog({
     required this.models,
     required this.modes,
+    this.defaultModeId,
     required this.currentModelId,
     required this.currentModeId,
     required this.currentThinkingOptionId,
@@ -14,6 +15,7 @@ final class AcpProviderCatalog {
 
   final List<ProviderModelDefinition> models;
   final List<ProviderMode> modes;
+  final String? defaultModeId;
   final String? currentModelId;
   final String? currentModeId;
   final String? currentThinkingOptionId;

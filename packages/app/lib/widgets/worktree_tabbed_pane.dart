@@ -718,6 +718,9 @@ class WorktreeTabbedPane extends ConsumerWidget {
       worktreePath: worktreePath,
       paneId: pane.id,
       isFocused: pane.id == layout.focusedPaneId,
+      focusModeEnabled: ref.watch(workspaceFocusModeProvider),
+      onExitFocusMode: () =>
+          ref.read(workspaceFocusModeProvider.notifier).disable(),
       tabs: tabs,
       activeIndex: activeIndex < 0 ? 0 : activeIndex,
       labels: [
@@ -1162,6 +1165,8 @@ class _WorkspacePaneTabs extends ConsumerWidget {
     required this.worktreePath,
     required this.paneId,
     required this.isFocused,
+    required this.focusModeEnabled,
+    required this.onExitFocusMode,
     required this.tabs,
     required this.activeIndex,
     required this.labels,
@@ -1183,6 +1188,8 @@ class _WorkspacePaneTabs extends ConsumerWidget {
   final String worktreePath;
   final String paneId;
   final bool isFocused;
+  final bool focusModeEnabled;
+  final VoidCallback onExitFocusMode;
   final List<WorktreeTab> tabs;
   final int activeIndex;
   final List<String> labels;
@@ -1213,10 +1220,12 @@ class _WorkspacePaneTabs extends ConsumerWidget {
             final layout = computeWorkspaceTabLayout(
               viewportWidth: constraints.maxWidth,
               tabLabelLengths: labels.map((label) => label.length).toList(),
-              metrics: const WorkspaceTabLayoutMetrics(
+              metrics: WorkspaceTabLayoutMetrics(
                 rowHorizontalInset: 0,
                 actionsReservedWidth:
-                    inlineAddReservedWidth + trailingActionsWidth,
+                    inlineAddReservedWidth +
+                    trailingActionsWidth +
+                    (focusModeEnabled ? 36 : 0),
                 rowPaddingHorizontal: 0,
                 tabGap: 0,
                 maxTabWidth: 200,
@@ -1270,6 +1279,37 @@ class _WorkspacePaneTabs extends ConsumerWidget {
                 ),
                 child: Row(
                   children: [
+                    if (focusModeEnabled)
+                      SizedBox(
+                        key: ValueKey('workspace-exit-focus-mode-slot-$paneId'),
+                        width: 36,
+                        child: Center(
+                          child: Tooltip(
+                            message: 'Exit focus mode',
+                            excludeFromSemantics: true,
+                            child: SizedBox.square(
+                              dimension: 28,
+                              child: IconButton(
+                                key: ValueKey(
+                                  'workspace-exit-focus-mode-$paneId',
+                                ),
+                                icon: Icon(
+                                  FluentIcons.chrome_close,
+                                  size: 14,
+                                  color: muted,
+                                  semanticLabel: 'Exit focus mode',
+                                ),
+                                onPressed: onExitFocusMode,
+                                style: ButtonStyle(
+                                  padding: WidgetStateProperty.all(
+                                    EdgeInsets.zero,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     Expanded(child: tabsStrip),
                     Container(
                       key: ValueKey('workspace-tab-trailing-actions-$paneId'),

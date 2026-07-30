@@ -742,6 +742,32 @@ void main() {
     },
   );
 
+  testWidgets('focus mode exposes an accessible exit control in the tab row', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      final container = await pumpPane(tester, agents: [_idleAgent]);
+
+      container.read(workspaceFocusModeProvider.notifier).toggle();
+      await tester.pump();
+
+      final exit = find.byKey(
+        const ValueKey('workspace-exit-focus-mode-pane_root'),
+      );
+      expect(exit, findsOneWidget);
+      expect(find.bySemanticsLabel('Exit focus mode'), findsOneWidget);
+
+      await tester.tap(exit);
+      await tester.pump(const Duration(milliseconds: 150));
+
+      expect(container.read(workspaceFocusModeProvider), isFalse);
+      expect(exit, findsNothing);
+    } finally {
+      semantics.dispose();
+    }
+  });
+
   testWidgets('close-current shortcut closes the active workspace tab', (
     tester,
   ) async {

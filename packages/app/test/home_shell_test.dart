@@ -24,6 +24,7 @@ import 'package:coding_agent_app/state/sidebar_callout_state.dart';
 import 'package:coding_agent_app/state/sidebar_order_provider.dart';
 import 'package:coding_agent_app/state/sidebar_width_provider.dart';
 import 'package:coding_agent_app/state/workspace_catalog_provider.dart';
+import 'package:coding_agent_app/state/workspace_focus_mode_provider.dart';
 import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
 import 'package:coding_agent_app/widgets/worktree_tabbed_pane.dart';
 import 'package:coding_agent_app/widgets/workspace_explorer.dart';
@@ -359,6 +360,25 @@ Future<void> settleMobilePanel(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('focus mode hides chrome only on an active workspace route', (
+    tester,
+  ) async {
+    final container = await pumpHomeShell(tester, agents: const [_agent1]);
+    container.read(selectedWorktreeProvider.notifier).select('/work/one');
+    container.read(workspaceFocusModeProvider.notifier).toggle();
+    await tester.pump();
+
+    expect(container.read(workspaceFocusModeProvider), isTrue);
+    expect(find.byKey(const ValueKey('left-sidebar')), findsNothing);
+
+    GoRouter.of(tester.element(find.byType(HomeShell))).go('/open-project');
+    await tester.pumpAndSettle();
+
+    expect(container.read(workspaceFocusModeProvider), isTrue);
+    expect(find.byType(ProjectsScreen), findsOneWidget);
+    expect(find.byKey(const ValueKey('left-sidebar')), findsOneWidget);
+  });
+
   testWidgets('compact shell starts closed and opens a full-width sidebar', (
     tester,
   ) async {

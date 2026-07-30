@@ -26,6 +26,7 @@ class MockAgentSession
   bool interrupted = false;
   Object? interruptError;
   bool disposed = false;
+  Object? disposeError;
   Completer<void>? disposeGate;
   String? configuredMode;
   String? configuredModel;
@@ -88,6 +89,7 @@ class MockAgentSession
   Future<void> dispose() async {
     disposed = true;
     await disposeGate?.future;
+    if (disposeError case final error?) throw error;
     if (!_controller.isClosed) await _controller.close();
   }
 
@@ -141,6 +143,7 @@ class MockAgentClient implements AgentClient {
       String? sessionId,
       String? systemPrompt,
       String? thinkingOptionId,
+      List<TimelineItem> initialHistory,
     })
   >
   createCalls = [];
@@ -148,6 +151,7 @@ class MockAgentClient implements AgentClient {
   /// When set, the next call to [createSession] throws this instead of
   /// creating a session.
   Object? createSessionError;
+  Completer<void>? createSessionGate;
   List<TimelineItem>? nextRestoredHistory;
   List<RestoredProviderSubagent> nextRestoredProviderSubagents = const [];
   bool useStructuredSession = false;
@@ -173,12 +177,14 @@ class MockAgentClient implements AgentClient {
       sessionId: sessionId,
       systemPrompt: systemPrompt,
       thinkingOptionId: thinkingOptionId,
+      initialHistory: List.unmodifiable(initialHistory),
     ));
     final error = createSessionError;
     if (error != null) {
       createSessionError = null;
       throw error;
     }
+    await createSessionGate?.future;
     final session = useStructuredSession
         ? MockStructuredAgentSession()
         : MockAgentSession(
@@ -189,6 +195,22 @@ class MockAgentClient implements AgentClient {
     nextRestoredProviderSubagents = const [];
     sessions.add(session);
     return session;
+  }
+}
+
+final class _DefaultModeClient extends MockAgentClient
+    implements DefaultModeResolvingAgentClient {
+  _DefaultModeClient(this.defaultModeId);
+
+  final String defaultModeId;
+  ResolveAgentDefaultModeInput? input;
+
+  @override
+  Future<String> resolveDefaultModeId(
+    ResolveAgentDefaultModeInput input,
+  ) async {
+    this.input = input;
+    return defaultModeId;
   }
 }
 
@@ -388,6 +410,53 @@ void main() {
     );
     expect(client.createCalls.last.systemPrompt, 'Agent instructions.');
   });
+
+  test('resolves an omitted mode from provider launch capabilities', () async {
+    await manager.dispose();
+    final defaultModeClient = _DefaultModeClient('safe-auto');
+    manager = AgentManager(
+      clients: {'claude': defaultModeClient},
+      store: AgentStore(dataDir: tempDir.path),
+    );
+
+    final created = await manager.createAgent(
+      cwd: tempDir.path,
+      provider: 'claude',
+      model: 'claude-sonnet-5',
+      mode: AgentMode.normal,
+      environment: const {'TRANSPORT': 'cloud'},
+    );
+
+    expect(created.currentModeId, 'safe-auto');
+    expect(defaultModeClient.createCalls.single.modeId, 'safe-auto');
+    expect(defaultModeClient.input?.provider, 'claude');
+    expect(defaultModeClient.input?.cwd, tempDir.path);
+    expect(defaultModeClient.input?.model, 'claude-sonnet-5');
+    expect(defaultModeClient.input?.environment, {'TRANSPORT': 'cloud'});
+  });
+
+  test(
+    'preserves an explicit mode without probing the provider default',
+    () async {
+      await manager.dispose();
+      final defaultModeClient = _DefaultModeClient('safe-auto');
+      manager = AgentManager(
+        clients: {'claude': defaultModeClient},
+        store: AgentStore(dataDir: tempDir.path),
+      );
+
+      final created = await manager.createAgent(
+        cwd: tempDir.path,
+        provider: 'claude',
+        model: 'claude-sonnet-5',
+        mode: AgentMode.normal,
+        modeId: 'default',
+      );
+
+      expect(created.currentModeId, 'default');
+      expect(defaultModeClient.input, isNull);
+    },
+  );
 
   test(
     'resolves provider clients dynamically from the daemon config surface',
@@ -1655,6 +1724,300 @@ void main() {
       manager.prompt(agent.agentId, 'hi'),
       throwsA(isA<RpcException>()),
     );
+  });
+
+  test(
+    'idle collection releases and resumes the same provider conversation',
+    () async {
+      final agent = await createAgent();
+      final first = client.sessions.single;
+      first.emit(const SessionStarted(sessionId: 'session-idle'));
+      await pumpEventQueue();
+      await manager.prompt(agent.agentId, 'Keep this timeline');
+      first.emit(const TurnCompleted());
+      await pumpEventQueue();
+      final rowsBefore = manager.fetchCanonicalTimeline(agent.agentId).rows;
+
+      final result = await manager.collectIdleAgents(
+        cutoff: DateTime.now().toUtc().add(const Duration(seconds: 1)),
+      );
+
+      expect(result.failures, isEmpty);
+      expect(result.collected, hasLength(1));
+      expect(result.collected.single.agentId, agent.agentId);
+      expect(result.collected.single.sessionId, 'session-idle');
+      expect(first.disposed, isTrue);
+      expect(manager.get(agent.agentId)?.runState, AgentRunState.idle);
+
+      await manager.interrupt(agent.agentId);
+      expect(client.sessions, hasLength(1));
+      await manager.prompt(agent.agentId, 'Continue');
+
+      expect(client.sessions, hasLength(2));
+      expect(client.createCalls.last.sessionId, 'session-idle');
+      expect(
+        client.createCalls.last.initialHistory.whereType<UserMessageItem>().map(
+          (item) => item.text,
+        ),
+        contains('Keep this timeline'),
+      );
+      expect(
+        manager
+            .fetchCanonicalTimeline(agent.agentId)
+            .rows
+            .take(rowsBefore.length),
+        rowsBefore,
+      );
+      expect(client.sessions.last.prompts, ['Continue']);
+    },
+  );
+
+  test(
+    'idle collection excludes recent protected internal running and error agents',
+    () async {
+      final recent = await createAgent();
+      final protectedAgent = await createAgent();
+      final internal = await manager.createAgent(
+        cwd: tempDir.path,
+        provider: 'claude',
+        model: 'claude-sonnet-5',
+        mode: AgentMode.normal,
+        internal: true,
+      );
+      final running = await createAgent();
+      final failed = await createAgent();
+      for (var index = 0; index < client.sessions.length; index++) {
+        client.sessions[index].emit(
+          SessionStarted(sessionId: 'session-$index'),
+        );
+      }
+      await pumpEventQueue();
+      await manager.prompt(running.agentId, 'running');
+      await manager.prompt(failed.agentId, 'failed');
+      client.sessions.last.emit(const TurnFailed(error: 'provider failed'));
+      await pumpEventQueue();
+
+      final recentResult = await manager.collectIdleAgents(
+        cutoff: DateTime.parse(
+          recent.updatedAt!,
+        ).subtract(const Duration(microseconds: 1)),
+      );
+      final protectedResult = await manager.collectIdleAgents(
+        cutoff: DateTime.now().toUtc().add(const Duration(seconds: 1)),
+        protectedAgentIds: {recent.agentId, protectedAgent.agentId},
+      );
+
+      expect(recentResult.collected, isEmpty);
+      expect(protectedResult.collected, isEmpty);
+      expect(manager.get(internal.agentId)?.runState, AgentRunState.idle);
+      expect(manager.get(running.agentId)?.runState, AgentRunState.running);
+      expect(manager.get(failed.agentId)?.runState, AgentRunState.error);
+      expect(client.sessions.every((session) => !session.disposed), isTrue);
+    },
+  );
+
+  test('idle collection skips a provider session replacement', () async {
+    final agent = await createAgent();
+    client.sessions.single.emit(
+      const SessionStarted(sessionId: 'session-replacement'),
+    );
+    await pumpEventQueue();
+    client.createSessionGate = Completer<void>();
+
+    final reload = manager.reloadAgentSession(
+      agent.agentId,
+      systemPrompt: 'replacement',
+    );
+    while (client.createCalls.length < 2) {
+      await pumpEventQueue();
+    }
+    final collection = await manager.collectIdleAgents(
+      cutoff: DateTime.now().toUtc().add(const Duration(seconds: 1)),
+    );
+
+    expect(collection.collected, isEmpty);
+    expect(client.sessions.single.disposed, isFalse);
+    client.createSessionGate!.complete();
+    await reload;
+    client.createSessionGate = null;
+  });
+
+  test(
+    'prompt waits for an in-flight session reload and uses replacement',
+    () async {
+      final agent = await createAgent();
+      final first = client.sessions.single;
+      client.createSessionGate = Completer<void>();
+
+      final reload = manager.reloadAgentSession(
+        agent.agentId,
+        systemPrompt: 'replacement',
+      );
+      while (client.createCalls.length < 2) {
+        await pumpEventQueue();
+      }
+
+      final prompt = manager.prompt(agent.agentId, 'After reload');
+      await pumpEventQueue();
+      expect(first.prompts, isEmpty);
+      expect(client.sessions, hasLength(1));
+
+      client.createSessionGate!.complete();
+      await reload;
+      await prompt;
+      client.createSessionGate = null;
+
+      expect(first.disposed, isTrue);
+      expect(first.prompts, isEmpty);
+      expect(client.sessions, hasLength(2));
+      expect(client.sessions.last.prompts, ['After reload']);
+    },
+  );
+
+  test(
+    'close waits for an in-flight session reload and closes replacement',
+    () async {
+      final agent = await createAgent();
+      final first = client.sessions.single;
+      client.createSessionGate = Completer<void>();
+
+      final reload = manager.reloadAgentSession(
+        agent.agentId,
+        systemPrompt: 'replacement',
+      );
+      while (client.createCalls.length < 2) {
+        await pumpEventQueue();
+      }
+
+      final close = manager.close(agent.agentId);
+      await pumpEventQueue();
+      expect(first.disposed, isFalse);
+      expect(client.sessions, hasLength(1));
+
+      client.createSessionGate!.complete();
+      await reload;
+      await close;
+      client.createSessionGate = null;
+
+      expect(client.sessions, hasLength(2));
+      expect(client.sessions.every((session) => session.disposed), isTrue);
+      expect(manager.get(agent.agentId)?.runState, AgentRunState.closed);
+    },
+  );
+
+  test('prompt waits for an in-flight idle release and resumes once', () async {
+    final agent = await createAgent();
+    final first = client.sessions.single;
+    first.emit(const SessionStarted(sessionId: 'session-race'));
+    await pumpEventQueue();
+    first.disposeGate = Completer<void>();
+
+    final collection = manager.collectIdleAgents(
+      cutoff: DateTime.now().toUtc().add(const Duration(seconds: 1)),
+    );
+    while (!first.disposed) {
+      await pumpEventQueue();
+    }
+    final prompt = manager.prompt(agent.agentId, 'After release');
+    await pumpEventQueue();
+    expect(client.sessions, hasLength(1));
+
+    first.disposeGate!.complete();
+    await collection;
+    await prompt;
+
+    expect(client.sessions, hasLength(2));
+    expect(client.createCalls.last.sessionId, 'session-race');
+    expect(client.sessions.last.prompts, ['After release']);
+  });
+
+  test('release failure is reported but remains resumable', () async {
+    final agent = await createAgent();
+    final first = client.sessions.single;
+    first.emit(const SessionStarted(sessionId: 'session-failed-close'));
+    await pumpEventQueue();
+    first.disposeError = StateError('provider cleanup failed');
+
+    final result = await manager.collectIdleAgents(
+      cutoff: DateTime.now().toUtc().add(const Duration(seconds: 1)),
+    );
+
+    expect(result.collected, isEmpty);
+    expect(result.failures, hasLength(1));
+    expect(result.failures.single.error, isA<StateError>());
+    expect(manager.get(agent.agentId)?.runState, AgentRunState.idle);
+    await manager.prompt(agent.agentId, 'Resume after cleanup failure');
+    expect(client.sessions, hasLength(2));
+    expect(client.createCalls.last.sessionId, 'session-failed-close');
+    await first.exit();
+  });
+
+  test(
+    'idle collection bounds a hanging provider dispose and continues',
+    () async {
+      await manager.dispose();
+      manager = AgentManager(
+        clients: {'claude': client},
+        store: AgentStore(dataDir: tempDir.path),
+        reloadSessionCloseTimeout: const Duration(milliseconds: 10),
+      );
+      final hangingAgent = await createAgent();
+      final hangingSession = client.sessions.single;
+      hangingSession.disposeGate = Completer<void>();
+      final collectableAgent = await createAgent();
+      final collectableSession = client.sessions.last;
+      hangingSession.emit(const SessionStarted(sessionId: 'session-hanging'));
+      collectableSession.emit(
+        const SessionStarted(sessionId: 'session-collectable'),
+      );
+      await pumpEventQueue();
+
+      final stopwatch = Stopwatch()..start();
+      final result = await manager.collectIdleAgents(
+        cutoff: DateTime.now().toUtc().add(const Duration(seconds: 1)),
+      );
+      stopwatch.stop();
+
+      expect(
+        result.failures.map((failure) => failure.agentId),
+        contains(hangingAgent.agentId),
+      );
+      expect(result.failures.single.error, isA<TimeoutException>());
+      expect(
+        result.collected.map((entry) => entry.agentId),
+        contains(collectableAgent.agentId),
+      );
+      expect(collectableSession.disposed, isTrue);
+      expect(stopwatch.elapsed, lessThan(const Duration(seconds: 1)));
+
+      hangingSession.disposeGate!.complete();
+      await pumpEventQueue();
+    },
+  );
+
+  test('archive waits for in-flight idle release without resuming', () async {
+    final agent = await createAgent();
+    final first = client.sessions.single;
+    first.emit(const SessionStarted(sessionId: 'session-archive-race'));
+    await pumpEventQueue();
+    first.disposeGate = Completer<void>();
+    final collection = manager.collectIdleAgents(
+      cutoff: DateTime.now().toUtc().add(const Duration(seconds: 1)),
+    );
+    while (!first.disposed) {
+      await pumpEventQueue();
+    }
+
+    final archive = manager.archive(agent.agentId);
+    await pumpEventQueue();
+    expect(client.sessions, hasLength(1));
+    first.disposeGate!.complete();
+    await collection;
+    final archived = await archive;
+
+    expect(archived.archivedAt, isNotNull);
+    expect(archived.runState, AgentRunState.closed);
+    expect(client.sessions, hasLength(1));
   });
 
   test(

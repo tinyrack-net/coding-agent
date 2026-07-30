@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:agent_protocol/agent_protocol.dart';
@@ -16,12 +17,17 @@ import 'provider_manifest.dart';
 typedef CodexExecutableResolver = Future<String?> Function();
 typedef CodexConnectionFactory =
     Future<CodexAppServerConnection> Function(JsonlRpcLaunch launch);
+typedef CodexVersionResolver =
+    Future<String> Function(ResolvedProviderLaunch launch);
+
+const _codexAutoReviewMinimumVersion = (major: 0, minor: 115, patch: 0);
 
 /// Provider client that launches the installed Codex CLI in app-server mode.
 final class CodexAgentClient
     implements
         AgentClient,
         EnvironmentAgentClient,
+        DefaultModeResolvingAgentClient,
         ImportableAgentClient,
         DraftFeatureListingAgentClient {
   CodexAgentClient({
@@ -31,6 +37,7 @@ final class CodexAgentClient
     Map<String, String>? environment,
     ProviderRuntimeSettings? runtimeSettings,
     ProviderRuntimeSettingsResolver? runtimeSettingsResolver,
+    CodexVersionResolver? resolveVersion,
   }) : _resolveExecutable =
            resolveExecutable ??
            (executableResolver ?? ExecutableResolver()).findCodex,
@@ -39,12 +46,20 @@ final class CodexAgentClient
            ((launch) => CodexAppServerClient.start(launch: launch)),
        _environment = environment ?? const {},
        _runtimeSettingsResolver =
-           runtimeSettingsResolver ?? (() => runtimeSettings);
+           runtimeSettingsResolver ?? (() => runtimeSettings),
+       _resolveVersion = resolveVersion ?? _readCodexVersion;
 
   final CodexExecutableResolver _resolveExecutable;
   final CodexConnectionFactory _startConnection;
   final Map<String, String> _environment;
   final ProviderRuntimeSettingsResolver _runtimeSettingsResolver;
+  final CodexVersionResolver _resolveVersion;
+  final Map<String, Future<bool>> _autoReviewLoads = {};
+
+  @override
+  Future<String> resolveDefaultModeId(
+    ResolveAgentDefaultModeInput input,
+  ) async => await _resolveAutoReviewEnabled() ? 'auto-review' : 'auto';
 
   @override
   Future<List<AgentFeature>> listFeatures(
@@ -205,6 +220,22 @@ final class CodexAgentClient
       runtimeSettings: runtimeSettings,
     );
   }
+
+  Future<bool> _resolveAutoReviewEnabled() async {
+    try {
+      final launch = (await _resolveLaunch()).launch;
+      final key = [launch.command, ...launch.args].join('\u0000');
+      return await _autoReviewLoads.putIfAbsent(key, () async {
+        final output = await _resolveVersion(launch);
+        return _codexVersionAtLeast(
+          output,
+          minimum: _codexAutoReviewMinimumVersion,
+        );
+      });
+    } on Object {
+      return false;
+    }
+  }
 }
 
 ImportableProviderSession _codexImportableSession(Map<String, Object?> thread) {
@@ -255,4 +286,53 @@ String _modeId(AgentMode mode) {
     AgentMode.normal => 'auto-review',
     AgentMode.fullAccess => 'full-access',
   };
+}
+
+bool _codexVersionAtLeast(
+  String output, {
+  required ({int major, int minor, int patch}) minimum,
+}) {
+  final match = RegExp(r'(\d+)\.(\d+)\.(\d+)').firstMatch(output);
+  if (match == null) return false;
+  final version = (
+    major: int.parse(match.group(1)!),
+    minor: int.parse(match.group(2)!),
+    patch: int.parse(match.group(3)!),
+  );
+  if (version.major != minimum.major) {
+    return version.major > minimum.major;
+  }
+  if (version.minor != minimum.minor) {
+    return version.minor > minimum.minor;
+  }
+  return version.patch >= minimum.patch;
+}
+
+Future<String> _readCodexVersion(ResolvedProviderLaunch launch) async {
+  final process = await Process.start(
+    launch.command,
+    [...launch.args, '--version'],
+    runInShell:
+        Platform.isWindows &&
+        const {'.cmd', '.bat'}.contains(p.extension(launch.command)),
+  );
+  final stdout = process.stdout.transform(systemEncoding.decoder).join();
+  final stderr = process.stderr.transform(systemEncoding.decoder).join();
+  final exitCode = await process.exitCode.timeout(
+    const Duration(seconds: 5),
+    onTimeout: () {
+      process.kill();
+      throw TimeoutException('Timed out while reading Codex version');
+    },
+  );
+  final output = '${await stdout}\n${await stderr}'.trim();
+  if (exitCode != 0) {
+    throw ProcessException(
+      launch.command,
+      [...launch.args, '--version'],
+      output,
+      exitCode,
+    );
+  }
+  return output;
 }

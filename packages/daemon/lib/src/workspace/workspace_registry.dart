@@ -391,18 +391,53 @@ final class FileBackedWorkspaceRegistry {
 
   final _FileRegistry<PersistedWorkspaceRecord> _registry;
   final Set<WorkspaceMutationListener> _listeners = {};
+  final Map<String, PersistedWorkspaceRecord> _indexedById = {};
+  final Map<String, Set<String>> _activeIdsByProject = {};
+  final Map<String, Set<String>> _activeIdsByCwd = {};
+  final _SerialQueue _mutationQueue = _SerialQueue();
+  Future<void>? _indexInitialization;
 
-  Future<void> initialize() => _registry.initialize();
+  Future<void> initialize() async {
+    await _registry.initialize();
+    await _ensureIndexes();
+  }
+
   Future<bool> existsOnDisk() => _registry.existsOnDisk();
   Future<List<PersistedWorkspaceRecord>> list() => _registry.list();
   Future<PersistedWorkspaceRecord?> get(String workspaceId) =>
       _registry.get(workspaceId);
 
+  /// Active records are served from lifecycle-maintained indexes, so archived
+  /// history does not make hot workspace paths progressively more expensive.
+  Future<List<PersistedWorkspaceRecord>> listActive() async {
+    await _ensureIndexes();
+    return _sorted(
+      _indexedById.values.where((record) => record.archivedAt == null),
+    );
+  }
+
+  Future<List<PersistedWorkspaceRecord>> activeForProject(
+    String projectId,
+  ) async {
+    await _ensureIndexes();
+    return _recordsFor(_activeIdsByProject[projectId]);
+  }
+
+  Future<List<PersistedWorkspaceRecord>> activeForCwd(String cwd) async {
+    await _ensureIndexes();
+    return _recordsFor(_activeIdsByCwd[_pathKey(cwd)]);
+  }
+
   Future<void> upsert(
     PersistedWorkspaceRecord record, {
     bool expectsInitialAgent = false,
   }) async {
-    await _registry.upsert(record);
+    await _ensureIndexes();
+    await _mutationQueue.run(() async {
+      final previous = _indexedById[record.workspaceId];
+      await _registry.upsert(record);
+      _replaceIndexed(previous, record);
+    });
     await _notify(
       WorkspaceMutation(
         kind: RegistryMutationKind.upsert,
@@ -417,10 +452,16 @@ final class FileBackedWorkspaceRegistry {
     String workspaceId,
     PersistedWorkspaceRecord Function(PersistedWorkspaceRecord) updater,
   ) async {
-    final updated = await _registry.update(
-      workspaceId,
-      (record) => updater(record),
-    );
+    await _ensureIndexes();
+    final updated = await _mutationQueue.run(() async {
+      final previous = _indexedById[workspaceId];
+      final updated = await _registry.update(
+        workspaceId,
+        (record) => updater(record),
+      );
+      if (updated != null) _replaceIndexed(previous, updated);
+      return updated;
+    });
     if (updated != null) {
       await _notify(
         WorkspaceMutation(
@@ -439,11 +480,17 @@ final class FileBackedWorkspaceRegistry {
     String archivedAt, {
     String? removedProjectId,
   }) async {
-    final archived = await _registry.update(
-      workspaceId,
-      (record) =>
-          record.copyWith(updatedAt: archivedAt, archivedAt: archivedAt),
-    );
+    await _ensureIndexes();
+    final archived = await _mutationQueue.run(() async {
+      final previous = _indexedById[workspaceId];
+      final archived = await _registry.update(
+        workspaceId,
+        (record) =>
+            record.copyWith(updatedAt: archivedAt, archivedAt: archivedAt),
+      );
+      if (archived != null) _replaceIndexed(previous, archived);
+      return archived;
+    });
     if (archived == null) return;
     await _notify(
       WorkspaceMutation(
@@ -459,10 +506,16 @@ final class FileBackedWorkspaceRegistry {
     String workspaceId,
     String restoredAt,
   ) async {
-    final restored = await _registry.update(
-      workspaceId,
-      (record) => record.copyWith(updatedAt: restoredAt, archivedAt: null),
-    );
+    await _ensureIndexes();
+    final restored = await _mutationQueue.run(() async {
+      final previous = _indexedById[workspaceId];
+      final restored = await _registry.update(
+        workspaceId,
+        (record) => record.copyWith(updatedAt: restoredAt, archivedAt: null),
+      );
+      if (restored != null) _replaceIndexed(previous, restored);
+      return restored;
+    });
     if (restored != null) {
       await _notify(
         WorkspaceMutation(
@@ -476,7 +529,13 @@ final class FileBackedWorkspaceRegistry {
   }
 
   Future<void> remove(String workspaceId) async {
-    final removed = await _registry.remove(workspaceId);
+    await _ensureIndexes();
+    final removed = await _mutationQueue.run(() async {
+      final previous = _indexedById[workspaceId];
+      final removed = await _registry.remove(workspaceId);
+      if (removed != null) _replaceIndexed(previous, null);
+      return removed;
+    });
     if (removed == null) return;
     await _notify(
       WorkspaceMutation(
@@ -490,7 +549,7 @@ final class FileBackedWorkspaceRegistry {
   Future<List<PersistedWorkspaceRecord>> activeSharingWorktreeRoot(
     String worktreeRoot,
   ) async => [
-    for (final workspace in await list())
+    for (final workspace in await listActive())
       if (workspace.archivedAt == null &&
           workspace.worktreeRoot != null &&
           areEquivalentPaths(workspace.worktreeRoot!, worktreeRoot))
@@ -507,6 +566,68 @@ final class FileBackedWorkspaceRegistry {
 
   Future<void> _notify(WorkspaceMutation mutation) =>
       Future.wait(_listeners.map((listener) async => listener(mutation)));
+
+  Future<void> _ensureIndexes() => _indexInitialization ??= _loadIndexes();
+
+  Future<void> _loadIndexes() async {
+    for (final record in await _registry.list()) {
+      _replaceIndexed(null, record);
+    }
+  }
+
+  void _replaceIndexed(
+    PersistedWorkspaceRecord? previous,
+    PersistedWorkspaceRecord? next,
+  ) {
+    if (previous != null) {
+      _indexedById.remove(previous.workspaceId);
+      if (previous.archivedAt == null) {
+        _removeIndex(
+          _activeIdsByProject,
+          previous.projectId,
+          previous.workspaceId,
+        );
+        _removeIndex(
+          _activeIdsByCwd,
+          _pathKey(previous.cwd),
+          previous.workspaceId,
+        );
+      }
+    }
+    if (next == null) return;
+    _indexedById[next.workspaceId] = next;
+    if (next.archivedAt != null) return;
+    (_activeIdsByProject[next.projectId] ??= {}).add(next.workspaceId);
+    (_activeIdsByCwd[_pathKey(next.cwd)] ??= {}).add(next.workspaceId);
+  }
+
+  List<PersistedWorkspaceRecord> _recordsFor(Set<String>? ids) => _sorted(
+    ids
+            ?.map((workspaceId) => _indexedById[workspaceId])
+            .whereType<PersistedWorkspaceRecord>() ??
+        const <PersistedWorkspaceRecord>[],
+  );
+
+  List<PersistedWorkspaceRecord> _sorted(
+    Iterable<PersistedWorkspaceRecord> records,
+  ) => records.toList(growable: false)
+    ..sort((left, right) {
+      final byCreated = left.createdAt.compareTo(right.createdAt);
+      return byCreated != 0
+          ? byCreated
+          : left.workspaceId.compareTo(right.workspaceId);
+    });
+
+  void _removeIndex(
+    Map<String, Set<String>> index,
+    String key,
+    String workspaceId,
+  ) {
+    final ids = index[key];
+    if (ids == null) return;
+    ids.remove(workspaceId);
+    if (ids.isEmpty) index.remove(key);
+  }
 }
 
 final class WorkspaceRegistries {
@@ -599,13 +720,13 @@ String _generateId(String prefix) {
 }
 
 bool areEquivalentPaths(String left, String right) {
-  String normalize(String value) {
-    var normalized = p.normalize(p.absolute(value));
-    if (Platform.isWindows) normalized = normalized.toLowerCase();
-    return normalized;
-  }
+  return _pathKey(left) == _pathKey(right);
+}
 
-  return normalize(left) == normalize(right);
+String _pathKey(String value) {
+  var normalized = p.normalize(p.absolute(value));
+  if (Platform.isWindows) normalized = normalized.toLowerCase();
+  return normalized;
 }
 
 final class _FileRegistry<T> {

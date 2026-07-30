@@ -72,9 +72,47 @@ final class AgentRuntime {
   /// id of the open TurnItem, if a turn is in flight.
   String? currentTurnId;
   bool interruptRequested = false;
+  bool promptPending = false;
+  bool sessionReplacementPending = false;
 
   /// Accumulated streaming text per timeline item id.
   final Map<String, StringBuffer> textBuffers = {};
+}
+
+final class IdleAgentCollectionEntry {
+  const IdleAgentCollectionEntry({
+    required this.agentId,
+    required this.provider,
+    this.sessionId,
+  });
+
+  final String agentId;
+  final String provider;
+  final String? sessionId;
+}
+
+final class IdleAgentCollectionFailure {
+  const IdleAgentCollectionFailure({
+    required this.agentId,
+    required this.provider,
+    required this.error,
+    this.sessionId,
+  });
+
+  final String agentId;
+  final String provider;
+  final String? sessionId;
+  final Object error;
+}
+
+final class IdleAgentCollectionResult {
+  const IdleAgentCollectionResult({
+    required this.collected,
+    required this.failures,
+  });
+
+  final List<IdleAgentCollectionEntry> collected;
+  final List<IdleAgentCollectionFailure> failures;
 }
 
 final class AgentRunOutcome {
@@ -177,6 +215,7 @@ class AgentManager {
   final Set<_AgentStreamSubscription> _streamSubscribers = {};
   final Map<String, List<Completer<void>>> _stateWaiters = {};
   final Map<String, Future<void>> _providerSessionImportMutations = {};
+  final Map<String, Future<void>> _sessionLifecycleMutations = {};
   String? _mcpBaseUrl;
   final String? _mcpAuthToken;
   bool _injectMcpIntoAgents;
@@ -246,7 +285,7 @@ class AgentManager {
   }) async {
     final runtime = _runtimes[agentId];
     if (runtime != null && !runtime.archived) {
-      if (runtime.session == null) await _startSession(runtime);
+      await ensureLoaded(agentId);
       final session = runtime.session;
       if (session is CommandListingAgentSession) {
         return session.listCommands();
@@ -399,6 +438,31 @@ class AgentManager {
       if (!gate.isCompleted) gate.complete();
       if (identical(_providerSessionImportMutations[key], current)) {
         _providerSessionImportMutations.remove(key);
+      }
+    }
+  }
+
+  Future<T> _serializeSessionLifecycle<T>(
+    String agentId,
+    Future<T> Function() operation,
+  ) async {
+    final previous = _sessionLifecycleMutations[agentId];
+    final gate = Completer<void>();
+    final current = gate.future;
+    _sessionLifecycleMutations[agentId] = current;
+    if (previous != null) {
+      try {
+        await previous;
+      } on Object {
+        // A failed provider cleanup must not poison resume/archive operations.
+      }
+    }
+    try {
+      return await operation();
+    } finally {
+      if (!gate.isCompleted) gate.complete();
+      if (identical(_sessionLifecycleMutations[agentId], current)) {
+        _sessionLifecycleMutations.remove(agentId);
       }
     }
   }
@@ -669,6 +733,21 @@ class AgentManager {
     if (parentAgentId != null) {
       _runtime(parentAgentId);
     }
+    final defaultModeResolver = client is DefaultModeResolvingAgentClient
+        ? client as DefaultModeResolvingAgentClient
+        : null;
+    final resolvedModeId =
+        modeId ??
+        (defaultModeResolver == null
+            ? null
+            : await defaultModeResolver.resolveDefaultModeId(
+                ResolveAgentDefaultModeInput(
+                  provider: provider,
+                  cwd: cwd,
+                  model: model,
+                  environment: environment,
+                ),
+              ));
     final agentId = _uuid.v4();
     final createdAt = DateTime.now().toUtc();
     final resolvedTitles = resolveCreateAgentTitles(
@@ -703,7 +782,7 @@ class AgentManager {
           if (parentAgentId != null) paseoParentAgentIdLabel: parentAgentId,
         }),
         thinkingOptionId: thinkingOptionId,
-        currentModeId: modeId,
+        currentModeId: resolvedModeId,
         featureValues: featureValues,
         systemPrompt: _normalizeOptionalText(systemPrompt),
       ),
@@ -860,70 +939,84 @@ class AgentManager {
         ? _runtimes[agentId] ??
               (throw RpcException(RpcErrorCodes.notFound, 'no agent $agentId'))
         : _runtime(agentId);
-    if (runtime.currentTurnId != null ||
-        runtime.summary.runState == AgentRunState.running ||
-        runtime.summary.runState == AgentRunState.awaitingPermission) {
-      await interrupt(agentId);
-      if (runtime.currentTurnId != null) {
-        _closeTurn(runtime, TurnPhase.canceled);
-      }
-      _setRunState(runtime, AgentRunState.idle);
-    }
-    if (unarchive && runtime.archived) {
-      runtime.archived = false;
-      runtime.summary = runtime.summary.copyWith(
-        archivedAt: null,
-        runState: AgentRunState.idle,
-        requiresAttention: false,
-        clearAttention: true,
-        updatedAt: DateTime.now().toUtc().toIso8601String(),
-      );
-      _persist(runtime);
-      await _store.flush();
-      _broadcastState(runtime);
-    }
+    runtime.sessionReplacementPending = true;
+    try {
+      return await _serializeSessionLifecycle(agentId, () async {
+        final current = unarchive
+            ? _runtimes[agentId] ??
+                  (throw RpcException(
+                    RpcErrorCodes.notFound,
+                    'no agent $agentId',
+                  ))
+            : _runtime(agentId);
+        if (current.currentTurnId != null ||
+            current.summary.runState == AgentRunState.running ||
+            current.summary.runState == AgentRunState.awaitingPermission) {
+          await interrupt(agentId);
+          if (current.currentTurnId != null) {
+            _closeTurn(current, TurnPhase.canceled);
+          }
+          _setRunState(current, AgentRunState.idle);
+        }
+        if (unarchive && current.archived) {
+          current.archived = false;
+          current.summary = current.summary.copyWith(
+            archivedAt: null,
+            runState: AgentRunState.idle,
+            requiresAttention: false,
+            clearAttention: true,
+            updatedAt: DateTime.now().toUtc().toIso8601String(),
+          );
+          _persist(current);
+          await _store.flush();
+          _broadcastState(current);
+        }
 
-    final normalizedSystemPrompt = _normalizeOptionalText(systemPrompt);
-    final replacement = await _createProviderSession(
-      runtime,
-      systemPrompt: normalizedSystemPrompt,
-    );
-    final previousSession = runtime.session;
-    final previousSubscription = runtime.sessionSub;
-    runtime.session = null;
-    runtime.sessionSub = null;
-    try {
-      await previousSubscription?.cancel();
-    } on Object {
-      // The replacement is already available. A stale subscription must not
-      // roll the agent back to the old provider process.
+        final normalizedSystemPrompt = _normalizeOptionalText(systemPrompt);
+        final replacement = await _createProviderSession(
+          current,
+          systemPrompt: normalizedSystemPrompt,
+        );
+        final previousSession = current.session;
+        final previousSubscription = current.sessionSub;
+        current.session = null;
+        current.sessionSub = null;
+        try {
+          await previousSubscription?.cancel();
+        } on Object {
+          // The replacement is already available. A stale subscription must not
+          // roll the agent back to the old provider process.
+        }
+        try {
+          await previousSession?.dispose().timeout(reloadSessionCloseTimeout);
+        } on Object {
+          // The replacement is already live. A stale provider process failing to
+          // close (or hanging past Paseo's rescue timeout) must not block reload.
+        }
+        if (rehydrateFromProvider) {
+          final restoredHistory = replacement is HistoryRestoringAgentSession
+              ? replacement.restoredHistory
+              : null;
+          current.timeline.rebuild(restoredHistory ?? const []);
+          current.textBuffers.clear();
+          current.currentTurnId = null;
+          current.interruptRequested = false;
+          providerSubagents.clear(agentId);
+        }
+        current.summary = current.summary.copyWith(
+          systemPrompt: normalizedSystemPrompt,
+          updatedAt: DateTime.now().toUtc().toIso8601String(),
+          runState: AgentRunState.idle,
+        );
+        _attachSession(current, replacement, restoreHistory: false);
+        _persist(current);
+        await _store.flush();
+        _broadcastState(current);
+        return current.summary;
+      });
+    } finally {
+      runtime.sessionReplacementPending = false;
     }
-    try {
-      await previousSession?.dispose().timeout(reloadSessionCloseTimeout);
-    } on Object {
-      // The replacement is already live. A stale provider process failing to
-      // close (or hanging past Paseo's rescue timeout) must not block reload.
-    }
-    if (rehydrateFromProvider) {
-      final restoredHistory = replacement is HistoryRestoringAgentSession
-          ? replacement.restoredHistory
-          : null;
-      runtime.timeline.rebuild(restoredHistory ?? const []);
-      runtime.textBuffers.clear();
-      runtime.currentTurnId = null;
-      runtime.interruptRequested = false;
-      providerSubagents.clear(agentId);
-    }
-    runtime.summary = runtime.summary.copyWith(
-      systemPrompt: normalizedSystemPrompt,
-      updatedAt: DateTime.now().toUtc().toIso8601String(),
-      runState: AgentRunState.idle,
-    );
-    _attachSession(runtime, replacement, restoreHistory: false);
-    _persist(runtime);
-    await _store.flush();
-    _broadcastState(runtime);
-    return runtime.summary;
   }
 
   bool hasActiveAgentRun(String? agentId) {
@@ -964,60 +1057,76 @@ class AgentManager {
     final runtime = _runtime(agentId);
     if (hasClientMessageId(agentId, clientMessageId)) return;
     runtime.summary = runtime.summary.copyWith(lastError: null);
-    if (runtime.session == null) {
-      // Session died earlier: recreate, resuming the provider conversation.
+    runtime.promptPending = true;
+    try {
       try {
-        await _startSession(runtime);
+        await _serializeSessionLifecycle(agentId, () async {
+          final current = _runtime(agentId);
+          if (current.session == null) {
+            // Session died or was idle-collected: resume only after its
+            // previous provider process has finished closing.
+            await _startSession(current);
+          }
+          current.interruptRequested = false;
+          current.summary = current.summary.copyWith(
+            lastUserMessageAt: DateTime.now().toUtc().toIso8601String(),
+          );
+          current.timeline.upsert(
+            UserMessageItem(
+              id: clientMessageId?.trim().isNotEmpty == true
+                  ? clientMessageId!.trim()
+                  : _uuid.v4(),
+              text: text,
+              clientMessageId: clientMessageId?.trim().isNotEmpty == true
+                  ? clientMessageId!.trim()
+                  : null,
+              attachments: attachments,
+            ),
+          );
+          final turnId = 'turn_${_uuid.v4()}';
+          current.currentTurnId = turnId;
+          current.timeline.upsert(
+            TurnItem(id: turnId, phase: TurnPhase.started),
+          );
+          _setRunState(current, AgentRunState.running);
+          try {
+            final session = current.session!;
+            if (session is RunOptionsAgentSession && outputSchema != null) {
+              await session.promptWithRunOptions(
+                text,
+                images: images,
+                attachments: attachments,
+                outputSchema: outputSchema,
+              );
+            } else if (session is ImagePromptAgentSession) {
+              await session.promptWithImagesAndAttachments(
+                text,
+                images,
+                attachments,
+              );
+            } else if (session is StructuredPromptAgentSession) {
+              await session.promptWithAttachments(text, attachments);
+            } else {
+              await session.prompt(_renderPrompt(text, attachments));
+            }
+          } catch (e) {
+            current.timeline.upsert(
+              ErrorItem(id: _uuid.v4(), message: 'prompt failed: $e'),
+            );
+            _closeTurn(current, TurnPhase.failed, errorMessage: '$e');
+            _setRunState(current, AgentRunState.error);
+          }
+        });
       } catch (e) {
+        if (runtime.archived) rethrow;
         runtime.timeline.upsert(
           ErrorItem(id: _uuid.v4(), message: 'failed to restart session: $e'),
         );
         _setRunState(runtime, AgentRunState.error);
         return;
       }
-    }
-    runtime.interruptRequested = false;
-    runtime.summary = runtime.summary.copyWith(
-      lastUserMessageAt: DateTime.now().toUtc().toIso8601String(),
-    );
-    runtime.timeline.upsert(
-      UserMessageItem(
-        id: clientMessageId?.trim().isNotEmpty == true
-            ? clientMessageId!.trim()
-            : _uuid.v4(),
-        text: text,
-        clientMessageId: clientMessageId?.trim().isNotEmpty == true
-            ? clientMessageId!.trim()
-            : null,
-        attachments: attachments,
-      ),
-    );
-    final turnId = 'turn_${_uuid.v4()}';
-    runtime.currentTurnId = turnId;
-    runtime.timeline.upsert(TurnItem(id: turnId, phase: TurnPhase.started));
-    _setRunState(runtime, AgentRunState.running);
-    try {
-      final session = runtime.session!;
-      if (session is RunOptionsAgentSession && outputSchema != null) {
-        await session.promptWithRunOptions(
-          text,
-          images: images,
-          attachments: attachments,
-          outputSchema: outputSchema,
-        );
-      } else if (session is ImagePromptAgentSession) {
-        await session.promptWithImagesAndAttachments(text, images, attachments);
-      } else if (session is StructuredPromptAgentSession) {
-        await session.promptWithAttachments(text, attachments);
-      } else {
-        await session.prompt(_renderPrompt(text, attachments));
-      }
-    } catch (e) {
-      runtime.timeline.upsert(
-        ErrorItem(id: _uuid.v4(), message: 'prompt failed: $e'),
-      );
-      _closeTurn(runtime, TurnPhase.failed, errorMessage: '$e');
-      _setRunState(runtime, AgentRunState.error);
+    } finally {
+      runtime.promptPending = false;
     }
   }
 
@@ -1241,29 +1350,151 @@ class AgentManager {
     return (agent: runtime.summary, cancelled: true);
   }
 
+  Future<IdleAgentCollectionResult> collectIdleAgents({
+    required DateTime cutoff,
+    Set<String> protectedAgentIds = const {},
+  }) async {
+    final collected = <IdleAgentCollectionEntry>[];
+    final failures = <IdleAgentCollectionFailure>[];
+    for (final agentId in _runtimes.keys.toList(growable: false)) {
+      final snapshot = _runtimes[agentId];
+      if (snapshot == null ||
+          !_isIdleAgentCollectable(
+            snapshot,
+            cutoff: cutoff,
+            protectedAgentIds: protectedAgentIds,
+          )) {
+        continue;
+      }
+      final entry = IdleAgentCollectionEntry(
+        agentId: agentId,
+        provider: snapshot.summary.provider,
+        sessionId: snapshot.summary.sessionId,
+      );
+      try {
+        final released = await _serializeSessionLifecycle(agentId, () async {
+          final current = _runtimes[agentId];
+          if (current == null ||
+              !_isIdleAgentCollectable(
+                current,
+                cutoff: cutoff,
+                protectedAgentIds: protectedAgentIds,
+              )) {
+            return false;
+          }
+          await _releaseIdleSession(current);
+          return true;
+        });
+        if (released) collected.add(entry);
+      } catch (error) {
+        failures.add(
+          IdleAgentCollectionFailure(
+            agentId: entry.agentId,
+            provider: entry.provider,
+            sessionId: entry.sessionId,
+            error: error,
+          ),
+        );
+      }
+    }
+    return IdleAgentCollectionResult(
+      collected: List.unmodifiable(collected),
+      failures: List.unmodifiable(failures),
+    );
+  }
+
+  bool _isIdleAgentCollectable(
+    AgentRuntime runtime, {
+    required DateTime cutoff,
+    required Set<String> protectedAgentIds,
+  }) {
+    final rawUpdatedAt = runtime.summary.updatedAt;
+    final updatedAt = rawUpdatedAt == null
+        ? null
+        : DateTime.tryParse(rawUpdatedAt);
+    return runtime.session != null &&
+        runtime.summary.runState == AgentRunState.idle &&
+        updatedAt != null &&
+        !updatedAt.isAfter(cutoff) &&
+        !runtime.archived &&
+        !runtime.internal &&
+        !protectedAgentIds.contains(runtime.summary.agentId) &&
+        runtime.currentTurnId == null &&
+        !runtime.promptPending &&
+        !runtime.sessionReplacementPending &&
+        _latestPendingPermission(runtime) == null;
+  }
+
+  Future<void> _releaseIdleSession(AgentRuntime runtime) async {
+    final subscription = runtime.sessionSub;
+    final session = runtime.session;
+    runtime.sessionSub = null;
+    runtime.session = null;
+    Object? cleanupError;
+    try {
+      await subscription?.cancel();
+    } catch (error) {
+      cleanupError = error;
+    }
+    try {
+      await session?.dispose().timeout(reloadSessionCloseTimeout);
+    } catch (error) {
+      cleanupError ??= error;
+    }
+    _persist(runtime);
+    try {
+      await _store.flush();
+    } catch (error) {
+      cleanupError ??= error;
+    }
+    if (cleanupError != null) throw cleanupError;
+  }
+
   Future<void> close(String agentId) async {
     final runtime = _runtime(agentId);
     runtime.interruptRequested = true;
-    final session = runtime.session;
-    runtime.session = null;
-    await runtime.sessionSub?.cancel();
-    runtime.sessionSub = null;
-    await broker.autoDenyForAgent(agentId);
-    if (runtime.currentTurnId != null) {
-      _closeTurn(runtime, TurnPhase.canceled);
+    runtime.promptPending = true;
+    try {
+      await _serializeSessionLifecycle(agentId, () async {
+        final current = _runtime(agentId);
+        final session = current.session;
+        current.session = null;
+        Object? cleanupError;
+        try {
+          await current.sessionSub?.cancel();
+        } catch (error) {
+          cleanupError = error;
+        }
+        current.sessionSub = null;
+        await broker.autoDenyForAgent(agentId);
+        if (current.currentTurnId != null) {
+          _closeTurn(current, TurnPhase.canceled);
+        }
+        current.timeline.flushAll();
+        current.textBuffers.clear();
+        current.summary = current.summary.copyWith(
+          runState: AgentRunState.closed,
+          updatedAt: DateTime.now().toUtc().toIso8601String(),
+          requiresAttention: false,
+          clearAttention: true,
+        );
+        _persist(current);
+        _broadcastState(current);
+        try {
+          await session?.dispose();
+        } catch (error) {
+          cleanupError ??= error;
+        }
+        try {
+          await _store.flush();
+        } catch (error) {
+          cleanupError ??= error;
+        }
+        if (cleanupError != null) throw cleanupError;
+      });
+    } finally {
+      runtime.promptPending = false;
     }
-    runtime.timeline.flushAll();
-    runtime.textBuffers.clear();
-    runtime.summary = runtime.summary.copyWith(
-      runState: AgentRunState.closed,
-      updatedAt: DateTime.now().toUtc().toIso8601String(),
-      requiresAttention: false,
-      clearAttention: true,
-    );
-    _persist(runtime);
-    _broadcastState(runtime);
-    await session?.dispose();
-    await _store.flush();
   }
 
   /// Removes a transient metadata-generation agent after its provider session
@@ -1284,9 +1515,15 @@ class AgentManager {
   }
 
   Future<void> ensureLoaded(String agentId) async {
-    final runtime = _runtime(agentId);
-    if (runtime.session != null) return;
-    await _startSession(runtime);
+    await _serializeSessionLifecycle(agentId, () async {
+      final runtime = _runtime(agentId);
+      if (runtime.session == null) await _startSession(runtime);
+      runtime.summary = runtime.summary.copyWith(
+        updatedAt: DateTime.now().toUtc().toIso8601String(),
+      );
+      _persist(runtime);
+      _broadcastState(runtime);
+    });
   }
 
   Future<AgentProviderNotice?> setModeId(String agentId, String modeId) async {
@@ -1565,24 +1802,39 @@ class AgentManager {
 
   Future<void> _archiveOne(AgentRuntime runtime) async {
     if (runtime.archived) return;
-    if (hasActiveAgentRun(runtime.summary.agentId)) {
-      await cancelAgentRun(runtime.summary.agentId);
-    }
-    final archivedAt = DateTime.now().toUtc().toIso8601String();
-    runtime.archived = true;
-    runtime.summary = runtime.summary.copyWith(
-      runState: AgentRunState.closed,
-      archivedAt: archivedAt,
-      updatedAt: archivedAt,
-      requiresAttention: false,
-      clearAttention: true,
+    final cleanupError = await _serializeSessionLifecycle(
+      runtime.summary.agentId,
+      () async {
+        if (hasActiveAgentRun(runtime.summary.agentId)) {
+          await cancelAgentRun(runtime.summary.agentId);
+        }
+        final archivedAt = DateTime.now().toUtc().toIso8601String();
+        runtime.archived = true;
+        runtime.summary = runtime.summary.copyWith(
+          runState: AgentRunState.closed,
+          archivedAt: archivedAt,
+          updatedAt: archivedAt,
+          requiresAttention: false,
+          clearAttention: true,
+        );
+        final session = runtime.session;
+        runtime.session = null;
+        Object? error;
+        try {
+          await runtime.sessionSub?.cancel();
+        } catch (caught) {
+          error = caught;
+        }
+        runtime.sessionSub = null;
+        await broker.autoDenyForAgent(runtime.summary.agentId);
+        try {
+          await session?.dispose();
+        } catch (caught) {
+          error ??= caught;
+        }
+        return error;
+      },
     );
-    final session = runtime.session;
-    runtime.session = null;
-    await runtime.sessionSub?.cancel();
-    runtime.sessionSub = null;
-    await broker.autoDenyForAgent(runtime.summary.agentId);
-    await session?.dispose();
     runtime.timeline.flushAll();
     providerSubagents.clear(runtime.summary.agentId);
     _persist(runtime);
@@ -1592,6 +1844,7 @@ class AgentManager {
     } on Object {
       // Paseo treats archive side-effect callbacks as best-effort.
     }
+    if (cleanupError != null) throw cleanupError;
   }
 
   Future<AgentSummary> detach(String agentId) async {
@@ -1759,6 +2012,11 @@ class AgentManager {
   }
 
   Future<void> dispose() async {
+    await Future.wait(
+      _sessionLifecycleMutations.values.toList(growable: false),
+      eagerError: false,
+    );
+    _sessionLifecycleMutations.clear();
     for (final waiters in _stateWaiters.values) {
       for (final waiter in waiters) {
         if (!waiter.isCompleted) {

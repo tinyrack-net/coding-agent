@@ -476,6 +476,7 @@ class WsServer {
     capabilities: _serverCapabilities,
     features: const {
       'providersSnapshot': true,
+      'providerUsageList': true,
       'importSessionWorkspaceTarget': true,
       'daemonStatusRpc': true,
       'daemonDiagnostics': true,

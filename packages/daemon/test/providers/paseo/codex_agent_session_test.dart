@@ -14,6 +14,7 @@ final class _FakeCodexConnection implements CodexAppServerConnection {
   final Set<void Function(JsonlRpcExit)> exitHandlers = {};
   final List<(String, Object?, Duration?)> requests = [];
   var disposed = false;
+  Object? turnStartError;
 
   @override
   bool get isClosed => disposed;
@@ -75,6 +76,10 @@ final class _FakeCodexConnection implements CodexAppServerConnection {
     Duration? timeout,
   ]) async {
     requests.add((method, params, timeout));
+    final startError = turnStartError;
+    if (method == 'turn/start' && startError != null) {
+      throw startError;
+    }
     return switch (method) {
       'initialize' => <String, Object?>{},
       'getUserSavedConfig' => {
@@ -132,10 +137,6 @@ void main() {
       addTearDown(session.dispose);
 
       await session.prompt('hello');
-      connection.emit('turn/started', {
-        'threadId': 'thread',
-        'turn': {'id': 'turn-1'},
-      });
 
       final modeNotice = await session.setMode('full-access');
       final thinkingNotice = await session.setThinkingOption('high');
@@ -144,6 +145,10 @@ void main() {
       expect(thinkingNotice?.type, AgentProviderNoticeType.warning);
       expect(thinkingNotice?.message, 'Thinking level applies next turn');
 
+      connection.emit('turn/started', {
+        'threadId': 'thread',
+        'turn': {'id': 'turn-1'},
+      });
       connection.emit('turn/completed', {
         'threadId': 'thread',
         'turn': {'id': 'turn-1', 'status': 'completed'},
@@ -152,6 +157,23 @@ void main() {
       expect(await session.setThinkingOption('low'), isNull);
     },
   );
+
+  test('failed turn start clears the foreground turn boundary', () async {
+    final (session, connection) = _createSession();
+    addTearDown(session.dispose);
+    connection.turnStartError = StateError('turn rejected');
+
+    await expectLater(session.prompt('first'), throwsStateError);
+    expect(await session.setMode('full-access'), isNull);
+    expect(await session.setThinkingOption('high'), isNull);
+
+    connection.turnStartError = null;
+    await session.prompt('retry');
+    expect(
+      (await session.setMode('read-only'))?.message,
+      'Permission mode applies next turn',
+    );
+  });
 
   test('normalizes session, streaming text, completion, and turn', () async {
     final (session, connection) = _createSession();

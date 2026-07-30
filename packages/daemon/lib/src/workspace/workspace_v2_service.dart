@@ -103,6 +103,8 @@ final class WorkspaceV2Service {
       {};
   final Map<String, _WorkspaceBucketHistoryEntry> _bucketHistory = {};
   final Map<String, WorkspaceGitSubscription> _gitSubscriptions = {};
+  final Map<String, int> _gitWarmGenerationByWorkspaceId = {};
+  final Map<String, String> _gitCwdByWorkspaceId = {};
   final Map<String, _PendingAgentBootstrap> _pendingAgentBootstraps = {};
   final Map<({String connectionId, String requestId}), ProjectMutation>
   _deferredProjectRenameUpdates = {};
@@ -199,7 +201,6 @@ final class WorkspaceV2Service {
       firstAgentContext,
       currentSelection: currentSelection,
     );
-    _ensureGitSnapshot(workspace);
     final setup = workspaceSetup;
     if (source is WorktreeWorkspaceCreateSource && setup != null) {
       if (firstAgentContext == null) {
@@ -215,11 +216,8 @@ final class WorkspaceV2Service {
     return workspace;
   }
 
-  Future<List<PersistedWorkspaceRecord>>
-  listActiveAutomationWorkspaces() async => [
-    for (final workspace in await registries.workspaces.list())
-      if (workspace.archivedAt == null) workspace,
-  ];
+  Future<List<PersistedWorkspaceRecord>> listActiveAutomationWorkspaces() =>
+      registries.workspaces.listActive();
 
   Future<PersistedWorkspaceRecord> requireActiveAutomationWorkspace(
     String workspaceId,
@@ -312,11 +310,10 @@ final class WorkspaceV2Service {
     PersistedProjectRecord? previousProject,
   ) async {
     await registries.workspaces.remove(workspace.workspaceId);
-    final projectHasActiveWorkspace = (await registries.workspaces.list()).any(
-      (candidate) =>
-          candidate.projectId == workspace.projectId &&
-          candidate.archivedAt == null,
-    );
+    final projectHasActiveWorkspace =
+        (await registries.workspaces.activeForProject(
+          workspace.projectId,
+        )).isNotEmpty;
     if (projectHasActiveWorkspace) return;
     if (previousProject?.archivedAt != null) {
       await registries.projects.upsert(previousProject!);
@@ -337,12 +334,7 @@ final class WorkspaceV2Service {
     }
     try {
       PersistedWorkspaceRecord? workspace;
-      for (final candidate in await registries.workspaces.list()) {
-        if (candidate.archivedAt == null && p.equals(candidate.cwd, cwd)) {
-          workspace = candidate;
-          break;
-        }
-      }
+      workspace = (await registries.workspaces.activeForCwd(cwd)).firstOrNull;
       PersistedProjectRecord project;
       if (workspace == null) {
         final created = await _createDirectory(
@@ -366,7 +358,6 @@ final class WorkspaceV2Service {
           project = existingProject;
         }
       }
-      _ensureGitSnapshot(workspace);
       return OpenProjectResponse(
         requestId: request.requestId,
         workspace: _descriptor(
@@ -388,6 +379,20 @@ final class WorkspaceV2Service {
 
   void onConnectionClosed(String connectionId) {
     _workspaceSubscriptions.remove(connectionId);
+    if (_workspaceSubscriptions.isEmpty) {
+      _gitWarmGenerationByWorkspaceId.clear();
+      _gitCwdByWorkspaceId.clear();
+      final subscriptions = _gitSubscriptions.values.toList(growable: false);
+      _gitSubscriptions.clear();
+      for (final subscription in subscriptions) {
+        final wait = subscription.unsubscribeAndWait;
+        if (wait == null) {
+          subscription.unsubscribe();
+        } else {
+          unawaited(wait());
+        }
+      }
+    }
     _deferredProjectRenameUpdates.removeWhere(
       (key, _) => key.connectionId == connectionId,
     );
@@ -442,7 +447,6 @@ final class WorkspaceV2Service {
       ),
       _ => throw ArgumentError.value(isolation, 'isolation'),
     };
-    _ensureGitSnapshot(workspace);
     return workspace;
   }
 
@@ -481,10 +485,7 @@ final class WorkspaceV2Service {
     };
     final agents = _listAgents().toList(growable: false);
     final terminals = _listTerminalContributions().toList(growable: false);
-    final workspaceRecords = await registries.workspaces.list();
-    for (final workspace in workspaceRecords) {
-      if (workspace.archivedAt == null) _ensureGitSnapshot(workspace);
-    }
+    final workspaceRecords = await registries.workspaces.listActive();
     var entries = <WorkspaceDescriptor>[
       for (final workspace in workspaceRecords)
         if (workspace.archivedAt == null &&
@@ -554,6 +555,9 @@ final class WorkspaceV2Service {
         subscription!.seedSnapshot(pageEntries, emptyProjects);
       }
     }
+    for (final workspace in pageEntries) {
+      _scheduleGitSnapshotById(workspace.id);
+    }
     return response;
   }
 
@@ -581,7 +585,6 @@ final class WorkspaceV2Service {
         request.firstAgentContext,
         currentSelection: _focusedSelection(connection, workspace.cwd),
       );
-      _ensureGitSnapshot(workspace);
       final setup = workspaceSetup;
       if (request.source is WorktreeWorkspaceCreateSource && setup != null) {
         if (request.firstAgentContext == null) {
@@ -674,7 +677,7 @@ final class WorkspaceV2Service {
     try {
       final filterRoot = request.repoRoot ?? request.cwd;
       final records = [
-        for (final workspace in await registries.workspaces.list())
+        for (final workspace in await registries.workspaces.listActive())
           if (workspace.archivedAt == null &&
               workspace.kind == PersistedWorkspaceKind.worktree &&
               workspace.isPaseoOwnedWorktree &&
@@ -719,7 +722,7 @@ final class WorkspaceV2Service {
     PaseoWorktreeArchiveRequest request,
   ) async {
     final active = [
-      for (final workspace in await registries.workspaces.list())
+      for (final workspace in await registries.workspaces.listActive())
         if (workspace.archivedAt == null &&
             workspace.kind == PersistedWorkspaceKind.worktree)
           workspace,
@@ -1428,10 +1431,7 @@ final class WorkspaceV2Service {
     final removedWorkspaceIds = <String>[];
     try {
       final workspaces = [
-        for (final workspace in await registries.workspaces.list())
-          if (workspace.projectId == request.projectId &&
-              workspace.archivedAt == null)
-            workspace,
+        ...await registries.workspaces.activeForProject(request.projectId),
       ];
       for (final workspace in workspaces) {
         await _archiveWorkspace(
@@ -1644,13 +1644,9 @@ final class WorkspaceV2Service {
     String? removedProjectId,
     bool forceWorktree = false,
   }) async {
-    final normalizedCwd = p.normalize(p.absolute(workspace.cwd));
-    final hasActiveSibling = (await registries.workspaces.list()).any(
-      (candidate) =>
-          candidate.workspaceId != workspace.workspaceId &&
-          candidate.archivedAt == null &&
-          p.equals(p.normalize(p.absolute(candidate.cwd)), normalizedCwd),
-    );
+    final hasActiveSibling = (await registries.workspaces.activeForCwd(
+      workspace.cwd,
+    )).any((candidate) => candidate.workspaceId != workspace.workspaceId);
     final stoppedSnapshot = !hasActiveSibling
         ? await _stopGitSnapshot(workspace.cwd)
         : false;
@@ -1756,6 +1752,38 @@ final class WorkspaceV2Service {
     backend.setBaseRef(cwd, workspace.baseBranch);
   }
 
+  /// Observer warming is intentionally queued behind the response path.
+  ///
+  /// Registry mutations can happen again before the event-loop turn runs, so
+  /// the generation and authoritative registry lookup prevent an archived or
+  /// replaced record from recreating a stale observer.
+  void _scheduleGitSnapshotById(String workspaceId) {
+    if (gitSnapshots == null || _workspaceSubscriptions.isEmpty) return;
+    final generation = (_gitWarmGenerationByWorkspaceId[workspaceId] ?? 0) + 1;
+    _gitWarmGenerationByWorkspaceId[workspaceId] = generation;
+    Timer.run(() {
+      unawaited(() async {
+        if (_workspaceSubscriptions.isEmpty ||
+            _gitWarmGenerationByWorkspaceId[workspaceId] != generation) {
+          return;
+        }
+        final workspace = await registries.workspaces.get(workspaceId);
+        if (workspace == null ||
+            workspace.archivedAt != null ||
+            _gitWarmGenerationByWorkspaceId[workspaceId] != generation) {
+          return;
+        }
+        _gitCwdByWorkspaceId[workspaceId] = workspace.cwd;
+        _ensureGitSnapshot(workspace);
+      }());
+    });
+  }
+
+  void _invalidateGitSnapshotWarm(String workspaceId) {
+    _gitWarmGenerationByWorkspaceId[workspaceId] =
+        (_gitWarmGenerationByWorkspaceId[workspaceId] ?? 0) + 1;
+  }
+
   Future<bool> _stopGitSnapshot(String cwd) async {
     final normalized = p.normalize(p.absolute(cwd));
     final subscription = _gitSubscriptions.remove(normalized);
@@ -1773,20 +1801,12 @@ final class WorkspaceV2Service {
     if (_workspaceSubscriptions.isEmpty) return;
     final snapshot = gitSnapshots?.peekSnapshot(cwd);
     final forgeSnapshot = gitSnapshots?.peekForgeSnapshot(cwd);
-    final projects = {
-      for (final project in await registries.projects.list())
-        if (project.archivedAt == null) project.projectId: project,
-    };
     final agents = _listAgents().toList(growable: false);
     final terminals = _listTerminalContributions().toList(growable: false);
     var emittedCheckoutStatus = false;
-    for (final workspace in await registries.workspaces.list()) {
-      final project = projects[workspace.projectId];
-      if (workspace.archivedAt != null ||
-          project == null ||
-          !p.equals(p.normalize(p.absolute(workspace.cwd)), cwd)) {
-        continue;
-      }
+    for (final workspace in await registries.workspaces.activeForCwd(cwd)) {
+      final project = await registries.projects.get(workspace.projectId);
+      if (project == null || project.archivedAt != null) continue;
       _emitWorkspaceCandidate(
         _descriptor(workspace, project, agents, terminals),
       );
@@ -1831,8 +1851,19 @@ final class WorkspaceV2Service {
   }
 
   Future<void> _onWorkspaceMutation(WorkspaceMutation mutation) async {
-    if (mutation.workspace != null) {
-      _ensureGitSnapshot(mutation.workspace!);
+    final workspace = mutation.workspace;
+    if (mutation.kind == RegistryMutationKind.upsert &&
+        workspace != null &&
+        workspace.archivedAt == null) {
+      _scheduleGitSnapshotById(mutation.workspaceId);
+    } else {
+      _invalidateGitSnapshotWarm(mutation.workspaceId);
+      final cwd = workspace?.cwd ?? _gitCwdByWorkspaceId[mutation.workspaceId];
+      _gitCwdByWorkspaceId.remove(mutation.workspaceId);
+      if (cwd != null &&
+          (await registries.workspaces.activeForCwd(cwd)).isEmpty) {
+        await _stopGitSnapshot(cwd);
+      }
     }
     if (_workspaceSubscriptions.isEmpty) return;
     if (mutation.kind == RegistryMutationKind.upsert &&
@@ -1856,12 +1887,7 @@ final class WorkspaceV2Service {
           : await registries.projects.get(mutation.workspace!.projectId);
       final activeForProject = project == null
           ? const <PersistedWorkspaceRecord>[]
-          : [
-              for (final workspace in await registries.workspaces.list())
-                if (workspace.projectId == project.projectId &&
-                    workspace.archivedAt == null)
-                  workspace,
-            ];
+          : await registries.workspaces.activeForProject(project.projectId);
       final emptyProject =
           project != null &&
               project.archivedAt == null &&
@@ -1891,18 +1917,17 @@ final class WorkspaceV2Service {
     }
     if (mutation.kind == RegistryMutationKind.upsert &&
         mutation.project != null) {
-      for (final workspace in await registries.workspaces.list()) {
-        if (workspace.projectId == mutation.projectId &&
-            workspace.archivedAt == null) {
-          _emitWorkspaceCandidate(
-            _descriptor(
-              workspace,
-              mutation.project!,
-              _listAgents(),
-              _listTerminalContributions(),
-            ),
-          );
-        }
+      for (final workspace in await registries.workspaces.activeForProject(
+        mutation.projectId,
+      )) {
+        _emitWorkspaceCandidate(
+          _descriptor(
+            workspace,
+            mutation.project!,
+            _listAgents(),
+            _listTerminalContributions(),
+          ),
+        );
       }
     }
   }

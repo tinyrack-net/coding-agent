@@ -95,6 +95,51 @@ final class _ClientConnection implements CodexAppServerConnection {
 }
 
 void main() {
+  test('uses auto-review only when the installed Codex supports it', () async {
+    var versionProbes = 0;
+    CodexAgentClient client(String version) => CodexAgentClient(
+      resolveExecutable: () async => 'C:/bin/codex.exe',
+      resolveVersion: (_) async {
+        versionProbes++;
+        return 'codex-cli $version';
+      },
+    );
+    const input = ResolveAgentDefaultModeInput(
+      provider: 'codex',
+      cwd: 'C:/workspace',
+      model: 'gpt-5.4',
+    );
+
+    final supported = client('0.115.0');
+    expect(await supported.resolveDefaultModeId(input), 'auto-review');
+    expect(await supported.resolveDefaultModeId(input), 'auto-review');
+    expect(versionProbes, 1);
+    expect(await client('0.114.9').resolveDefaultModeId(input), 'auto');
+    expect(
+      await client('codex 1.0.0').resolveDefaultModeId(input),
+      'auto-review',
+    );
+    expect(await client('unknown').resolveDefaultModeId(input), 'auto');
+  });
+
+  test('falls back to auto when Codex version probing fails', () async {
+    final client = CodexAgentClient(
+      resolveExecutable: () async => 'C:/bin/codex.exe',
+      resolveVersion: (_) async => throw StateError('version unavailable'),
+    );
+
+    expect(
+      await client.resolveDefaultModeId(
+        const ResolveAgentDefaultModeInput(
+          provider: 'codex',
+          cwd: 'C:/workspace',
+          model: 'gpt-5.4',
+        ),
+      ),
+      'auto',
+    );
+  });
+
   test('lists model-scoped draft features without launching Codex', () async {
     final client = CodexAgentClient(
       resolveExecutable: () async => throw StateError('must not probe'),

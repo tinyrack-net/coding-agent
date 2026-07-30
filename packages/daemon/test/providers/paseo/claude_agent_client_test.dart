@@ -19,6 +19,87 @@ const _onePixelPng =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X1r0AAAAASUVORK5CYII=';
 
 void main() {
+  test(
+    'resolves the safe Claude default from the transport environment',
+    () async {
+      final client = ClaudeAgentClient(
+        runtimeSettings: const ProviderRuntimeSettings(
+          environment: {
+            'CLAUDE_CODE_USE_BEDROCK': '0',
+            'CLAUDE_CODE_USE_VERTEX': '0',
+          },
+        ),
+      );
+      const input = ResolveAgentDefaultModeInput(
+        provider: 'claude',
+        cwd: 'C:/workspace',
+        model: 'claude-sonnet-5',
+      );
+
+      expect(await client.resolveDefaultModeId(input), 'auto');
+      expect(
+        await ClaudeAgentClient(
+          runtimeSettings: const ProviderRuntimeSettings(
+            environment: {'CLAUDE_CODE_USE_BEDROCK': '1'},
+          ),
+        ).resolveDefaultModeId(input),
+        'default',
+      );
+      expect(
+        await ClaudeAgentClient(
+          runtimeSettings: const ProviderRuntimeSettings(
+            environment: {'CLAUDE_CODE_USE_VERTEX': 'true'},
+          ),
+        ).resolveDefaultModeId(input),
+        'default',
+      );
+    },
+  );
+
+  test('launch environment participates in the Claude default mode', () async {
+    final client = ClaudeAgentClient(
+      runtimeSettings: const ProviderRuntimeSettings(
+        environment: {'CLAUDE_CODE_USE_BEDROCK': '0'},
+      ),
+    );
+
+    expect(
+      await client.resolveDefaultModeId(
+        const ResolveAgentDefaultModeInput(
+          provider: 'claude',
+          cwd: 'C:/workspace',
+          model: 'claude-sonnet-5',
+          environment: {'CLAUDE_CODE_USE_BEDROCK': '1'},
+        ),
+      ),
+      'default',
+    );
+  });
+
+  test('rejects Claude auto mode on an ineligible cloud transport', () async {
+    final client = ClaudeAgentClient(
+      resolveExecutable: () async => 'C:/bin/claude.exe',
+      startConnection: (_) async => throw StateError('must not launch'),
+    );
+
+    await expectLater(
+      client.createSessionWithEnvironment(
+        cwd: 'C:/workspace',
+        model: 'claude-sonnet-5',
+        mode: AgentMode.normal,
+        modeId: 'auto',
+        environment: const {'CLAUDE_CODE_USE_BEDROCK': '1'},
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          allOf(contains('Bedrock'), contains('CLAUDE_CODE_USE_BEDROCK')),
+        ),
+      ),
+    );
+  });
+
   test('lists model-scoped draft features without launching Claude', () async {
     final client = ClaudeAgentClient(
       resolveExecutable: () async => throw StateError('must not probe'),

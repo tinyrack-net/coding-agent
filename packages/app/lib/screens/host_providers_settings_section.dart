@@ -12,6 +12,7 @@ import '../state/providers_snapshot_provider.dart';
 import '../state/provider_settings_provider.dart';
 import '../widgets/provider_catalog_list.dart';
 import '../widgets/provider_icon.dart';
+import '../widgets/provider_usage_settings_section.dart';
 
 class HostProvidersSettingsSection extends ConsumerStatefulWidget {
   const HostProvidersSettingsSection({super.key, required this.serverId});
@@ -160,6 +161,8 @@ class _HostProvidersSettingsSectionState
           child: ListView(
             padding: const EdgeInsets.all(24),
             children: [
+              ProviderUsageSettingsSection(serverId: widget.serverId),
+              const SizedBox(height: 24),
               if (_error != null) ...[
                 InfoBar(
                   title: const Text('Unable to update providers'),

@@ -2,6 +2,8 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/host_registry_provider.dart';
+import '../state/daemon_providers.dart';
+import '../widgets/host_daemon_update_card.dart';
 import 'host_connections_settings_screen.dart';
 import 'host_providers_settings_section.dart';
 import 'settings_screen.dart';
@@ -56,6 +58,34 @@ class _HostSettingsRouteScreenState
     }
     if (widget.section == 'providers') {
       return HostProvidersSettingsSection(serverId: widget.serverId);
+    }
+    if (widget.section == 'host') {
+      ref.watch(hostConnectionStateProvider(widget.serverId));
+      final host = registry.hosts.firstWhere(
+        (host) => host.serverId == widget.serverId,
+      );
+      final client = ref.watch(hostDaemonClientProvider(widget.serverId));
+      return ScaffoldPage(
+        header: const PageHeader(title: Text('Overview')),
+        content: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: ListView(
+              padding: const EdgeInsets.all(24),
+              children: [
+                Text(host.label),
+                if (client != null) ...[
+                  const SizedBox(height: 12),
+                  HostDaemonUpdateCard(
+                    hostLabel: host.label,
+                    transport: ClientDaemonUpdateTransport(client),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
     }
     return SettingsScreen(section: widget.section);
   }

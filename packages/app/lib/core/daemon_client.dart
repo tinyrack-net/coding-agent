@@ -81,11 +81,14 @@ class DaemonClient {
       StreamController<WorkspaceSetupProgress>.broadcast();
   final _providersSnapshotUpdates =
       StreamController<ProvidersSnapshotUpdate>.broadcast();
+  final _daemonUpdateProgress =
+      StreamController<DaemonUpdateProgress>.broadcast();
   final _serverInfoUpdates = StreamController<ServerInfoStatus>.broadcast();
   final _terminalFrames = StreamController<TerminalFrame>.broadcast();
   final _state = StreamController<DaemonConnectionState>.broadcast();
   final Map<String, Completer<DaemonConfigResponse>> _daemonConfigPending = {};
   final Map<String, Completer<DiagnosticsResponse>> _diagnosticsPending = {};
+  final Map<String, Completer<DaemonUpdateResponse>> _daemonUpdatePending = {};
 
   WebSocketChannel? _channel;
   RelayE2eeClientChannel? _relayE2eeChannel;
@@ -113,6 +116,8 @@ class DaemonClient {
       _workspaceSetupProgress.stream;
   Stream<ProvidersSnapshotUpdate> get providersSnapshotUpdates =>
       _providersSnapshotUpdates.stream;
+  Stream<DaemonUpdateProgress> get daemonUpdateProgress =>
+      _daemonUpdateProgress.stream;
   Stream<ServerInfoStatus> get serverInfoUpdates => _serverInfoUpdates.stream;
 
   /// Decoded binary terminal frames (output/snapshot) from the daemon.
@@ -274,6 +279,50 @@ class DaemonClient {
         throw TimeoutException(
           'no response to ${message['type'] ?? 'session message'}',
         );
+      },
+    );
+  }
+
+  Future<ProviderUsageListResponse> listProviderUsage({
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final requestId = _uuid.v4();
+    final response = ProviderUsageListResponse.fromJson(
+      await requestSessionMessage(
+        ProviderUsageListRequest(requestId: requestId).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != requestId) {
+      throw FormatException(
+        'Provider usage response requestId mismatch: ${response.requestId}',
+      );
+    }
+    return response;
+  }
+
+  Future<DaemonUpdateResponse> updateDaemon({
+    String? requestId,
+    Duration timeout = const Duration(minutes: 2),
+  }) async {
+    if (_channel == null) throw StateError('not connected');
+    final correlatedId = requestId ?? _uuid.v4();
+    if (_daemonUpdatePending.containsKey(correlatedId)) {
+      throw StateError('duplicate daemon update requestId: $correlatedId');
+    }
+    final completer = Completer<DaemonUpdateResponse>();
+    _daemonUpdatePending[correlatedId] = completer;
+    _sendFrame(
+      jsonEncode({
+        'type': 'session',
+        'message': DaemonUpdateRequest(requestId: correlatedId).toJson(),
+      }),
+    );
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
+        _daemonUpdatePending.remove(correlatedId);
+        throw TimeoutException('no daemon update response');
       },
     );
   }
@@ -550,15 +599,35 @@ class DaemonClient {
       ).toJson(),
       timeout: timeout,
     );
-    final page = AgentTimelinePage.fromResponseJson(response);
+    late final AgentTimelinePage page;
+    try {
+      page = AgentTimelinePage.fromResponseJson(response);
+    } catch (error, stackTrace) {
+      Error.throwWithStackTrace(
+        DaemonProtocolException(
+          requestId: requestId,
+          responseType: response['type']?.toString(),
+          cause: error,
+        ),
+        stackTrace,
+      );
+    }
     if (page.requestId != requestId) {
-      throw FormatException(
-        'Timeline response requestId mismatch: ${page.requestId}',
+      throw DaemonProtocolException(
+        requestId: requestId,
+        responseType: AgentTimelinePage.responseType,
+        cause: FormatException(
+          'Timeline response requestId mismatch: ${page.requestId}',
+        ),
       );
     }
     if (page.agentId != agentId) {
-      throw FormatException(
-        'Timeline response agentId mismatch: ${page.agentId}',
+      throw DaemonProtocolException(
+        requestId: requestId,
+        responseType: AgentTimelinePage.responseType,
+        cause: FormatException(
+          'Timeline response agentId mismatch: ${page.agentId}',
+        ),
       );
     }
     if (page.error case final error?) {
@@ -1190,6 +1259,23 @@ class DaemonClient {
       _ => envelope,
     };
     final nativePayload = message['payload'];
+    if (message['type'] == DaemonUpdateProgress.type) {
+      try {
+        _daemonUpdateProgress.add(DaemonUpdateProgress.fromJson(message));
+      } catch (error, stack) {
+        _failMalformedDaemonUpdate(message, error, stack);
+      }
+      return;
+    }
+    if (message['type'] == DaemonUpdateResponse.type) {
+      try {
+        final response = DaemonUpdateResponse.fromJson(message);
+        _daemonUpdatePending.remove(response.requestId)?.complete(response);
+      } catch (error, stack) {
+        _failMalformedDaemonUpdate(message, error, stack);
+      }
+      return;
+    }
     final nativeRequestId = switch (nativePayload) {
       Map() => nativePayload['requestId'],
       _ => message['requestId'],
@@ -1326,6 +1412,29 @@ class DaemonClient {
     }
   }
 
+  void _failMalformedDaemonUpdate(
+    Map<String, Object?> message,
+    Object error,
+    StackTrace stack,
+  ) {
+    final payload = message['payload'];
+    final payloadRequestId = payload is Map ? payload['requestId'] : null;
+    final requestId = payloadRequestId is String
+        ? payloadRequestId
+        : message['requestId'];
+    if (requestId is! String || requestId.isEmpty) return;
+    final pending = _daemonUpdatePending.remove(requestId);
+    if (pending == null) return;
+    pending.completeError(
+      DaemonProtocolException(
+        requestId: requestId,
+        responseType: message['type']?.toString(),
+        cause: error,
+      ),
+      stack,
+    );
+  }
+
   void _onClosed() {
     _channel = null;
     _relayE2eeChannel?.transportClosed();
@@ -1347,6 +1456,10 @@ class DaemonClient {
       pending.completeError(StateError('connection closed'));
     }
     _diagnosticsPending.clear();
+    for (final pending in _daemonUpdatePending.values) {
+      pending.completeError(StateError('connection closed'));
+    }
+    _daemonUpdatePending.clear();
     final serverInfoPending = _serverInfoPending;
     _serverInfoPending = null;
     if (serverInfoPending != null && !serverInfoPending.isCompleted) {
@@ -1382,6 +1495,7 @@ class DaemonClient {
     _checkoutDiffUpdates.close();
     _workspaceSetupProgress.close();
     _providersSnapshotUpdates.close();
+    _daemonUpdateProgress.close();
     _serverInfoUpdates.close();
     _daemonConfigChanges.close();
     _terminalFrames.close();
@@ -1420,4 +1534,28 @@ class DaemonRpcException implements Exception {
 
   @override
   String toString() => error.toString();
+}
+
+/// A correlated daemon response arrived on time but violated its wire schema.
+///
+/// Keeping the correlation identity on this failure mirrors Paseo's
+/// `DaemonProtocolError`: callers fail immediately instead of waiting for the
+/// request timeout after an invalid response has already arrived.
+class DaemonProtocolException implements Exception {
+  DaemonProtocolException({
+    required this.requestId,
+    required this.responseType,
+    required this.cause,
+  });
+
+  final String requestId;
+  final String? responseType;
+  final Object cause;
+  final String code = 'invalid_response';
+
+  @override
+  String toString() {
+    final label = responseType ?? 'unknown response';
+    return 'Response validation failed for $label: $cause';
+  }
 }

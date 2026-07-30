@@ -17,6 +17,11 @@ typedef ProviderCatalogProbe =
       PaseoProviderDefinition definition,
       String cwd,
     );
+typedef ProviderModeCatalogResolver =
+    Future<({List<ProviderMode> modes, String? defaultModeId})?> Function(
+      PaseoProviderDefinition definition,
+      String cwd,
+    );
 
 final class _CatalogLoad {
   const _CatalogLoad({required this.fingerprint, required this.result});
@@ -32,18 +37,21 @@ final class PaseoProviderCatalogRegistry {
     List<PaseoProviderDefinition>? definitions,
     ProviderConfigResolver? configResolver,
     ProviderCatalogProbe? catalogProbe,
+    ProviderModeCatalogResolver? modeCatalogResolver,
     DateTime Function()? now,
   }) : _resolver = executableResolver ?? ExecutableResolver(),
        _commandResolver = commandResolver,
        _baseDefinitions = definitions ?? PaseoProviderManifest.definitions,
        _configResolver = configResolver,
        _catalogProbe = catalogProbe,
+       _modeCatalogResolver = modeCatalogResolver,
        _now = now ?? DateTime.now;
 
   final ExecutableResolver _resolver;
   final ProviderCommandResolver? _commandResolver;
   final ProviderConfigResolver? _configResolver;
   final ProviderCatalogProbe? _catalogProbe;
+  final ProviderModeCatalogResolver? _modeCatalogResolver;
   final DateTime Function() _now;
   final List<PaseoProviderDefinition> _baseDefinitions;
   final Map<String, _CatalogLoad> _catalogLoads = {};
@@ -302,9 +310,19 @@ final class PaseoProviderCatalogRegistry {
     }
     try {
       final available = await resolveCommand(definition) != null;
-      final catalog = available
-          ? await _probeCatalog(definition, cwd: cwd, force: force)
-          : null;
+      final modeResolver = _modeCatalogResolver;
+      final modeCatalogFuture = modeResolver == null
+          ? Future<({List<ProviderMode> modes, String? defaultModeId})?>.value()
+          : modeResolver(definition, cwd);
+      final results = available
+          ? await Future.wait<Object?>([
+              _probeCatalog(definition, cwd: cwd, force: force),
+              modeCatalogFuture,
+            ])
+          : const <Object?>[null, null];
+      final catalog = results[0] as AcpProviderCatalog?;
+      final modeCatalog =
+          results[1] as ({List<ProviderMode> modes, String? defaultModeId})?;
       return _entry(
         definition,
         available
@@ -312,7 +330,8 @@ final class PaseoProviderCatalogRegistry {
             : ProviderCatalogStatus.unavailable,
         fetchedAt,
         models: catalog?.models,
-        modes: catalog?.modes,
+        modes: catalog?.modes ?? modeCatalog?.modes,
+        defaultModeId: catalog?.defaultModeId ?? modeCatalog?.defaultModeId,
       );
     } catch (error) {
       return _entry(
@@ -332,6 +351,7 @@ final class PaseoProviderCatalogRegistry {
     String? error,
     List<ProviderModelDefinition>? models,
     List<ProviderMode>? modes,
+    String? defaultModeId,
   }) => ProviderSnapshotEntry(
     provider: definition.id,
     status: status,
@@ -344,7 +364,7 @@ final class PaseoProviderCatalogRegistry {
     fetchedAt: fetchedAt,
     label: definition.label,
     description: definition.description,
-    defaultModeId: definition.defaultModeId,
+    defaultModeId: defaultModeId ?? definition.defaultModeId,
     source: definition.source,
   );
 

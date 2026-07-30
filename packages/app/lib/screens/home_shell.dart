@@ -57,6 +57,12 @@ class HomeShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sidebarVisible = ref.watch(appSidebarVisibilityProvider);
     final focusMode = ref.watch(workspaceFocusModeProvider);
+    final selectedWorkspace = ref.watch(selectedWorktreeProvider);
+    final location = routeLocation ?? GoRouterState.of(context).matchedLocation;
+    final workspaceFocusMode =
+        focusMode &&
+        (parseHostWorkspaceRouteFromPathname(location) != null ||
+            (location == '/' && selectedWorkspace != null));
     final compact = MediaQuery.sizeOf(context).width <= compactFormFactorWidth;
     final recordedCompact = ref.watch(appCompactLayoutProvider);
     if (recordedCompact != compact) {
@@ -75,7 +81,7 @@ class HomeShell extends ConsumerWidget {
           color: FluentTheme.of(context).scaffoldBackgroundColor,
           child: compact
               ? _CompactHomeLayout(content: content)
-              : sidebarVisible && !focusMode
+              : sidebarVisible && !workspaceFocusMode
               ? _ResizableHomeLayout(content: content)
               : content,
         ),

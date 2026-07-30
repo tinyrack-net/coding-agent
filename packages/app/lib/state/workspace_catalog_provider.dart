@@ -166,7 +166,26 @@ List<WorkspaceDescriptor> applyWorkspaceDirectoryUpdate(
         AgentArchivedDirectoryEvent():
       return current;
   }
-  return List<WorkspaceDescriptor>.unmodifiable(next.values);
+  final ordered = next.values.toList(growable: false)
+    ..sort(_compareWorkspaceCatalogEntries);
+  return List<WorkspaceDescriptor>.unmodifiable(ordered);
+}
+
+/// Keeps subscription deltas in the daemon's default directory order:
+/// newest activity first, then the stable workspace id tie-breaker.
+int _compareWorkspaceCatalogEntries(
+  WorkspaceDescriptor left,
+  WorkspaceDescriptor right,
+) {
+  final leftActivity = DateTime.tryParse(left.activityAt ?? '');
+  final rightActivity = DateTime.tryParse(right.activityAt ?? '');
+  final byActivity = switch ((leftActivity, rightActivity)) {
+    (null, null) => 0,
+    (null, _) => 1,
+    (_, null) => -1,
+    (final left?, final right?) => right.compareTo(left),
+  };
+  return byActivity != 0 ? byActivity : left.id.compareTo(right.id);
 }
 
 /// Paseo v2 workspace catalog for the active host. Pages are exhausted so a

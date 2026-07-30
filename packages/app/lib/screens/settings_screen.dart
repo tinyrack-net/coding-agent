@@ -20,6 +20,7 @@ import '../state/host_registry_provider.dart';
 import '../state/tool_call_detail_level_provider.dart';
 import '../tool_calls/detail_level/tool_call_projection.dart';
 import '../widgets/fluent/toast.dart';
+import '../widgets/provider_usage_settings_section.dart';
 import 'host_settings_sections.dart';
 import 'keyboard_shortcuts_settings_section.dart';
 import 'projects_settings_screen.dart';
@@ -757,6 +758,8 @@ class _ProviderCredentialsSectionState
           child: ListView(
             padding: const EdgeInsets.all(24),
             children: [
+              const ProviderUsageSettingsSection(),
+              const SizedBox(height: 24),
               for (final id in ProviderId.values)
                 _buildProviderTile(
                   context,

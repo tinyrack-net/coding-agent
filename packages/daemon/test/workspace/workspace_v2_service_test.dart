@@ -20,6 +20,7 @@ import 'package:agent_daemon/src/workspace/workspace_v2_service.dart';
 import 'package:agent_daemon/src/workspace/worktree_terminal_bootstrap_service.dart';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:async/async.dart';
+import 'package:path/path.dart' as p;
 import 'package:stream_channel/stream_channel.dart';
 import 'package:test/test.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -1132,6 +1133,126 @@ void main() {
 
   group('fetch and subscriptions', () {
     test(
+      'responds before Git observer warming with thousands archived',
+      () async {
+        final bulkDir = Directory('${temp.path}${Platform.pathSeparator}bulk')
+          ..createSync();
+        final activeDir = Directory(
+          '${bulkDir.path}${Platform.pathSeparator}active',
+        )..createSync();
+        final createdDir = Directory(
+          '${bulkDir.path}${Platform.pathSeparator}created',
+        )..createSync();
+        final bulkRegistries = WorkspaceRegistries(dataDir: bulkDir.path);
+        final bulkProject = createPersistedProjectRecord(
+          projectId: 'prj_bulk',
+          rootPath: activeDir.path,
+          kind: PersistedProjectKind.git,
+          displayName: 'Bulk',
+          createdAt: '1',
+          updatedAt: '1',
+        );
+        final bulkWorkspaces = <PersistedWorkspaceRecord>[
+          for (var index = 0; index < 2000; index++)
+            createPersistedWorkspaceRecord(
+              workspaceId: 'wks_archived_$index',
+              projectId: 'prj_bulk',
+              cwd: '${bulkDir.path}${Platform.pathSeparator}archived-$index',
+              kind: PersistedWorkspaceKind.localCheckout,
+              displayName: 'archived-$index',
+              branch: 'main',
+              createdAt: index.toString().padLeft(4, '0'),
+              updatedAt: '2000',
+              archivedAt: '2000',
+            ),
+          createPersistedWorkspaceRecord(
+            workspaceId: 'wks_active',
+            projectId: 'prj_bulk',
+            cwd: activeDir.path,
+            kind: PersistedWorkspaceKind.localCheckout,
+            displayName: 'active',
+            branch: 'main',
+            createdAt: '3000',
+            updatedAt: '3000',
+          ),
+        ];
+        await File(
+          '${bulkDir.path}${Platform.pathSeparator}projects.json',
+        ).writeAsString(jsonEncode([bulkProject.toJson()]));
+        await File(
+          '${bulkDir.path}${Platform.pathSeparator}workspaces.json',
+        ).writeAsString(
+          jsonEncode(
+            bulkWorkspaces.map((workspace) => workspace.toJson()).toList(),
+          ),
+        );
+        await bulkRegistries.initialize();
+
+        final watchedPaths = <String>[];
+        final backend = PollingWorkspaceGitBackend(
+          pollInterval: const Duration(days: 1),
+          watchDirectory: (path, {required recursive}) {
+            watchedPaths.add(path);
+            return const Stream<FileSystemEvent>.empty();
+          },
+        );
+        addTearDown(backend.dispose);
+        final bulkGit = _FakeGitService(dataDir: bulkDir.path)
+          ..isGit = true
+          ..root = activeDir.path
+          ..branch = 'main';
+        final bulkService = WorkspaceV2Service(
+          registries: bulkRegistries,
+          git: bulkGit,
+          gitSnapshots: backend,
+          broadcast: (_, _) {},
+          workspaceIdFactory: () => 'wks_created',
+        );
+
+        final fetched = FetchWorkspacesResponse.fromJson(
+          (await bulkService.handle(
+            connection,
+            const FetchWorkspacesRequest(
+              requestId: 'bulk-fetch',
+              hasSubscription: true,
+              subscriptionId: 'bulk-subscription',
+              limit: 1,
+            ).toJson(),
+          ))!,
+        );
+        expect(fetched.entries.map((workspace) => workspace.id), [
+          'wks_active',
+        ]);
+        expect(watchedPaths, isEmpty);
+        await _waitFor(() => watchedPaths.length == 1);
+        expect(watchedPaths.single, p.normalize(p.absolute(activeDir.path)));
+
+        final createResponse = WorkspaceCreateResponse.fromJson(
+          (await bulkService.handle(
+            connection,
+            WorkspaceCreateRequest(
+              requestId: 'bulk-create',
+              source: DirectoryWorkspaceCreateSource(
+                path: createdDir.path,
+                projectId: 'prj_bulk',
+              ),
+            ).toJson(),
+          ))!,
+        );
+        expect(createResponse.error, isNull);
+        expect(createResponse.workspace?.id, 'wks_created');
+        expect(watchedPaths, hasLength(1));
+        await _waitFor(() => watchedPaths.length == 2);
+        expect(watchedPaths.last, p.normalize(p.absolute(createdDir.path)));
+        expect(
+          watchedPaths.where((path) => path.contains('archived-')),
+          isEmpty,
+        );
+        await backend.disposeAndWait();
+      },
+    );
+
+    test(
       'projects rich local Git snapshots into subscribed workspaces',
       () async {
         await _runGit(projectDirectory.path, ['init', '-b', 'main']);
@@ -1177,13 +1298,18 @@ void main() {
             baseBranch: 'main',
           ),
         );
+        final observerStarted = Completer<void>();
         final backend = PollingWorkspaceGitBackend(
           pollInterval: const Duration(days: 1),
           forgeStatus: WorkspaceForgeStatusService(
             resolver: ForgeResolver(transport: _WorkspaceForgeTransport()),
           ),
+          watchDirectory: (path, {required recursive}) {
+            if (!observerStarted.isCompleted) observerStarted.complete();
+            return Directory(path).watch(recursive: recursive);
+          },
         );
-        addTearDown(backend.dispose);
+        addTearDown(backend.disposeAndWait);
         broadcasts.clear();
         service = WorkspaceV2Service(
           registries: registries,
@@ -1201,6 +1327,7 @@ void main() {
             subscriptionId: 'git-subscription',
           ),
         );
+        await observerStarted.future;
         await backend.refreshNow(projectDirectory.path);
         await _waitFor(
           () => broadcasts.any(

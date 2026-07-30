@@ -390,6 +390,260 @@ void main() {
       await registry.upsert(_workspace());
       expect(calls, 0);
     });
+
+    test(
+      'indexes active records deterministically with thousands archived',
+      () async {
+        final records = <PersistedWorkspaceRecord>[
+          for (var index = 1999; index >= 0; index--)
+            createPersistedWorkspaceRecord(
+              workspaceId: 'wks_archived_$index',
+              projectId: 'prj_archive_${index % 7}',
+              cwd: '${temp.path}${Platform.pathSeparator}archive-$index',
+              kind: PersistedWorkspaceKind.directory,
+              displayName: 'archived-$index',
+              createdAt: index.toString().padLeft(4, '0'),
+              updatedAt: '2000',
+              archivedAt: '2000',
+            ),
+          createPersistedWorkspaceRecord(
+            workspaceId: 'wks_z',
+            projectId: 'prj_active',
+            cwd: '${temp.path}${Platform.pathSeparator}shared',
+            kind: PersistedWorkspaceKind.localCheckout,
+            displayName: 'z',
+            createdAt: '3000',
+            updatedAt: '3000',
+          ),
+          createPersistedWorkspaceRecord(
+            workspaceId: 'wks_b',
+            projectId: 'prj_active',
+            cwd: '${temp.path}${Platform.pathSeparator}shared',
+            kind: PersistedWorkspaceKind.localCheckout,
+            displayName: 'b',
+            createdAt: '2001',
+            updatedAt: '2001',
+          ),
+          createPersistedWorkspaceRecord(
+            workspaceId: 'wks_a',
+            projectId: 'prj_active',
+            cwd: '${temp.path}${Platform.pathSeparator}other',
+            kind: PersistedWorkspaceKind.directory,
+            displayName: 'a',
+            createdAt: '2001',
+            updatedAt: '2001',
+          ),
+        ];
+        await File(workspacesPath)
+          ..parent.createSync(recursive: true)
+          ..writeAsString(
+            jsonEncode(records.map((record) => record.toJson()).toList()),
+          );
+        final registry = FileBackedWorkspaceRegistry(filePath: workspacesPath);
+        await registry.initialize();
+
+        expect(
+          (await registry.listActive()).map((record) => record.workspaceId),
+          ['wks_a', 'wks_b', 'wks_z'],
+        );
+        expect(
+          (await registry.activeForProject(
+            'prj_active',
+          )).map((record) => record.workspaceId),
+          ['wks_a', 'wks_b', 'wks_z'],
+        );
+        expect(
+          (await registry.activeForCwd(
+            '${temp.path}${Platform.pathSeparator}shared',
+          )).map((record) => record.workspaceId),
+          ['wks_b', 'wks_z'],
+        );
+
+        await registry.archive('wks_b', '4000');
+        await registry.restore('wks_b', '4001');
+        await registry.update(
+          'wks_b',
+          (record) => record.copyWith(
+            cwd: '${temp.path}${Platform.pathSeparator}moved',
+          ),
+        );
+        await registry.remove('wks_z');
+
+        expect(
+          await registry.activeForCwd(
+            '${temp.path}${Platform.pathSeparator}shared',
+          ),
+          isEmpty,
+        );
+        expect(
+          (await registry.activeForCwd(
+            '${temp.path}${Platform.pathSeparator}moved',
+          )).map((record) => record.workspaceId),
+          ['wks_b'],
+        );
+        expect(
+          (await registry.activeForProject(
+            'prj_active',
+          )).map((record) => record.workspaceId),
+          ['wks_a', 'wks_b'],
+        );
+      },
+    );
+
+    test(
+      'serializes concurrent replacements without stale project or cwd ids',
+      () async {
+        final registry = FileBackedWorkspaceRegistry(filePath: workspacesPath);
+        await registry.upsert(_workspace());
+
+        final second = _workspace().copyWith(
+          projectId: 'prj_second',
+          cwd: '${temp.path}${Platform.pathSeparator}second',
+          updatedAt: '2',
+        );
+        final third = _workspace().copyWith(
+          projectId: 'prj_third',
+          cwd: '${temp.path}${Platform.pathSeparator}third',
+          updatedAt: '3',
+        );
+
+        await Future.wait([registry.upsert(second), registry.upsert(third)]);
+
+        expect(await registry.activeForProject('prj_1'), isEmpty);
+        expect(await registry.activeForProject('prj_second'), isEmpty);
+        expect(
+          (await registry.activeForProject(
+            'prj_third',
+          )).map((record) => record.workspaceId),
+          ['wks_1'],
+        );
+        expect(await registry.activeForCwd('/repo'), isEmpty);
+        expect(await registry.activeForCwd(second.cwd), isEmpty);
+        expect(
+          (await registry.activeForCwd(
+            third.cwd,
+          )).map((record) => record.workspaceId),
+          ['wks_1'],
+        );
+
+        PersistedWorkspaceRecord record({
+          required String workspaceId,
+          required String projectId,
+          required String cwd,
+          required String updatedAt,
+          String? archivedAt,
+        }) => createPersistedWorkspaceRecord(
+          workspaceId: workspaceId,
+          projectId: projectId,
+          cwd: cwd,
+          kind: PersistedWorkspaceKind.directory,
+          displayName: workspaceId,
+          createdAt: '1',
+          updatedAt: updatedAt,
+          archivedAt: archivedAt,
+        );
+
+        final archivedId = 'wks_concurrent_archive';
+        await registry.upsert(
+          record(
+            workspaceId: archivedId,
+            projectId: 'prj_archive_old',
+            cwd: '/archive-old',
+            updatedAt: '1',
+          ),
+        );
+        await Future.wait([
+          registry.update(
+            archivedId,
+            (workspace) => workspace.copyWith(
+              projectId: 'prj_archive_moved',
+              cwd: '/archive-moved',
+              updatedAt: '2',
+            ),
+          ),
+          registry.archive(archivedId, '3'),
+        ]);
+        expect(await registry.activeForProject('prj_archive_old'), isEmpty);
+        expect(await registry.activeForProject('prj_archive_moved'), isEmpty);
+        expect(await registry.activeForCwd('/archive-old'), isEmpty);
+        expect(await registry.activeForCwd('/archive-moved'), isEmpty);
+
+        final restoredId = 'wks_concurrent_restore';
+        await registry.upsert(
+          record(
+            workspaceId: restoredId,
+            projectId: 'prj_restore_old',
+            cwd: '/restore-old',
+            updatedAt: '1',
+            archivedAt: '1',
+          ),
+        );
+        await Future.wait([
+          registry.restore(restoredId, '2'),
+          registry.update(
+            restoredId,
+            (workspace) => workspace.copyWith(
+              projectId: 'prj_restore_moved',
+              cwd: '/restore-moved',
+              updatedAt: '3',
+            ),
+          ),
+        ]);
+        expect(await registry.activeForProject('prj_restore_old'), isEmpty);
+        expect(
+          (await registry.activeForProject(
+            'prj_restore_moved',
+          )).map((workspace) => workspace.workspaceId),
+          [restoredId],
+        );
+        expect(await registry.activeForCwd('/restore-old'), isEmpty);
+        expect(
+          (await registry.activeForCwd(
+            '/restore-moved',
+          )).map((workspace) => workspace.workspaceId),
+          [restoredId],
+        );
+
+        final removedId = 'wks_concurrent_remove';
+        await registry.upsert(
+          record(
+            workspaceId: removedId,
+            projectId: 'prj_remove_old',
+            cwd: '/remove-old',
+            updatedAt: '1',
+          ),
+        );
+        await Future.wait([
+          registry.update(
+            removedId,
+            (workspace) => workspace.copyWith(
+              projectId: 'prj_remove_moved',
+              cwd: '/remove-moved',
+              updatedAt: '2',
+            ),
+          ),
+          registry.remove(removedId),
+        ]);
+        await registry.upsert(
+          record(
+            workspaceId: removedId,
+            projectId: 'prj_remove_final',
+            cwd: '/remove-final',
+            updatedAt: '3',
+          ),
+        );
+        expect(await registry.activeForProject('prj_remove_old'), isEmpty);
+        expect(await registry.activeForProject('prj_remove_moved'), isEmpty);
+        expect(await registry.activeForCwd('/remove-old'), isEmpty);
+        expect(await registry.activeForCwd('/remove-moved'), isEmpty);
+        expect(
+          (await registry.activeForProject(
+            'prj_remove_final',
+          )).map((workspace) => workspace.workspaceId),
+          [removedId],
+        );
+      },
+    );
   });
 
   group('registry robustness', () {

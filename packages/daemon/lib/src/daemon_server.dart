@@ -44,6 +44,8 @@ import 'providers/paseo/provider_catalog_v2_service.dart';
 import 'providers/paseo/provider_launch_config.dart';
 import 'providers/paseo/provider_manifest.dart';
 import 'providers/provider_registry.dart';
+import 'providers/usage/provider_usage.dart';
+import 'providers/usage/provider_usage_fetchers.dart';
 import 'server/rpc_router.dart';
 import 'server/agent_attention_policy.dart';
 import 'server/agent_mcp_http.dart';
@@ -104,6 +106,9 @@ import 'voice/speech_runtime.dart';
 import 'voice/turn_detection_provider.dart';
 import 'voice/voice_session.dart';
 
+const _idleAgentRuntimeTtl = Duration(minutes: 2);
+const _idleAgentRuntimeSweepInterval = Duration(seconds: 15);
+
 class DaemonServerHandle {
   DaemonServerHandle({
     required this.server,
@@ -162,6 +167,7 @@ Future<DaemonServerHandle> startDaemonServer({
   String appBaseUrl = defaultTinyrackAppBaseUrl,
   AgentHookInstallOptions hookInstallOptions = const AgentHookInstallOptions(),
   Map<String, AgentClient>? agentClients,
+  List<ProviderUsageFetcher>? providerUsageFetchers,
   ProjectGithubCloneRunner? projectGithubCloneRunner,
   GithubCommandRunner? githubCommandRunner,
   TextToSpeechResolver? resolveVoiceTts,
@@ -205,6 +211,11 @@ Future<DaemonServerHandle> startDaemonServer({
     enableTerminalAgentHooks: enableTerminalAgentHooks,
   );
   final serverId = getOrCreateServerId(paths.dataDir, log: log);
+  final providerUsageV2 = ProviderUsageV2Service(
+    ProviderUsageService(
+      fetchers: providerUsageFetchers ?? createDefaultProviderUsageFetchers(),
+    ),
+  );
   final daemonKeyPair = loadOrCreateDaemonKeyPair(paths.dataDir, log: log);
   final effectiveRelay = relayConfig;
   final pairingOffer = await generateLocalPairingOffer(
@@ -234,6 +245,26 @@ Future<DaemonServerHandle> startDaemonServer({
   };
   final registry = ProviderRegistry(credentials, nativeBackends);
   late final PaseoProviderCatalogRegistry paseoProviderCatalog;
+  final resolvedAgentClients =
+      agentClients ??
+      <String, AgentClient>{
+        'claude': ClaudeAgentClient(
+          runtimeSettingsResolver: () => providerRuntimeSettingsFromOverride(
+            configStore.config.providers['claude'],
+          ),
+        ),
+        'codex': CodexAgentClient(
+          runtimeSettingsResolver: () => providerRuntimeSettingsFromOverride(
+            configStore.config.providers['codex'],
+          ),
+        ),
+        for (final entry in ProviderCatalog.all)
+          entry.id.name: NativeClient(
+            providerId: entry.id,
+            backend: nativeBackends[entry.id]!,
+            credentials: credentials,
+          ),
+      };
   GenericAcpAgentClient? genericAcpClient(PaseoProviderDefinition definition) {
     if (!definition.enabledByDefault ||
         (definition.source != 'custom' && definition.id != 'copilot')) {
@@ -254,6 +285,26 @@ Future<DaemonServerHandle> startDaemonServer({
     configResolver: () => configStore.config,
     catalogProbe: (definition, cwd) async =>
         genericAcpClient(definition)?.fetchCatalog(cwd: cwd),
+    modeCatalogResolver: (definition, cwd) async {
+      final client = resolvedAgentClients[definition.id];
+      if (client is! DefaultModeResolvingAgentClient) return null;
+      final resolver = client as DefaultModeResolvingAgentClient;
+      final defaultModeId = await resolver.resolveDefaultModeId(
+        ResolveAgentDefaultModeInput(
+          provider: definition.id,
+          cwd: cwd,
+          model: '',
+        ),
+      );
+      final modes = [
+        for (final entry in definition.modes)
+          if (defaultModeId == null ||
+              defaultModeId == definition.defaultModeId ||
+              entry.mode.id != definition.defaultModeId)
+            entry.mode,
+      ];
+      return (modes: modes, defaultModeId: defaultModeId);
+    },
   );
 
   late final WsServer server;
@@ -267,26 +318,7 @@ Future<DaemonServerHandle> startDaemonServer({
   final voiceBridge = VoiceBridgeRegistry();
   final agentDirectorySubscriptions = <String, AgentDirectorySubscription>{};
   manager = AgentManager(
-    clients:
-        agentClients ??
-        {
-          'claude': ClaudeAgentClient(
-            runtimeSettingsResolver: () => providerRuntimeSettingsFromOverride(
-              configStore.config.providers['claude'],
-            ),
-          ),
-          'codex': CodexAgentClient(
-            runtimeSettingsResolver: () => providerRuntimeSettingsFromOverride(
-              configStore.config.providers['codex'],
-            ),
-          ),
-          for (final entry in ProviderCatalog.all)
-            entry.id.name: NativeClient(
-              providerId: entry.id,
-              backend: nativeBackends[entry.id]!,
-              credentials: credentials,
-            ),
-        },
+    clients: resolvedAgentClients,
     clientResolver: agentClients == null
         ? (provider) {
             final definition = paseoProviderCatalog.definition(provider);
@@ -405,6 +437,45 @@ Future<DaemonServerHandle> startDaemonServer({
     ),
   );
   await manager.load();
+  Future<void>? inFlightIdleAgentCollection;
+  Future<void> collectIdleAgentRuntimes() async {
+    final result = await manager.collectIdleAgents(
+      cutoff: DateTime.now().toUtc().subtract(_idleAgentRuntimeTtl),
+      protectedAgentIds: await schedules.listActiveAgentTargetIds(),
+    );
+    for (final collected in result.collected) {
+      log?.call(
+        'collected idle agent runtime '
+        '${collected.agentId} (${collected.provider})',
+      );
+    }
+    for (final failure in result.failures) {
+      log?.call(
+        'failed to collect idle agent runtime '
+        '${failure.agentId} (${failure.provider}): ${failure.error}',
+      );
+    }
+  }
+
+  void runIdleAgentCollection() {
+    if (inFlightIdleAgentCollection != null) return;
+    late final Future<void> collection;
+    collection = collectIdleAgentRuntimes()
+        .catchError((Object error) {
+          log?.call('idle agent runtime sweep failed: $error');
+        })
+        .whenComplete(() {
+          if (identical(inFlightIdleAgentCollection, collection)) {
+            inFlightIdleAgentCollection = null;
+          }
+        });
+    inFlightIdleAgentCollection = collection;
+  }
+
+  final idleAgentCollectionTimer = Timer.periodic(
+    _idleAgentRuntimeSweepInterval,
+    (_) => runIdleAgentCollection(),
+  );
   final agentConfig = AgentConfigService(manager);
 
   final router = RpcRouter()
@@ -1593,6 +1664,8 @@ Future<DaemonServerHandle> startDaemonServer({
       server,
     );
     if (agentDirectoryResponse != null) return agentDirectoryResponse;
+    final providerUsageResponse = await providerUsageV2.handle(message);
+    if (providerUsageResponse != null) return providerUsageResponse;
     final agentConfigResponse = await agentConfig.handle(connection, message);
     if (agentConfigResponse != null) return agentConfigResponse;
     final agentCommandsResponse = await agentCommands.handle(message);
@@ -1822,6 +1895,8 @@ Future<DaemonServerHandle> startDaemonServer({
     workspaceScripts.dispose();
     checkoutDiff.dispose();
     await workspaceGitObserverBackend.disposeAndWait();
+    idleAgentCollectionTimer.cancel();
+    await inFlightIdleAgentCollection;
     await manager.dispose();
     fileExplorer.close();
     await terminals.dispose();

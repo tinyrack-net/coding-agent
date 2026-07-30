@@ -1452,78 +1452,111 @@
     },
     {
       "id": "release-feature:021-idle-agents-release-processes-automatically-and-resume-when-needed",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/daemon_server.dart",
+      "evidence": [
+        "packages/daemon/test/agent_manager_test.dart"
+      ],
+      "notes": "Idle provider sessions are collected after the daemon TTL, protected during active schedules and lifecycle transitions, and resumed against the same provider conversation with race and failure recovery coverage."
     },
     {
       "id": "release-feature:022-new-claude-and-codex-agents-default-to-safer-automatic-approval-modes-when-supported",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/agent_client.dart; packages/daemon/lib/src/providers/paseo/acp_catalog.dart; packages/daemon/lib/src/providers/paseo/claude_agent_client.dart; packages/daemon/lib/src/providers/paseo/codex_agent_client.dart; packages/daemon/lib/src/providers/paseo/provider_catalog_registry.dart; packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/daemon_server.dart",
+      "evidence": [
+        "packages/daemon/test/agent_manager_test.dart",
+        "packages/daemon/test/providers/paseo/claude_agent_client_test.dart",
+        "packages/daemon/test/providers/paseo/codex_agent_client_test.dart",
+        "packages/daemon/test/providers/paseo/provider_catalog_registry_test.dart"
+      ],
+      "notes": "Omitted modes resolve to provider-safe defaults, including Claude cloud transport constraints and Codex auto-review version gating, while explicit modes remain authoritative."
     },
     {
       "id": "release-feature:023-permission-and-thinking-changes-made-during-a-turn-now-show-when-they-take-effect",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/codex_session_runtime.dart; packages/app/lib/screens/agent_chat_screen.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo/codex_agent_session_test.dart",
+        "packages/app/test/provider_notice_toast_test.dart"
+      ],
+      "notes": "Codex tracks the turn as active from turn/start through completion and the existing provider notice flow exposes delayed-effect permission and thinking changes as a five-second toast."
     },
     {
       "id": "release-feature:024-usage-bars-now-warn-as-provider-limits-approach",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/provider_usage_settings_section.dart",
+      "evidence": [
+        "packages/protocol/test/provider_usage_test.dart",
+        "packages/daemon/test/providers/usage",
+        "packages/daemon/test/daemon_provider_usage_e2e_test.dart",
+        "packages/app/test/provider_usage_test.dart",
+        "packages/app/test/provider_usage_settings_test.dart"
+      ],
       "notes": null
     },
     {
       "id": "release-feature:025-workspace-focus-mode-stays-confined-to-the-active-workspace-with-a-visible-exit-control",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/screens/home_shell.dart; packages/app/lib/widgets/worktree_tabbed_pane.dart",
+      "evidence": [
+        "packages/app/test/home_shell_test.dart",
+        "packages/app/test/worktree_tabbed_pane_test.dart"
+      ],
+      "notes": "Focus mode only hides chrome on the active workspace route and provides an accessible visible exit control without narrow-width overflow."
     },
     {
       "id": "release-feature:026-desktop-installs-the-newest-available-update-instead-of-a-cached-older-release",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/desktop/desktop_app_update_service.dart",
+      "evidence": [
+        "packages/app/test/desktop_app_update_service_test.dart"
+      ],
+      "notes": "Latest-manifest revalidation, serialized update attempts, stale-download replacement, failure safety, and restart policy are implemented and tested. Actual signed Windows installer and update-feed transport integration remains."
     },
     {
       "id": "release-feature:027-remote-daemon-update-failures-now-show-specific-recovery-steps",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/daemon_update.dart; packages/app/lib/core/daemon_client.dart; packages/app/lib/widgets/host_daemon_update_card.dart; packages/app/lib/screens/host_settings_route_screen.dart",
+      "evidence": [
+        "packages/protocol/test/daemon_update_test.dart",
+        "packages/app/test/daemon_update_client_test.dart",
+        "packages/app/test/host_daemon_update_card_test.dart"
+      ],
+      "notes": "Remote daemon update progress and diagnostic responses are correlated independently, failures stay visible and retryable with specific recovery guidance, and successful updates explain reconnect recovery."
     },
     {
       "id": "release-feature:028-agent-history-errors-now-appear-immediately-instead-of-after-a-timeout",
-      "status": "partial",
-      "implementation": "packages/app/lib/state/timeline_provider.dart; packages/app/lib/screens/agent_chat_screen.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/core/daemon_client.dart; packages/app/lib/state/timeline_provider.dart; packages/app/lib/screens/agent_chat_screen.dart",
       "evidence": [
-        "packages/app/test/agent_chat_screen_test.dart",
+        "packages/app/test/daemon_client_test.dart",
+        "packages/app/test/daemon_timeline_error_timing_e2e_test.dart",
         "packages/app/test/timeline_provider_test.dart",
+        "packages/app/test/agent_chat_screen_test.dart",
         "packages/app/test/agent_screen_sync_state_test.dart",
         "packages/app/test/fluent_toast_test.dart"
       ],
-      "notes": "A cold authoritative-history failure immediately replaces the whole conversation body with retry recovery and keeps the composer blocked; retry remains blocked until a successful page arrives. Hydrated history survives failed catch-up, sync errors persist across live events until authoritative recovery, and a disconnected ready conversation shows an ownership-safe persistent reconnect toast ahead of the sync-error callout. Visibility return within the 30-second grace does not refetch; later return performs authoritative tail catch-up silently for retained history and overlays only an unhydrated route. Real daemon error-timing conformance remains."
+      "notes": "Cold authoritative-history failures immediately replace the conversation body with retry recovery while hydrated history survives failed catch-up and reconnect state remains visible. Correlated malformed responses fail immediately as protocol errors, and real WebSocket daemon history failures reach TimelineNotifier without waiting for the request timeout."
     },
     {
       "id": "release-feature:029-terminal-pairing-qr-codes-remain-scannable-in-narrow-terminals",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/cli/pair_command.dart",
+      "evidence": [
+        "packages/daemon/test/pair_command_test.dart"
+      ],
+      "notes": "Pairing QR output requires one spare terminal column, suppresses unsafe or undetectable layouts with an actionable link fallback, and preserves machine-readable output."
     },
     {
       "id": "release-feature:030-workspace-creation-stays-responsive-even-with-many-active-or-archived-workspaces",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/workspace/workspace_registry.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/app/lib/state/workspace_catalog_provider.dart",
+      "evidence": [
+        "packages/daemon/test/workspace/workspace_registry_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
+        "packages/app/test/workspace_catalog_provider_test.dart"
+      ],
+      "notes": "Workspace lifecycle indexes avoid archived scans, creation responds before current-page Git observer warmup, observer races are fenced, and the Flutter catalog remains deterministic with a 2,000-archived-workspace fixture."
     },
     {
       "id": "release-feature:031-failed-agent-starts-no-longer-leave-provider-processes-running",

@@ -30,6 +30,26 @@ final class ImportableProviderSession {
   final DateTime lastActivityAt;
 }
 
+final class ResolveAgentDefaultModeInput {
+  const ResolveAgentDefaultModeInput({
+    required this.provider,
+    required this.cwd,
+    required this.model,
+    this.environment = const {},
+  });
+
+  final String provider;
+  final String cwd;
+  final String model;
+  final Map<String, String> environment;
+}
+
+/// Optional capability for providers whose safe default depends on the
+/// installed binary or launch environment.
+abstract interface class DefaultModeResolvingAgentClient {
+  Future<String?> resolveDefaultModeId(ResolveAgentDefaultModeInput input);
+}
+
 /// Optional capability advertised only by providers that can enumerate native
 /// sessions which may be imported.
 abstract interface class ImportableAgentClient {

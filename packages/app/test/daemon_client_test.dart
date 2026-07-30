@@ -882,6 +882,66 @@ void main() {
     expect(page.entries.single.item.id, 'answer');
   });
 
+  test(
+    'fetchAgentTimeline rejects an invalid correlated response immediately',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      unawaited(
+        conn.nextRequest(FetchAgentTimelineRequest.type).then((frame) {
+          conn.respondNative(
+            AgentTimelinePage.responseType,
+            frame['requestId'] as String,
+            {
+              'agentId': 'agent-invalid',
+              'agent': null,
+              'direction': 'tail',
+              'projection': 'projected',
+              'epoch': '1',
+              'reset': false,
+              'staleCursor': false,
+              'gap': false,
+              // Deliberately missing the required `window` field.
+              'startCursor': null,
+              'endCursor': null,
+              'hasOlder': false,
+              'hasNewer': false,
+              'entries': const <Object?>[],
+              'error': null,
+            },
+          );
+        }),
+      );
+
+      final stopwatch = Stopwatch()..start();
+      await expectLater(
+        client.fetchAgentTimeline(
+          agentId: 'agent-invalid',
+          timeout: const Duration(seconds: 30),
+        ),
+        throwsA(
+          isA<DaemonProtocolException>()
+              .having((error) => error.code, 'code', 'invalid_response')
+              .having(
+                (error) => error.responseType,
+                'responseType',
+                AgentTimelinePage.responseType,
+              )
+              .having((error) => error.requestId, 'requestId', isNotEmpty),
+        ),
+      );
+      stopwatch.stop();
+      expect(stopwatch.elapsed, lessThan(const Duration(seconds: 2)));
+    },
+  );
+
   test('fetchAgents sends and correlates the native directory page', () async {
     client = DaemonClient(uri: server.uri);
     final connFuture = nextConnection(server);

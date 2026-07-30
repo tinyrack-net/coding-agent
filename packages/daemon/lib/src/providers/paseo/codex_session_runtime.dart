@@ -162,6 +162,7 @@ final class CodexSessionRuntime {
 
   String? _currentThreadId;
   String? _currentTurnId;
+  var _foregroundTurnActive = false;
   String _modeId;
   String? _model;
   String? _thinkingOptionId;
@@ -175,7 +176,7 @@ final class CodexSessionRuntime {
   String? get thinkingOptionId => _thinkingOptionId;
   String get modeId => _modeId;
   bool get isConnected => _connected;
-  bool get isTurnActive => _currentTurnId != null;
+  bool get isTurnActive => _foregroundTurnActive;
   List<TimelineItem>? get restoredHistory => _restoredHistory == null
       ? null
       : List<TimelineItem>.unmodifiable(_restoredHistory!);
@@ -362,6 +363,9 @@ final class CodexSessionRuntime {
     List<Map<String, Object?>> input, {
     Map<String, Object?>? outputSchema,
   }) async {
+    if (_foregroundTurnActive) {
+      throw StateError('A Codex foreground turn is already active');
+    }
     await connect();
     final threadId = _currentThreadId == null
         ? await ensureThread()
@@ -389,7 +393,13 @@ final class CodexSessionRuntime {
         'outputSchema': normalizeCodexOutputSchema(outputSchema),
     };
     _currentTurnId = null;
-    await _client.request('turn/start', params, codexTurnStartTimeout);
+    _foregroundTurnActive = true;
+    try {
+      await _client.request('turn/start', params, codexTurnStartTimeout);
+    } on Object {
+      _foregroundTurnActive = false;
+      rethrow;
+    }
   }
 
   Future<void> interrupt() async {
@@ -441,12 +451,14 @@ final class CodexSessionRuntime {
     );
     _currentThreadId = response.thread.id;
     _currentTurnId = null;
+    _foregroundTurnActive = false;
     return response;
   }
 
   Future<void> close() async {
     _connected = false;
     _currentTurnId = null;
+    _foregroundTurnActive = false;
     await _client.dispose();
   }
 
@@ -530,6 +542,7 @@ final class CodexSessionRuntime {
       }
     } else if (method == 'turn/completed') {
       _currentTurnId = null;
+      _foregroundTurnActive = false;
     }
     for (final subscriber in _notificationSubscribers.toList(growable: false)) {
       subscriber(method, params);

@@ -13,21 +13,107 @@ void main() {
       '\u001b[47m\u001b[30m ████ \u001b[0m\n'
       '\u001b[47m\u001b[30m      \u001b[0m';
 
-  test('pairing instructions show QR only with sufficient terminal width', () {
-    expect(
-      formatPairingInstructions(url: url, qr: qr, columns: 7),
-      allOf(contains(qr), contains('\n$url\n')),
+  group('pairing instruction formatting', () {
+    test('prints QR and an unmodified link when one spare column exists', () {
+      expect(
+        formatPairingInstructions(url: url, qr: qr, columns: 7),
+        '\n'
+        'Scan to pair:\n'
+        '$qr\n'
+        '\n'
+        'Pairing link:\n'
+        '$url\n',
+      );
+    });
+
+    test('suppresses a QR that reaches the terminal edge', () {
+      expect(
+        formatPairingInstructions(url: url, qr: qr, columns: 6),
+        '\n'
+        'Scan to pair:\n'
+        'QR code not shown. Resize the terminal to at least 7 columns, '
+        'then run this command again.\n'
+        '\n'
+        'Pairing link:\n'
+        '$url\n',
+      );
+    });
+
+    test('suppresses QR when terminal width cannot be detected', () {
+      expect(
+        formatPairingInstructions(url: url, qr: qr, columns: null),
+        '\n'
+        'Scan to pair:\n'
+        'QR code not shown because terminal width could not be detected.\n'
+        '\n'
+        'Pairing link:\n'
+        '$url\n',
+      );
+    });
+
+    test('uses the unavailable fallback for null and empty QR output', () {
+      const expected =
+          '\n'
+          'Scan to pair:\n'
+          'QR code is unavailable. Use the pairing link below.\n'
+          '\n'
+          'Pairing link:\n'
+          '$url\n';
+      expect(
+        formatPairingInstructions(url: url, qr: null, columns: 100),
+        expected,
+      );
+      expect(
+        formatPairingInstructions(url: url, qr: '', columns: 100),
+        expected,
+      );
+    });
+
+    test('measures the widest visible line after removing ANSI styles', () {
+      const unevenQr =
+          '\u001b[47m  \u001b[0m\n'
+          '\u001b[47m12345678\u001b[0m\n'
+          '\u001b[47m    \u001b[0m';
+
+      expect(
+        formatPairingInstructions(url: url, qr: unevenQr, columns: 8),
+        contains('Resize the terminal to at least 9 columns'),
+      );
+      expect(
+        formatPairingInstructions(url: url, qr: unevenQr, columns: 9),
+        contains(unevenQr),
+      );
+    });
+  });
+
+  test('pair command suppresses QR in a narrow terminal', () async {
+    final home = Directory.systemTemp.createTempSync('pair-command-narrow-');
+    addTearDown(() => home.deleteSync(recursive: true));
+    final output = StringBuffer();
+
+    final result = await runPairCommand(
+      options: PairCommandOptions(home: home.path),
+      environment: const {},
+      fetchOffer: (_) async => const DaemonGetPairingOfferResponse(
+        requestId: 'r',
+        url: url,
+        qr: qr,
+        relayEnabled: true,
+      ),
+      writeOutput: output.write,
+      terminalColumns: 6,
     );
-    final narrow = formatPairingInstructions(url: url, qr: qr, columns: 6);
-    expect(narrow, isNot(contains(qr)));
-    expect(narrow, contains('at least 7 columns'));
+
+    expect(result, 0);
     expect(
-      formatPairingInstructions(url: url, qr: qr, columns: null),
-      contains('terminal width could not be detected'),
-    );
-    expect(
-      formatPairingInstructions(url: url, qr: null, columns: 100),
-      contains('QR code is unavailable'),
+      output.toString(),
+      '\n'
+      'Scan to pair:\n'
+      'QR code not shown. Resize the terminal to at least 7 columns, '
+      'then run this command again.\n'
+      '\n'
+      'Pairing link:\n'
+      '$url\n',
     );
   });
 
