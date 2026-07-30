@@ -1,6 +1,7 @@
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/core/external_url_launcher.dart';
+import 'package:coding_agent_app/core/theme.dart';
 import 'package:coding_agent_app/state/changes_preferences_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/workspace_attachments_provider.dart';
@@ -113,6 +114,9 @@ Future<ProviderContainer> pumpDiffPane(
   bool compact = false,
   String? focusPath,
   int? focusRequestId,
+  bool changesTabOpen = false,
+  VoidCallback? onToggleChangesTab,
+  ValueChanged<String>? onChangesFilePress,
   ValueChanged<WorkspaceFileOpenRequest>? onOpenWorkspaceFile,
   ExternalUrlLauncher? launcher,
 }) async {
@@ -140,6 +144,9 @@ Future<ProviderContainer> pumpDiffPane(
             compact: compact,
             focusPath: focusPath,
             focusRequestId: focusRequestId,
+            changesTabOpen: changesTabOpen,
+            onToggleChangesTab: onToggleChangesTab,
+            onChangesFilePress: onChangesFilePress,
             onOpenWorkspaceFile: onOpenWorkspaceFile,
           ),
         ),
@@ -152,6 +159,52 @@ Future<ProviderContainer> pumpDiffPane(
 }
 
 void main() {
+  testWidgets('compact Changes toolbar exposes the open-tab toggle state', (
+    tester,
+  ) async {
+    var toggleCount = 0;
+    await pumpDiffPane(
+      tester,
+      compact: true,
+      onToggleChangesTab: () => toggleCount++,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('changes-open-tab')), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Tooltip && widget.message == 'Open Changes tab',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('changes-open-tab')));
+    expect(toggleCount, 1);
+
+    await pumpDiffPane(
+      tester,
+      compact: true,
+      changesTabOpen: true,
+      onToggleChangesTab: () => toggleCount++,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Tooltip && widget.message == 'Close Changes tab',
+      ),
+      findsOneWidget,
+    );
+    final selectedToggle = tester.widget<IconButton>(
+      find.byKey(const ValueKey('changes-open-tab')),
+    );
+    final toggleContext = tester.element(
+      find.byKey(const ValueKey('changes-open-tab')),
+    );
+    expect(
+      selectedToggle.style?.backgroundColor?.resolve(const {}),
+      toggleContext.paseoPalette.surface3,
+    );
+  });
+
   testWidgets('forwards a file focus request into the diff viewport', (
     tester,
   ) async {

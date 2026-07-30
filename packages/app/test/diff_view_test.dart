@@ -223,6 +223,44 @@ void main() {
     );
   });
 
+  testWidgets(
+    'collapsed navigation preserves expansion and routes header presses',
+    (tester) async {
+      final controller = DiffViewController()..toggleFile('assets/logo.png');
+      addTearDown(controller.dispose);
+      final pressed = <String>[];
+      var collapseFiles = true;
+      late StateSetter rebuild;
+
+      await tester.pumpWidget(
+        _wrap(
+          StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              return DiffView(
+                diff: _diff,
+                controller: controller,
+                collapseFiles: collapseFiles,
+                onFilePress: pressed.add,
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('diff-file-0-body')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('diff-file-0')));
+      await tester.pumpAndSettle();
+      expect(pressed, ['assets/logo.png']);
+      expect(find.byKey(const ValueKey('diff-file-0-body')), findsNothing);
+
+      rebuild(() => collapseFiles = false);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('diff-file-0-body')), findsOneWidget);
+    },
+  );
+
   testWidgets('too-large placeholders explain why hunks are omitted', (
     tester,
   ) async {

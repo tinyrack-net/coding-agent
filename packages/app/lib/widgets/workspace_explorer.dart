@@ -39,6 +39,9 @@ class WorkspaceExplorer extends ConsumerStatefulWidget {
     required this.isGit,
     required this.onClose,
     this.workspaceId,
+    this.changesTabOpen = false,
+    this.onToggleChangesTab,
+    this.onChangesFilePress,
     this.onOpenFile,
   });
 
@@ -47,6 +50,9 @@ class WorkspaceExplorer extends ConsumerStatefulWidget {
   final String cwd;
   final bool isGit;
   final VoidCallback onClose;
+  final bool changesTabOpen;
+  final VoidCallback? onToggleChangesTab;
+  final ValueChanged<String>? onChangesFilePress;
   final void Function(WorkspaceFileOpenRequest request)? onOpenFile;
 
   @override
@@ -169,6 +175,9 @@ class _WorkspaceExplorerState extends ConsumerState<WorkspaceExplorer> {
               workspaceId: widget.workspaceId,
               cwd: widget.cwd,
               compact: true,
+              changesTabOpen: widget.changesTabOpen,
+              onToggleChangesTab: widget.onToggleChangesTab,
+              onChangesFilePress: widget.onChangesFilePress,
             ),
             WorkspaceExplorerTab.files => _FilesPane(
               cwd: widget.cwd,

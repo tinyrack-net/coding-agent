@@ -182,7 +182,7 @@ class WorktreeTabbedPane extends ConsumerWidget {
       case WorktreeTabKind.draft:
         return 'New agent';
       case WorktreeTabKind.diff:
-        return 'Diff';
+        return 'Changes';
       case WorktreeTabKind.terminal:
         return 'Terminal $terminalOrdinal';
       case WorktreeTabKind.agent:
@@ -308,6 +308,9 @@ class WorktreeTabbedPane extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tabsState = ref.watch(worktreeTabsProvider(worktreePath));
     final tabs = tabsState.layout.tabs;
+    final changesTab = tabs
+        .where((tab) => tab.kind == WorktreeTabKind.diff)
+        .firstOrNull;
     final paneLayout = tabsState.layout.paneLayout;
     if (paneLayout == null) return const SizedBox.shrink();
     final explorerVisible = ref.watch(
@@ -382,6 +385,28 @@ class WorktreeTabbedPane extends ConsumerWidget {
                 .openFile(request.location);
           }
 
+          void openChanges([String? path]) {
+            ref
+                .read(worktreeTabsProvider(worktreePath).notifier)
+                .showDiffTab(
+                  focusPath: path,
+                  focusRequestId: path == null
+                      ? null
+                      : DateTime.now().millisecondsSinceEpoch,
+                );
+          }
+
+          void toggleChanges() {
+            final tab = changesTab;
+            if (tab == null) {
+              openChanges();
+              return;
+            }
+            ref
+                .read(worktreeTabsProvider(worktreePath).notifier)
+                .closeTab(tab.tabId);
+          }
+
           final focusedPane = findWorkspacePane(
             paneLayout.root,
             paneLayout.focusedPaneId,
@@ -416,6 +441,9 @@ class WorktreeTabbedPane extends ConsumerWidget {
                   workspaceId: workspaceId,
                   cwd: worktreePath,
                   isGit: explorerIsGit,
+                  changesTabOpen: changesTab != null,
+                  onToggleChangesTab: toggleChanges,
+                  onChangesFilePress: changesTab == null ? null : openChanges,
                   onOpenFile: openWorkspaceFile,
                   onClose: () => ref
                       .read(

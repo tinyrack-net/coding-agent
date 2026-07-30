@@ -30,6 +30,9 @@ class DiffPane extends ConsumerStatefulWidget {
     this.compact = false,
     this.focusPath,
     this.focusRequestId,
+    this.changesTabOpen = false,
+    this.onToggleChangesTab,
+    this.onChangesFilePress,
     this.onOpenWorkspaceFile,
   });
 
@@ -39,6 +42,9 @@ class DiffPane extends ConsumerStatefulWidget {
   final bool compact;
   final String? focusPath;
   final int? focusRequestId;
+  final bool changesTabOpen;
+  final VoidCallback? onToggleChangesTab;
+  final ValueChanged<String>? onChangesFilePress;
   final ValueChanged<WorkspaceFileOpenRequest>? onOpenWorkspaceFile;
 
   @override
@@ -77,6 +83,9 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
         compact: widget.compact,
         focusPath: widget.focusPath,
         focusRequestId: widget.focusRequestId,
+        changesTabOpen: widget.changesTabOpen,
+        onToggleChangesTab: widget.onToggleChangesTab,
+        onChangesFilePress: widget.onChangesFilePress,
         diffViewController: _diffViewController,
         onOpenWorkspaceFile: widget.onOpenWorkspaceFile,
       );
@@ -167,6 +176,11 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
+                if (widget.onToggleChangesTab != null)
+                  _ChangesTabToggle(
+                    selected: widget.changesTabOpen,
+                    onPressed: widget.onToggleChangesTab!,
+                  ),
                 if (files.isNotEmpty) ...[
                   _DiffViewModeToggle(
                     viewMode: changesPreferences.viewMode,
@@ -183,16 +197,17 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
                           .updatePreferences(viewMode: next);
                     },
                   ),
-                  _DiffExpandAllToggle(
-                    allExpanded: _diffViewController.allExpanded(
-                      files,
-                      changesPreferences.viewMode,
+                  if (!widget.changesTabOpen)
+                    _DiffExpandAllToggle(
+                      allExpanded: _diffViewController.allExpanded(
+                        files,
+                        changesPreferences.viewMode,
+                      ),
+                      onToggle: () => _diffViewController.toggleExpandAll(
+                        files,
+                        changesPreferences.viewMode,
+                      ),
                     ),
-                    onToggle: () => _diffViewController.toggleExpandAll(
-                      files,
-                      changesPreferences.viewMode,
-                    ),
-                  ),
                 ],
                 _DiffOptionsMenu(
                   compact: true,
@@ -228,6 +243,10 @@ class _DiffPaneState extends ConsumerState<DiffPane> {
               controller: _diffViewController,
               focusPath: widget.focusPath,
               focusRequestId: widget.focusRequestId,
+              collapseFiles: widget.changesTabOpen,
+              onFilePress: widget.changesTabOpen
+                  ? widget.onChangesFilePress
+                  : null,
               onOpenFile: widget.onOpenWorkspaceFile == null ? null : _openFile,
               onCopyPath: _copyPath,
               onDownload: _download,
@@ -280,6 +299,9 @@ class _LiveDiffPane extends ConsumerWidget {
     required this.compact,
     required this.focusPath,
     required this.focusRequestId,
+    required this.changesTabOpen,
+    required this.onToggleChangesTab,
+    required this.onChangesFilePress,
     required this.diffViewController,
     required this.onOpenWorkspaceFile,
   });
@@ -290,6 +312,9 @@ class _LiveDiffPane extends ConsumerWidget {
   final bool compact;
   final String? focusPath;
   final int? focusRequestId;
+  final bool changesTabOpen;
+  final VoidCallback? onToggleChangesTab;
+  final ValueChanged<String>? onChangesFilePress;
   final DiffViewController diffViewController;
   final ValueChanged<WorkspaceFileOpenRequest>? onOpenWorkspaceFile;
 
@@ -376,6 +401,11 @@ class _LiveDiffPane extends ConsumerWidget {
             )
           else
             const Spacer(),
+          if (compact && onToggleChangesTab != null)
+            _ChangesTabToggle(
+              selected: changesTabOpen,
+              onPressed: onToggleChangesTab!,
+            ),
           SizedBox(
             width: 150,
             child: ComboBox<CheckoutDiffMode>(
@@ -507,6 +537,8 @@ class _LiveDiffPane extends ConsumerWidget {
                 controller: diffViewController,
                 focusPath: focusPath,
                 focusRequestId: focusRequestId,
+                collapseFiles: changesTabOpen,
+                onFilePress: changesTabOpen ? onChangesFilePress : null,
                 onOpenFile: onOpenWorkspaceFile == null
                     ? null
                     : (path) => onOpenWorkspaceFile!(
@@ -558,6 +590,31 @@ WorkspaceContextAttachment _workspaceFileAttachment(String path) {
     url: null,
     semanticAttachment: TextAgentAttachment(title: title, text: normalized),
   );
+}
+
+class _ChangesTabToggle extends StatelessWidget {
+  const _ChangesTabToggle({required this.selected, required this.onPressed});
+
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = selected ? 'Close Changes tab' : 'Open Changes tab';
+    return Tooltip(
+      message: label,
+      child: IconButton(
+        key: const ValueKey('changes-open-tab'),
+        icon: const Icon(FluentIcons.full_screen, size: 14),
+        onPressed: onPressed,
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (_) => selected ? context.paseoPalette.surface3 : null,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _DiffLayoutToggle extends StatelessWidget {

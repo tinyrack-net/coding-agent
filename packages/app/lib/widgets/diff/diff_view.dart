@@ -111,6 +111,8 @@ class DiffView extends ConsumerStatefulWidget {
     this.controller,
     this.focusPath,
     this.focusRequestId,
+    this.collapseFiles = false,
+    this.onFilePress,
     this.onOpenFile,
     this.onCopyPath,
     this.onDownload,
@@ -127,6 +129,8 @@ class DiffView extends ConsumerStatefulWidget {
   final DiffViewController? controller;
   final String? focusPath;
   final int? focusRequestId;
+  final bool collapseFiles;
+  final ValueChanged<String>? onFilePress;
   final ValueChanged<String>? onOpenFile;
   final ValueChanged<String>? onCopyPath;
   final ValueChanged<String>? onDownload;
@@ -361,7 +365,9 @@ class _DiffViewState extends ConsumerState<DiffView> {
             files: files,
             treeView: widget.viewMode == ChangesViewMode.tree,
             collapsedFolders: _controller.collapsedFolders,
-            expandedPaths: _controller.expandedPaths,
+            expandedPaths: widget.collapseFiles
+                ? const <String>{}
+                : _controller.expandedPaths,
           );
           _scheduleFocusRequest(result.items);
           final stickyIndices = result.stickyHeaderIndices.toSet();
@@ -391,7 +397,9 @@ class _DiffViewState extends ConsumerState<DiffView> {
                             item: header,
                             showDirectory:
                                 widget.viewMode == ChangesViewMode.flat,
-                            onToggle: () => _toggleFile(header.file.path),
+                            onToggle: widget.onFilePress == null
+                                ? () => _toggleFile(header.file.path)
+                                : () => widget.onFilePress!(header.file.path),
                             onOpenFile: widget.onOpenFile,
                             onCopyPath: widget.onCopyPath,
                             onDownload: widget.onDownload,
@@ -406,7 +414,9 @@ class _DiffViewState extends ConsumerState<DiffView> {
                       child: _DiffFileHeader(
                         item: header,
                         showDirectory: widget.viewMode == ChangesViewMode.flat,
-                        onToggle: () => _toggleFile(header.file.path),
+                        onToggle: widget.onFilePress == null
+                            ? () => _toggleFile(header.file.path)
+                            : () => widget.onFilePress!(header.file.path),
                         onOpenFile: widget.onOpenFile,
                         onCopyPath: widget.onCopyPath,
                         onDownload: widget.onDownload,

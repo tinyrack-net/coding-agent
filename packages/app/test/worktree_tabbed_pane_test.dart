@@ -82,7 +82,8 @@ const _fourthAgent = AgentSummary(
 );
 
 class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
-  FakeDaemonClient() : super(uri: Uri.parse('ws://fake')) {
+  FakeDaemonClient({this.checkoutDiffFiles = const []})
+    : super(uri: Uri.parse('ws://fake')) {
     serverInfo = const ServerInfoStatus(
       serverId: 'fake',
       hostname: 'fake',
@@ -93,6 +94,7 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
   }
 
   final requests = <(String, Map<String, Object?>)>[];
+  final List<CheckoutDiffFile> checkoutDiffFiles;
 
   /// Mirrors `agentsProvider`'s state so the connect-triggered
   /// `agent.list.request` doesn't race a test's manually-upserted agents out
@@ -194,7 +196,7 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
         payload: CheckoutDiffPayload(
           subscriptionId: message['subscriptionId']! as String,
           cwd: message['cwd']! as String,
-          files: const [],
+          files: checkoutDiffFiles,
           error: null,
         ),
         requestId: message['requestId']! as String,
@@ -1436,6 +1438,110 @@ void main() {
     expect(find.text('Files'), findsOneWidget);
     expect(find.text('View diff'), findsNothing);
   });
+
+  testWidgets(
+    'the Explorer toggles the singleton Changes tab and routes file presses',
+    (tester) async {
+      final client = FakeDaemonClient(
+        checkoutDiffFiles: const [
+          CheckoutDiffFile(
+            path: 'lib/example.dart',
+            isNew: false,
+            isDeleted: false,
+            additions: 1,
+            deletions: 0,
+            hunks: [
+              CheckoutDiffHunk(
+                oldStart: 1,
+                oldCount: 0,
+                newStart: 1,
+                newCount: 1,
+                lines: [
+                  CheckoutDiffLine(
+                    type: CheckoutDiffLineType.add,
+                    content: 'new line',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+      final container = await pumpPane(
+        tester,
+        client: client,
+        agents: [_idleAgent],
+        projectPath: '/repo',
+      );
+      await tester.pumpAndSettle();
+
+      final explorer = find.byType(WorkspaceExplorer);
+      final toggle = find.descendant(
+        of: explorer,
+        matching: find.byKey(const ValueKey('changes-open-tab')),
+      );
+      final header = find.descendant(
+        of: explorer,
+        matching: find.byKey(const ValueKey('diff-file-0')),
+      );
+      Finder explorerBody() => find.descendant(
+        of: explorer,
+        matching: find.byKey(const ValueKey('diff-file-0-body')),
+      );
+
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is Tooltip && widget.message == 'Open Changes tab',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(header);
+      await tester.pumpAndSettle();
+      expect(explorerBody(), findsOneWidget);
+
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+
+      var layout = container.read(worktreeTabsProvider(_worktreePath)).layout;
+      final changes = layout.tabs.singleWhere(
+        (tab) => tab.kind == WorktreeTabKind.diff,
+      );
+      expect(layout.activeTabId, changes.tabId);
+      expect(
+        find.byKey(const ValueKey('workspace-tab-close-label-Changes')),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Tooltip && widget.message == 'Close Changes tab',
+        ),
+        findsOneWidget,
+      );
+      expect(explorerBody(), findsNothing);
+
+      await tester.tap(header);
+      await tester.pumpAndSettle();
+
+      layout = container.read(worktreeTabsProvider(_worktreePath)).layout;
+      final focused = layout.tabs.singleWhere(
+        (tab) => tab.kind == WorktreeTabKind.diff,
+      );
+      expect(layout.activeTabId, focused.tabId);
+      expect(focused.diffFocusPath, 'lib/example.dart');
+      expect(focused.diffFocusRequestId, isPositive);
+
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+
+      layout = container.read(worktreeTabsProvider(_worktreePath)).layout;
+      expect(
+        layout.tabs.where((tab) => tab.kind == WorktreeTabKind.diff),
+        isEmpty,
+      );
+      expect(explorerBody(), findsOneWidget);
+    },
+  );
 
   testWidgets('non-git workspace explorer exposes only Files', (tester) async {
     await pumpPane(tester, agents: [_idleAgent], projectPath: null);
