@@ -10,6 +10,7 @@ import '../core/host_routes.dart';
 import '../core/theme.dart';
 import '../core/worktree_actions.dart';
 import '../layout/desktop_sidebar_layout.dart';
+import '../mobile_panels/compact_explorer_sidebar_host_model.dart';
 import '../mobile_panels/mobile_panel_model.dart';
 import '../sidebar/sidebar_project_row_model.dart';
 import '../sidebar/sidebar_gesture_interaction.dart';
@@ -22,6 +23,7 @@ import '../state/daemon_providers.dart';
 import '../state/host_registry_provider.dart';
 import '../state/app_sidebar_visibility_provider.dart';
 import '../state/workspace_focus_mode_provider.dart';
+import '../state/workspace_catalog_provider.dart';
 import '../state/workspace_agent_activity_provider.dart';
 import '../state/sidebar_grouping_provider.dart';
 import '../state/sidebar_order_provider.dart';
@@ -103,6 +105,8 @@ class _CompactHomeLayoutState extends ConsumerState<_CompactHomeLayout>
   var _startedRevision = -1;
   var _leftPresented = false;
   var _rightPresented = false;
+  CompactExplorerSidebarHostModel? _retainedExplorerModel;
+  CompactExplorerSidebarHostModel? _activeExplorerModel;
 
   @override
   void initState() {
@@ -188,7 +192,8 @@ class _CompactHomeLayoutState extends ConsumerState<_CompactHomeLayout>
     setState(() {
       if (selection.target == MobilePanelView.agent) {
         _leftPresented = true;
-        _rightPresented = ref.read(selectedWorktreeProvider) != null;
+        _rightPresented =
+            _activeExplorerModel?.workspaceRoot.isNotEmpty == true;
       }
     });
   }
@@ -200,7 +205,7 @@ class _CompactHomeLayoutState extends ConsumerState<_CompactHomeLayout>
     _horizontalDrag += details.primaryDelta ?? 0;
     if (_motionState.target == MobilePanelView.agent &&
         _horizontalDrag < 0 &&
-        ref.read(selectedWorktreeProvider) == null) {
+        _activeExplorerModel?.workspaceRoot.isNotEmpty != true) {
       _position.value = 0;
       return;
     }
@@ -220,7 +225,7 @@ class _CompactHomeLayoutState extends ConsumerState<_CompactHomeLayout>
     final width = context.size?.width ?? MediaQuery.sizeOf(context).width;
     final velocity = details.primaryVelocity ?? 0;
     final origin = _motionState.target;
-    final hasExplorer = ref.read(selectedWorktreeProvider) != null;
+    final hasExplorer = _activeExplorerModel?.workspaceRoot.isNotEmpty == true;
     final target = switch (origin) {
       MobilePanelView.agent
           when _horizontalDrag > width / 3 || velocity > 500 =>
@@ -291,14 +296,88 @@ class _CompactHomeLayoutState extends ConsumerState<_CompactHomeLayout>
     final selection = ref.watch(mobilePanelProvider);
     final selectedWorktree = ref.watch(selectedWorktreeProvider);
     final notifier = ref.read(mobilePanelProvider.notifier);
-    if (selection.target == MobilePanelView.fileExplorer &&
-        selectedWorktree == null) {
+    final activeHost = ref.watch(activeHostProvider);
+    final client = ref.watch(daemonClientProvider);
+    final activeServerId = activeHost?.serverId.trim();
+    final connectedServerId = client.serverInfo?.serverId.trim();
+    final serverId = activeServerId?.isNotEmpty == true
+        ? activeServerId!
+        : connectedServerId?.isNotEmpty == true
+        ? connectedServerId!
+        : '';
+    final catalogByServer = ref.watch(workspaceCatalogCacheProvider);
+    final catalog = catalogByServer[serverId] ?? const <WorkspaceDescriptor>[];
+    final agentContext = selectedWorktree == null
+        ? null
+        : ref.watch(worktreeAgentContextProvider(selectedWorktree));
+    final contextWorkspaceId = agentContext?.workspaceId?.trim();
+    WorkspaceDescriptor? workspace;
+    if (selectedWorktree != null) {
+      for (final candidate in catalog) {
+        if (candidate.workspaceDirectory == selectedWorktree) {
+          workspace = candidate;
+          break;
+        }
+      }
+      if (workspace == null &&
+          contextWorkspaceId != null &&
+          contextWorkspaceId.isNotEmpty) {
+        for (final candidate in catalog) {
+          if (candidate.id == contextWorkspaceId) {
+            workspace = candidate;
+            break;
+          }
+        }
+      }
+    }
+    final explorerOpen = selection.target == MobilePanelView.fileExplorer;
+    final retainedSelection =
+        explorerOpen &&
+            selectedWorktree != null &&
+            _retainedExplorerModel?.serverId == serverId &&
+            _retainedExplorerModel?.workspaceRoot == selectedWorktree
+        ? _retainedExplorerModel
+        : null;
+    final workspaceId =
+        workspace?.id ??
+        (contextWorkspaceId?.isNotEmpty == true ? contextWorkspaceId : null) ??
+        retainedSelection?.workspaceId ??
+        '';
+    final explorerSelection = serverId.isEmpty || workspaceId.isEmpty
+        ? null
+        : CompactExplorerSelection(
+            serverId: serverId,
+            workspaceId: workspaceId,
+          );
+    final resolvedExplorerModel = resolveCompactExplorerSidebarHostModel(
+      previous: explorerOpen ? _retainedExplorerModel : null,
+      selection: explorerSelection,
+      workspace: workspace == null
+          ? null
+          : CompactExplorerWorkspaceSnapshot(
+              workspaceDirectory: workspace.workspaceDirectory,
+            ),
+      isGit: workspace != null
+          ? workspace.projectKind == WorkspaceProjectKind.git
+          : agentContext?.projectPath != null,
+    );
+    if (explorerSelection == null) {
+      _retainedExplorerModel = null;
+    } else if (!explorerOpen) {
+      _retainedExplorerModel = null;
+    } else if (resolvedExplorerModel != null) {
+      _retainedExplorerModel = resolvedExplorerModel;
+    }
+    _activeExplorerModel =
+        resolvedExplorerModel ?? (explorerOpen ? _retainedExplorerModel : null);
+
+    if (explorerOpen && explorerSelection == null) {
       scheduleMicrotask(notifier.showAgent);
     }
 
     void openWorkspaceFile(WorkspaceFileOpenRequest request) {
-      final path = selectedWorktree;
-      if (path == null) return;
+      final path = _activeExplorerModel?.workspaceRoot;
+      if (path == null || path.isEmpty) return;
       final tabs = ref.read(worktreeTabsProvider(path).notifier);
       if (request.disposition == OpenFileDisposition.side) {
         tabs.openFileInSidePane(request.location);
@@ -389,7 +468,7 @@ class _CompactHomeLayoutState extends ConsumerState<_CompactHomeLayout>
                   ),
                 ),
               ),
-            if (_rightPresented && selectedWorktree != null)
+            if (_rightPresented && _activeExplorerModel != null)
               Positioned.fill(
                 key: const ValueKey('mobile-file-explorer'),
                 child: IgnorePointer(
@@ -407,7 +486,7 @@ class _CompactHomeLayoutState extends ConsumerState<_CompactHomeLayout>
                           color: context.paseoPalette.surfaceSidebar,
                         ),
                         child: WorkspaceExplorer(
-                          cwd: selectedWorktree,
+                          cwd: _activeExplorerModel!.workspaceRoot,
                           onClose: notifier.showAgent,
                           onOpenFile: openWorkspaceFile,
                         ),

@@ -23,8 +23,10 @@ import 'package:coding_agent_app/state/sidebar_callout_provider.dart';
 import 'package:coding_agent_app/state/sidebar_callout_state.dart';
 import 'package:coding_agent_app/state/sidebar_order_provider.dart';
 import 'package:coding_agent_app/state/sidebar_width_provider.dart';
+import 'package:coding_agent_app/state/workspace_catalog_provider.dart';
 import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
 import 'package:coding_agent_app/widgets/worktree_tabbed_pane.dart';
+import 'package:coding_agent_app/widgets/workspace_explorer.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -120,6 +122,28 @@ const _agent4 = AgentSummary(
 
 const _projectA = ProjectInfo(path: '/repo-a', name: 'repo-a', isGitRepo: true);
 const _projectB = ProjectInfo(path: '/repo-b', name: 'repo-b', isGitRepo: true);
+
+const _testHost = HostProfile(
+  serverId: 'server-1',
+  label: 'Test host',
+  connections: [],
+  preferredConnectionId: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+);
+
+const _workspaceSharedDescriptor = WorkspaceDescriptor(
+  id: 'workspace-shared',
+  projectId: 'project-shared',
+  projectDisplayName: 'Shared project',
+  projectRootPath: '/work/shared',
+  workspaceDirectory: '/work/shared',
+  projectKind: WorkspaceProjectKind.git,
+  workspaceKind: WorkspaceKind.localCheckout,
+  name: 'main',
+  status: WorkspaceStateBucket.done,
+  activityAt: null,
+);
 
 const _mainWorktreeA = WorktreeInfo(
   path: '/repo-a',
@@ -227,6 +251,7 @@ Future<ProviderContainer> pumpHomeShell(
   Map<String, List<WorktreeInfo>> worktreesByProject = const {},
   Completer<List<ProjectInfo>>? projectListGate,
   HostProfile? activeHost,
+  Map<String, List<WorkspaceDescriptor>> workspaceCatalogByServer = const {},
   Size? surfaceSize,
 }) async {
   if (surfaceSize != null) {
@@ -252,6 +277,11 @@ Future<ProviderContainer> pumpHomeShell(
     ],
   );
   addTearDown(container.dispose);
+  for (final entry in workspaceCatalogByServer.entries) {
+    container
+        .read(workspaceCatalogCacheProvider.notifier)
+        .replace(entry.key, entry.value);
+  }
 
   await tester.pumpWidget(
     UncontrolledProviderScope(
@@ -378,10 +408,14 @@ void main() {
   ) async {
     final container = await pumpHomeShell(
       tester,
-      agents: const [_agent1],
+      agents: const [_workspaceRoot],
+      activeHost: _testHost,
+      workspaceCatalogByServer: const {
+        'server-1': [_workspaceSharedDescriptor],
+      },
       surfaceSize: const Size(500, 700),
     );
-    container.read(selectedWorktreeProvider.notifier).select('/work/one');
+    container.read(selectedWorktreeProvider.notifier).select('/work/shared');
     await tester.pump();
 
     await tester.drag(
@@ -402,6 +436,24 @@ void main() {
       find.byKey(const ValueKey('file-explorer-backdrop')),
       findsOneWidget,
     );
+    expect(
+      tester.widget<WorkspaceExplorer>(find.byType(WorkspaceExplorer)).cwd,
+      '/work/shared',
+    );
+
+    container
+        .read(workspaceCatalogCacheProvider.notifier)
+        .clearServer('server-1');
+    await tester.pump();
+    expect(
+      container.read(mobilePanelProvider).target,
+      MobilePanelView.fileExplorer,
+    );
+    expect(find.byKey(const ValueKey('mobile-file-explorer')), findsOneWidget);
+    expect(
+      tester.widget<WorkspaceExplorer>(find.byType(WorkspaceExplorer)).cwd,
+      '/work/shared',
+    );
 
     await tester.drag(
       find.byKey(const ValueKey('mobile-file-explorer')),
@@ -416,10 +468,14 @@ void main() {
   ) async {
     final container = await pumpHomeShell(
       tester,
-      agents: const [_agent1],
+      agents: const [_workspaceRoot],
+      activeHost: _testHost,
+      workspaceCatalogByServer: const {
+        'server-1': [_workspaceSharedDescriptor],
+      },
       surfaceSize: const Size(500, 700),
     );
-    container.read(selectedWorktreeProvider.notifier).select('/work/one');
+    container.read(selectedWorktreeProvider.notifier).select('/work/shared');
     await tester.pump();
 
     final gesture = await tester.startGesture(
@@ -440,6 +496,31 @@ void main() {
       ),
     );
     expect(find.byKey(const ValueKey('mobile-file-explorer')), findsOneWidget);
+  });
+
+  testWidgets('compact explorer closes when active workspace ownership ends', (
+    tester,
+  ) async {
+    final container = await pumpHomeShell(
+      tester,
+      agents: const [_workspaceRoot],
+      activeHost: _testHost,
+      workspaceCatalogByServer: const {
+        'server-1': [_workspaceSharedDescriptor],
+      },
+      surfaceSize: const Size(500, 700),
+    );
+    container.read(selectedWorktreeProvider.notifier).select('/work/shared');
+    await tester.pump();
+    container.read(mobilePanelProvider.notifier).showFileExplorer();
+    await settleMobilePanel(tester);
+    expect(find.byKey(const ValueKey('mobile-file-explorer')), findsOneWidget);
+
+    container.read(selectedWorktreeProvider.notifier).select(null);
+    await settleMobilePanel(tester);
+
+    expect(container.read(mobilePanelProvider).target, MobilePanelView.agent);
+    expect(find.byKey(const ValueKey('mobile-file-explorer')), findsNothing);
   });
 
   testWidgets('width above compact breakpoint keeps the desktop sidebar', (

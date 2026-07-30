@@ -2627,12 +2627,13 @@
     },
     {
       "id": "source-unit:packages/app/src/components/compact-explorer-sidebar-host-state.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/screens/home_shell.dart; packages/app/lib/state/agents_provider.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/mobile_panels/compact_explorer_sidebar_host_model.dart; packages/app/lib/screens/home_shell.dart",
       "evidence": [
+        "packages/app/test/compact_explorer_sidebar_host_model_test.dart",
         "packages/app/test/home_shell_test.dart"
       ],
-      "notes": "The compact shell resolves the selected workspace path, enables the right-side explorer only with an active workspace, and closes an orphaned explorer selection. Frozen server/workspace identity normalization, transient model retention, persistence-key derivation, and checkout-status isGit retention remain."
+      "notes": "The Dart resolver ports the frozen contract exactly: trims and validates server/workspace identities, derives the canonical persistence key, uses current workspace directory and git state, retains root/git metadata only for the same owner during transient reloads, prevents cross-workspace leakage, and drops ownership without an active selection. The shell adapter preserves the opaque selection while an open catalog reloads."
     },
     {
       "id": "source-unit:packages/app/src/components/compact-explorer-sidebar-host.tsx",
@@ -2641,7 +2642,7 @@
       "evidence": [
         "packages/app/test/home_shell_test.dart"
       ],
-      "notes": "The active compact workspace exposes the frozen right-side overlay target through a left swipe and layout-aware explorer shortcut, renders the full-width shared explorer, returns to the agent on close, and opens selected files into the workspace layout before closing. Host-scoped retained model recovery and exact checkout capability gating remain."
+      "notes": "The active compact workspace resolves canonical host/workspace identity from the catalog with agent identity fallback, retains that owner across transient catalog loss, exposes the frozen right-side overlay through a left swipe and layout-aware explorer shortcut, renders the shared explorer, returns to the agent on close, and opens selected files into the canonical workspace layout before closing. Exact checkout-status refresh ownership and non-git explorer tab gating remain."
     },
     {
       "id": "source-unit:packages/app/src/components/context-window-meter.tsx",
