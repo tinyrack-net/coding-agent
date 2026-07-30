@@ -11,10 +11,19 @@ final class AddProjectFlowRequest {
 }
 
 final class AddProjectFlowResult {
-  const AddProjectFlowResult({required this.serverId, required this.project});
+  const AddProjectFlowResult({
+    required this.serverId,
+    required this.descriptor,
+  });
 
   final String serverId;
-  final ProjectInfo project;
+  final WorkspaceProjectDescriptor descriptor;
+
+  ProjectInfo get project => ProjectInfo(
+    path: descriptor.projectRootPath,
+    name: descriptor.projectDisplayName,
+    isGitRepo: descriptor.projectKind == WorkspaceProjectKind.git,
+  );
 }
 
 final class AddProjectFlowHostState {

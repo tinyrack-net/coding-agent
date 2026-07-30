@@ -18,6 +18,8 @@ class FakeDaemonClient extends DaemonClient {
       StreamController<DaemonConnectionState>.broadcast();
   DaemonConnectionState _state;
   final requests = <(String, Map<String, Object?>)>[];
+  final addedProjectPaths = <String>[];
+  ProjectAddResponse? addProjectResponse;
   Map<String, Object?> Function(String type, Map<String, Object?> payload)?
   onRequest;
 
@@ -46,6 +48,20 @@ class FakeDaemonClient extends DaemonClient {
   }) async {
     requests.add((type, payload));
     return onRequest?.call(type, payload) ?? const {};
+  }
+
+  @override
+  Future<ProjectAddResponse> addProject({
+    required String cwd,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    addedProjectPaths.add(cwd);
+    return addProjectResponse ??
+        const ProjectAddResponse(
+          requestId: 'add',
+          project: null,
+          error: 'not configured',
+        );
   }
 }
 
@@ -111,22 +127,23 @@ void main() {
       expect(projects.single.path, '/repo');
     });
 
-    test('add() requests project.add and appends the result', () async {
-      const another = ProjectInfo(
-        path: '/other',
-        name: 'other',
-        isGitRepo: false,
-      );
+    test('add() uses the native v2 request and appends the result', () async {
       final client = FakeDaemonClient();
+      client.addProjectResponse = const ProjectAddResponse(
+        requestId: 'add',
+        project: WorkspaceProjectDescriptor(
+          projectId: 'project-other',
+          projectDisplayName: 'other',
+          projectRootPath: '/other',
+          projectKind: WorkspaceProjectKind.nonGit,
+        ),
+        error: null,
+      );
       client.onRequest = (type, payload) {
-        if (type == MessageTypes.projectListRequest) {
-          return {
-            'projects': [_proj.toJson()],
-          };
-        }
-        expect(type, MessageTypes.projectAddRequest);
-        expect(payload['path'], '/other');
-        return {'project': another.toJson()};
+        expect(type, MessageTypes.projectListRequest);
+        return {
+          'projects': [_proj.toJson()],
+        };
       };
       final container = makeContainer(client);
       keepAlive(container, container.listen(projectsProvider, (_, _) {}));
@@ -137,6 +154,13 @@ void main() {
           .read(projectsProvider.notifier)
           .add('/other');
 
+      expect(client.addedProjectPaths, ['/other']);
+      expect(
+        client.requests.where(
+          (request) => request.$1 == MessageTypes.projectAddRequest,
+        ),
+        isEmpty,
+      );
       expect(added.path, '/other');
       final projects = container.read(projectsProvider).value!;
       expect(projects.map((p) => p.path), containsAll(['/repo', '/other']));
@@ -170,20 +194,69 @@ void main() {
       );
     });
 
+    test(
+      'optimistic project survives stale fetch, then expires after confirmation',
+      () async {
+        const optimistic = ProjectInfo(
+          path: '/scratch',
+          name: 'scratch',
+          isGitRepo: false,
+        );
+        final snapshots = <List<ProjectInfo>>[
+          const [],
+          const [],
+          const [optimistic],
+          const [],
+        ];
+        final client = FakeDaemonClient()
+          ..onRequest = (type, payload) => {
+            'projects': snapshots
+                .removeAt(0)
+                .map((project) => project.toJson())
+                .toList(),
+          };
+        final container = makeContainer(client);
+        keepAlive(container, container.listen(projectsProvider, (_, _) {}));
+        await pump();
+        await container.read(projectsProvider.future);
+
+        container.read(projectsProvider.notifier).upsert(optimistic);
+        await container.read(projectsProvider.notifier).refresh();
+        expect(
+          (await container.read(
+            projectsProvider.future,
+          )).map((project) => project.path),
+          contains('/scratch'),
+        );
+
+        await container.read(projectsProvider.notifier).refresh();
+        expect(
+          (await container.read(
+            projectsProvider.future,
+          )).map((project) => project.path),
+          contains('/scratch'),
+        );
+
+        await container.read(projectsProvider.notifier).refresh();
+        expect(await container.read(projectsProvider.future), isEmpty);
+      },
+    );
+
     test('add() replaces an existing project with the same path', () async {
       final client = FakeDaemonClient();
+      client.addProjectResponse = const ProjectAddResponse(
+        requestId: 'add',
+        project: WorkspaceProjectDescriptor(
+          projectId: 'project-repo',
+          projectDisplayName: 'renamed',
+          projectRootPath: '/repo',
+          projectKind: WorkspaceProjectKind.git,
+        ),
+        error: null,
+      );
       client.onRequest = (type, payload) {
-        if (type == MessageTypes.projectListRequest) {
-          return {
-            'projects': [_proj.toJson()],
-          };
-        }
         return {
-          'project': const ProjectInfo(
-            path: '/repo',
-            name: 'renamed',
-            isGitRepo: true,
-          ).toJson(),
+          'projects': [_proj.toJson()],
         };
       };
       final container = makeContainer(client);

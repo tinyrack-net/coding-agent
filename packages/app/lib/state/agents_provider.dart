@@ -189,11 +189,19 @@ class AgentsNotifier extends Notifier<Map<String, AgentSummary>> {
   }
 
   void upsert(AgentSummary agent) {
+    // A directory snapshot may have started before this client-created
+    // agent existed. Keep the local mutation in the same ordered delta log
+    // as live directory events so that stale snapshot cannot erase the
+    // create result when it eventually resolves.
+    _refreshDeltas?.add(AgentUpsertDirectoryEvent(agent: agent));
     _publish({...state, agent.agentId: agent});
   }
 
   void remove(String agentId) {
     if (!state.containsKey(agentId)) return;
+    // Preserve local archive/removal actions across an older in-flight
+    // directory snapshot for the same reason as [upsert].
+    _refreshDeltas?.add(AgentRemoveDirectoryEvent(agentId));
     final next = {...state}..remove(agentId);
     _publish(next);
   }

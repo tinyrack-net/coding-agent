@@ -4,11 +4,14 @@ import 'package:coding_agent_app/add_project_flow/project_picker_options.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/state/add_project_flow_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
+import 'package:coding_agent_app/state/host_registry_provider.dart';
+import 'package:coding_agent_app/state/workspace_providers.dart';
 import 'package:coding_agent_app/widgets/add_project_flow_host.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 const _host = AddProjectHost(
   serverId: 'server-a',
@@ -62,6 +65,27 @@ final class _FlowClient extends DaemonClient {
       ),
       error: null,
     );
+  }
+
+  @override
+  Future<Map<String, Object?>> requestSessionMessage(
+    Map<String, Object?> message, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    if (message['type'] == 'fetch_workspaces_request') {
+      final payload = Map<String, Object?>.from(message['payload']! as Map);
+      return FetchWorkspacesResponse(
+        requestId: payload['requestId']! as String,
+        entries: const [],
+        emptyProjects: const [],
+        pageInfo: const WorkspacePageInfo(
+          nextCursor: null,
+          prevCursor: null,
+          hasMore: false,
+        ),
+      ).toJson();
+    }
+    return super.requestSessionMessage(message, timeout: timeout);
   }
 
   @override
@@ -167,6 +191,29 @@ final class _FlowClient extends DaemonClient {
   }
 }
 
+final class _FlowHostRegistry extends HostRegistryNotifier {
+  @override
+  HostRegistryState build() => const HostRegistryState(
+    hosts: [
+      HostProfile(
+        serverId: 'server-a',
+        label: 'Local',
+        connections: [
+          DirectTcpHostConnection(
+            id: 'direct:127.0.0.1:6868',
+            endpoint: '127.0.0.1:6868',
+          ),
+        ],
+        preferredConnectionId: 'direct:127.0.0.1:6868',
+        createdAt: '2026-07-30T00:00:00.000Z',
+        updatedAt: '2026-07-30T00:00:00.000Z',
+      ),
+    ],
+    activeServerId: 'server-a',
+    loaded: true,
+  );
+}
+
 void main() {
   test('global store replaces requests and resolves close results', () async {
     final container = ProviderContainer();
@@ -185,7 +232,12 @@ void main() {
 
     const result = AddProjectFlowResult(
       serverId: 'server-a',
-      project: ProjectInfo(path: '/repo', name: 'repo', isGitRepo: true),
+      descriptor: WorkspaceProjectDescriptor(
+        projectId: 'project-1',
+        projectDisplayName: 'repo',
+        projectRootPath: '/repo',
+        projectKind: WorkspaceProjectKind.git,
+      ),
     );
     notifier.close(result);
     expect(await second, same(result));
@@ -298,6 +350,192 @@ void main() {
     expect(result?.serverId, 'server-a');
     expect(result?.project.path, r'C:\scratch');
   });
+
+  testWidgets(
+    'global Add project journey registers the project and opens its workspace draft',
+    (tester) async {
+      final client = _FlowClient();
+      addTearDown(client.dispose);
+      late final GoRouter router;
+      router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => Stack(
+              fit: StackFit.expand,
+              children: [
+                Center(
+                  child: Button(
+                    key: const ValueKey('open-add-project'),
+                    onPressed: () => ProviderScope.containerOf(context)
+                        .read(addProjectFlowProvider.notifier)
+                        .open(preferredHostId: 'server-a'),
+                    child: const Text('Add project'),
+                  ),
+                ),
+                const AddProjectFlowHost(),
+              ],
+            ),
+          ),
+          GoRoute(
+            path: '/new',
+            builder: (context, state) =>
+                Text('New workspace for ${state.uri.queryParameters['dir']}'),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      late ProviderContainer container;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            daemonClientProvider.overrideWithValue(client),
+            hostRuntimeClientsProvider.overrideWithValue({'server-a': client}),
+            hostConnectionStateProvider.overrideWith(
+              (ref, serverId) => Stream.value(DaemonConnectionState.connected),
+            ),
+            hostRegistryProvider.overrideWith(_FlowHostRegistry.new),
+          ],
+          child: Builder(
+            builder: (context) {
+              container = ProviderScope.containerOf(context);
+              return FluentApp.router(routerConfig: router);
+            },
+          ),
+        ),
+      );
+      final projectsSubscription = container.listen(
+        projectsProvider,
+        (_, _) {},
+      );
+      addTearDown(projectsSubscription.close);
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('open-add-project')));
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey('add-project-flow-method-directory-search')),
+      );
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const ValueKey('add-project-flow-input')),
+        r'C:\scratch',
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey(r'add-project-flow-path-C:\scratch')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(client.addedPaths, [r'C:\scratch']);
+      expect(
+        router.routeInformationProvider.value.uri.toString(),
+        contains('projectId=project-add'),
+      );
+      expect(find.text(r'New workspace for C:\scratch'), findsOneWidget);
+      expect(
+        container.read(projectsProvider).value?.map((project) => project.path),
+        contains(r'C:\scratch'),
+      );
+    },
+  );
+
+  testWidgets(
+    'global Create directory journey registers and opens the new project',
+    (tester) async {
+      final client = _FlowClient();
+      addTearDown(client.dispose);
+      late final GoRouter router;
+      router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => Stack(
+              fit: StackFit.expand,
+              children: [
+                Center(
+                  child: Button(
+                    key: const ValueKey('open-add-project'),
+                    onPressed: () => ProviderScope.containerOf(context)
+                        .read(addProjectFlowProvider.notifier)
+                        .open(preferredHostId: 'server-a'),
+                    child: const Text('Add project'),
+                  ),
+                ),
+                const AddProjectFlowHost(),
+              ],
+            ),
+          ),
+          GoRoute(
+            path: '/new',
+            builder: (context, state) =>
+                Text('New workspace for ${state.uri.queryParameters['dir']}'),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      late ProviderContainer container;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            daemonClientProvider.overrideWithValue(client),
+            hostRuntimeClientsProvider.overrideWithValue({'server-a': client}),
+            hostConnectionStateProvider.overrideWith(
+              (ref, serverId) => Stream.value(DaemonConnectionState.connected),
+            ),
+            hostRegistryProvider.overrideWith(_FlowHostRegistry.new),
+          ],
+          child: Builder(
+            builder: (context) {
+              container = ProviderScope.containerOf(context);
+              return FluentApp.router(routerConfig: router);
+            },
+          ),
+        ),
+      );
+      final projectsSubscription = container.listen(
+        projectsProvider,
+        (_, _) {},
+      );
+      addTearDown(projectsSubscription.close);
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('open-add-project')));
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey('add-project-flow-method-new-directory')),
+      );
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const ValueKey('add-project-flow-input')),
+        r'C:\workspace',
+      );
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey(r'add-project-flow-path-C:\workspace')),
+      );
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const ValueKey('add-project-flow-input')),
+        'new-project',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(client.createDirectoryRequest?.name, 'new-project');
+      expect(
+        find.text(r'New workspace for C:\workspace\new-project'),
+        findsOneWidget,
+      );
+      expect(
+        container.read(projectsProvider).value?.map((project) => project.path),
+        contains(r'C:\workspace\new-project'),
+      );
+    },
+  );
 
   testWidgets('manual GitHub choice clones with the selected protocol', (
     tester,

@@ -107,6 +107,16 @@ final class WorkspaceV2Service {
     Connection connection,
     Map<String, Object?> message,
   ) async {
+    // The app still has a small v1 compatibility surface that wraps requests
+    // in RpcRequest (`payload` + root `requestId`) even after negotiating the
+    // Paseo v2 WebSocket transport. `project.add.request` exists in both
+    // protocols, so do not let the native handler consume the legacy envelope:
+    // it expects root-level `cwd` and would otherwise throw before the v1
+    // router gets a chance to dispatch it.
+    if (message['type'] == MessageTypes.projectAddRequest &&
+        message['payload'] is Map) {
+      return null;
+    }
     return switch (message['type']) {
       'fetch_workspaces_request' => _fetch(
         connection,

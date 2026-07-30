@@ -354,6 +354,7 @@ final class _MemoryPreferenceStorage implements CreateAgentPreferenceStorage {
 Future<ProviderContainer> pumpNewWorkspaceScreen(
   WidgetTester tester,
   FakeDaemonClient client, {
+  String? initialProjectPath,
   ComposerImageAttachmentService? imageAttachmentService,
   ComposerDraftStore? draftStore,
   CreateAgentPreferencesService? preferencesService,
@@ -371,6 +372,7 @@ Future<ProviderContainer> pumpNewWorkspaceScreen(
           fit: StackFit.expand,
           children: [
             NewWorkspaceScreen(
+              initialProjectPath: initialProjectPath,
               imageAttachmentService:
                   imageAttachmentService ??
                   ComposerImageAttachmentService(
@@ -430,6 +432,44 @@ void main() {
       find.widgetWithText(FilledButton, 'Create'),
     );
     expect(createButton.onPressed, isNull);
+  });
+
+  testWidgets('route project path selects the newly registered project', (
+    tester,
+  ) async {
+    final client = FakeDaemonClient()
+      ..onRequest = (type, payload) {
+        if (type == MessageTypes.providerListRequest) {
+          return {
+            'providers': [_codex.toJson()],
+          };
+        }
+        if (type == MessageTypes.projectListRequest) {
+          return {
+            'projects': [
+              const ProjectInfo(
+                path: '/existing',
+                name: 'Existing',
+                isGitRepo: false,
+              ).toJson(),
+              const ProjectInfo(
+                path: '/new-project',
+                name: 'New project',
+                isGitRepo: false,
+              ).toJson(),
+            ],
+          };
+        }
+        return const {};
+      };
+    await pumpNewWorkspaceScreen(
+      tester,
+      client,
+      initialProjectPath: '/new-project',
+    );
+
+    expect(find.text('New project'), findsOneWidget);
+    expect(find.text('Existing'), findsNothing);
   });
 
   testWidgets('global import opens without requiring a project', (

@@ -50,11 +50,13 @@ enum WorkspaceIsolation { local, worktree }
 class NewWorkspaceScreen extends ConsumerStatefulWidget {
   const NewWorkspaceScreen({
     super.key,
+    this.initialProjectPath,
     this.imageAttachmentService,
     this.draftStore,
     this.preferencesService,
   });
 
+  final String? initialProjectPath;
   final ComposerImageAttachmentService? imageAttachmentService;
   final ComposerDraftStore? draftStore;
   final CreateAgentPreferencesService? preferencesService;
@@ -716,9 +718,13 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
     // Keep the choice valid if the project list changed under us; default to
     // the first available project (Paseo: route project -> last active ->
     // first available).
+    final requestedProject =
+        _projectChoice ?? widget.initialProjectPath?.trim();
     final choice =
-        _projectChoice != null && projects.any((p) => p.path == _projectChoice)
-        ? _projectChoice
+        requestedProject != null &&
+            requestedProject.isNotEmpty &&
+            projects.any((p) => p.path == requestedProject)
+        ? requestedProject
         : (projects.isEmpty ? null : projects.first.path);
     _projectChoice = choice;
     final selectedProject = projects.where((p) => p.path == choice).firstOrNull;

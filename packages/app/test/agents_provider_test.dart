@@ -476,6 +476,85 @@ void main() {
     },
   );
 
+  test('an agent created while directory refresh is in flight survives the '
+      'older refresh snapshot', () async {
+    final client = BlockingAgentListClient()
+      .._state = DaemonConnectionState.connected
+      ..onRequest = (type, payload) => type == MessageTypes.agentCreateRequest
+          ? {'agent': _a1.toJson()}
+          : const {};
+    final container = makeContainer(client);
+    container.read(agentsProvider);
+    await client.requestStarted.future;
+
+    final created = await container
+        .read(agentActionsProvider)
+        .create(
+          cwd: _a1.cwd,
+          provider: _a1.provider,
+          model: _a1.model,
+          mode: _a1.mode,
+          initialPrompt: 'Start here',
+          clientMessageId: 'client-1',
+        );
+    expect(created.agentId, _a1.agentId);
+    expect(container.read(agentsProvider)['a1']?.agentId, _a1.agentId);
+
+    client.response.complete(
+      const FetchAgentsResponse(
+        requestId: 'stale-before-create',
+        subscriptionId: 'blocking-subscription',
+        entries: [],
+        pageInfo: AgentDirectoryPageInfo(
+          nextCursor: null,
+          prevCursor: null,
+          hasMore: false,
+        ),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(container.read(agentsProvider)['a1']?.agentId, _a1.agentId);
+  });
+
+  test('a local removal while directory refresh is in flight wins over the '
+      'older refresh snapshot', () async {
+    final client = BlockingAgentListClient()
+      .._state = DaemonConnectionState.connected;
+    final container = makeContainer(client);
+    final notifier = container.read(agentsProvider.notifier);
+    await client.requestStarted.future;
+
+    notifier.upsert(_a1);
+    notifier.remove(_a1.agentId);
+    client.response.complete(
+      const FetchAgentsResponse(
+        requestId: 'stale-before-remove',
+        subscriptionId: 'blocking-subscription',
+        entries: [
+          AgentDirectoryEntry(
+            agent: _a1,
+            project: {
+              'projectKey': '/work/one',
+              'projectName': 'one',
+              'checkout': <String, Object?>{},
+            },
+          ),
+        ],
+        pageInfo: AgentDirectoryPageInfo(
+          nextCursor: null,
+          prevCursor: null,
+          hasMore: false,
+        ),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(container.read(agentsProvider), isNot(contains(_a1.agentId)));
+  });
+
   group('OS notifications on run-state transitions', () {
     test('does not notify on the first sighting of an agent', () async {
       windowFocusedNotifier.value = false;

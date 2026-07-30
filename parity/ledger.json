@@ -1390,10 +1390,16 @@
     },
     {
       "id": "release-feature:017-projects-workspaces-and-chat-syncing-is-more-efficient",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/agents_provider.dart;packages/app/lib/state/project_summaries_provider.dart;packages/app/lib/state/workspace_providers.dart;packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "evidence": [
+        "packages/app/test/agents_provider_test.dart",
+        "packages/app/test/workspace_providers_test.dart",
+        "packages/app/test/worktree_tabbed_pane_test.dart",
+        "packages/daemon/test/daemon_v2_workspace_e2e_test.dart",
+        "packages/daemon/test/daemon_project_conversation_vertical_e2e_test.dart"
+      ],
+      "notes": "Project/workspace replicas and agent directory hydration now preserve local project and agent creation across stale in-flight snapshots; deterministic vertical tests cover project registration through the first streamed conversation. Remaining parity includes the frozen release's complete subscription filtering, archived/history synchronization, and all multi-host efficiency behavior."
     },
     {
       "id": "release-feature:018-cli-and-mcp-tools-manage-workspaces-agents-and-schedules-more-consistently",
@@ -1411,10 +1417,15 @@
     },
     {
       "id": "release-feature:020-make-project-creation-more-explicit",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/widgets/add_project_flow_host.dart;packages/app/lib/state/add_project_flow_provider.dart;packages/app/lib/state/project_summaries_provider.dart;packages/app/lib/state/workspace_providers.dart;packages/app/lib/core/app_router.dart;packages/app/lib/screens/new_workspace_screen.dart;packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "evidence": [
+        "packages/app/test/add_project_flow_host_test.dart",
+        "packages/app/test/new_workspace_screen_test.dart",
+        "packages/app/test/workspace_providers_test.dart",
+        "packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Local folder and new-directory registration use the native project.add contract, immediately register the stable descriptor, switch to the selected host, and open /new with the new project selected. Remaining parity is exact platform presentation, accessibility, and visual golden evidence."
     },
     {
       "id": "release-feature:021-idle-agents-release-processes-automatically-and-resume-when-needed",
@@ -6154,17 +6165,23 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-open-add-project.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/state/add_project_flow_provider.dart;packages/app/lib/widgets/add_project_flow_host.dart",
+      "evidence": [
+        "packages/app/test/add_project_flow_host_test.dart"
+      ],
+      "notes": "The global request store opens one host-aware add-project flow, replaces prior requests, and resolves callers with the selected stable project descriptor."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-open-project.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/add_project_flow_host.dart;packages/app/lib/state/project_summaries_provider.dart;packages/app/lib/state/workspace_providers.dart;packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/app/test/add_project_flow_host_test.dart",
+        "packages/app/test/workspace_providers_test.dart",
+        "packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+      ],
+      "notes": "Connected capable hosts register a trimmed directory through native project.add, adopt the returned stable descriptor into both project replicas, preserve it across stale hydration, and surface daemon failures without navigating."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-preferred-editor.ts",
@@ -7778,13 +7795,16 @@
       "evidence": [
         "packages/protocol/test/directory_updates_test.dart",
         "packages/app/test/agents_provider_test.dart",
+        "packages/app/test/project_summaries_provider_test.dart",
+        "packages/app/test/workspace_providers_test.dart",
+        "packages/app/test/worktree_tabbed_pane_test.dart",
         "packages/app/test/workspace_catalog_provider_test.dart",
         "packages/app/test/timeline_provider_test.dart",
         "packages/app/test/daemon_providers_test.dart",
         "packages/app/test/daemon_client_test.dart",
         "packages/app/test/daemon_client_v2_e2e_test.dart"
       ],
-      "notes": "Per-server agent/workspace/timeline replicas, native paginated fetch_agents hydration, native timeline/turn/permission streams, typed agent/workspace/project directory deltas, snapshot buffering, cleanup, stale-refresh protection, and live server_info capability replacement are implemented. Remaining session domains include empty projects, archived/history agents, full snapshot permission/capability ownership, focus/file-explorer state, exact filtered subscription epochs, and durable replica persistence."
+      "notes": "Per-server agent/workspace/empty-project/timeline replicas, native paginated hydration, native timeline/turn/permission streams, typed agent/workspace/project directory deltas, snapshot buffering, local-mutation reconciliation, cleanup, stale-refresh protection, and live server_info capability replacement are implemented. Remaining session domains include archived/history agents, full snapshot permission/capability ownership, focus/file-explorer state, exact filtered subscription epochs, and durable replica persistence."
     },
     {
       "id": "source-unit:packages/app/src/stores/sidebar-collapsed-sections-store/index.ts",
@@ -8409,17 +8429,23 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/agent-directory-reconciliation.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/agents_provider.dart",
+      "evidence": [
+        "packages/app/test/agents_provider_test.dart",
+        "packages/app/test/worktree_tabbed_pane_test.dart"
+      ],
+      "notes": "Ordered directory deltas and local create/remove mutations are replayed over stale snapshots so a newly created conversation cannot disappear. Remaining parity is the complete frozen reconciliation utility split and all filtered scope transitions."
     },
     {
       "id": "source-unit:packages/app/src/utils/agent-directory-sync.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/agents_provider.dart;packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/app/test/agents_provider_test.dart",
+        "packages/app/test/worktree_tabbed_pane_test.dart"
+      ],
+      "notes": "Initial fetch, live directory events, local mutation ordering, and draft-to-chat retention are covered. Remaining parity is exact subscription epoch replacement and every reconnect/filter transition."
     },
     {
       "id": "source-unit:packages/app/src/utils/agent-directory-update-policy.ts",

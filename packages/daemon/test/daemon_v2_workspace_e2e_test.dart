@@ -368,6 +368,34 @@ void main() {
         return outer['message'] as Map<String, Object?>;
       }
 
+      Future<RpcResponse> legacyRequest(
+        String type,
+        Map<String, Object?> payload,
+        String requestId,
+      ) async {
+        final responseFuture = frames.firstWhere(
+          (frame) =>
+              frame['type'] == 'session' &&
+              (frame['message'] as Map<String, Object?>)['requestId'] ==
+                  requestId,
+        );
+        channel.sink.add(
+          jsonEncode({
+            'type': 'session',
+            'message': RpcRequest(
+              type: type,
+              requestId: requestId,
+              payload: payload,
+            ).toJson(),
+          }),
+        );
+        return RpcFrame.fromJson(
+              ((await responseFuture)['message'] as Map)
+                  .cast<String, Object?>(),
+            )
+            as RpcResponse;
+      }
+
       final providers = GetProvidersSnapshotResponse.fromJson(
         await request(
           const GetProvidersSnapshotRequest(requestId: 'providers').toJson(),
@@ -492,6 +520,23 @@ void main() {
         isFalse,
       );
 
+      final initialWorkspaces = FetchWorkspacesResponse.fromJson(
+        await request(
+          const FetchWorkspacesRequest(
+            requestId: 'fetch-before-add',
+            hasSubscription: true,
+            subscriptionId: 'workspaces',
+          ).toJson(),
+          'fetch_workspaces_response',
+        ),
+      );
+      expect(initialWorkspaces.entries, isEmpty);
+      expect(initialWorkspaces.emptyProjects, isEmpty);
+      final projectUpdateFuture = frames.firstWhere(
+        (frame) =>
+            frame['type'] == 'session' &&
+            (frame['message'] as Map?)?['type'] == 'project.update',
+      );
       final added = ProjectAddResponse.fromJson(
         await request(
           ProjectAddRequest(cwd: project.path, requestId: 'add').toJson(),
@@ -499,6 +544,26 @@ void main() {
         ),
       );
       expect(added.project, isNotNull);
+      final projectUpdate = _sessionMessage(await projectUpdateFuture);
+      expect(
+        ((projectUpdate['payload'] as Map)['project'] as Map)['projectId'],
+        added.project!.projectId,
+      );
+
+      final afterAdd = FetchWorkspacesResponse.fromJson(
+        await request(
+          FetchWorkspacesRequest(
+            requestId: 'fetch-after-add',
+            hasSubscription: false,
+            projectId: added.project!.projectId,
+          ).toJson(),
+          'fetch_workspaces_response',
+        ),
+      );
+      expect(afterAdd.entries, isEmpty);
+      expect(afterAdd.emptyProjects, hasLength(1));
+      expect(afterAdd.emptyProjects.single.projectId, added.project!.projectId);
+      expect(afterAdd.emptyProjects.single.projectRootPath, project.path);
 
       final created = WorkspaceCreateResponse.fromJson(
         await request(
@@ -525,6 +590,30 @@ void main() {
         ),
       );
       expect(fetched.entries.single.id, created.workspace!.id);
+      expect(fetched.emptyProjects, isEmpty);
+
+      final legacyProject = Directory(
+        '${temp.path}${Platform.pathSeparator}legacy-project',
+      )..createSync();
+      final legacyAdded = await legacyRequest(MessageTypes.projectAddRequest, {
+        'path': legacyProject.path,
+      }, 'legacy-project-add');
+      expect(legacyAdded.error, isNull);
+      expect(
+        (legacyAdded.payload['project'] as Map)['path'],
+        legacyProject.path,
+      );
+      final legacyListed = await legacyRequest(
+        MessageTypes.projectListRequest,
+        const {},
+        'legacy-project-list',
+      );
+      expect(
+        (legacyListed.payload['projects'] as List).where(
+          (entry) => (entry as Map)['path'] == legacyProject.path,
+        ),
+        hasLength(1),
+      );
 
       final title = WorkspaceTitleSetResponse.fromJson(
         await request(

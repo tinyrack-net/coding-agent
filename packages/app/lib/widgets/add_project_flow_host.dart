@@ -19,23 +19,59 @@ import '../state/add_project_flow_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/host_registry_provider.dart';
 import '../state/project_summaries_provider.dart';
+import '../state/workspace_providers.dart';
 
 final _lastCloneParentByHost = <String, String>{};
 
 class AddProjectFlowHost extends ConsumerWidget {
-  const AddProjectFlowHost({super.key});
+  const AddProjectFlowHost({super.key, this.navigate});
+
+  final ValueChanged<String>? navigate;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final request = ref.watch(addProjectFlowProvider).request;
     if (request == null) return const SizedBox.shrink();
+    final container = ProviderScope.containerOf(context, listen: false);
+    final router = GoRouter.maybeOf(context);
+    final navigateTo = navigate ?? router?.go;
     return AddProjectFlowDialog(
       key: ValueKey(request.id),
       request: request,
       onClose: () => ref.read(addProjectFlowProvider.notifier).close(),
-      onAdded: (result) =>
-          ref.read(addProjectFlowProvider.notifier).close(result),
+      onAdded: (result) => unawaited(_finish(container, navigateTo, result)),
     );
+  }
+
+  Future<void> _finish(
+    ProviderContainer container,
+    ValueChanged<String>? navigateTo,
+    AddProjectFlowResult result,
+  ) async {
+    final flow = container.read(addProjectFlowProvider.notifier);
+    final projects = container.read(projectsProvider.notifier);
+    final registry = container.read(hostRegistryProvider);
+    final registryNotifier = container.read(hostRegistryProvider.notifier);
+
+    if (registry.activeServerId != result.serverId &&
+        registry.hosts.any((host) => host.serverId == result.serverId)) {
+      await registryNotifier.selectHost(result.serverId);
+    }
+    projects.upsert(result.project);
+    navigateTo?.call(
+      buildNewWorkspaceRoute(
+        NewWorkspaceRouteOptions(
+          serverId: result.serverId,
+          sourceDirectory: result.descriptor.projectRootPath,
+          displayName: result.descriptor.projectDisplayName,
+          projectId: result.descriptor.projectId,
+        ),
+      ),
+    );
+    flow.close(result);
+    container
+        .read(projectSummariesProvider.notifier)
+        .upsertProject(result.serverId, result.descriptor);
   }
 }
 
@@ -674,10 +710,7 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
       }
       if (!mounted) return;
       widget.onAdded(
-        AddProjectFlowResult(
-          serverId: serverId,
-          project: _projectInfo(descriptor),
-        ),
+        AddProjectFlowResult(serverId: serverId, descriptor: descriptor),
       );
     } on Object {
       if (mounted) {
@@ -718,10 +751,7 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
       }
       if (!mounted) return;
       widget.onAdded(
-        AddProjectFlowResult(
-          serverId: page.hostId,
-          project: _projectInfo(descriptor),
-        ),
+        AddProjectFlowResult(serverId: page.hostId, descriptor: descriptor),
       );
     } on Object {
       if (mounted) {
@@ -762,14 +792,7 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
       if (!mounted) return;
       _lastCloneParentByHost[page.hostId] = parentPath;
       widget.onAdded(
-        AddProjectFlowResult(
-          serverId: page.hostId,
-          project: ProjectInfo(
-            path: descriptor.projectRootPath,
-            name: descriptor.projectDisplayName,
-            isGitRepo: descriptor.projectKind == WorkspaceProjectKind.git,
-          ),
-        ),
+        AddProjectFlowResult(serverId: page.hostId, descriptor: descriptor),
       );
     } on Object catch (error) {
       if (mounted) {
@@ -1039,12 +1062,6 @@ class _AddProjectFlowDialogState extends ConsumerState<AddProjectFlowDialog> {
     );
   }
 }
-
-ProjectInfo _projectInfo(WorkspaceProjectDescriptor descriptor) => ProjectInfo(
-  path: descriptor.projectRootPath,
-  name: descriptor.projectDisplayName,
-  isGitRepo: descriptor.projectKind == WorkspaceProjectKind.git,
-);
 
 final class _FlowRowOption {
   const _FlowRowOption({

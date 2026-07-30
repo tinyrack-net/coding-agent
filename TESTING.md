@@ -29,14 +29,30 @@ Use `-Repeat 3` while repairing a flaky test or concurrency-sensitive
 behavior. A repeat is diagnostic evidence, not a substitute for a regression
 assertion.
 
-At a large feature boundary, run every test in the affected package without
-coverage:
+## 3. Core product gate — project to first conversation
+
+After changing project registration, workspace creation, agent creation, or
+conversation state, run the deterministic cross-package product gate:
+
+```powershell
+pwsh tool/test.ps1 -Scope core
+```
+
+This runs the real daemon WebSocket project/workspace and agent lifecycle
+journeys together with the Flutter add-project, draft, and chat journeys. It
+does not require an installed provider or API key. The protocol, daemon, and
+app packages run in parallel, while Flutter and daemon tests retain their
+stable worker caps. Relay and lifecycle packages stay in their own smoke and
+integration gates because they are not on this product journey.
+
+At any other large feature boundary, run every test in the affected package
+without coverage:
 
 ```powershell
 pwsh tool/test.ps1 -Scope integration -Package app
 ```
 
-## 3. Full gate — milestones, release candidates, and CI
+## 4. Full gate — milestones, release candidates, and CI
 
 ```powershell
 pwsh tool/test.ps1 -Scope full

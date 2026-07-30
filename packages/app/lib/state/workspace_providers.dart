@@ -8,35 +8,49 @@ import 'daemon_providers.dart';
 /// Registered projects, fetched on (re)connect. [add] registers a new path
 /// with the daemon and appends it to the list.
 class ProjectsNotifier extends AsyncNotifier<List<ProjectInfo>> {
+  final Map<String, ProjectInfo> _optimisticProjects = {};
+
   @override
   Future<List<ProjectInfo>> build() async {
     final client = ref.watch(daemonClientProvider);
     final connection = ref.watch(connectionStateProvider).value;
-    if (connection != DaemonConnectionState.connected) return const [];
+    if (connection != DaemonConnectionState.connected) {
+      return _optimisticProjects.values.toList(growable: false);
+    }
     final res = await client.request(MessageTypes.projectListRequest, const {});
-    return ((res['projects'] as List?) ?? const [])
+    final fetched = ((res['projects'] as List?) ?? const [])
         .cast<Map<String, Object?>>()
         .map(ProjectInfo.fromJson)
         .toList();
+    for (final project in fetched) {
+      _optimisticProjects.remove(project.path);
+    }
+    return [
+      ...fetched.where(
+        (project) => !_optimisticProjects.containsKey(project.path),
+      ),
+      ..._optimisticProjects.values,
+    ];
   }
 
   Future<ProjectInfo> add(String path) async {
     final client = ref.read(daemonClientProvider);
-    final res = await client.request(MessageTypes.projectAddRequest, {
-      'path': path,
-    });
-    final project = ProjectInfo.fromJson(
-      res['project'] as Map<String, Object?>? ?? const {},
+    final response = await client.addProject(cwd: path.trim());
+    final descriptor = response.project;
+    if (response.error != null || descriptor == null) {
+      throw StateError(response.error ?? 'Unable to add project');
+    }
+    final project = ProjectInfo(
+      path: descriptor.projectRootPath,
+      name: descriptor.projectDisplayName,
+      isGitRepo: descriptor.projectKind == WorkspaceProjectKind.git,
     );
-    final current = state.value ?? const <ProjectInfo>[];
-    state = AsyncData([
-      ...current.where((p) => p.path != project.path),
-      project,
-    ]);
+    upsert(project);
     return project;
   }
 
   void upsert(ProjectInfo project) {
+    _optimisticProjects[project.path] = project;
     final current = state.value ?? const <ProjectInfo>[];
     state = AsyncData([
       ...current.where((candidate) => candidate.path != project.path),

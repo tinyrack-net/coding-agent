@@ -244,6 +244,36 @@ class ProjectSummariesNotifier extends AsyncNotifier<DerivedProjectsResult> {
     state = await AsyncValue.guard(_fetch);
   }
 
+  /// Applies a successful project registration immediately, matching Paseo's
+  /// `addEmptyProject` behavior. The daemon event remains authoritative and
+  /// will harmlessly replace the same stable project id when it arrives.
+  void upsertProject(String serverId, WorkspaceProjectDescriptor project) {
+    final normalizedServerId = serverId.trim();
+    if (normalizedServerId.isEmpty) return;
+    final event = ProjectDirectoryEvent(ProjectUpsertUpdate(project));
+    if (_hydrating.contains(normalizedServerId)) {
+      _bufferedEvents.putIfAbsent(normalizedServerId, () => []).add(event);
+    }
+    final host = _hosts
+        .where((candidate) => candidate.serverId == normalizedServerId)
+        .firstOrNull;
+    final existing =
+        _replicas[normalizedServerId] ??
+        ProjectHostReplica(
+          serverId: normalizedServerId,
+          serverName: host?.label ?? normalizedServerId,
+          workspaces: const [],
+          emptyProjects: const [],
+        );
+    _replicas[normalizedServerId] = applyProjectReplicaDirectoryUpdate(
+      existing,
+      event,
+    );
+    if (state.value != null) {
+      state = AsyncData(_derive(fetching: false));
+    }
+  }
+
   void _reconcileHosts() {
     final serverIds = {for (final host in _hosts) host.serverId};
     for (final serverId in _replicas.keys.toList(growable: false)) {

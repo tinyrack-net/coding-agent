@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 
 param(
-    [ValidateSet('smoke', 'feature', 'integration', 'full')]
+    [ValidateSet('smoke', 'core', 'feature', 'integration', 'full')]
     [string]$Scope = 'smoke',
     [ValidateSet('all', 'protocol', 'relay', 'daemon_lifecycle', 'daemon', 'app')]
     [string]$Package = 'all',
@@ -34,6 +34,13 @@ $packages = [ordered]@{
             'test/project_directory_test.dart'
             'test/github_repository_search_test.dart'
         )
+        Core = @(
+            'test/v2_websocket_test.dart'
+            'test/workspace_v2_test.dart'
+            'test/create_agent_request_test.dart'
+            'test/create_agent_message_test.dart'
+            'test/agent_timeline_test.dart'
+        )
     }
     relay = @{
         Path = 'packages/relay'
@@ -41,6 +48,9 @@ $packages = [ordered]@{
         Smoke = @(
             'test/relay_crypto_test.dart'
             'test/relay_service_test.dart'
+        )
+        Core = @(
+            'test/relay_crypto_test.dart'
         )
     }
     daemon_lifecycle = @{
@@ -50,6 +60,10 @@ $packages = [ordered]@{
             'test/versions_test.dart'
             'test/daemon_paths_test.dart'
             'test/pid_lock_test.dart'
+        )
+        Core = @(
+            'test/versions_test.dart'
+            'test/daemon_paths_test.dart'
         )
     }
     daemon = @{
@@ -62,6 +76,12 @@ $packages = [ordered]@{
             'test/directory_suggestions_test.dart'
             'test/workspace/project_directory_service_test.dart'
             'test/workspace/github_repository_search_service_test.dart'
+        )
+        Core = @(
+            'test/daemon_v2_workspace_e2e_test.dart'
+            'test/daemon_project_conversation_vertical_e2e_test.dart'
+            'test/daemon_agent_run_e2e_test.dart'
+            'test/daemon_agent_send_e2e_test.dart'
         )
     }
     app = @{
@@ -79,6 +99,15 @@ $packages = [ordered]@{
             'test/draft_agent_selection_test.dart'
             'test/create_agent_preferences_test.dart'
             'test/combined_model_selector_test.dart'
+        )
+        Core = @(
+            'test/add_project_flow_host_test.dart'
+            'test/new_workspace_screen_test.dart'
+            'test/workspace_providers_test.dart'
+            'test/agents_provider_test.dart'
+            'test/draft_session_composer_test.dart'
+            'test/agent_chat_screen_test.dart'
+            'test/worktree_tabbed_pane_test.dart'
         )
     }
 }
@@ -112,7 +141,7 @@ function Invoke-TestSelection {
                 Write-Host "    stability run $attempt/$Repeat"
             }
             if ($Definition.Flutter) {
-                $args = @('test', '-j', "$jobs", '-r', 'compact')
+                $args = @('test', '--no-pub', '-j', "$jobs", '-r', 'compact')
                 if (-not [string]::IsNullOrWhiteSpace($TestName)) {
                     $args += "--name=$TestName"
                 }
@@ -205,7 +234,12 @@ function Invoke-FullGate {
 
 function Invoke-ParallelPackageScope {
     param([string]$ParallelScope)
-    $selected = @($packages.Keys)
+    $selected = if ($ParallelScope -eq 'core') {
+        @('protocol', 'daemon', 'app')
+    }
+    else {
+        @($packages.Keys)
+    }
     $runRoot = Join-Path $root ".dart_tool/test-runs/$([guid]::NewGuid().ToString('N'))"
     New-Item -ItemType Directory -Path $runRoot -Force | Out-Null
     $pwsh = (Get-Command pwsh).Source
@@ -284,7 +318,7 @@ if ($Scope -eq 'feature' -and $Package -eq 'all') {
     throw '-Scope feature requires one explicit -Package.'
 }
 
-if ($Package -eq 'all' -and $Scope -in @('smoke', 'integration')) {
+if ($Package -eq 'all' -and $Scope -in @('smoke', 'core', 'integration')) {
     Invoke-ParallelPackageScope -ParallelScope $Scope
     $totalStopwatch.Stop()
     Write-Host ("All $Scope tests passed in {0:N1}s." -f $totalStopwatch.Elapsed.TotalSeconds)
@@ -296,6 +330,7 @@ foreach ($name in $selectedPackages) {
     $definition = $packages[$name]
     $paths = switch ($Scope) {
         'smoke' { [string[]]$definition.Smoke }
+        'core' { [string[]]$definition.Core }
         'feature' { [string[]]$TestPath }
         'integration' { @() }
     }

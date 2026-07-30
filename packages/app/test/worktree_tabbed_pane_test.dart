@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/core/theme.dart';
@@ -81,6 +83,37 @@ const _fourthAgent = AgentSummary(
   mode: AgentMode.normal,
   runState: AgentRunState.idle,
   createdAtMs: 3,
+);
+
+const _journeyProvider = ProviderSnapshotEntry(
+  provider: 'claude',
+  label: 'Claude',
+  status: ProviderCatalogStatus.ready,
+  defaultModeId: 'auto',
+  models: [
+    ProviderModelDefinition(
+      provider: 'claude',
+      id: 'sonnet',
+      label: 'Sonnet',
+      isDefault: true,
+    ),
+  ],
+  modes: [ProviderMode(id: 'auto', label: 'Auto')],
+);
+
+const _journeyAgent = AgentSummary(
+  agentId: 'created-agent',
+  title: 'First conversation',
+  cwd: _worktreePath,
+  provider: 'claude',
+  model: 'sonnet',
+  mode: AgentMode.normal,
+  runState: AgentRunState.idle,
+  createdAtMs: 10,
+  workspaceId: 'workspace-1',
+  projectPath: '/repo',
+  branch: 'lucky-otter',
+  isWorktree: true,
 );
 
 class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
@@ -316,6 +349,104 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
   }
 }
 
+/// Deterministic host for the user-critical journey from a fresh workspace
+/// draft through a visible, streaming conversation. Its initial directory
+/// snapshot deliberately stays in flight until after `agent.create` returns,
+/// reproducing the real connect/create race.
+final class ConversationJourneyClient extends FakeDaemonClient {
+  ConversationJourneyClient() {
+    serverInfo = const ServerInfoStatus(
+      serverId: 'fake',
+      hostname: 'fake',
+      version: '0.2.0',
+      desktopManaged: false,
+      features: {'providersSnapshot': true},
+    );
+  }
+
+  final directorySnapshot = Completer<FetchAgentsResponse>();
+  final streamController = StreamController<AgentStreamPayload>.broadcast();
+  final journeyRequests = <(String, Map<String, Object?>)>[];
+
+  @override
+  Stream<AgentStreamPayload> get agentStreamEvents => streamController.stream;
+
+  @override
+  Future<FetchAgentsResponse> fetchAgents({
+    AgentDirectoryFilter? filter,
+    List<AgentDirectorySort> sort = const [],
+    int limit = 200,
+    String? cursor,
+    bool subscribe = false,
+    String? subscriptionId,
+    Duration timeout = const Duration(seconds: 30),
+  }) => directorySnapshot.future;
+
+  @override
+  Future<GetProvidersSnapshotResponse> fetchProvidersSnapshot({
+    String? cwd,
+    Duration timeout = const Duration(seconds: 30),
+  }) async => const GetProvidersSnapshotResponse(
+    entries: [_journeyProvider],
+    generatedAt: '2026-07-30T00:00:00.000Z',
+    requestId: 'providers-1',
+  );
+
+  @override
+  Future<ListProviderFeaturesResponse> listProviderFeatures({
+    required ListCommandsDraftConfig draftConfig,
+    Duration timeout = const Duration(seconds: 90),
+  }) async => ListProviderFeaturesResponse(
+    provider: draftConfig.provider,
+    features: const [],
+    fetchedAt: '2026-07-30T00:00:00.000Z',
+    requestId: 'features-1',
+  );
+
+  @override
+  Future<ListCommandsResponse> listCommands({
+    required String agentId,
+    ListCommandsDraftConfig? draftConfig,
+    Duration timeout = const Duration(seconds: 30),
+  }) async => ListCommandsResponse(
+    agentId: agentId,
+    commands: const [],
+    requestId: 'commands-1',
+  );
+
+  @override
+  Future<DirectorySuggestionsResponse> getDirectorySuggestions({
+    required String query,
+    String? cwd,
+    bool? includeFiles,
+    bool? includeDirectories,
+    DirectorySuggestionMatchMode? matchMode,
+    int? limit,
+    Duration timeout = const Duration(seconds: 30),
+  }) async => const DirectorySuggestionsResponse(
+    requestId: 'directory-1',
+    directories: [],
+    entries: [],
+  );
+
+  @override
+  Future<Map<String, Object?>> request(
+    String type,
+    Map<String, Object?> payload, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    journeyRequests.add((type, payload));
+    return switch (type) {
+      MessageTypes.agentCreateRequest => {'agent': _journeyAgent.toJson()},
+      MessageTypes.agentPromptRequest => const {},
+      MessageTypes.providerSubagentListRequest => const {'subagents': []},
+      _ => super.request(type, payload, timeout: timeout),
+    };
+  }
+
+  void emit(AgentStreamPayload payload) => streamController.add(payload);
+}
+
 Finder _closeButtonFor(String tabLabel) =>
     find.byKey(ValueKey('workspace-tab-close-label-$tabLabel'));
 
@@ -370,6 +501,116 @@ Future<ProviderContainer> pumpPane(
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets(
+    'workspace draft creates a durable chat, sends a follow-up, and renders '
+    'the live timeline while the initial directory snapshot races',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 820));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final client = ConversationJourneyClient();
+      addTearDown(client.streamController.close);
+      final container = await pumpPane(
+        tester,
+        client: client,
+        projectPath: '/repo',
+        isWorktree: true,
+        workspaceId: 'workspace-1',
+      );
+
+      expect(find.text('New agent'), findsOneWidget);
+      await tester.enterText(find.byType(TextBox), 'Build the first feature');
+      await tester.tap(find.text('Create'));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (container
+                .read(worktreeTabsProvider(_worktreePath))
+                .layout
+                .tabs
+                .single
+                .kind ==
+            WorktreeTabKind.agent) {
+          break;
+        }
+      }
+
+      final create = client.journeyRequests.singleWhere(
+        (request) => request.$1 == MessageTypes.agentCreateRequest,
+      );
+      expect(create.$2['workspaceId'], 'workspace-1');
+      expect(create.$2['initialPrompt'], 'Build the first feature');
+      expect(create.$2['clientMessageId'], isNotEmpty);
+      expect(find.text('First conversation'), findsWidgets);
+      expect(find.text('Build the first feature'), findsOneWidget);
+
+      client.directorySnapshot.complete(
+        const FetchAgentsResponse(
+          requestId: 'stale-before-create',
+          subscriptionId: 'agents-1',
+          entries: [],
+          pageInfo: AgentDirectoryPageInfo(
+            nextCursor: null,
+            prevCursor: null,
+            hasMore: false,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final tab = container
+          .read(worktreeTabsProvider(_worktreePath))
+          .layout
+          .tabs
+          .single;
+      expect(tab.kind, WorktreeTabKind.agent);
+      expect(tab.agentId, _journeyAgent.agentId);
+      expect(container.read(agentsProvider), contains(_journeyAgent.agentId));
+
+      client.emit(
+        AgentStreamPayload(
+          agentId: _journeyAgent.agentId,
+          epoch: 0,
+          seq: 1,
+          item: UserMessageItem(
+            id: 'server-initial',
+            clientMessageId: create.$2['clientMessageId']! as String,
+            text: 'server normalized prompt',
+          ),
+        ),
+      );
+      client.emit(
+        const AgentStreamPayload(
+          agentId: 'created-agent',
+          epoch: 0,
+          seq: 2,
+          item: AssistantMessageItem(
+            id: 'assistant-1',
+            text: 'Initial response is streaming',
+            complete: false,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Build the first feature'), findsOneWidget);
+      expect(find.text('server normalized prompt'), findsNothing);
+      expect(find.text('Initial response is streaming'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextBox), 'Continue with tests');
+      await tester.tap(find.byIcon(FluentIcons.send));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final followUp = client.journeyRequests.singleWhere(
+        (request) => request.$1 == MessageTypes.agentPromptRequest,
+      );
+      expect(followUp.$2['agentId'], _journeyAgent.agentId);
+      expect(followUp.$2['text'], 'Continue with tests');
+      expect(followUp.$2['clientMessageId'], isNotEmpty);
+      expect(find.text('Continue with tests'), findsOneWidget);
+    },
+  );
 
   testWidgets('setup tab renders cached commands and carriage-return log', (
     tester,

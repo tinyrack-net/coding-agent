@@ -67,7 +67,9 @@ GoRouter buildAppRouter({String initialLocation = '/'}) {
           ),
           GoRoute(
             path: '/new',
-            builder: (context, state) => const NewWorkspaceScreen(),
+            builder: (context, state) => NewWorkspaceScreen(
+              initialProjectPath: state.uri.queryParameters['dir'],
+            ),
           ),
           GoRoute(
             path: '/new-workspace',
