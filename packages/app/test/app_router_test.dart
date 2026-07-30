@@ -2,6 +2,8 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/app_router.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/core/host_routes.dart';
+import 'package:coding_agent_app/screens/host_connections_settings_screen.dart';
+import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/daemon_lifecycle_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
 import 'package:coding_agent_app/state/host_registry_provider.dart';
@@ -35,6 +37,7 @@ void main() {
         overrides: [
           hostRegistryProvider.overrideWith(_ActiveRegistry.new),
           daemonClientProvider.overrideWithValue(client),
+          hostDaemonClientProvider.overrideWith((ref, serverId) => client),
           connectionStateProvider.overrideWith(
             (ref) => Stream.value(DaemonConnectionState.connected),
           ),
@@ -113,6 +116,7 @@ void main() {
         overrides: [
           hostRegistryProvider.overrideWith(_ActiveRegistry.new),
           daemonClientProvider.overrideWithValue(client),
+          hostDaemonClientProvider.overrideWith((ref, serverId) => client),
           connectionStateProvider.overrideWith(
             (ref) => Stream.value(DaemonConnectionState.connected),
           ),
@@ -131,6 +135,97 @@ void main() {
       router.routeInformationProvider.value.uri.toString(),
       '/h/server-a/workspace/workspace-1',
     );
+  });
+
+  testWidgets('cached agent route opens while its host is offline', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final client = _RouterDaemonClient(
+      state: DaemonConnectionState.disconnected,
+    );
+    addTearDown(client.dispose);
+    final router = buildAppRouter(initialLocation: '/h/server-a/agent/agent-1');
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          hostRegistryProvider.overrideWith(_ActiveRegistry.new),
+          agentDirectoryReplicaStoreProvider.overrideWith(
+            _SeededAgentReplicaStore.new,
+          ),
+          daemonClientProvider.overrideWithValue(client),
+          hostDaemonClientProvider.overrideWith((ref, serverId) => client),
+          daemonClientFactoryProvider.overrideWithValue((_) => client),
+          connectionStateProvider.overrideWith(
+            (ref) => Stream.value(DaemonConnectionState.disconnected),
+          ),
+          desktopShellProvider.overrideWithValue(false),
+          worktreeTabLayoutsHydratedProvider.overrideWith(_HydratedLayouts.new),
+          workspaceCatalogProvider.overrideWithValue(AsyncData([_workspace()])),
+        ],
+        child: FluentApp.router(routerConfig: router),
+      ),
+    );
+    for (var index = 0; index < 8; index++) {
+      await tester.pump(const Duration(milliseconds: 5));
+    }
+
+    expect(
+      router.routeInformationProvider.value.uri.toString(),
+      '/h/server-a/workspace/workspace-1',
+    );
+    expect(client.fetchAgentCalls, 0);
+  });
+
+  testWidgets('offline agent route can retry or manage its host', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final client = _RouterDaemonClient(
+      state: DaemonConnectionState.disconnected,
+    );
+    addTearDown(client.dispose);
+    final router = buildAppRouter(initialLocation: '/h/server-a/agent/agent-1');
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          hostRegistryProvider.overrideWith(_ActiveRegistry.new),
+          daemonClientProvider.overrideWithValue(client),
+          hostDaemonClientProvider.overrideWith((ref, serverId) => client),
+          daemonClientFactoryProvider.overrideWithValue((_) => client),
+          connectionStateProvider.overrideWith(
+            (ref) => Stream.value(DaemonConnectionState.disconnected),
+          ),
+          desktopShellProvider.overrideWithValue(false),
+        ],
+        child: FluentApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Host A is offline'), findsOneWidget);
+    expect(find.text('Host status: Offline'), findsOneWidget);
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    expect(client.connectCalls, 1);
+
+    final manageHostButton = tester.widget<Button>(
+      find.widgetWithText(Button, 'Manage host'),
+    );
+    manageHostButton.onPressed!();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(HostConnectionsSettingsScreen), findsOneWidget);
+
+    router.pop();
+    await tester.pumpAndSettle();
+    expect(find.byType(HostConnectionsSettingsScreen), findsNothing);
+    expect(find.text('Host A is offline'), findsOneWidget);
   });
 
   testWidgets(
@@ -202,6 +297,7 @@ void main() {
           overrides: [
             hostRegistryProvider.overrideWith(_ActiveRegistry.new),
             daemonClientProvider.overrideWithValue(client),
+            hostDaemonClientProvider.overrideWith((ref, serverId) => client),
             connectionStateProvider.overrideWith(
               (ref) => Stream.value(DaemonConnectionState.connected),
             ),
@@ -237,6 +333,7 @@ void main() {
         overrides: [
           hostRegistryProvider.overrideWith(_EncodedActiveRegistry.new),
           daemonClientProvider.overrideWithValue(client),
+          hostDaemonClientProvider.overrideWith((ref, serverId) => client),
           connectionStateProvider.overrideWith(
             (ref) => Stream.value(DaemonConnectionState.connected),
           ),
@@ -260,17 +357,26 @@ void main() {
 
 final class _RouterDaemonClient extends DaemonClient
     with LegacyAgentListFetchMixin {
-  _RouterDaemonClient({this.workspaceId = 'workspace-1'})
-    : super(uri: Uri.parse('ws://fake'));
+  _RouterDaemonClient({
+    this.workspaceId = 'workspace-1',
+    this.state = DaemonConnectionState.connected,
+  }) : super(uri: Uri.parse('ws://fake'));
 
   final String? workspaceId;
+  final DaemonConnectionState state;
+  int connectCalls = 0;
+  int fetchAgentCalls = 0;
 
   @override
-  DaemonConnectionState get currentState => DaemonConnectionState.connected;
+  DaemonConnectionState get currentState => state;
 
   @override
-  Stream<DaemonConnectionState> get connectionState =>
-      Stream.value(DaemonConnectionState.connected);
+  Stream<DaemonConnectionState> get connectionState => Stream.value(state);
+
+  @override
+  Future<void> connect() async {
+    connectCalls += 1;
+  }
 
   @override
   Stream<RpcEvent> get events => const Stream.empty();
@@ -279,20 +385,13 @@ final class _RouterDaemonClient extends DaemonClient
   Future<AgentFetchResult?> fetchAgent(
     String agentId, {
     Duration timeout = const Duration(seconds: 60),
-  }) async => AgentFetchResult(
-    agent: AgentSummary(
-      agentId: agentId,
-      title: 'Agent',
-      cwd: r'C:\repo\worktree',
-      provider: 'codex',
-      model: 'gpt-5.4',
-      mode: AgentMode.normal,
-      runState: AgentRunState.idle,
-      createdAtMs: 1,
-      workspaceId: workspaceId,
-    ),
-    project: null,
-  );
+  }) async {
+    fetchAgentCalls += 1;
+    return AgentFetchResult(
+      agent: _agent(agentId: agentId, workspaceId: workspaceId),
+      project: null,
+    );
+  }
 
   @override
   Future<Map<String, Object?>> request(
@@ -306,6 +405,29 @@ final class _RouterDaemonClient extends DaemonClient
     _ => const {},
   };
 }
+
+final class _SeededAgentReplicaStore
+    extends AgentDirectoryReplicaStoreNotifier {
+  @override
+  Map<String, Map<String, AgentSummary>> build() => {
+    'server-a': {'agent-1': _agent()},
+  };
+}
+
+AgentSummary _agent({
+  String agentId = 'agent-1',
+  String? workspaceId = 'workspace-1',
+}) => AgentSummary(
+  agentId: agentId,
+  title: 'Agent',
+  cwd: r'C:\repo\worktree',
+  provider: 'codex',
+  model: 'gpt-5.4',
+  mode: AgentMode.normal,
+  runState: AgentRunState.idle,
+  createdAtMs: 1,
+  workspaceId: workspaceId,
+);
 
 final class _ActiveRegistry extends HostRegistryNotifier {
   @override

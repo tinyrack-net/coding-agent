@@ -18,6 +18,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:file_selector/file_selector.dart';
 
+import 'support/legacy_agent_list_fetch_mixin.dart';
+
 const _worktreePath = '/repo-wt/lucky-otter';
 
 const _claude = ProviderSnapshotEntry(
@@ -84,7 +86,7 @@ const _createdAgent = AgentSummary(
   isWorktree: true,
 );
 
-class FakeDaemonClient extends DaemonClient {
+class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
   FakeDaemonClient() : super(uri: Uri.parse('ws://fake')) {
     serverInfo = const ServerInfoStatus(
       serverId: 'local',

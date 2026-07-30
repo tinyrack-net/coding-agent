@@ -21,12 +21,13 @@
     },
     {
       "id": "app-route:/h/[serverid]/agent/[agentid]",
-      "status": "partial",
-      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/screens/host_agent_route_screen.dart; packages/app/lib/core/host_routes.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/core/app_router.dart;packages/app/lib/screens/host_agent_route_screen.dart;packages/app/lib/core/host_routes.dart;packages/app/lib/core/daemon_client.dart;packages/app/lib/state/agents_provider.dart;packages/app/lib/state/daemon_providers.dart",
       "evidence": [
-        "packages/app/test/app_router_test.dart"
+        "packages/app/test/app_router_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Custom-scheme cold starts select the host, fetch the authoritative agent workspace, preserve encoded identifiers, and redirect through the workspace open intent with lookup retry/back recovery. Remaining parity is the cached-agent fast path and the frozen offline manage-host recovery presentation."
+      "notes": "The host-agent route resolves cached replicas before connectivity, otherwise uses the target host current-state stream and authoritative fetch; it preserves encoded ids, exposes exact reconnect/manage-host recovery with last errors and back-stack restoration, and deduplicates manual/automatic connection attempts."
     },
     {
       "id": "app-route:/h/[serverid]/open-project",
@@ -39,10 +40,12 @@
     },
     {
       "id": "app-route:/h/[serverid]/sessions",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/app_router.dart;packages/app/lib/screens/host_sessions_route_screen.dart",
+      "evidence": [
+        "packages/app/test/sessions_route_screen_test.dart"
+      ],
+      "notes": "Known-host validation waits for registry hydration and then replaces the legacy host route with /sessions without changing the active host; unknown/no-host recovery matches the frozen parent layout. Remaining parity is the shared startup-blocker gate."
     },
     {
       "id": "app-route:/h/[serverid]/settings",
@@ -80,11 +83,14 @@
     {
       "id": "app-route:/open-project",
       "status": "partial",
-      "implementation": "packages/app/lib/core/app_router.dart;packages/app/lib/screens/projects_screen.dart",
+      "implementation": "packages/app/lib/core/app_router.dart;packages/app/lib/screens/projects_screen.dart;packages/app/lib/state/add_project_flow_provider.dart;packages/app/lib/widgets/add_project_flow_host.dart;packages/app/lib/state/workspace_providers.dart",
       "evidence": [
-        "packages/app/test/projects_screen_test.dart"
+        "packages/app/test/projects_screen_test.dart",
+        "packages/app/test/add_project_flow_host_test.dart",
+        "packages/app/test/workspace_providers_test.dart",
+        "packages/daemon/test/daemon_project_conversation_vertical_e2e_test.dart"
       ],
-      "notes": "The canonical route is registered and renders the existing project surface; Paseo open-project intent, host-aware selection, and exact screen UX remain."
+      "notes": "The canonical route now exposes an always-visible Add Project CTA, scopes the flow to the active host, shows Git and non-Git projects, and reloads durable v2 project registry data after provider/app restart. Remaining parity is the frozen four-tile Open Project composition, Pair Device/Setup Providers tiles, and exact visual evidence."
     },
     {
       "id": "app-route:/pair-scan",
@@ -107,10 +113,13 @@
     },
     {
       "id": "app-route:/sessions",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/app_router.dart;packages/app/lib/screens/sessions_route_screen.dart;packages/app/lib/screens/sessions_screen.dart",
+      "evidence": [
+        "packages/app/test/sessions_route_screen_test.dart",
+        "packages/app/test/sessions_screen_test.dart"
+      ],
+      "notes": "The canonical all-host Sessions route waits for host-registry hydration and renders the existing history surface. Remaining parity is the shared startup-blocker boundary and exact cross-platform visual evidence."
     },
     {
       "id": "app-route:/settings-1",
@@ -1441,14 +1450,14 @@
     {
       "id": "release-feature:020-make-project-creation-more-explicit",
       "status": "partial",
-      "implementation": "packages/app/lib/widgets/add_project_flow_host.dart;packages/app/lib/state/add_project_flow_provider.dart;packages/app/lib/state/project_summaries_provider.dart;packages/app/lib/state/workspace_providers.dart;packages/app/lib/core/app_router.dart;packages/app/lib/screens/new_workspace_screen.dart;packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "implementation": "packages/app/lib/widgets/add_project_flow_host.dart;packages/app/lib/state/add_project_flow_provider.dart;packages/app/lib/state/project_summaries_provider.dart;packages/app/lib/state/workspace_providers.dart;packages/app/lib/screens/projects_screen.dart;packages/app/lib/screens/new_workspace_screen.dart;packages/daemon/lib/src/workspace/workspace_v2_service.dart",
       "evidence": [
+        "packages/app/test/projects_screen_test.dart",
         "packages/app/test/add_project_flow_host_test.dart",
-        "packages/app/test/new_workspace_screen_test.dart",
         "packages/app/test/workspace_providers_test.dart",
-        "packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
+        "packages/daemon/test/daemon_project_conversation_vertical_e2e_test.dart"
       ],
-      "notes": "Local folder and new-directory registration use the native project.add contract, immediately register the stable descriptor, switch to the selected host, and open /new with the new project selected. Remaining parity is exact platform presentation, accessibility, and visual golden evidence."
+      "notes": "Project creation is explicit, host-scoped, native-v2 durable across provider restart, and feeds workspace/first-conversation creation. Remaining parity is the exact platform presentation, accessibility, complete Flutter CTA-to-assistant journey, and visual goldens."
     },
     {
       "id": "release-feature:021-idle-agents-release-processes-automatically-and-resume-when-needed",
@@ -2146,12 +2155,13 @@
     },
     {
       "id": "source-unit:packages/app/src/app/h/[serverid]/agent/[agentid].tsx",
-      "status": "partial",
-      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/screens/host_agent_route_screen.dart; packages/app/lib/core/host_routes.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/screens/host_agent_route_screen.dart;packages/app/lib/core/daemon_client.dart;packages/app/lib/state/agents_provider.dart;packages/app/lib/state/daemon_providers.dart",
       "evidence": [
-        "packages/app/test/app_router_test.dart"
+        "packages/app/test/app_router_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Host bootstrap, authoritative lookup, workspace open intent, encoded deep-link identifiers, missing-agent fallback, and lookup retry/back are implemented. Cached-agent immediate resolution and exact offline recovery controls remain."
+      "notes": "Cached and authoritative workspace resolution, target-host waiting/error states, retry, host settings push/back, and not-found fallback match the frozen route."
     },
     {
       "id": "source-unit:packages/app/src/app/h/[serverid]/index.tsx",
@@ -2174,10 +2184,12 @@
     },
     {
       "id": "source-unit:packages/app/src/app/h/[serverid]/sessions.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/screens/host_sessions_route_screen.dart",
+      "evidence": [
+        "packages/app/test/sessions_route_screen_test.dart"
+      ],
+      "notes": "The compatibility redirect composes the frozen child redirect with known-host validation from the parent host boundary. The shared startup blocker remains."
     },
     {
       "id": "source-unit:packages/app/src/app/h/[serverid]/settings.tsx",
@@ -2238,10 +2250,12 @@
     },
     {
       "id": "source-unit:packages/app/src/app/sessions.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/screens/sessions_route_screen.dart;packages/app/lib/screens/sessions_screen.dart",
+      "evidence": [
+        "packages/app/test/sessions_route_screen_test.dart"
+      ],
+      "notes": "Registry hydration and the global Sessions surface are implemented; the frozen shared startup blocker remains."
     },
     {
       "id": "source-unit:packages/app/src/app/settings/[section].tsx",
@@ -7316,11 +7330,13 @@
     {
       "id": "source-unit:packages/app/src/screens/open-project-screen.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/screens/new_workspace_screen.dart",
+      "implementation": "packages/app/lib/screens/projects_screen.dart;packages/app/lib/widgets/add_project_flow_host.dart;packages/app/lib/state/workspace_providers.dart",
       "evidence": [
-        "packages/app/test/new_workspace_screen_test.dart"
+        "packages/app/test/projects_screen_test.dart",
+        "packages/app/test/add_project_flow_host_test.dart",
+        "packages/app/test/workspace_providers_test.dart"
       ],
-      "notes": "Tinyrack NewWorkspaceScreen carries the equivalent global import tile behavior and imported-project navigation; the remaining frozen Open Project tiles and exact visual evidence are still pending."
+      "notes": "Add Project is actionable from the canonical screen and durable v2 projects remain visible; Import Session, Setup Providers, Pair Device, exact responsive layout, and visual evidence remain."
     },
     {
       "id": "source-unit:packages/app/src/screens/project-settings-screen.tsx",
@@ -15454,17 +15470,26 @@
     },
     {
       "id": "wire-message:archive_workspace_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/workspace_v2.dart;packages/app/lib/core/daemon_client.dart;packages/daemon/lib/src/workspace/workspace_v2_service.dart;packages/daemon/lib/src/daemon_server.dart;packages/daemon/lib/src/agent/agent_manager.dart",
+      "evidence": [
+        "packages/protocol/test/workspace_v2_test.dart",
+        "packages/app/test/daemon_client_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart",
+        "packages/daemon/test/agent_manager_test.dart"
+      ],
+      "notes": "The correlated workspace archive request performs exhaustive best-effort owned agent/terminal teardown before dirty-protected worktree and durable record archival; teardown failures are isolated and do not skip later cleanup or archival."
     },
     {
       "id": "wire-message:archive_workspace_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/workspace_v2.dart;packages/app/lib/core/daemon_client.dart;packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "evidence": [
+        "packages/protocol/test/workspace_v2_test.dart",
+        "packages/app/test/daemon_client_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart"
+      ],
+      "notes": "Required nullable archivedAt/error fields, request/workspace correlation, success and unexpected-error responses match the frozen contract."
     },
     {
       "id": "wire-message:branch_suggestions_request",
@@ -15961,17 +15986,25 @@
     },
     {
       "id": "wire-message:fetch_workspaces_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/workspace_v2.dart;packages/app/lib/core/daemon_client.dart;packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "evidence": [
+        "packages/protocol/test/workspace_v2_test.dart",
+        "packages/app/test/daemon_client_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart"
+      ],
+      "notes": "Frozen filters, sort, required page limit, optional subscription and compatibility-only idPrefix semantics are validated and handled."
     },
     {
       "id": "wire-message:fetch_workspaces_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/workspace_v2.dart;packages/app/lib/core/daemon_client.dart;packages/app/lib/state/workspace_catalog_provider.dart;packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "evidence": [
+        "packages/protocol/test/workspace_v2_test.dart",
+        "packages/app/test/daemon_client_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart"
+      ],
+      "notes": "Typed pagination, required nullable cursors, workspace entries, empty projects, correlation, catalog exhaustion and subscription bootstrap match the frozen response."
     },
     {
       "id": "wire-message:file_download_token_request",

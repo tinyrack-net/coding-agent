@@ -1503,6 +1503,27 @@ void main() {
       expect(second.pageInfo.prevCursor, first.pageInfo.nextCursor);
     });
 
+    test('accepts but ignores the legacy idPrefix filter', () async {
+      await registries.projects.upsert(project());
+      await registries.workspaces.upsert(workspace(id: 'wks_alpha'));
+      await registries.workspaces.upsert(workspace(id: 'other_beta'));
+
+      final response = FetchWorkspacesResponse.fromJson(
+        (await service.handle(
+          connection,
+          const FetchWorkspacesRequest(
+            requestId: 'legacy-prefix',
+            idPrefix: 'wks_',
+          ).toJson(),
+        ))!,
+      );
+
+      expect(
+        response.entries.map((workspace) => workspace.id),
+        unorderedEquals(['wks_alpha', 'other_beta']),
+      );
+    });
+
     test(
       'aggregates agent status by workspace identity and priority',
       () async {
@@ -2486,6 +2507,91 @@ void main() {
 
   group('archive', () {
     test(
+      'tears down owned content before worktree and record archival',
+      () async {
+        await registries.projects.upsert(project());
+        await registries.workspaces.upsert(
+          workspace(worktreeRoot: projectDirectory.path, owned: true),
+        );
+        final lifecycle = <String>[];
+        git.onArchiveWorktree = (_) => lifecycle.add('worktree');
+        registries.workspaces.subscribeToMutations((mutation) {
+          if (mutation.workspace?.archivedAt != null) {
+            lifecycle.add('record');
+          }
+        });
+        service = WorkspaceV2Service(
+          registries: registries,
+          git: git,
+          archiveOwnedContent: (workspaceId) async {
+            expect(workspaceId, 'wks_1');
+            expect(
+              (await registries.workspaces.get(workspaceId))?.archivedAt,
+              isNull,
+            );
+            expect(git.archivedPaths, isEmpty);
+            lifecycle.add('contents');
+            return ['agent-1'];
+          },
+          broadcast: (message, ids) => broadcasts.add((message, ids)),
+          now: () => now,
+        );
+
+        final response = ArchiveWorkspaceResponse.fromJson(
+          (await service.handle(
+            connection,
+            const ArchiveWorkspaceRequest(
+              workspaceId: 'wks_1',
+              requestId: 'archive-owned',
+            ).toJson(),
+          ))!,
+        );
+
+        expect(response.error, isNull);
+        expect(lifecycle, ['contents', 'worktree', 'record']);
+      },
+    );
+
+    test(
+      'owned-content teardown failure does not skip worktree or record archive',
+      () async {
+        await registries.projects.upsert(project());
+        await registries.workspaces.upsert(
+          workspace(worktreeRoot: projectDirectory.path, owned: true),
+        );
+        var teardownAttempts = 0;
+        service = WorkspaceV2Service(
+          registries: registries,
+          git: git,
+          archiveOwnedContent: (workspaceId) async {
+            teardownAttempts += 1;
+            throw StateError('one teardown step failed');
+          },
+          broadcast: (message, ids) => broadcasts.add((message, ids)),
+          now: () => now,
+        );
+
+        final response = ArchiveWorkspaceResponse.fromJson(
+          (await service.handle(
+            connection,
+            const ArchiveWorkspaceRequest(
+              workspaceId: 'wks_1',
+              requestId: 'archive-after-teardown-failure',
+            ).toJson(),
+          ))!,
+        );
+
+        expect(response.error, isNull);
+        expect(teardownAttempts, 1);
+        expect(git.archivedPaths, [projectDirectory.path]);
+        expect(
+          (await registries.workspaces.get('wks_1'))?.archivedAt,
+          response.archivedAt,
+        );
+      },
+    );
+
+    test(
       'archives ordinary workspace and returns not found afterward',
       () async {
         await registries.projects.upsert(project());
@@ -2586,6 +2692,32 @@ void main() {
       expect(response.error, 'cannot remove');
       expect((await registries.workspaces.get('wks_1'))?.archivedAt, isNull);
     });
+
+    test(
+      'unexpected archive failures still use the correlated response',
+      () async {
+        await registries.projects.upsert(project());
+        await registries.workspaces.upsert(
+          workspace(worktreeRoot: projectDirectory.path, owned: true),
+        );
+        git.archiveError = StateError('unexpected archive failure');
+
+        final response = ArchiveWorkspaceResponse.fromJson(
+          (await service.handle(
+            connection,
+            const ArchiveWorkspaceRequest(
+              workspaceId: 'wks_1',
+              requestId: 'unexpected',
+            ).toJson(),
+          ))!,
+        );
+
+        expect(response.requestId, 'unexpected');
+        expect(response.archivedAt, isNull);
+        expect(response.error, 'unexpected archive failure');
+        expect((await registries.workspaces.get('wks_1'))?.archivedAt, isNull);
+      },
+    );
   });
 }
 
@@ -2654,6 +2786,7 @@ final class _FakeGitService extends GitService {
   Object? archiveError;
   Object? restoreError;
   bool createDirectoryOnRestore = false;
+  void Function(String path)? onArchiveWorktree;
   final List<String> archivedPaths = [];
   final List<bool> archiveForces = [];
   final List<String> restoredPaths = [];
@@ -2723,6 +2856,7 @@ final class _FakeGitService extends GitService {
 
   @override
   Future<void> archiveWorktree(String path, {bool force = false}) async {
+    onArchiveWorktree?.call(path);
     if (archiveError case final error?) throw error;
     archivedPaths.add(path);
     archiveForces.add(force);

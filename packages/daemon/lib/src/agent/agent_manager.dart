@@ -1780,9 +1780,20 @@ class AgentManager {
           runtime,
     ];
     for (final runtime in matches) {
-      await _archiveOne(runtime);
+      try {
+        await _archiveOne(runtime);
+      } on Object {
+        // Workspace archival mirrors Paseo's all-settled teardown: failure to
+        // archive one owned agent must not prevent attempts for its siblings
+        // or the workspace's terminals.
+      }
     }
-    await _store.flush();
+    try {
+      await _store.flush();
+    } on Object {
+      // Each successful archive already schedules persistence. The workspace
+      // archive remains best effort when an eager flush fails.
+    }
     return [for (final runtime in matches) runtime.summary.agentId];
   }
 

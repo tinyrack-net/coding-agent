@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../core/daemon_client.dart';
 import '../core/host_routes.dart';
+import '../state/agents_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/host_registry_provider.dart';
 
@@ -79,40 +80,111 @@ class _HostAgentRouteScreenState extends ConsumerState<HostAgentRouteScreen> {
       return const _AgentRouteProgress('Connecting to host…');
     }
 
-    final connection = ref.watch(connectionStateProvider);
+    final host = registry.hosts.firstWhere(
+      (candidate) => candidate.serverId == widget.serverId,
+    );
+    final cachedAgent = ref.watch(
+      agentDirectoryReplicaStoreProvider.select(
+        (replicas) => replicas[widget.serverId]?[widget.agentId],
+      ),
+    );
+    final cachedWorkspaceId = cachedAgent?.workspaceId?.trim();
+    if (cachedWorkspaceId != null && cachedWorkspaceId.isNotEmpty) {
+      _redirect(
+        buildHostWorkspaceOpenRoute(
+          widget.serverId,
+          cachedWorkspaceId,
+          'agent:${widget.agentId}',
+        ),
+      );
+      return const _AgentRouteProgress('Opening agent…');
+    }
+
+    final client = ref.watch(hostDaemonClientProvider(widget.serverId));
+    final connection = ref.watch(hostConnectionStateProvider(widget.serverId));
     if (connection.value != DaemonConnectionState.connected) {
-      return _AgentRouteProgress(
-        connection.value == DaemonConnectionState.connecting
-            ? 'Connecting to host…'
-            : 'Host is offline',
+      final connecting =
+          connection.isLoading ||
+          connection.value == DaemonConnectionState.connecting;
+      if (connecting) {
+        return _AgentRouteProgress(
+          'Connecting to ${host.label}...',
+          detail: 'This agent will appear when the host is online.',
+        );
+      }
+      final status = switch (connection.value) {
+        DaemonConnectionState.disconnected || null => 'Offline',
+        DaemonConnectionState.versionMismatch => 'Version mismatch',
+        DaemonConnectionState.connecting => 'Connecting',
+        DaemonConnectionState.connected => 'Online',
+      };
+      return _AgentHostUnavailable(
+        title: connection.value == DaemonConnectionState.disconnected
+            ? '${host.label} is offline'
+            : 'Cannot reach ${host.label}',
+        detail: 'Host status: $status',
+        error: client?.lastConnectionError,
+        onRetry: () => client?.connect(),
+        onManageHost: () {
+          unawaited(
+            GoRouter.of(context).push<void>(
+              buildSettingsHostSectionRoute(
+                widget.serverId,
+                HostSectionSlug.connections,
+              ),
+            ),
+          );
+        },
       );
     }
-    final client = ref.watch(daemonClientProvider);
+    if (client == null) {
+      return _AgentHostUnavailable(
+        title: 'Cannot reach ${host.label}',
+        detail: 'Target host client is unavailable',
+        error: null,
+        onRetry: () {},
+        onManageHost: () {
+          unawaited(
+            GoRouter.of(context).push<void>(
+              buildSettingsHostSectionRoute(
+                widget.serverId,
+                HostSectionSlug.connections,
+              ),
+            ),
+          );
+        },
+      );
+    }
     return FutureBuilder<AgentFetchResult?>(
       future: _fetch(client),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const _AgentRouteProgress('Loading agent…');
+          return _AgentRouteProgress(
+            'Preparing ${host.label} session...',
+            detail: 'We will show this agent in a moment.',
+          );
         }
         if (snapshot.hasError) {
           return _AgentRouteFailure(
-            title: 'Could not load agent',
+            title: 'Failed to load agent',
             detail: '${snapshot.error}',
             onRetry: () => setState(() {
               _requestKey = null;
               _request = null;
             }),
-            onBack: () =>
-                context.go(buildHostOpenProjectRoute(widget.serverId)),
+            onBack: () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go(buildHostRootRoute(widget.serverId));
+              }
+            },
           );
         }
         final agent = snapshot.data?.agent;
         final workspaceId = agent?.workspaceId?.trim();
         if (agent == null || workspaceId == null || workspaceId.isEmpty) {
-          // The frozen route returns to the host index. Until the separate
-          // host-index restoration unit lands, use its no-restorable-workspace
-          // branch through the compatible host-scoped open-project route.
-          _redirect(buildHostOpenProjectRoute(widget.serverId));
+          _redirect(buildHostRootRoute(widget.serverId));
           return const _AgentRouteProgress('Opening host…');
         }
         final target = buildHostWorkspaceOpenRoute(
@@ -128,15 +200,71 @@ class _HostAgentRouteScreenState extends ConsumerState<HostAgentRouteScreen> {
 }
 
 class _AgentRouteProgress extends StatelessWidget {
-  const _AgentRouteProgress(this.label);
+  const _AgentRouteProgress(this.label, {this.detail});
 
   final String label;
+  final String? detail;
 
   @override
   Widget build(BuildContext context) => Center(
     child: Column(
       mainAxisSize: MainAxisSize.min,
-      children: [const ProgressRing(), const SizedBox(height: 12), Text(label)],
+      children: [
+        const ProgressRing(),
+        const SizedBox(height: 12),
+        Text(label),
+        if (detail case final value?) ...[
+          const SizedBox(height: 8),
+          Text(value, textAlign: TextAlign.center),
+        ],
+      ],
+    ),
+  );
+}
+
+class _AgentHostUnavailable extends StatelessWidget {
+  const _AgentHostUnavailable({
+    required this.title,
+    required this.detail,
+    required this.error,
+    required this.onRetry,
+    required this.onManageHost,
+  });
+
+  final String title;
+  final String detail;
+  final String? error;
+  final VoidCallback onRetry;
+  final VoidCallback onManageHost;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(title, style: FluentTheme.of(context).typography.subtitle),
+        const SizedBox(height: 8),
+        Text(detail, textAlign: TextAlign.center),
+        if (error case final value? when value.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: FluentTheme.of(context).resources.systemFillColorCritical,
+            ),
+          ),
+        ],
+        const SizedBox(height: 16),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FilledButton(onPressed: onRetry, child: const Text('Retry')),
+            const SizedBox(width: 8),
+            Button(onPressed: onManageHost, child: const Text('Manage host')),
+          ],
+        ),
+      ],
     ),
   );
 }

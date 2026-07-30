@@ -199,6 +199,86 @@ void main() {
   );
 
   test(
+    'connect is single-flight and does not redial an online client',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+
+      final first = client.connect();
+      final second = client.connect();
+      expect(identical(first, second), isTrue);
+
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future.wait([first, second]);
+      await client.connect();
+
+      expect(server.connectionCount, 1);
+      expect(client.currentState, DaemonConnectionState.connected);
+    },
+  );
+
+  test(
+    'a delayed onDone from an old socket cannot clear a new connection',
+    () async {
+      void Function()? staleOnDone;
+      var listenCount = 0;
+      client = DaemonClient(
+        uri: server.uri,
+        channelStreamListener: (channel, onData, onDone, onError) {
+          listenCount++;
+          return channel.stream.listen(
+            onData,
+            onDone: () {
+              if (listenCount == 1) staleOnDone = onDone;
+              onDone();
+            },
+            onError: onError,
+          );
+        },
+      );
+
+      final firstConnection = nextConnection(server);
+      unawaited(client.connect());
+      final first = await firstConnection;
+      await first.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final secondConnection = nextConnection(server);
+      await first.socket.close();
+      final second = await secondConnection.timeout(
+        const Duration(milliseconds: 1500),
+      );
+      await second.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(client.currentState, DaemonConnectionState.connected);
+
+      final responseFuture = client.request('agent.list.request', const {});
+      final request = await second.nextRequest('agent.list.request');
+      staleOnDone!();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(client.currentState, DaemonConnectionState.connected);
+      second.respond(
+        request['requestId'] as String,
+        'agent.list.response',
+        const {'agents': []},
+      );
+      await expectLater(
+        responseFuture,
+        completion(<String, Object?>{'agents': []}),
+      );
+      expect(server.connectionCount, 2);
+    },
+  );
+
+  test(
     'request() resolves with the response payload for its requestId',
     () async {
       client = DaemonClient(uri: server.uri);
@@ -748,6 +828,50 @@ void main() {
       expect(
         (await client.addProject(cwd: '/repo')).project?.projectId,
         'project-add',
+      );
+
+      unawaited(
+        conn.nextRequest('fetch_workspaces_request').then((frame) {
+          expect((frame['page'] as Map)['limit'], 25);
+          expect((frame['filter'] as Map)['idPrefix'], 'legacy-prefix');
+          conn.respondNative(
+            'fetch_workspaces_response',
+            frame['requestId'] as String,
+            {
+              'entries': const [],
+              'emptyProjects': const [],
+              'pageInfo': {
+                'nextCursor': null,
+                'prevCursor': null,
+                'hasMore': false,
+              },
+            },
+          );
+        }),
+      );
+      final workspaces = await client.fetchWorkspaces(
+        idPrefix: 'legacy-prefix',
+        limit: 25,
+      );
+      expect(workspaces.entries, isEmpty);
+
+      unawaited(
+        conn.nextRequest('archive_workspace_request').then((frame) {
+          expect(frame['workspaceId'], 'workspace-1');
+          conn.respondNative(
+            'archive_workspace_response',
+            frame['requestId'] as String,
+            {
+              'workspaceId': 'workspace-1',
+              'archivedAt': '2026-07-30T00:00:00.000Z',
+              'error': null,
+            },
+          );
+        }),
+      );
+      expect(
+        (await client.archiveWorkspace('workspace-1')).archivedAt,
+        '2026-07-30T00:00:00.000Z',
       );
 
       unawaited(

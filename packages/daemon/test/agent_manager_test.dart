@@ -374,6 +374,41 @@ void main() {
     title: 'Test',
   );
 
+  test(
+    'workspace archive attempts every owned agent after cleanup failure',
+    () async {
+      final first = await manager.createAgent(
+        cwd: tempDir.path,
+        workspaceId: 'workspace-archive',
+        provider: 'claude',
+        model: 'claude-sonnet-5',
+        mode: AgentMode.normal,
+        title: 'First',
+      );
+      final firstSession = client.sessions.single;
+      firstSession.disposeError = StateError('first cleanup failed');
+      final second = await manager.createAgent(
+        cwd: tempDir.path,
+        workspaceId: 'workspace-archive',
+        provider: 'claude',
+        model: 'claude-sonnet-5',
+        mode: AgentMode.normal,
+        title: 'Second',
+      );
+      final secondSession = client.sessions.last;
+
+      final archived = await manager.archiveWorkspaceAgents(
+        'workspace-archive',
+      );
+
+      expect(archived, unorderedEquals([first.agentId, second.agentId]));
+      expect(firstSession.disposed, isTrue);
+      expect(secondSession.disposed, isTrue);
+      expect(manager.get(first.agentId)?.archivedAt, isNotNull);
+      expect(manager.get(second.agentId)?.archivedAt, isNotNull);
+    },
+  );
+
   test('injects daemon append system prompt at runtime only', () async {
     manager.setAppendSystemPrompt('  Daemon instructions.  ');
     final created = await manager.createAgent(

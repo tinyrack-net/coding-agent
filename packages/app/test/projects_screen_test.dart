@@ -1,13 +1,20 @@
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/screens/projects_screen.dart';
+import 'package:coding_agent_app/state/add_project_flow_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
+import 'package:coding_agent_app/state/host_registry_provider.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/legacy_agent_list_fetch_mixin.dart';
 
 const _project = ProjectInfo(path: '/repo', name: 'repo', isGitRepo: true);
+const _directoryProject = ProjectInfo(
+  path: '/notes',
+  name: 'notes',
+  isGitRepo: false,
+);
 
 const _mainWorktree = WorktreeInfo(
   path: '/repo',
@@ -72,10 +79,14 @@ class FakeDaemonClient extends DaemonClient with LegacyAgentListFetchMixin {
 
 Future<ProviderContainer> pumpProjectsScreen(
   WidgetTester tester,
-  FakeDaemonClient client,
-) async {
+  FakeDaemonClient client, {
+  HostProfile? activeHost,
+}) async {
   final container = ProviderContainer(
-    overrides: [daemonClientProvider.overrideWithValue(client)],
+    overrides: [
+      daemonClientProvider.overrideWithValue(client),
+      if (activeHost != null) activeHostProvider.overrideWithValue(activeHost),
+    ],
   );
   addTearDown(container.dispose);
 
@@ -90,6 +101,64 @@ Future<ProviderContainer> pumpProjectsScreen(
 }
 
 void main() {
+  testWidgets('open-project route launches Add Project for the active host', (
+    tester,
+  ) async {
+    final client = FakeDaemonClient()
+      ..onRequest = (type, payload) => switch (type) {
+        MessageTypes.projectListRequest => {'projects': <Object?>[]},
+        _ => const {},
+      };
+    const activeHost = HostProfile(
+      serverId: 'server-a',
+      label: 'Local host',
+      connections: [],
+      preferredConnectionId: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    );
+    final container = await pumpProjectsScreen(
+      tester,
+      client,
+      activeHost: activeHost,
+    );
+
+    expect(
+      find.byKey(const ValueKey('open-project-empty-submit')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('open-project-empty-submit')));
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(
+      container.read(addProjectFlowProvider).request?.preferredHostId,
+      'server-a',
+    );
+  });
+
+  testWidgets('catalog keeps a newly registered non-git directory visible', (
+    tester,
+  ) async {
+    final client = FakeDaemonClient()
+      ..onRequest = (type, payload) => switch (type) {
+        MessageTypes.projectListRequest => {
+          'projects': [_directoryProject.toJson()],
+        },
+        _ => const {},
+      };
+    await pumpProjectsScreen(tester, client);
+
+    expect(find.text('notes'), findsOneWidget);
+    expect(find.text('/notes'), findsOneWidget);
+    expect(find.byKey(const ValueKey('project-/notes')), findsOneWidget);
+    expect(
+      client.requests.where(
+        (request) => request.$1 == MessageTypes.worktreeListRequest,
+      ),
+      isEmpty,
+    );
+  });
+
   testWidgets('lists git projects and expands to show worktrees, marking '
       'the one in use by an agent', (tester) async {
     final client = FakeDaemonClient()

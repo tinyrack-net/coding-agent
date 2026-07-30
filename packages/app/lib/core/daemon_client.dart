@@ -27,6 +27,21 @@ final class AgentFetchResult {
 bool isLoopbackHost(String host) =>
     host == '127.0.0.1' || host == 'localhost' || host == '::1';
 
+typedef DaemonChannelStreamListener =
+    StreamSubscription<Object?> Function(
+      WebSocketChannel channel,
+      void Function(Object? data) onData,
+      void Function() onDone,
+      void Function(Object error, StackTrace stackTrace) onError,
+    );
+
+StreamSubscription<Object?> _listenToDaemonChannel(
+  WebSocketChannel channel,
+  void Function(Object? data) onData,
+  void Function() onDone,
+  void Function(Object error, StackTrace stackTrace) onError,
+) => channel.stream.listen(onData, onDone: onDone, onError: onError);
+
 /// Remote version gate: a non-loopback daemon must share our major version.
 /// Loopback daemons are managed by the lifecycle supervisor instead.
 bool shouldRejectHello(
@@ -57,12 +72,14 @@ class DaemonClient {
     this.token,
     this.relayE2ee,
     this.appVersion = lifecycle.daemonVersion,
-  });
+    DaemonChannelStreamListener? channelStreamListener,
+  }) : _channelStreamListener = channelStreamListener ?? _listenToDaemonChannel;
 
   final Uri uri;
   final String? token;
   final RelayE2eeOptions? relayE2ee;
   final String appVersion;
+  final DaemonChannelStreamListener _channelStreamListener;
 
   final _uuid = const Uuid();
   final Map<String, Completer<RpcResponse>> _pending = {};
@@ -96,11 +113,16 @@ class DaemonClient {
   DaemonConnectionState _current = DaemonConnectionState.disconnected;
   ServerHello? serverHello;
   ServerInfoStatus? serverInfo;
+  String? lastConnectionError;
 
   /// Hello of a remote daemon rejected by the major-version gate.
   ServerHello? rejectedHello;
   bool _disposed = false;
   int _retrySeconds = 1;
+  Future<void>? _connectFuture;
+  Timer? _retryTimer;
+  int _connectionGeneration = 0;
+  int? _activeConnectionGeneration;
 
   Stream<RpcEvent> get events => _events.stream;
   Stream<AgentStreamPayload> get agentStreamEvents => _agentStreamEvents.stream;
@@ -125,8 +147,26 @@ class DaemonClient {
   Stream<DaemonConnectionState> get connectionState => _state.stream;
   DaemonConnectionState get currentState => _current;
 
-  Future<void> connect() async {
+  Future<void> connect() {
+    if (_disposed || _current == DaemonConnectionState.connected) {
+      return Future<void>.value();
+    }
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    final pending = _connectFuture;
+    if (pending != null) return pending;
+    late final Future<void> operation;
+    operation = _connectOnce().whenComplete(() {
+      if (identical(_connectFuture, operation)) _connectFuture = null;
+    });
+    _connectFuture = operation;
+    return operation;
+  }
+
+  Future<void> _connectOnce() async {
     if (_disposed) return;
+    final generation = ++_connectionGeneration;
+    _activeConnectionGeneration = generation;
     _setState(DaemonConnectionState.connecting);
     try {
       final v2Uri = uri.replace(
@@ -150,21 +190,35 @@ class DaemonClient {
           daemonPublicKeyB64: options.daemonPublicKeyB64,
           transportSend: channel.sink.add,
           transportClose: (code, reason) => channel.sink.close(code, reason),
-          onMessage: (data) => _onFrame(data),
+          onMessage: (data) {
+            if (_activeConnectionGeneration == generation) {
+              _onFrame(data);
+            }
+          },
         );
         _relayE2eeChannel = encrypted;
-        channel.stream.listen(
+        _channelStreamListener(
+          channel,
           (data) => encrypted.handleFrame(data as Object),
-          onDone: () {
+          () {
             encrypted.transportClosed();
-            _onClosed();
+            _onClosed(generation);
           },
-          onError: (_) {},
+          (_, _) => _onClosed(generation),
         );
         encrypted.start();
         await encrypted.ready.timeout(const Duration(seconds: 15));
       } else {
-        channel.stream.listen(_onFrame, onDone: _onClosed, onError: (_) {});
+        _channelStreamListener(
+          channel,
+          (data) {
+            if (_activeConnectionGeneration == generation) {
+              _onFrame(data);
+            }
+          },
+          () => _onClosed(generation),
+          (_, _) => _onClosed(generation),
+        );
       }
       final serverInfoPending = Completer<ServerInfoStatus>();
       _serverInfoPending = serverInfoPending;
@@ -198,19 +252,28 @@ class DaemonClient {
         serverHello = null;
         serverInfo = null;
         _channel = null;
+        if (_activeConnectionGeneration == generation) {
+          _activeConnectionGeneration = null;
+        }
         _setState(DaemonConnectionState.versionMismatch);
         channel.sink.close(1000);
         return;
       }
       serverHello = parsed;
       serverInfo = info;
+      lastConnectionError = null;
       rejectedHello = null;
       _retrySeconds = 1;
+      _retryTimer?.cancel();
+      _retryTimer = null;
       _setState(DaemonConnectionState.connected);
       unawaited(_resubscribeFiles());
-    } catch (_) {
+    } on Object catch (error) {
+      lastConnectionError = error is Exception
+          ? error.toString()
+          : 'Connection failed: $error';
       final failedChannel = _channel;
-      _onClosed();
+      _onClosed(generation);
       failedChannel?.sink.close(4001, 'Connection handshake failed');
     }
   }
@@ -920,6 +983,67 @@ class DaemonClient {
     return response;
   }
 
+  Future<FetchWorkspacesResponse> fetchWorkspaces({
+    String? query,
+    String? projectId,
+    String? idPrefix,
+    List<WorkspaceSort> sort = const [],
+    int limit = 200,
+    String? cursor,
+    bool subscribe = false,
+    String? subscriptionId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final requestId = _uuid.v4();
+    final response = FetchWorkspacesResponse.fromJson(
+      await requestSessionMessage(
+        FetchWorkspacesRequest(
+          requestId: requestId,
+          query: query,
+          projectId: projectId,
+          idPrefix: idPrefix,
+          sort: sort,
+          limit: limit,
+          cursor: cursor,
+          hasSubscription: subscribe,
+          subscriptionId: subscriptionId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != requestId) {
+      throw FormatException(
+        'Workspace directory response requestId mismatch: '
+        '${response.requestId}',
+      );
+    }
+    return response;
+  }
+
+  Future<ArchiveWorkspaceResponse> archiveWorkspace(
+    String workspaceId, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final requestId = _uuid.v4();
+    final response = ArchiveWorkspaceResponse.fromJson(
+      await requestSessionMessage(
+        ArchiveWorkspaceRequest(
+          workspaceId: workspaceId,
+          requestId: requestId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != requestId ||
+        response.workspaceId != workspaceId) {
+      throw FormatException(
+        'Workspace archive response mismatch: '
+        '${response.requestId}/${response.workspaceId}',
+      );
+    }
+    return response;
+  }
+
   Future<ProjectCreateDirectoryResponse> createProjectDirectory({
     required String parentPath,
     required String name,
@@ -1457,11 +1581,14 @@ class DaemonClient {
     );
   }
 
-  void _onClosed() {
+  void _onClosed(int generation) {
+    if (_activeConnectionGeneration != generation) return;
+    _activeConnectionGeneration = null;
     _channel = null;
     _relayE2eeChannel?.transportClosed();
     _relayE2eeChannel = null;
     serverInfo = null;
+    lastConnectionError ??= 'Connection closed';
     for (final pending in _pending.values) {
       pending.completeError(StateError('connection closed'));
     }
@@ -1493,7 +1620,8 @@ class DaemonClient {
     _setState(DaemonConnectionState.disconnected);
     final delay = Duration(seconds: _retrySeconds);
     _retrySeconds = (_retrySeconds * 2).clamp(1, 30);
-    Timer(delay, connect);
+    _retryTimer?.cancel();
+    _retryTimer = Timer(delay, connect);
   }
 
   void _setState(DaemonConnectionState state) {
@@ -1503,6 +1631,8 @@ class DaemonClient {
 
   void dispose() {
     _disposed = true;
+    _retryTimer?.cancel();
+    _retryTimer = null;
     _fileSubscriptions.clear();
     final encrypted = _relayE2eeChannel;
     if (encrypted != null) {

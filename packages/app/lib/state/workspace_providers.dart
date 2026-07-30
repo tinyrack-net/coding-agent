@@ -4,37 +4,132 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/daemon_client.dart';
 import 'agents_provider.dart';
 import 'daemon_providers.dart';
+import 'host_registry_provider.dart';
+import 'workspace_catalog_provider.dart';
 
 /// Registered projects, fetched on (re)connect. [add] registers a new path
 /// with the daemon and appends it to the list.
 class ProjectsNotifier extends AsyncNotifier<List<ProjectInfo>> {
-  final Map<String, ProjectInfo> _optimisticProjects = {};
+  final Map<Object, Map<String, ProjectInfo>> _optimisticProjectsByScope = {};
+  final Map<Object, Map<String, ProjectInfo>> _fetchedProjectsByScope = {};
+  Object? _activeScope;
 
   @override
   Future<List<ProjectInfo>> build() async {
     final client = ref.watch(daemonClientProvider);
-    final connection = ref.watch(connectionStateProvider).value;
-    if (connection != DaemonConnectionState.connected) {
-      return _optimisticProjects.values.toList(growable: false);
+    final scope = _projectScope(client);
+    _activeScope = scope;
+    // During a host switch the StreamProvider can briefly retain the previous
+    // host's `connected` value while loading the new stream. Never authorize
+    // a fetch until both the selected client and its fresh stream agree.
+    final observedConnection = ref.watch(connectionStateProvider);
+    if (observedConnection.isLoading ||
+        client.currentState != DaemonConnectionState.connected) {
+      return _mergeProjects(scope);
     }
-    final res = await client.request(MessageTypes.projectListRequest, const {});
-    final fetched = ((res['projects'] as List?) ?? const [])
-        .cast<Map<String, Object?>>()
-        .map(ProjectInfo.fromJson)
-        .toList();
+
+    final updates = client.directoryUpdateEvents.listen((event) {
+      if (event is ProjectDirectoryEvent) ref.invalidateSelf();
+    });
+    ref.onDispose(updates.cancel);
+
+    late List<ProjectInfo> fetched;
+    try {
+      final snapshot = await fetchWorkspaceCatalogSnapshot(client);
+      final byPath = <String, ProjectInfo>{};
+      void addProject({
+        required String rootPath,
+        required String displayName,
+        required String? customName,
+        required WorkspaceProjectKind kind,
+      }) {
+        byPath[rootPath] = ProjectInfo(
+          path: rootPath,
+          name: customName?.trim().isNotEmpty == true
+              ? customName!
+              : displayName,
+          isGitRepo: kind == WorkspaceProjectKind.git,
+        );
+      }
+
+      for (final project in snapshot.emptyProjects) {
+        addProject(
+          rootPath: project.projectRootPath,
+          displayName: project.projectDisplayName,
+          customName: project.projectCustomName,
+          kind: project.projectKind,
+        );
+      }
+      for (final workspace in snapshot.workspaces) {
+        addProject(
+          rootPath: workspace.projectRootPath,
+          displayName: workspace.projectDisplayName,
+          customName: workspace.projectCustomName,
+          kind: workspace.projectKind,
+        );
+      }
+      fetched = byPath.values.toList(growable: false);
+    } on StateError catch (error) {
+      // Temporary v1 adapter for old test/daemon clients that have no native
+      // session transport. Production v2 daemons always answer the frozen
+      // fetch_workspaces request, which is the durable source of truth.
+      if (error.message != 'not connected') rethrow;
+      final res = await client.request(
+        MessageTypes.projectListRequest,
+        const {},
+      );
+      fetched = ((res['projects'] as List?) ?? const [])
+          .cast<Map<String, Object?>>()
+          .map(ProjectInfo.fromJson)
+          .toList();
+    }
+    final fetchedProjects = _fetchedProjectsByScope.putIfAbsent(
+      scope,
+      () => {},
+    );
+    final optimisticProjects = _optimisticProjectsByScope.putIfAbsent(
+      scope,
+      () => {},
+    );
+    fetchedProjects
+      ..clear()
+      ..addEntries(fetched.map((project) => MapEntry(project.path, project)));
     for (final project in fetched) {
-      _optimisticProjects.remove(project.path);
+      optimisticProjects.remove(project.path);
     }
+    return _mergeProjects(scope);
+  }
+
+  Object _projectScope(DaemonClient client) =>
+      ref.read(activeHostProvider)?.serverId ?? client;
+
+  List<ProjectInfo> _mergeProjects(Object scope) {
+    final fetchedProjects =
+        _fetchedProjectsByScope[scope] ?? const <String, ProjectInfo>{};
+    final optimisticProjects =
+        _optimisticProjectsByScope[scope] ?? const <String, ProjectInfo>{};
     return [
-      ...fetched.where(
-        (project) => !_optimisticProjects.containsKey(project.path),
+      ...fetchedProjects.values.where(
+        (project) => !optimisticProjects.containsKey(project.path),
       ),
-      ..._optimisticProjects.values,
+      ...optimisticProjects.values,
     ];
+  }
+
+  void _upsertForScope(Object scope, ProjectInfo project) {
+    _optimisticProjectsByScope.putIfAbsent(scope, () => {})[project.path] =
+        project;
+    if (_activeScope != scope) return;
+    final current = state.value ?? const <ProjectInfo>[];
+    state = AsyncData([
+      ...current.where((candidate) => candidate.path != project.path),
+      project,
+    ]);
   }
 
   Future<ProjectInfo> add(String path) async {
     final client = ref.read(daemonClientProvider);
+    final scope = _projectScope(client);
     final response = await client.addProject(cwd: path.trim());
     final descriptor = response.project;
     if (response.error != null || descriptor == null) {
@@ -45,17 +140,13 @@ class ProjectsNotifier extends AsyncNotifier<List<ProjectInfo>> {
       name: descriptor.projectDisplayName,
       isGitRepo: descriptor.projectKind == WorkspaceProjectKind.git,
     );
-    upsert(project);
+    _upsertForScope(scope, project);
     return project;
   }
 
   void upsert(ProjectInfo project) {
-    _optimisticProjects[project.path] = project;
-    final current = state.value ?? const <ProjectInfo>[];
-    state = AsyncData([
-      ...current.where((candidate) => candidate.path != project.path),
-      project,
-    ]);
+    final client = ref.read(daemonClientProvider);
+    _upsertForScope(_projectScope(client), project);
   }
 
   Future<void> refresh() async => ref.invalidateSelf();

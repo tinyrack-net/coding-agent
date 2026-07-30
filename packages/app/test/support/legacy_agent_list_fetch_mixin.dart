@@ -8,6 +8,59 @@ import 'package:coding_agent_app/core/daemon_client.dart';
 /// Paseo `fetch_agents_request` API.
 mixin LegacyAgentListFetchMixin on DaemonClient {
   @override
+  Future<FetchWorkspacesResponse> fetchWorkspaces({
+    String? query,
+    String? projectId,
+    String? idPrefix,
+    List<WorkspaceSort> sort = const [],
+    int limit = 200,
+    String? cursor,
+    bool subscribe = false,
+    String? subscriptionId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final response = await request(
+      MessageTypes.projectListRequest,
+      const {},
+      timeout: timeout,
+    );
+    final rawProjects = response['projects'];
+    final projects = rawProjects is List
+        ? rawProjects
+              .whereType<Map>()
+              .map(
+                (json) => ProjectInfo.fromJson(
+                  Map<String, Object?>.from(json),
+                ),
+              )
+              .toList()
+        : const <ProjectInfo>[];
+    return FetchWorkspacesResponse(
+      requestId: 'legacy-test-workspaces',
+      subscriptionId: subscribe
+          ? (subscriptionId ?? 'legacy-test-workspace-subscription')
+          : null,
+      entries: const [],
+      emptyProjects: [
+        for (var index = 0; index < projects.length; index++)
+          WorkspaceProjectDescriptor(
+            projectId: 'legacy-test-project-$index',
+            projectDisplayName: projects[index].name,
+            projectRootPath: projects[index].path,
+            projectKind: projects[index].isGitRepo
+                ? WorkspaceProjectKind.git
+                : WorkspaceProjectKind.nonGit,
+          ),
+      ],
+      pageInfo: const WorkspacePageInfo(
+        nextCursor: null,
+        prevCursor: null,
+        hasMore: false,
+      ),
+    );
+  }
+
+  @override
   Future<FetchAgentsResponse> fetchAgents({
     AgentDirectoryFilter? filter,
     List<AgentDirectorySort> sort = const [],

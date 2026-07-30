@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/worktree_actions.dart';
+import '../state/add_project_flow_provider.dart';
 import '../state/agents_provider.dart';
+import '../state/host_registry_provider.dart';
 import '../state/workspace_providers.dart';
 import '../state/worktree_tabs_provider.dart';
 import '../widgets/fluent/page_back_button.dart';
@@ -17,24 +21,52 @@ class ProjectsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final projectsAsync = ref.watch(projectsProvider);
+    final activeHost = ref.watch(activeHostProvider);
+
+    void addProject() {
+      unawaited(
+        ref
+            .read(addProjectFlowProvider.notifier)
+            .open(preferredHostId: activeHost?.serverId),
+      );
+    }
 
     return ScaffoldPage(
-      header: const PageHeader(
-        leading: PageBackButton(),
-        title: Text('Projects & worktrees'),
+      header: PageHeader(
+        leading: const PageBackButton(),
+        title: const Text('Projects & worktrees'),
+        commandBar: FilledButton(
+          key: const ValueKey('open-project-submit'),
+          onPressed: addProject,
+          child: const Text('Add project'),
+        ),
       ),
       content: projectsAsync.when(
         loading: () => const Center(child: ProgressRing()),
         error: (e, _) => Center(child: Text('Failed to load projects: $e')),
         data: (projects) {
-          final gitProjects = projects.where((p) => p.isGitRepo).toList();
-          if (gitProjects.isEmpty) {
-            return const Center(child: Text('No git projects registered yet.'));
+          if (projects.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(FluentIcons.folder_open, size: 32),
+                  const SizedBox(height: 12),
+                  const Text('No projects registered yet.'),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    key: const ValueKey('open-project-empty-submit'),
+                    onPressed: addProject,
+                    child: const Text('Add project'),
+                  ),
+                ],
+              ),
+            );
           }
           return ListView.builder(
-            itemCount: gitProjects.length,
+            itemCount: projects.length,
             itemBuilder: (context, index) =>
-                _ProjectSection(project: gitProjects[index]),
+                _ProjectSection(project: projects[index]),
           );
         },
       ),
@@ -51,19 +83,39 @@ class _ProjectSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
-      child: Expander(
-        header: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(project.name.isEmpty ? project.path : project.name),
-            Text(project.path, maxLines: 1, overflow: TextOverflow.ellipsis),
-          ],
-        ),
-        content: _WorktreeList(projectPath: project.path),
-      ),
+      child: project.isGitRepo
+          ? Expander(
+              header: _ProjectHeader(project: project),
+              content: _WorktreeList(projectPath: project.path),
+            )
+          : ListTile(
+              key: ValueKey('project-${project.path}'),
+              leading: const Icon(FluentIcons.folder),
+              title: Text(project.name.isEmpty ? project.path : project.name),
+              subtitle: Text(
+                project.path,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
     );
   }
+}
+
+class _ProjectHeader extends StatelessWidget {
+  const _ProjectHeader({required this.project});
+
+  final ProjectInfo project;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(project.name.isEmpty ? project.path : project.name),
+      Text(project.path, maxLines: 1, overflow: TextOverflow.ellipsis),
+    ],
+  );
 }
 
 class _WorktreeList extends ConsumerWidget {

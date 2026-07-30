@@ -5,13 +5,14 @@ import '../screens/home_shell.dart';
 import '../screens/host_agent_route_screen.dart';
 import '../screens/host_index_route_screen.dart';
 import '../screens/host_open_project_route_screen.dart';
+import '../screens/host_sessions_route_screen.dart';
 import '../screens/host_workspace_route_screen.dart';
 import '../screens/host_settings_route_screen.dart';
 import '../screens/new_workspace_screen.dart';
 import '../screens/projects_screen.dart';
 import '../screens/project_settings_screen.dart';
 import '../screens/schedules_screen.dart';
-import '../screens/sessions_screen.dart';
+import '../screens/sessions_route_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/settings_shell.dart';
 import '../screens/status_screen.dart';
@@ -43,6 +44,12 @@ GoRouter buildAppRouter({String initialLocation = '/'}) {
           GoRoute(
             path: '/h/:serverId/open-project',
             builder: (context, state) => const HostOpenProjectRouteScreen(),
+          ),
+          GoRoute(
+            path: '/h/:serverId/sessions',
+            builder: (context, state) => HostSessionsRouteScreen(
+              serverId: state.pathParameters['serverId']!,
+            ),
           ),
           GoRoute(
             path: '/h/:serverId/workspace/:workspaceId',
@@ -105,7 +112,7 @@ GoRouter buildAppRouter({String initialLocation = '/'}) {
           ),
           GoRoute(
             path: '/sessions',
-            builder: (context, state) => const SessionsScreen(),
+            builder: (context, state) => const SessionsRouteScreen(),
           ),
         ],
       ),

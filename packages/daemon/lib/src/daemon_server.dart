@@ -1056,11 +1056,22 @@ Future<DaemonServerHandle> startDaemonServer({
     },
   );
   Future<List<String>> archiveWorkspaceOwnedContent(String workspaceId) async {
-    final archivedAgentIds = await manager.archiveWorkspaceAgents(workspaceId);
-    final terminalIds = [
-      for (final terminal in terminals.listV2(workspaceId: workspaceId))
-        terminal['id']! as String,
-    ];
+    var archivedAgentIds = <String>[];
+    try {
+      archivedAgentIds = await manager.archiveWorkspaceAgents(workspaceId);
+    } on Object {
+      // Agent teardown is independent from terminal teardown. Continue so one
+      // failed agent cannot leave every workspace terminal running.
+    }
+    var terminalIds = <String>[];
+    try {
+      terminalIds = [
+        for (final terminal in terminals.listV2(workspaceId: workspaceId))
+          terminal['id']! as String,
+      ];
+    } on Object {
+      // Enumerating terminals is best effort during workspace archival.
+    }
     for (final terminalId in terminalIds) {
       try {
         await terminals.killAndWait(terminalId);

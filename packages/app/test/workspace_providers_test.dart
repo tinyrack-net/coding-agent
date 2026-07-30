@@ -4,6 +4,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
+import 'package:coding_agent_app/state/host_registry_provider.dart';
 import 'package:coding_agent_app/state/workspace_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +21,8 @@ class FakeDaemonClient extends DaemonClient {
   final requests = <(String, Map<String, Object?>)>[];
   final addedProjectPaths = <String>[];
   ProjectAddResponse? addProjectResponse;
+  FetchWorkspacesResponse? fetchWorkspacesResponse;
+  int fetchWorkspacesCalls = 0;
   Map<String, Object?> Function(String type, Map<String, Object?> payload)?
   onRequest;
 
@@ -63,6 +66,24 @@ class FakeDaemonClient extends DaemonClient {
           error: 'not configured',
         );
   }
+
+  @override
+  Future<FetchWorkspacesResponse> fetchWorkspaces({
+    String? query,
+    String? projectId,
+    String? idPrefix,
+    List<WorkspaceSort> sort = const [],
+    int limit = 200,
+    String? cursor,
+    bool subscribe = false,
+    String? subscriptionId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    fetchWorkspacesCalls += 1;
+    final response = fetchWorkspacesResponse;
+    if (response == null) throw StateError('not connected');
+    return response;
+  }
 }
 
 ProviderContainer makeContainer(FakeDaemonClient client) {
@@ -98,6 +119,20 @@ const _wt = WorktreeInfo(
   projectPath: '/repo',
 );
 
+HostProfile _host(String serverId) => HostProfile(
+  serverId: serverId,
+  label: serverId,
+  connections: [
+    DirectTcpHostConnection(
+      id: 'direct:$serverId',
+      endpoint: '$serverId.example:6868',
+    ),
+  ],
+  preferredConnectionId: 'direct:$serverId',
+  createdAt: '2026-07-30T00:00:00.000Z',
+  updatedAt: '2026-07-30T00:00:00.000Z',
+);
+
 void main() {
   group('ProjectsNotifier', () {
     test('build() returns empty list while disconnected', () async {
@@ -126,6 +161,139 @@ void main() {
       final projects = await container.read(projectsProvider.future);
       expect(projects.single.path, '/repo');
     });
+
+    test(
+      'rebuilds a durable v2 project catalog after provider restart',
+      () async {
+        final client = FakeDaemonClient()
+          ..fetchWorkspacesResponse = const FetchWorkspacesResponse(
+            requestId: 'fetch',
+            entries: [],
+            emptyProjects: [
+              WorkspaceProjectDescriptor(
+                projectId: 'project-notes',
+                projectDisplayName: 'notes',
+                projectRootPath: '/notes',
+                projectKind: WorkspaceProjectKind.nonGit,
+              ),
+            ],
+            pageInfo: WorkspacePageInfo(
+              nextCursor: null,
+              prevCursor: null,
+              hasMore: false,
+            ),
+          );
+
+        for (var restart = 0; restart < 2; restart += 1) {
+          final container = makeContainer(client);
+          keepAlive(container, container.listen(projectsProvider, (_, _) {}));
+          await pump();
+
+          final projects = await container.read(projectsProvider.future);
+          expect(
+            projects,
+            contains(
+              isA<ProjectInfo>()
+                  .having((project) => project.path, 'path', '/notes')
+                  .having((project) => project.name, 'name', 'notes')
+                  .having((project) => project.isGitRepo, 'isGitRepo', isFalse),
+            ),
+          );
+        }
+
+        expect(client.fetchWorkspacesCalls, 2);
+        expect(
+          client.requests.where(
+            (request) => request.$1 == MessageTypes.projectListRequest,
+          ),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      'does not leak projects into another offline host and retains each host cache',
+      () async {
+        const projectA = WorkspaceProjectDescriptor(
+          projectId: 'project-a',
+          projectDisplayName: 'project-a',
+          projectRootPath: '/project-a',
+          projectKind: WorkspaceProjectKind.git,
+        );
+        final clientA = FakeDaemonClient()
+          ..fetchWorkspacesResponse = const FetchWorkspacesResponse(
+            requestId: 'fetch-a',
+            entries: [],
+            emptyProjects: [projectA],
+            pageInfo: WorkspacePageInfo(
+              nextCursor: null,
+              prevCursor: null,
+              hasMore: false,
+            ),
+          );
+        final clientB = FakeDaemonClient(
+          initial: DaemonConnectionState.disconnected,
+        );
+        final hostA = _host('server-a');
+        final hostB = _host('server-b');
+        final container = ProviderContainer(
+          overrides: [
+            daemonClientProvider.overrideWithValue(clientA),
+            activeHostProvider.overrideWithValue(hostA),
+          ],
+        );
+        addTearDown(container.dispose);
+        keepAlive(container, container.listen(projectsProvider, (_, _) {}));
+        await pump();
+
+        expect(
+          (await container.read(
+            projectsProvider.future,
+          )).map((project) => project.path),
+          ['/project-a'],
+        );
+
+        container.updateOverrides([
+          daemonClientProvider.overrideWithValue(clientB),
+          activeHostProvider.overrideWithValue(hostB),
+        ]);
+        await pump();
+
+        expect(await container.read(projectsProvider.future), isEmpty);
+        expect(clientB.fetchWorkspacesCalls, 0);
+
+        container
+            .read(projectsProvider.notifier)
+            .upsert(
+              const ProjectInfo(
+                path: '/project-b-draft',
+                name: 'project-b-draft',
+                isGitRepo: false,
+              ),
+            );
+        expect(
+          container
+              .read(projectsProvider)
+              .value
+              ?.map((project) => project.path),
+          ['/project-b-draft'],
+        );
+
+        clientA.setState(DaemonConnectionState.disconnected);
+        container.updateOverrides([
+          daemonClientProvider.overrideWithValue(clientA),
+          activeHostProvider.overrideWithValue(hostA),
+        ]);
+        await pump();
+
+        expect(
+          (await container.read(
+            projectsProvider.future,
+          )).map((project) => project.path),
+          ['/project-a'],
+        );
+      },
+    );
 
     test('add() uses the native v2 request and appends the result', () async {
       final client = FakeDaemonClient();

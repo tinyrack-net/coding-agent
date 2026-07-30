@@ -462,10 +462,7 @@ final class FetchWorkspacesRequest {
       },
     if (sort.isNotEmpty) 'sort': sort.map((entry) => entry.toJson()).toList(),
     if (limit != null || cursor != null)
-      'page': {
-        if (limit != null) 'limit': limit,
-        if (cursor != null) 'cursor': cursor,
-      },
+      'page': {'limit': limit ?? 200, if (cursor != null) 'cursor': cursor},
     if (hasSubscription)
       'subscribe': {
         if (subscriptionId != null) 'subscriptionId': subscriptionId,
@@ -486,8 +483,8 @@ final class WorkspacePageInfo {
 
   factory WorkspacePageInfo.fromJson(Map<String, Object?> json) =>
       WorkspacePageInfo(
-        nextCursor: _nullableString(json, 'nextCursor'),
-        prevCursor: _nullableString(json, 'prevCursor'),
+        nextCursor: _requiredNullableString(json, 'nextCursor'),
+        prevCursor: _requiredNullableString(json, 'prevCursor'),
         hasMore: _requiredBool(json, 'hasMore'),
       );
 
@@ -519,7 +516,11 @@ final class FetchWorkspacesResponse {
     return FetchWorkspacesResponse(
       requestId: _requiredString(payload, 'requestId'),
       subscriptionId: _nullableString(payload, 'subscriptionId'),
-      entries: _mapList(payload, 'entries', WorkspaceDescriptor.fromJson),
+      entries: _requiredMapList(
+        payload,
+        'entries',
+        WorkspaceDescriptor.fromJson,
+      ),
       emptyProjects: _mapList(
         payload,
         'emptyProjects',
@@ -767,8 +768,8 @@ final class ArchiveWorkspaceResponse {
     return ArchiveWorkspaceResponse(
       requestId: _requiredString(payload, 'requestId'),
       workspaceId: _requiredString(payload, 'workspaceId'),
-      archivedAt: _nullableString(payload, 'archivedAt'),
-      error: _nullableString(payload, 'error'),
+      archivedAt: _requiredNullableString(payload, 'archivedAt'),
+      error: _requiredNullableString(payload, 'error'),
     );
   }
 
@@ -1438,6 +1439,13 @@ String? _nullableString(Map<String, Object?> json, String key) {
   return value;
 }
 
+String? _requiredNullableString(Map<String, Object?> json, String key) {
+  if (!json.containsKey(key)) {
+    throw FormatException('$key is required');
+  }
+  return _nullableString(json, key);
+}
+
 num _requiredNum(Map<String, Object?> json, String key) {
   final value = json[key];
   if (value is! num) throw FormatException('$key must be a number');
@@ -1501,6 +1509,21 @@ List<T> _mapList<T>(
 ) {
   final value = json[key];
   if (value == null) return const [];
+  if (value is! List) throw FormatException('$key must be an array');
+  return List.unmodifiable(
+    value.map((entry) {
+      if (entry is! Map) throw FormatException('$key entries must be objects');
+      return decode(entry.cast<String, Object?>());
+    }),
+  );
+}
+
+List<T> _requiredMapList<T>(
+  Map<String, Object?> json,
+  String key,
+  T Function(Map<String, Object?>) decode,
+) {
+  final value = json[key];
   if (value is! List) throw FormatException('$key must be an array');
   return List.unmodifiable(
     value.map((entry) {

@@ -476,7 +476,6 @@ final class WorkspaceV2Service {
         subscriptionId: subscriptionId,
         query: request.query,
         projectId: request.projectId,
-        idPrefix: request.idPrefix,
       );
     }
     final projects = {
@@ -503,7 +502,6 @@ final class WorkspaceV2Service {
             workspace,
             query: request.query,
             projectId: request.projectId,
-            idPrefix: request.idPrefix,
           ),
         )
         .toList();
@@ -1278,20 +1276,24 @@ final class WorkspaceV2Service {
     }
     final archivedAt = _timestamp();
     try {
+      try {
+        await _archiveOwnedContent(workspace.workspaceId);
+      } on Object {
+        // Paseo exhausts owned agent/terminal teardown before touching the
+        // durable record or its worktree, but individual teardown failures do
+        // not prevent the workspace archive from proceeding.
+      }
       await _archiveWorkspace(workspace, archivedAt: archivedAt);
-    } on GitDirtyWorktreeException catch (error) {
+    } on Object catch (error) {
+      final message = _errorMessage(
+        error,
+        'Failed to archive workspace',
+      ).replaceFirst(RegExp(r'^[^:]+(?:Exception)?: '), '');
       return ArchiveWorkspaceResponse(
         requestId: request.requestId,
         workspaceId: request.workspaceId,
         archivedAt: null,
-        error: error.message,
-      ).toJson();
-    } on GitException catch (error) {
-      return ArchiveWorkspaceResponse(
-        requestId: request.requestId,
-        workspaceId: request.workspaceId,
-        archivedAt: null,
-        error: error.message,
+        error: message,
       ).toJson();
     }
     return ArchiveWorkspaceResponse(
@@ -2008,18 +2010,11 @@ bool _matchesWorkspaceFilter(
   WorkspaceDescriptor workspace, {
   String? query,
   String? projectId,
-  String? idPrefix,
 }) {
   final normalizedProjectId = projectId?.trim();
   if (normalizedProjectId != null &&
       normalizedProjectId.isNotEmpty &&
       workspace.projectId != normalizedProjectId) {
-    return false;
-  }
-  final normalizedIdPrefix = idPrefix?.trim();
-  if (normalizedIdPrefix != null &&
-      normalizedIdPrefix.isNotEmpty &&
-      !workspace.id.startsWith(normalizedIdPrefix)) {
     return false;
   }
   final normalizedQuery = query?.trim().toLowerCase();
@@ -2045,13 +2040,11 @@ final class _WorkspaceDirectorySubscription {
     required this.subscriptionId,
     required this.query,
     required this.projectId,
-    required this.idPrefix,
   });
 
   final String subscriptionId;
   final String? query;
   final String? projectId;
-  final String? idPrefix;
 
   bool _isBootstrapping = true;
   final Set<String> _visibleWorkspaceIds = {};
@@ -2060,12 +2053,8 @@ final class _WorkspaceDirectorySubscription {
   final Map<String, WorkspaceUpdate> _pendingByWorkspaceId = {};
   final List<ProjectUpdate> _pendingProjectUpdates = [];
 
-  bool matches(WorkspaceDescriptor workspace) => _matchesWorkspaceFilter(
-    workspace,
-    query: query,
-    projectId: projectId,
-    idPrefix: idPrefix,
-  );
+  bool matches(WorkspaceDescriptor workspace) =>
+      _matchesWorkspaceFilter(workspace, query: query, projectId: projectId);
 
   bool matchesProject(String candidateProjectId) {
     final expected = projectId?.trim();

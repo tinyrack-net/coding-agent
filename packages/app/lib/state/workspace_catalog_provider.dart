@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uuid/uuid.dart';
 
 import '../core/daemon_client.dart';
 import 'daemon_providers.dart';
@@ -95,19 +94,15 @@ Future<WorkspaceCatalogSnapshot> fetchWorkspaceCatalogSnapshot(
   DaemonClient client, {
   bool subscribe = false,
 }) async {
-  const uuid = Uuid();
   final entries = <WorkspaceDescriptor>[];
   final emptyProjects = <WorkspaceProjectDescriptor>[];
   String? cursor;
   do {
-    final request = FetchWorkspacesRequest(
-      requestId: uuid.v4(),
+    final response = await client.fetchWorkspaces(
       limit: 200,
       cursor: cursor,
-      hasSubscription: subscribe && cursor == null,
+      subscribe: subscribe && cursor == null,
     );
-    final message = await client.requestSessionMessage(request.toJson());
-    final response = FetchWorkspacesResponse.fromJson(message);
     entries.addAll(response.entries);
     emptyProjects.addAll(response.emptyProjects);
     cursor = response.pageInfo.hasMore ? response.pageInfo.nextCursor : null;

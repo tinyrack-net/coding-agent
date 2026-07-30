@@ -188,6 +188,17 @@ void main() {
         throwsFormatException,
       );
       expect(
+        () => FetchWorkspacesRequest.fromJson(request({'cursor': 'next'})),
+        throwsFormatException,
+      );
+      expect(
+        const FetchWorkspacesRequest(
+          requestId: 'req',
+          cursor: 'next',
+        ).toJson()['page'],
+        {'limit': 200, 'cursor': 'next'},
+      );
+      expect(
         () => FetchWorkspacesRequest.fromJson({
           'type': 'fetch_workspaces_request',
           'requestId': 'req',
@@ -228,6 +239,44 @@ void main() {
       );
       expect(decoded.pageInfo.nextCursor, 'next');
       expect(decoded.toJson(), response.toJson());
+    });
+
+    test('requires frozen response fields while defaulting empty projects', () {
+      Map<String, Object?> response(Map<String, Object?> payload) => {
+        'type': 'fetch_workspaces_response',
+        'payload': payload,
+      };
+      final base = <String, Object?>{
+        'requestId': 'req',
+        'entries': const [],
+        'pageInfo': {'nextCursor': null, 'prevCursor': null, 'hasMore': false},
+      };
+
+      expect(
+        FetchWorkspacesResponse.fromJson(response(base)).emptyProjects,
+        isEmpty,
+      );
+      expect(
+        () => FetchWorkspacesResponse.fromJson(
+          response({...base}..remove('entries')),
+        ),
+        throwsFormatException,
+      );
+      expect(
+        () => FetchWorkspacesResponse.fromJson(
+          response({...base, 'entries': null}),
+        ),
+        throwsFormatException,
+      );
+      expect(
+        () => FetchWorkspacesResponse.fromJson(
+          response({
+            ...base,
+            'pageInfo': {'prevCursor': null, 'hasMore': false},
+          }),
+        ),
+        throwsFormatException,
+      );
     });
   });
 
@@ -345,6 +394,17 @@ void main() {
       expect(
         ArchiveWorkspaceResponse.fromJson(response.toJson()).archivedAt,
         isNotNull,
+      );
+      expect(
+        () => ArchiveWorkspaceResponse.fromJson({
+          'type': 'archive_workspace_response',
+          'payload': {
+            'requestId': 'req',
+            'workspaceId': 'wks_1',
+            'archivedAt': null,
+          },
+        }),
+        throwsFormatException,
       );
     });
 
