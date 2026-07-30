@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 
 import '../git/git_service.dart';
 import '../server/connection.dart';
+import 'checkout_diff_highlighter.dart';
 import 'workspace_git_observer_service.dart';
 
 final class CheckoutDiffMetrics {
@@ -29,11 +30,13 @@ final class CheckoutDiffService {
     required this.git,
     required this.backend,
     this.debounce = const Duration(milliseconds: 150),
-  });
+    CheckoutDiffHighlighter? highlighter,
+  }) : highlighter = highlighter ?? CheckoutDiffHighlighter(runner: git.runner);
 
   final GitService git;
   final WorkspaceGitObserverBackend backend;
   final Duration debounce;
+  final CheckoutDiffHighlighter highlighter;
   final Map<({String connectionId, String subscriptionId}), _DiffListener>
   _subscriptions = {};
   final Map<String, _DiffTarget> _targets = {};
@@ -161,10 +164,15 @@ final class CheckoutDiffService {
   Future<_DiffSnapshot> _load(_DiffTarget target) async {
     try {
       final diff = await git.checkoutDiff(target.cwd, target.compare);
+      final highlighted = await highlighter.highlight(
+        diff,
+        cwd: target.cwd,
+        compare: target.compare,
+      );
       final payload = checkoutDiffPayloadFromLegacy(
         subscriptionId: '',
         cwd: target.cwd,
-        diff: diff,
+        diff: highlighted,
       );
       return _DiffSnapshot(files: payload.files, error: null);
     } on Object catch (error) {

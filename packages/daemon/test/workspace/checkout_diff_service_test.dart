@@ -61,6 +61,34 @@ void main() {
     },
   );
 
+  test('initial structured snapshot includes server syntax tokens', () async {
+    git.currentDiff = DiffResponse(files: [_typescriptDiff()]);
+
+    final response = SubscribeCheckoutDiffResponse.fromJson(
+      await service.subscribe(connection, _subscribe()),
+    );
+    final lines = response.payload.files.single.hunks.single.lines;
+    final removed = lines.singleWhere(
+      (line) => line.type == CheckoutDiffLineType.remove,
+    );
+    final added = lines.singleWhere(
+      (line) => line.type == CheckoutDiffLineType.add,
+    );
+
+    expect(
+      removed.tokens?.any(
+        (token) => token.text == 'const' && token.style == 'keyword',
+      ),
+      isTrue,
+    );
+    expect(
+      added.tokens?.any(
+        (token) => token.text == '2' && token.style == 'number',
+      ),
+      isTrue,
+    );
+  });
+
   test('pushes only changed snapshots after backend notifications', () async {
     await service.subscribe(connection, _subscribe());
     backend.emitAll();
@@ -181,6 +209,30 @@ final class _FakeGitService extends GitService {
     return currentDiff;
   }
 }
+
+DiffFile _typescriptDiff() => const DiffFile(
+  path: 'example.ts',
+  status: DiffFileStatus.modified,
+  additions: 1,
+  deletions: 1,
+  hunks: [
+    DiffHunk(
+      header: '@@ -1 +1 @@',
+      lines: [
+        DiffLine(
+          type: DiffLineType.del,
+          text: 'const value = 1;',
+          oldLineNo: 1,
+        ),
+        DiffLine(
+          type: DiffLineType.add,
+          text: 'const value = 2;',
+          newLineNo: 1,
+        ),
+      ],
+    ),
+  ],
+);
 
 final class _FakeBackend implements WorkspaceGitObserverBackend {
   final Map<String, List<void Function(WorkspaceGitObserverSnapshot)>>

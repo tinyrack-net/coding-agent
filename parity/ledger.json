@@ -13153,13 +13153,14 @@
     },
     {
       "id": "source-unit:packages/server/src/server/checkout-diff-manager.ts",
-      "status": "partial",
-      "implementation": "packages/daemon/lib/src/workspace/checkout_diff_service.dart; packages/daemon/lib/src/workspace/polling_workspace_git_backend.dart; packages/daemon/lib/src/git/git_service.dart",
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/workspace/checkout_diff_service.dart; packages/daemon/lib/src/workspace/checkout_diff_highlighter.dart; packages/daemon/lib/src/workspace/polling_workspace_git_backend.dart; packages/daemon/lib/src/git/git_service.dart",
       "evidence": [
         "packages/daemon/test/workspace/checkout_diff_service_test.dart",
+        "packages/daemon/test/workspace/checkout_diff_highlighter_test.dart",
         "packages/daemon/test/workspace/polling_workspace_git_backend_test.dart"
       ],
-      "notes": "Equivalent cwd/compare subscriptions share one target, native working-tree observer, initial load, 150ms debounce, serialized refresh queue, and fingerprint. Session replacement, disconnect cleanup, merge-base modes, error payloads, and periodic watch fallback match the frozen manager. Highlighted token generation remains."
+      "notes": "Equivalent cwd/compare subscriptions share one target, native working-tree observer, initial load, 150ms debounce, serialized refresh queue, and fingerprint. Session replacement, disconnect cleanup, merge-base modes, error payloads, periodic watch fallback, and server-generated syntax tokens now match the frozen manager."
     },
     {
       "id": "source-unit:packages/server/src/server/checkout-git-utils.ts",
@@ -14331,10 +14332,13 @@
     },
     {
       "id": "source-unit:packages/server/src/server/utils/diff-highlighter.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/workspace/checkout_diff_highlighter.dart; packages/daemon/lib/src/workspace/checkout_diff_service.dart",
+      "evidence": [
+        "packages/daemon/test/workspace/checkout_diff_highlighter_test.dart",
+        "packages/daemon/test/workspace/checkout_diff_service_test.dart"
+      ],
+      "notes": "Ports the frozen supported-extension catalog, old/new hunk reconstruction with gap-preserving line maps, full-file token lookup, semantic token projection, unsupported/binary/oversized identity fallback, and context-line new-side selection. Live uncommitted diffs read HEAD and the working file; base diffs read merge-base and HEAD; renamed files read the old path; failed reads fall back independently to reconstructed content."
     },
     {
       "id": "source-unit:packages/server/src/server/voice-config.ts",
