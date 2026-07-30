@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 
 import '../agent/create_agent_title.dart';
 import '../agent/structured_generation.dart';
+import '../forge/checkout_pr_status_service.dart';
 import '../git/git_runner.dart';
 import '../git/git_service.dart';
 import '../git/worktree_metadata.dart';
@@ -1707,6 +1708,7 @@ final class WorkspaceV2Service {
   Future<void> _emitGitSnapshotUpdate(String cwd) async {
     if (_workspaceSubscribers.isEmpty) return;
     final snapshot = gitSnapshots?.peekSnapshot(cwd);
+    final forgeSnapshot = gitSnapshots?.peekForgeSnapshot(cwd);
     final projects = {
       for (final project in await registries.projects.list())
         if (project.archivedAt == null) project.projectId: project,
@@ -1737,6 +1739,13 @@ final class WorkspaceV2Service {
               snapshot: snapshot,
               workspace: workspace,
             ),
+            prStatus: forgeSnapshot == null
+                ? null
+                : projectCheckoutPrStatusPayload(
+                    cwd: workspace.cwd,
+                    requestId: 'subscription:${workspace.cwd}',
+                    snapshot: forgeSnapshot,
+                  ),
           ).toJson(),
           Set.unmodifiable(_workspaceSubscribers),
         );

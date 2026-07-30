@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import '../core/daemon_client.dart';
 import '../core/pull_request_data.dart';
 import 'daemon_providers.dart';
 import 'gitlab_pipeline_query.dart';
+import 'workspace_checkout_status_provider.dart';
 
 const _uuid = Uuid();
 final _unsupportedTimelineRegistry = PullRequestTimelineUnsupportedRegistry();
@@ -57,10 +59,29 @@ class PullRequestPaneNotifier extends AsyncNotifier<PullRequestPaneData> {
   Future<PullRequestPaneData> build() async {
     final client = ref.watch(daemonClientProvider);
     ref.watch(connectionStateProvider);
-    if (client.currentState != DaemonConnectionState.connected || cwd.isEmpty) {
+    final serverId = _serverId(client);
+    ref.watch(checkoutStatusPushRouterProvider(serverId));
+    final pushed = ref.watch(
+      checkoutStatusPushCacheProvider.select(
+        (cache) => cache[(serverId: serverId, cwd: cwd)]?.prStatus,
+      ),
+    );
+    if (cwd.isEmpty) {
       return const PullRequestPaneData();
     }
     final generation = ++_loadGeneration;
+    if (pushed != null) {
+      return _projectStatusResponse(
+        client,
+        response: pushed,
+        generation: generation,
+        previous: state.value,
+        fromPush: true,
+      );
+    }
+    if (client.currentState != DaemonConnectionState.connected) {
+      return state.value ?? const PullRequestPaneData();
+    }
     return _load(client, generation: generation);
   }
 
@@ -76,18 +97,37 @@ class PullRequestPaneNotifier extends AsyncNotifier<PullRequestPaneData> {
     final statusResponse = CheckoutPrStatusResponse.fromJson(
       await client.requestSessionMessage(statusRequest.toJson()),
     );
-    final rawStatus = statusResponse.status;
+    return _projectStatusResponse(
+      client,
+      response: statusResponse,
+      generation: generation,
+      previous: previous,
+    );
+  }
+
+  PullRequestPaneData _projectStatusResponse(
+    DaemonClient client, {
+    required CheckoutPrStatusResponse response,
+    required int generation,
+    PullRequestPaneData? previous,
+    bool fromPush = false,
+  }) {
+    final rawStatus = response.status;
     if (rawStatus == null) {
+      if (fromPush && previous?.status != null) {
+        _gitlabPipelineCache.invalidate(serverId: _serverId(client), cwd: cwd);
+        _pipelineCacheRevision += 1;
+      }
       return PullRequestPaneData(
-        githubFeaturesEnabled: statusResponse.githubFeaturesEnabled,
+        githubFeaturesEnabled: response.githubFeaturesEnabled,
         pipelineCacheRevision: _pipelineCacheRevision,
-        statusError: statusResponse.error?.message,
+        statusError: response.error?.message,
       );
     }
     final status = normalizePullRequestStatus(rawStatus);
     if (status == null) {
       return PullRequestPaneData(
-        githubFeaturesEnabled: statusResponse.githubFeaturesEnabled,
+        githubFeaturesEnabled: response.githubFeaturesEnabled,
         pipelineCacheRevision: _pipelineCacheRevision,
       );
     }
@@ -101,14 +141,18 @@ class PullRequestPaneNotifier extends AsyncNotifier<PullRequestPaneData> {
       hasClient: true,
       isConnected: client.currentState == DaemonConnectionState.connected,
       timelineEnabled: _timelineEnabled,
-      githubFeaturesEnabled: statusResponse.githubFeaturesEnabled,
+      githubFeaturesEnabled: response.githubFeaturesEnabled,
       cwd: cwd,
       identity: identity,
       timelineUnsupported: _unsupportedTimelineRegistry.has(unsupportedKey),
     );
+    final statusChanged = !_samePullRequestStatus(previous?.status, status);
+    if (fromPush && statusChanged) {
+      _gitlabPipelineCache.invalidate(serverId: _serverId(client), cwd: cwd);
+      _pipelineCacheRevision += 1;
+    }
     final keepPreviousTimeline =
-        previous?.status?.number == status.number &&
-        previous?.timelineResolved == true;
+        !statusChanged && previous?.timelineResolved == true;
     final pending = PullRequestPaneData(
       status: status,
       timeline: keepPreviousTimeline ? previous!.timeline : const [],
@@ -116,11 +160,11 @@ class PullRequestPaneNotifier extends AsyncNotifier<PullRequestPaneData> {
       timelineResolved: keepPreviousTimeline,
       activityLoading: shouldFetch && !keepPreviousTimeline,
       isRefreshing: false,
-      githubFeaturesEnabled: statusResponse.githubFeaturesEnabled,
+      githubFeaturesEnabled: response.githubFeaturesEnabled,
       pipelineCacheRevision: _pipelineCacheRevision,
-      statusError: statusResponse.error?.message,
+      statusError: response.error?.message,
     );
-    if (shouldFetch) {
+    if (shouldFetch && (!fromPush || statusChanged)) {
       unawaited(
         Future<void>.delayed(
           Duration.zero,
@@ -451,6 +495,13 @@ final pullRequestPaneProvider =
 
 String _serverId(DaemonClient client) =>
     client.serverInfo?.serverId ?? client.uri.toString();
+
+bool _samePullRequestStatus(
+  CheckoutPrStatus? previous,
+  CheckoutPrStatus next,
+) =>
+    previous != null &&
+    jsonEncode(previous.toJson()) == jsonEncode(next.toJson());
 
 bool isUnsupportedPullRequestTimelineError(Object error) =>
     error is DaemonRpcException && error.error.code == 'unknown_schema';

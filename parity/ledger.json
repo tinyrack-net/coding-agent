@@ -5054,9 +5054,10 @@
       "implementation": "packages/app/lib/core/daemon_client.dart; packages/app/lib/state/workspace_checkout_status_provider.dart",
       "evidence": [
         "packages/app/test/daemon_client_test.dart",
-        "packages/app/test/workspace_checkout_status_provider_test.dart"
+        "packages/app/test/workspace_checkout_status_provider_test.dart",
+        "packages/app/test/pull_request_data_test.dart"
       ],
-      "notes": "Typed checkout-status requests and matching cwd push updates populate the checkout-scoped Riverpod cache. Frozen embedded PR cache synchronization, commit invalidation, dirty-review reactions, and query-client-wide helper APIs remain."
+      "notes": "Typed checkout-status requests and matching host/cwd pushes populate one shared Riverpod cache. Every push increments a checkout-scoped commit invalidation token; embedded PR payloads update the PR pane cache, preserve timeline data when only requestId changes, and invalidate/refetch timeline and pipeline details when semantic PR state changes. Frozen dirty-review reactions and cache-only query helper APIs remain."
     },
     {
       "id": "source-unit:packages/app/src/git/client-forge-module.ts",
@@ -5565,17 +5566,22 @@
     },
     {
       "id": "source-unit:packages/app/src/git/use-pr-status-query.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/pull_request_provider.dart; packages/app/lib/state/workspace_checkout_status_provider.dart",
+      "evidence": [
+        "packages/app/test/pull_request_data_test.dart",
+        "packages/app/test/workspace_checkout_status_provider_test.dart"
+      ],
+      "notes": "The active connected client fetches normalized PR status and consumes embedded checkout pushes from the shared host/cwd cache without redundant status requests. Loading, error, feature gates, timeline activation, and semantic detail invalidation are exposed through PullRequestPaneData. A serverId-keyed public query family, resolved-forge distinction, and workspace PR hint selector remain."
     },
     {
       "id": "source-unit:packages/app/src/git/use-status-query.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/workspace_checkout_status_provider.dart",
+      "evidence": [
+        "packages/app/test/workspace_checkout_status_provider_test.dart"
+      ],
+      "notes": "The serverId/cwd family is connection-gated, fetches once, retains the last result across disconnects, keeps push-driven freshness indefinitely, exposes loading and errors, and shares a global push cache. The frozen disabled cache-only 15-second observer and explicit reconnect invalidation policy remain."
     },
     {
       "id": "source-unit:packages/app/src/git/use-working-diff.ts",
@@ -13108,10 +13114,14 @@
     },
     {
       "id": "source-unit:packages/server/src/server/checkout/status-projection.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/workspace/checkout_status_service.dart; packages/daemon/lib/src/forge/checkout_pr_status_service.dart",
+      "evidence": [
+        "packages/daemon/test/workspace/checkout_status_service_test.dart",
+        "packages/daemon/test/forge/checkout_pr_status_service_test.dart",
+        "packages/daemon/test/workspace/workspace_v2_service_test.dart"
+      ],
+      "notes": "Shared snapshot projectors produce strict non-Git, owned and non-owned Git status plus forge/auth/error/PR status for direct responses and observer pushes, including GitHub compatibility facts. Exact unresolved-forge omission and the remaining cross-forge projection edge fixtures remain."
     },
     {
       "id": "source-unit:packages/server/src/server/client-message-id.ts",
@@ -13710,7 +13720,7 @@
         "packages/daemon/test/forge/pull_request_timeline_service_test.dart",
         "packages/daemon/test/daemon_v2_workspace_e2e_test.dart"
       ],
-      "notes": "Checkout status request/response and observer-driven update broadcasts now project non-Git, owned-worktree, and non-owned Git snapshots. PR/MR status, create, direct-merge, auto-merge, manual refresh, pull-request timeline, and modern/legacy check-details request handling are implemented, including shared snapshot projection, GitHub compatibility facts, timeline identity validation, forge/auth resolution, exact response fields, git/remote/auth context resolution, push-before-create, refresh capability advertisement, git validation, observer refresh, fresh status validation, errors, and cache invalidation. Embedded PR status on checkout updates, remaining checkout handlers, structured metadata generation, full push-target/base-context semantics, and other mutation broadcasts remain."
+      "notes": "Checkout status request/response and observer-driven update broadcasts project non-Git, owned-worktree, and non-owned Git snapshots with subscription identities and embedded forge PR status. PR/MR status, create, direct-merge, auto-merge, manual refresh, pull-request timeline, and modern/legacy check-details request handling are implemented, including shared snapshot projection, GitHub compatibility facts, timeline identity validation, forge/auth resolution, exact response fields, git/remote/auth context resolution, push-before-create, refresh capability advertisement, git validation, observer refresh, fresh status validation, errors, and cache invalidation. Remaining checkout handlers, structured metadata generation, full push-target/base-context semantics, and other mutation broadcasts remain."
     },
     {
       "id": "source-unit:packages/server/src/server/session/checkout/git-metadata-generator.ts",
@@ -15416,7 +15426,7 @@
         "packages/daemon/test/workspace/workspace_v2_service_test.dart",
         "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Observer changes emit the frozen checkout payload with the subscription cwd request identity, the protocol accepts optional embedded PR status, and the Flutter client decodes it onto a typed broadcast stream."
+      "notes": "Observer changes emit the frozen checkout payload with the subscription cwd request identity and embedded forge PR status. The Flutter client decodes it onto a typed broadcast stream, routes it through one host/cwd cache, invalidates matching commits, and refreshes PR detail state only after semantic changes."
     },
     {
       "id": "wire-message:checkout_switch_branch_request",

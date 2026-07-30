@@ -46,19 +46,10 @@ final class CheckoutPrStatusService {
         headRef: headRef,
         headSha: headSha,
       );
-      return CheckoutPrStatusResponse(
+      return projectCheckoutPrStatusPayload(
         cwd: request.cwd,
-        status: _status(snapshot.pullRequest, snapshot.forge),
-        githubFeaturesEnabled: snapshot.featuresEnabled,
-        authState: snapshot.authState.wireName,
-        forge: snapshot.forge,
-        error: snapshot.error == null
-            ? null
-            : CheckoutError(
-                code: CheckoutErrorCode.unknown,
-                message: snapshot.error!,
-              ),
         requestId: request.requestId,
+        snapshot: snapshot,
       ).toJson();
     } catch (error) {
       return CheckoutPrStatusResponse(
@@ -77,13 +68,35 @@ final class CheckoutPrStatusService {
   }
 }
 
+CheckoutPrStatusResponse projectCheckoutPrStatusPayload({
+  required String cwd,
+  required String requestId,
+  required WorkspaceForgeSnapshot snapshot,
+}) => CheckoutPrStatusResponse(
+  cwd: cwd,
+  status: projectCheckoutPrStatus(snapshot.pullRequest, snapshot.forge),
+  githubFeaturesEnabled: snapshot.featuresEnabled,
+  authState: snapshot.authState.wireName,
+  forge: snapshot.forge,
+  error: snapshot.error == null
+      ? null
+      : CheckoutError(
+          code: CheckoutErrorCode.unknown,
+          message: snapshot.error!,
+        ),
+  requestId: requestId,
+);
+
 String? _outputOrNull(GitResult result) {
   if (!result.ok) return null;
   final value = result.stdout.trim();
   return value.isEmpty ? null : value;
 }
 
-CheckoutPrStatus? _status(ForgePullRequestStatus? status, String? forge) {
+CheckoutPrStatus? projectCheckoutPrStatus(
+  ForgePullRequestStatus? status,
+  String? forge,
+) {
   if (status == null) return null;
   final facts = status.forgeSpecific;
   final legacyGithub = facts?['forge'] == 'github'

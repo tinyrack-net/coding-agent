@@ -14,6 +14,7 @@ CheckoutPrStatus _status({
   String state = 'open',
   bool isMerged = false,
   bool isDraft = false,
+  String title = 'Fix the panel',
   String? repoOwner = 'acme',
   String? repoName = 'app',
 }) => CheckoutPrStatus(
@@ -21,7 +22,7 @@ CheckoutPrStatus _status({
   projectPath: 'acme/app',
   number: number,
   url: url,
-  title: 'Fix the panel',
+  title: title,
   state: state,
   baseRefName: 'main',
   headRefName: 'feature',
@@ -552,6 +553,55 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(client.timelineRequests, 1);
   });
+
+  test(
+    'provider applies pushed PR status and invalidates details only on change',
+    () async {
+      final client = _PullRequestDataClient(
+        status: _status(),
+        timelineNumber: 42,
+        timeline: [_comment('visible', 'body')],
+      );
+      final container = ProviderContainer(
+        overrides: [daemonClientProvider.overrideWithValue(client)],
+      );
+      addTearDown(container.dispose);
+      addTearDown(client.dispose);
+      final provider = pullRequestPaneProvider('/repo');
+      container.read(provider.notifier).setTimelineEnabled(true);
+
+      await container.read(provider.future);
+      final initial = await _waitForTimeline(container, '/repo');
+      expect(initial.timeline.single.id, 'visible');
+      expect(client.statusRequests, 1);
+      expect(client.timelineRequests, 1);
+
+      client.updates.add(_checkoutUpdateWithPr(_status(), requestId: 'same'));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(provider).value?.timeline.single.id, 'visible');
+      expect(container.read(provider).value?.pipelineCacheRevision, 0);
+      expect(client.statusRequests, 1);
+      expect(client.timelineRequests, 1);
+
+      client.updates.add(
+        _checkoutUpdateWithPr(
+          _status(title: 'Updated title'),
+          requestId: 'changed',
+        ),
+      );
+      final changed = await _waitForPushedTitle(
+        container,
+        '/repo',
+        'Updated title',
+      );
+      expect(changed.status?.title, 'Updated title');
+      expect(changed.pipelineCacheRevision, 1);
+      expect(changed.timeline.single.id, 'visible');
+      expect(client.statusRequests, 1);
+      expect(client.timelineRequests, 2);
+    },
+  );
 }
 
 Future<PullRequestPaneData> _waitForTimeline(
@@ -565,6 +615,22 @@ Future<PullRequestPaneData> _waitForTimeline(
     await Future<void>.delayed(const Duration(milliseconds: 1));
   }
   throw TimeoutException('timeline did not settle for $cwd');
+}
+
+Future<PullRequestPaneData> _waitForPushedTitle(
+  ProviderContainer container,
+  String cwd,
+  String title,
+) async {
+  final provider = pullRequestPaneProvider(cwd);
+  for (var attempt = 0; attempt < 200; attempt++) {
+    final data = container.read(provider).value;
+    if (data?.status?.title == title && data?.activityLoading == false) {
+      return data!;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+  }
+  throw TimeoutException('pushed PR status did not settle for $cwd');
 }
 
 final class _PullRequestDataClient extends DaemonClient {
@@ -587,7 +653,9 @@ final class _PullRequestDataClient extends DaemonClient {
   final Completer<void>? timelineGate;
   final Object? timelineFailure;
   final bool githubFeaturesEnabled;
+  final updates = StreamController<CheckoutStatusUpdate>.broadcast();
   PullRequestTimelineRequest? timelineRequest;
+  var statusRequests = 0;
   var timelineRequests = 0;
 
   @override
@@ -598,11 +666,15 @@ final class _PullRequestDataClient extends DaemonClient {
       Stream.value(DaemonConnectionState.connected);
 
   @override
+  Stream<CheckoutStatusUpdate> get checkoutStatusUpdates => updates.stream;
+
+  @override
   Future<Map<String, Object?>> requestSessionMessage(
     Map<String, Object?> message, {
     Duration timeout = const Duration(seconds: 30),
   }) async {
     if (message['type'] == CheckoutPrStatusRequest.type) {
+      statusRequests += 1;
       return CheckoutPrStatusResponse(
         cwd: '/repo',
         status: status,
@@ -631,4 +703,40 @@ final class _PullRequestDataClient extends DaemonClient {
     }
     throw StateError('Unexpected request: ${message['type']}');
   }
+
+  @override
+  void dispose() {
+    unawaited(updates.close());
+    super.dispose();
+  }
 }
+
+CheckoutStatusUpdate _checkoutUpdateWithPr(
+  CheckoutPrStatus status, {
+  required String requestId,
+}) => CheckoutStatusUpdate(
+  payload: CheckoutStatusGitNonPaseo(
+    cwd: '/repo',
+    repoRoot: '/repo',
+    mainRepoRoot: null,
+    currentBranch: 'feature',
+    isDirty: false,
+    baseRef: 'main',
+    aheadBehind: const CheckoutAheadBehind(ahead: 1, behind: 0),
+    aheadOfOrigin: 0,
+    behindOfOrigin: 0,
+    hasRemote: true,
+    remoteUrl: 'https://github.com/acme/app.git',
+    error: null,
+    requestId: 'subscription:/repo',
+  ),
+  prStatus: CheckoutPrStatusResponse(
+    cwd: '/repo',
+    status: status,
+    githubFeaturesEnabled: true,
+    authState: 'authenticated',
+    forge: 'github',
+    error: null,
+    requestId: requestId,
+  ),
+);

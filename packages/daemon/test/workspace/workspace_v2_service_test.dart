@@ -1253,6 +1253,15 @@ void main() {
         expect(checkoutUpdate.payload.cwd, projectDirectory.path);
         expect(checkoutUpdate.payload.isDirty, isTrue);
         expect(checkoutUpdate.payload.currentBranch, 'feature');
+        expect(checkoutUpdate.prStatus?.cwd, projectDirectory.path);
+        expect(
+          checkoutUpdate.prStatus?.requestId,
+          'subscription:${projectDirectory.path}',
+        );
+        expect(checkoutUpdate.prStatus?.forge, 'github');
+        expect(checkoutUpdate.prStatus?.authState, 'authenticated');
+        expect(checkoutUpdate.prStatus?.status?.number, 11);
+        expect(checkoutUpdate.prStatus?.status?.reviewDecision, 'approved');
       },
     );
 
