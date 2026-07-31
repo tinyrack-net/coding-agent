@@ -436,6 +436,28 @@ FluentThemeData buildAppTheme([
   );
 }
 
+/// Paseo 0.2.0's `SPACING` scale from the frozen upstream theme contract.
+///
+/// Upstream indexes it numerically (`SPACING[1]`, `SPACING[1.5]`, ...) where
+/// the index is the multiple of the 4px base step. Dart has no numeric-key
+/// constant maps, so each step is a named constant with the upstream index
+/// preserved in its name.
+abstract final class PaseoSpacing {
+  static const s0 = 0.0;
+  static const s1 = 4.0;
+  static const s1x5 = 6.0;
+  static const s2 = 8.0;
+  static const s3 = 12.0;
+  static const s4 = 16.0;
+  static const s6 = 24.0;
+  static const s8 = 32.0;
+  static const s12 = 48.0;
+  static const s16 = 64.0;
+  static const s20 = 80.0;
+  static const s24 = 96.0;
+  static const s32 = 128.0;
+}
+
 /// Semantic color tokens used across the app, mapped onto the closest
 /// [FluentThemeData.resources] fields. Centralizing these avoids every
 /// screen hand-picking raw resource fields (whose names don't map 1:1 onto

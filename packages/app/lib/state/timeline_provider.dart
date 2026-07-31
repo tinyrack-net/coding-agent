@@ -26,12 +26,36 @@ final class OptimisticUserMessage {
   final List<AgentAttachment> attachments;
 }
 
+/// A position in an agent's timeline. Mirrors Paseo's `TimelinePosition`,
+/// the cursor a fork request uses to identify where to branch from.
+final class StreamTimelinePosition {
+  const StreamTimelinePosition({required this.epoch, required this.seq});
+
+  final String epoch;
+  final int seq;
+
+  @override
+  bool operator ==(Object other) =>
+      other is StreamTimelinePosition &&
+      other.epoch == epoch &&
+      other.seq == seq;
+
+  @override
+  int get hashCode => Object.hash(epoch, seq);
+
+  @override
+  String toString() => 'StreamTimelinePosition(epoch: $epoch, seq: $seq)';
+}
+
 final class TimelineDisplayItem {
   const TimelineDisplayItem({
     required this.item,
     this.userMessage,
     this.timestamp,
     this.optimistic = false,
+    this.blockGroupId,
+    this.messageId,
+    this.timelineCursor,
   });
 
   final TimelineItem item;
@@ -48,6 +72,23 @@ final class TimelineDisplayItem {
   /// canonical daemon item). A reconciled item keeps its [userMessage]
   /// presentation for rendering but is no longer optimistic.
   final bool optimistic;
+
+  /// Groups the consecutive assistant rows that were split out of one
+  /// assistant message, so stream spacing can compact the seams between
+  /// them. Upstream sets it while splitting long streaming markdown into
+  /// separately-mountable blocks; the daemon-projected timeline upserts a
+  /// whole assistant message by id instead, so this stays null in
+  /// production and exists for the spacing contract.
+  final String? blockGroupId;
+
+  /// The provider-side message id for an assistant message, when the
+  /// provider exposes one. Used as a fork boundary when no timeline cursor
+  /// is available.
+  final String? messageId;
+
+  /// The timeline position an assistant message was written at. Preferred
+  /// over [messageId] as a fork boundary when the host supports cursors.
+  final StreamTimelinePosition? timelineCursor;
 }
 
 enum TimelineCatchUpPhase { idle, syncing, error }
