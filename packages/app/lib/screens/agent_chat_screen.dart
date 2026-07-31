@@ -4,8 +4,10 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../agent_stream/agent_stream_view.dart';
+import '../agent_stream/bottom_anchor_controller.dart';
+import '../agent_stream/layout.dart';
 import '../core/daemon_client.dart';
-import '../core/chat_scroll_geometry.dart';
 import '../core/desktop/desktop_shell.dart';
 import '../core/provider_display.dart';
 import '../core/theme.dart';
@@ -54,14 +56,13 @@ class AgentChatScreen extends ConsumerStatefulWidget {
 
 class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     with WidgetsBindingObserver {
-  final _scrollController = ScrollController();
+  final _streamViewKey = GlobalKey<AgentStreamViewState>();
   final _syncMemory = AgentScreenRouteMemory();
-  bool _stickToBottom = true;
+  BottomAnchorMode _anchorMode = BottomAnchorMode.stickyBottom;
   bool _hasSeenAttentionState = false;
   bool _lastRequiresAttention = false;
   bool _deferredFocusEntryClear = false;
   bool _attentionClearInFlight = false;
-  bool _historyEdgeReady = false;
   bool _loadingOlder = false;
   bool _reconnectToastArmed = false;
   bool _timelineWasVisible = false;
@@ -88,10 +89,6 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     _isAppVisible = _computeAppVisibility();
     _timelineWasVisible = _isAppVisible && widget.isScreenFocused;
     _hasTimelineBeenVisible = _timelineWasVisible;
-    _scrollController.addListener(_onScroll);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _historyEdgeReady = true;
-    });
   }
 
   @override
@@ -101,7 +98,6 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     _reconnectToastHandle?.dismiss();
     WidgetsBinding.instance.removeObserver(this);
     windowFocusedNotifier.removeListener(_onWindowFocusChanged);
-    _scrollController.dispose();
     super.dispose();
   }
 
@@ -258,26 +254,18 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     }());
   }
 
-  void _onScroll() {
-    if (!_scrollController.hasClients) return;
-    final position = _scrollController.position;
-    final nearBottom = position.pixels >= position.maxScrollExtent - 80;
-    if (nearBottom != _stickToBottom) {
-      setState(() => _stickToBottom = nearBottom);
-    }
-    if (_historyEdgeReady &&
-        position.pixels <= 96 &&
-        !_loadingOlder &&
-        ref.read(timelineProvider(widget.agentId)).hasOlder) {
-      unawaited(_loadOlder());
-    }
+  void _onNearHistoryStart() {
+    if (_loadingOlder) return;
+    if (!ref.read(timelineProvider(widget.agentId)).hasOlder) return;
+    unawaited(_loadOlder());
   }
 
   Future<void> _loadOlder() async {
-    if (_loadingOlder || !_scrollController.hasClients) return;
+    final controller = _streamViewKey.currentState?.scrollController;
+    if (_loadingOlder || controller == null || !controller.hasClients) return;
     _loadingOlder = true;
-    final beforeExtent = _scrollController.position.maxScrollExtent;
-    final beforePixels = _scrollController.position.pixels;
+    final beforeExtent = controller.position.maxScrollExtent;
+    final beforePixels = controller.position.pixels;
     try {
       final loaded = await ref
           .read(timelineProvider(widget.agentId).notifier)
@@ -295,32 +283,21 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
         }
         return;
       }
+      // Prepending older rows grows the extent above the viewport; shift by
+      // the same amount so the rows the user was reading stay put.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_scrollController.hasClients) return;
-        final addedExtent =
-            _scrollController.position.maxScrollExtent - beforeExtent;
-        _scrollController.jumpTo(
+        if (!controller.hasClients) return;
+        final addedExtent = controller.position.maxScrollExtent - beforeExtent;
+        controller.jumpTo(
           (beforePixels + addedExtent).clamp(
-            _scrollController.position.minScrollExtent,
-            _scrollController.position.maxScrollExtent,
+            controller.position.minScrollExtent,
+            controller.position.maxScrollExtent,
           ),
         );
       });
     } finally {
       _loadingOlder = false;
     }
-  }
-
-  void _scrollToBottom() {
-    if (!_scrollController.hasClients) return;
-    final position = _scrollController.position;
-    if (isChatViewportOverscrolledPastBottom(
-      pixels: position.pixels,
-      maxScrollExtent: position.maxScrollExtent,
-    )) {
-      return;
-    }
-    _scrollController.jumpTo(position.maxScrollExtent);
   }
 
   void _observeAttention(AgentSummary? agent) {
@@ -576,13 +553,14 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
       hadInitialSyncFailure: _syncMemory.hadInitialSyncFailure,
     );
     final toolCallDetailLevel = ref.watch(toolCallDetailLevelProvider);
-    final projectedRows = _projectTimelineRows(
+    final isTurnActive =
+        displayAgent?.runState == AgentRunState.initializing ||
+        displayAgent?.runState == AgentRunState.running ||
+        displayAgent?.runState == AgentRunState.awaitingPermission;
+    final projected = _projectStream(
       timeline,
       toolCallDetailLevel,
-      isTurnActive:
-          displayAgent?.runState == AgentRunState.initializing ||
-          displayAgent?.runState == AgentRunState.running ||
-          displayAgent?.runState == AgentRunState.awaitingPermission,
+      isTurnActive: isTurnActive,
     );
     final subagents = ref.watch(subagentsForParentProvider(widget.agentId));
     _observeAttention(agent);
@@ -593,17 +571,6 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
     if (_visibilityCatchUpRequired &&
         connection == DaemonConnectionState.connected) {
       _scheduleVisibilityCatchUp();
-    }
-
-    // While stuck to bottom, follow new/updated content.
-    if (!archived) {
-      ref.listen(timelineProvider(widget.agentId), (previous, next) {
-        if (_stickToBottom) {
-          WidgetsBinding.instance.addPostFrameCallback(
-            (_) => _scrollToBottom(),
-          );
-        }
-      });
     }
 
     return Column(
@@ -679,11 +646,14 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
         else
           ..._chatChildren(
             context,
-            projectedRows,
+            projected,
             timeline,
             syncState,
             timeline.loading,
             timeline.loadingOlder,
+            // Paseo's stream modules only branch on the literal "running"
+            // status, which spans every phase of an in-flight turn.
+            isTurnActive ? 'running' : 'idle',
           ),
       ],
     );
@@ -691,13 +661,14 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
 
   List<Widget> _chatChildren(
     BuildContext context,
-    List<_ProjectedTimelineRow> rows,
+    _ProjectedStream projected,
     TimelineState timeline,
     AgentScreenSyncState syncState,
     bool loading,
     bool loadingOlder,
+    String agentStatus,
   ) {
-    final count = rows.length;
+    final count = projected.tail.length + projected.head.length;
     final isColdOpenFailure =
         timeline.error != null &&
         timeline.epoch == null &&
@@ -733,13 +704,33 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
                     )
                   : Stack(
                       children: [
-                        ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          itemCount: count,
-                          itemBuilder: (context, index) => _TimelineRow(
+                        AgentStreamView(
+                          key: _streamViewKey,
+                          agentId: widget.agentId,
+                          tail: projected.tail,
+                          head: projected.head,
+                          agentStatus: agentStatus,
+                          isAuthoritativeHistoryReady: timeline.epoch != null,
+                          // Entering a conversation anchors to the newest
+                          // message; the key makes repeat builds inert.
+                          routeAnchorRequest: BottomAnchorRouteRequest(
                             agentId: widget.agentId,
-                            row: rows[index],
+                            reason: BottomAnchorRouteReason.initialEntry,
+                            requestKey:
+                                'route:${widget.serverId}:${widget.agentId}',
+                          ),
+                          onNearHistoryStart: _onNearHistoryStart,
+                          onAnchorModeChange: (mode) {
+                            if (!mounted || mode == _anchorMode) return;
+                            setState(() => _anchorMode = mode);
+                          },
+                          rowBuilder: (context, layoutItem) => _TimelineRow(
+                            agentId: widget.agentId,
+                            layoutItem: layoutItem,
+                            group: projected
+                                .groupsByHostId[layoutItem.item.item.id],
+                            isLastInSequence: projected.lastInSequenceIds
+                                .contains(layoutItem.item.item.id),
                             onOpenWorkspaceFile: widget.onOpenWorkspaceFile,
                           ),
                         ),
@@ -770,7 +761,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
           ],
         ),
       ),
-      if (!_stickToBottom)
+      if (_anchorMode == BottomAnchorMode.detached)
         Align(
           alignment: Alignment.centerRight,
           child: Padding(
@@ -782,10 +773,10 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen>
                 height: 36,
                 child: IconButton(
                   icon: const Icon(FluentIcons.down),
-                  onPressed: () {
-                    setState(() => _stickToBottom = true);
-                    _scrollToBottom();
-                  },
+                  onPressed: () =>
+                      _streamViewKey.currentState?.requestLocalAnchor(
+                        BottomAnchorLocalReason.jumpToBottom,
+                      ),
                 ),
               ),
             ),
@@ -888,19 +879,27 @@ class _TimelineColdOpenFailure extends StatelessWidget {
   );
 }
 
-final class _ProjectedTimelineRow {
-  const _ProjectedTimelineRow({
-    required this.display,
-    required this.group,
-    required this.isLastInSequence,
+/// The timeline after tool-call detail-level projection, still split into
+/// the committed tail and the live head so the render model can segment it.
+final class _ProjectedStream {
+  const _ProjectedStream({
+    required this.tail,
+    required this.head,
+    required this.groupsByHostId,
+    required this.lastInSequenceIds,
   });
 
-  final TimelineDisplayItem display;
-  final ToolCallOverviewGroup? group;
-  final bool isLastInSequence;
+  final List<TimelineDisplayItem> tail;
+  final List<TimelineDisplayItem> head;
+  final Map<String, ToolCallOverviewGroup> groupsByHostId;
+
+  /// Ids of overview-group hosts that end their collapsed run.
+  final Set<String> lastInSequenceIds;
+
+  bool get isEmpty => tail.isEmpty && head.isEmpty;
 }
 
-List<_ProjectedTimelineRow> _projectTimelineRows(
+_ProjectedStream _projectStream(
   TimelineState timeline,
   ToolCallDetailLevel level, {
   required bool isTurnActive,
@@ -920,32 +919,49 @@ List<_ProjectedTimelineRow> _projectTimelineRows(
     for (final display in [...tailDisplays, ...headDisplays])
       display.item.id: display,
   };
+  // Projection can rewrite or drop items, so rebuild each display item from
+  // the projected item while keeping the source's presentation metadata.
+  TimelineDisplayItem toDisplay(TimelineItem item) {
+    final source = sourceById[item.id];
+    return TimelineDisplayItem(
+      item: item,
+      userMessage: source?.userMessage,
+      timestamp: source?.timestamp,
+      optimistic: source?.optimistic ?? false,
+      blockGroupId: source?.blockGroupId,
+      messageId: source?.messageId,
+      timelineCursor: source?.timelineCursor,
+    );
+  }
+
   final items = [...projection.tail, ...projection.head];
-  return [
-    for (var index = 0; index < items.length; index++)
-      _ProjectedTimelineRow(
-        display: TimelineDisplayItem(
-          item: items[index],
-          userMessage: sourceById[items[index].id]?.userMessage,
-        ),
-        group: projection.groupsByHostId[items[index].id],
-        isLastInSequence:
-            projection.groupsByHostId.containsKey(items[index].id) &&
+  return _ProjectedStream(
+    tail: [for (final item in projection.tail) toDisplay(item)],
+    head: [for (final item in projection.head) toDisplay(item)],
+    groupsByHostId: projection.groupsByHostId,
+    lastInSequenceIds: {
+      for (var index = 0; index < items.length; index++)
+        if (projection.groupsByHostId.containsKey(items[index].id) &&
             (index == items.length - 1 ||
-                !projection.groupsByHostId.containsKey(items[index + 1].id)),
-      ),
-  ];
+                !projection.groupsByHostId.containsKey(items[index + 1].id)))
+          items[index].id,
+    },
+  );
 }
 
 class _TimelineRow extends ConsumerWidget {
   const _TimelineRow({
     required this.agentId,
-    required this.row,
+    required this.layoutItem,
+    required this.group,
+    required this.isLastInSequence,
     this.onOpenWorkspaceFile,
   });
 
   final String agentId;
-  final _ProjectedTimelineRow row;
+  final StreamLayoutItem layoutItem;
+  final ToolCallOverviewGroup? group;
+  final bool isLastInSequence;
   final void Function(WorkspaceFileOpenRequest request)? onOpenWorkspaceFile;
 
   @override
@@ -981,18 +997,18 @@ class _TimelineRow extends ConsumerWidget {
       },
     );
 
-    final group = row.group;
+    final group = this.group;
     if (group != null) {
       return ToolCallOverviewGroupView(
         key: ValueKey('overview-${group.run.id}'),
         group: group,
-        isLastInSequence: row.isLastInSequence,
+        isLastInSequence: isLastInSequence,
         children: [
           for (final call in group.run.calls)
             buildTile(TimelineDisplayItem(item: call)),
         ],
       );
     }
-    return buildTile(row.display);
+    return buildTile(layoutItem.item);
   }
 }
