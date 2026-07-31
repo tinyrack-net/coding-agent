@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
 import 'package:coding_agent_app/attachments/memory_attachment_store.dart';
+import 'package:coding_agent_app/attachments/workspace_file_drag.dart';
 import 'package:coding_agent_app/composer/composer_image_attachment_service.dart';
 import 'package:coding_agent_app/composer/composer_clipboard_reader.dart';
 import 'package:coding_agent_app/composer/composer_draft_store.dart';
@@ -1139,6 +1140,77 @@ void main() {
       },
     ]);
   });
+
+  testWidgets(
+    'workspace-file drop accepts only the current host and workspace',
+    (tester) async {
+      const agent = AgentSummary(
+        agentId: 'a1',
+        title: 'Demo',
+        cwd: '/work',
+        workspaceId: 'workspace-1',
+        provider: 'claude',
+        model: 'sonnet',
+        mode: AgentMode.normal,
+        runState: AgentRunState.idle,
+        createdAtMs: 0,
+      );
+      final draftStore = _MemoryDraftStore();
+      final container = await pumpComposer(
+        tester,
+        FakeDaemonClient(),
+        agent: agent,
+        draftStore: draftStore,
+      );
+      final target = tester.widget<DragTarget<WorkspaceFileDragPayload>>(
+        find.byKey(const ValueKey('composer-workspace-file-drop-target')),
+      );
+      final payload = WorkspaceFileDragPayload(
+        serverId: 'local',
+        workspaceId: 'workspace-1',
+        attachment: ComposerWorkspaceFileAttachment(
+          path: 'lib/example.dart',
+          selection: ComposerWorkspaceFileSelection.lineRange(
+            startLine: 12,
+            endLine: 24,
+          ),
+        ),
+      );
+      final details = DragTargetDetails(data: payload, offset: Offset.zero);
+
+      expect(target.onWillAcceptWithDetails!(details), isTrue);
+      expect(
+        target.onWillAcceptWithDetails!(
+          DragTargetDetails(
+            data: WorkspaceFileDragPayload(
+              serverId: 'other-host',
+              workspaceId: 'workspace-1',
+              attachment: payload.attachment,
+            ),
+            offset: Offset.zero,
+          ),
+        ),
+        isFalse,
+      );
+      target.onAcceptWithDetails!(details);
+      await tester.pumpAndSettle();
+
+      const draftKey = 'agent:local:a1';
+      expect(find.text('example.dart'), findsOneWidget);
+      expect(
+        container.read(workspaceAttachmentsProvider(draftKey)).single.subtitle,
+        'lib/example.dart · 12-24',
+      );
+      expect(draftStore.drafts[draftKey]?.workspaceFiles, [payload.attachment]);
+      expect(
+        tester
+            .widget<EditableText>(find.byType(EditableText))
+            .focusNode
+            .hasFocus,
+        isTrue,
+      );
+    },
+  );
 
   testWidgets('review attachments keep wire semantics and clear sent drafts', (
     tester,

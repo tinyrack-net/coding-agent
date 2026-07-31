@@ -10,12 +10,14 @@ void main() {
   group('ProjectInfo', () {
     test('round-trips with all fields', () {
       const info = ProjectInfo(
+        projectId: 'prj_1',
         path: 'C:/repo',
         name: 'repo',
         isGitRepo: true,
       );
       final decoded = ProjectInfo.fromJson(roundTrip(info.toJson()));
       expect(decoded.path, 'C:/repo');
+      expect(decoded.projectId, 'prj_1');
       expect(decoded.name, 'repo');
       expect(decoded.isGitRepo, isTrue);
     });
@@ -23,6 +25,7 @@ void main() {
     test('fromJson applies defaults for missing optional fields', () {
       final decoded = ProjectInfo.fromJson(const {'path': 'C:/x'});
       expect(decoded.path, 'C:/x');
+      expect(decoded.projectId, isNull);
       expect(decoded.name, '');
       expect(decoded.isGitRepo, isFalse);
     });

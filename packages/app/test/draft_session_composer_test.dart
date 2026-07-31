@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/attachments/memory_attachment_store.dart';
+import 'package:coding_agent_app/attachments/workspace_file_drag.dart';
 import 'package:coding_agent_app/composer/composer_draft_store.dart';
 import 'package:coding_agent_app/composer/composer_image_attachment_service.dart';
 import 'package:coding_agent_app/composer/create_agent_preferences.dart';
@@ -447,6 +448,68 @@ void main() {
         },
       ]);
       expect(container.read(workspaceAttachmentsProvider(draftKey)), isEmpty);
+    },
+  );
+
+  testWidgets(
+    'workspace-file drop hydrates the matching draft with its line range',
+    (tester) async {
+      final draftStore = _MemoryDraftStore();
+      late String tabId;
+      final container = await pumpComposer(
+        tester,
+        FakeDaemonClient(),
+        workspaceId: 'workspace-1',
+        draftStore: draftStore,
+        onTabId: (value) => tabId = value,
+      );
+      final target = tester.widget<DragTarget<WorkspaceFileDragPayload>>(
+        find.byKey(const ValueKey('draft-workspace-file-drop-target')),
+      );
+      final attachment = ComposerWorkspaceFileAttachment(
+        path: 'lib/new_agent.dart',
+        selection: ComposerWorkspaceFileSelection.lineRange(
+          startLine: 3,
+          endLine: 7,
+        ),
+      );
+      final payload = WorkspaceFileDragPayload(
+        serverId: 'local',
+        workspaceId: 'workspace-1',
+        attachment: attachment,
+      );
+
+      expect(
+        target.onWillAcceptWithDetails!(
+          DragTargetDetails(data: payload, offset: Offset.zero),
+        ),
+        isTrue,
+      );
+      expect(
+        target.onWillAcceptWithDetails!(
+          DragTargetDetails(
+            data: WorkspaceFileDragPayload(
+              serverId: 'local',
+              workspaceId: 'workspace-2',
+              attachment: attachment,
+            ),
+            offset: Offset.zero,
+          ),
+        ),
+        isFalse,
+      );
+      target.onAcceptWithDetails!(
+        DragTargetDetails(data: payload, offset: Offset.zero),
+      );
+      await tester.pumpAndSettle();
+
+      final draftKey = 'draft:local:$tabId';
+      expect(find.text('new_agent.dart'), findsOneWidget);
+      expect(
+        container.read(workspaceAttachmentsProvider(draftKey)).single.subtitle,
+        'lib/new_agent.dart · 3-7',
+      );
+      expect(draftStore.drafts[draftKey]?.workspaceFiles, [attachment]);
     },
   );
 

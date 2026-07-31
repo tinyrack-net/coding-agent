@@ -20,6 +20,7 @@ final class AddProjectFlowResult {
   final WorkspaceProjectDescriptor descriptor;
 
   ProjectInfo get project => ProjectInfo(
+    projectId: descriptor.projectId,
     path: descriptor.projectRootPath,
     name: descriptor.projectDisplayName,
     isGitRepo: descriptor.projectKind == WorkspaceProjectKind.git,

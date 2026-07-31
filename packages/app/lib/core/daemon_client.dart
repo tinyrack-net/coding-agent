@@ -1269,6 +1269,82 @@ class DaemonClient {
     return response;
   }
 
+  Future<ListAvailableProvidersResponse> listAvailableProviders({
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final requestId = _uuid.v4();
+    final response = ListAvailableProvidersResponse.fromJson(
+      await requestSessionMessage(
+        ListAvailableProvidersRequest(requestId: requestId).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != requestId) {
+      throw FormatException(
+        'Available providers response requestId mismatch: ${response.requestId}',
+      );
+    }
+    return response;
+  }
+
+  Future<ListProviderModelsResponse> listProviderModels({
+    required String provider,
+    String? cwd,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final requestId = _uuid.v4();
+    final response = ListProviderModelsResponse.fromJson(
+      await requestSessionMessage(
+        ListProviderModelsRequest(
+          provider: provider,
+          cwd: cwd,
+          requestId: requestId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != requestId) {
+      throw FormatException(
+        'Provider models response requestId mismatch: ${response.requestId}',
+      );
+    }
+    if (response.provider != provider) {
+      throw FormatException(
+        'Provider models response provider mismatch: ${response.provider}',
+      );
+    }
+    return response;
+  }
+
+  Future<ListProviderModesResponse> listProviderModes({
+    required String provider,
+    String? cwd,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final requestId = _uuid.v4();
+    final response = ListProviderModesResponse.fromJson(
+      await requestSessionMessage(
+        ListProviderModesRequest(
+          provider: provider,
+          cwd: cwd,
+          requestId: requestId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    if (response.requestId != requestId) {
+      throw FormatException(
+        'Provider modes response requestId mismatch: ${response.requestId}',
+      );
+    }
+    if (response.provider != provider) {
+      throw FormatException(
+        'Provider modes response provider mismatch: ${response.provider}',
+      );
+    }
+    return response;
+  }
+
   Future<DirectorySuggestionsResponse> getDirectorySuggestions({
     required String query,
     String? cwd,

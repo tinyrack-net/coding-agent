@@ -38,12 +38,14 @@ class ProjectsNotifier extends AsyncNotifier<List<ProjectInfo>> {
       final snapshot = await fetchWorkspaceCatalogSnapshot(client);
       final byPath = <String, ProjectInfo>{};
       void addProject({
+        required String projectId,
         required String rootPath,
         required String displayName,
         required String? customName,
         required WorkspaceProjectKind kind,
       }) {
         byPath[rootPath] = ProjectInfo(
+          projectId: projectId,
           path: rootPath,
           name: customName?.trim().isNotEmpty == true
               ? customName!
@@ -54,6 +56,7 @@ class ProjectsNotifier extends AsyncNotifier<List<ProjectInfo>> {
 
       for (final project in snapshot.emptyProjects) {
         addProject(
+          projectId: project.projectId,
           rootPath: project.projectRootPath,
           displayName: project.projectDisplayName,
           customName: project.projectCustomName,
@@ -62,6 +65,7 @@ class ProjectsNotifier extends AsyncNotifier<List<ProjectInfo>> {
       }
       for (final workspace in snapshot.workspaces) {
         addProject(
+          projectId: workspace.projectId,
           rootPath: workspace.projectRootPath,
           displayName: workspace.projectDisplayName,
           customName: workspace.projectCustomName,
@@ -158,6 +162,7 @@ class ProjectsNotifier extends AsyncNotifier<List<ProjectInfo>> {
       throw StateError(response.error ?? 'Unable to add project');
     }
     final project = ProjectInfo(
+      projectId: descriptor.projectId,
       path: descriptor.projectRootPath,
       name: descriptor.projectDisplayName,
       isGitRepo: descriptor.projectKind == WorkspaceProjectKind.git,

@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../attachments/workspace_file_drag.dart';
+import '../composer/composer_draft_store.dart';
 import '../core/daemon_client.dart';
 import '../core/external_url_launcher.dart';
 import '../core/theme.dart';
@@ -12,6 +14,7 @@ import '../state/daemon_providers.dart';
 import '../state/explorer_checkout_context.dart';
 import '../state/explorer_tab_memory_provider.dart';
 import '../state/pull_request_provider.dart';
+import '../workspace/workspace_distance_draggable.dart';
 import '../workspace/workspace_file_open.dart';
 import 'diff/diff_pane.dart';
 import 'file_actions_menu.dart';
@@ -191,6 +194,8 @@ class _WorkspaceExplorerState extends ConsumerState<WorkspaceExplorer> {
               onCommitPress: widget.onCommitPress,
             ),
             WorkspaceExplorerTab.files => _FilesPane(
+              serverId: widget.serverId,
+              workspaceId: widget.workspaceId,
               cwd: widget.cwd,
               onOpenFile: widget.onOpenFile,
               onAddFileToChat: widget.onAddFileToChat,
@@ -310,8 +315,16 @@ class _ExplorerEntry {
 }
 
 class _FilesPane extends ConsumerStatefulWidget {
-  const _FilesPane({required this.cwd, this.onOpenFile, this.onAddFileToChat});
+  const _FilesPane({
+    required this.serverId,
+    required this.workspaceId,
+    required this.cwd,
+    this.onOpenFile,
+    this.onAddFileToChat,
+  });
 
+  final String serverId;
+  final String? workspaceId;
   final String cwd;
   final void Function(WorkspaceFileOpenRequest request)? onOpenFile;
   final ValueChanged<String>? onAddFileToChat;
@@ -381,7 +394,7 @@ class _FilesPaneState extends ConsumerState<_FilesPane> {
                     itemCount: items.length,
                     itemBuilder: (context, index) {
                       final item = items[index];
-                      return ListTile(
+                      final row = ListTile(
                         key: ValueKey('file-explorer-row-${item.path}'),
                         leading: Icon(
                           item.directory
@@ -458,6 +471,34 @@ class _FilesPaneState extends ConsumerState<_FilesPane> {
                                 ),
                               ),
                       );
+                      final workspaceId = widget.workspaceId;
+                      if (item.directory ||
+                          workspaceId == null ||
+                          workspaceId.isEmpty ||
+                          widget.serverId.isEmpty) {
+                        return row;
+                      }
+                      final payload = WorkspaceFileDragPayload(
+                        serverId: widget.serverId,
+                        workspaceId: workspaceId,
+                        attachment: ComposerWorkspaceFileAttachment(
+                          path: item.path,
+                        ),
+                      );
+                      return WorkspaceDistanceDraggable<
+                        WorkspaceFileDragPayload
+                      >(
+                        key: ValueKey('workspace-file-drag-${item.path}'),
+                        activationDistance: 8,
+                        maxSimultaneousDrags: 1,
+                        data: payload,
+                        feedback: _WorkspaceFileDragFeedback(
+                          name: item.name,
+                          path: item.path,
+                        ),
+                        childWhenDragging: Opacity(opacity: .35, child: row),
+                        child: row,
+                      );
                     },
                   ),
           ),
@@ -465,6 +506,60 @@ class _FilesPaneState extends ConsumerState<_FilesPane> {
       ],
     );
   }
+}
+
+class _WorkspaceFileDragFeedback extends StatelessWidget {
+  const _WorkspaceFileDragFeedback({required this.name, required this.path});
+
+  final String name;
+  final String path;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 260,
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    decoration: BoxDecoration(
+      color: context.paseoPalette.surface1,
+      border: Border.all(color: context.paseoPalette.borderAccent),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Row(
+      children: [
+        Icon(
+          FluentIcons.page,
+          size: 14,
+          color: context.paseoPalette.foreground,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: context.paseoPalette.foreground,
+                  fontSize: 12,
+                ),
+              ),
+              Text(
+                path,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: context.paseoPalette.foregroundMuted,
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 String _parentPath(String path) {

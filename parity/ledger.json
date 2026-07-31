@@ -1469,14 +1469,14 @@
     {
       "id": "release-feature:020-make-project-creation-more-explicit",
       "status": "partial",
-      "implementation": "packages/app/lib/widgets/add_project_flow_host.dart;packages/app/lib/state/add_project_flow_provider.dart;packages/app/lib/state/project_summaries_provider.dart;packages/app/lib/state/workspace_providers.dart;packages/app/lib/screens/projects_screen.dart;packages/app/lib/screens/new_workspace_screen.dart;packages/daemon/lib/src/workspace/workspace_v2_service.dart",
+      "implementation": "packages/app/lib/state/add_project_flow_provider.dart;packages/app/lib/state/workspace_providers.dart;packages/app/lib/screens/new_workspace_screen.dart;packages/protocol/lib/src/messages/workspace.dart",
       "evidence": [
-        "packages/app/test/projects_screen_test.dart",
         "packages/app/test/add_project_flow_host_test.dart",
-        "packages/app/test/workspace_providers_test.dart",
+        "packages/app/test/new_workspace_screen_test.dart",
+        "packages/app/test/messages_workspace_test.dart",
         "packages/daemon/test/daemon_project_conversation_vertical_e2e_test.dart"
       ],
-      "notes": "Project creation is explicit, host-scoped, native-v2 durable across provider restart, and feeds workspace/first-conversation creation. Remaining parity is the exact platform presentation, accessibility, complete Flutter CTA-to-assistant journey, and visual goldens."
+      "notes": "Explicit project creation now retains the stable project key into workspace creation and first-chat handoff. Exact cross-platform presentation, accessibility, and visual parity remain."
     },
     {
       "id": "release-feature:021-idle-agents-release-processes-automatically-and-resume-when-needed",
@@ -2539,10 +2539,14 @@
     },
     {
       "id": "source-unit:packages/app/src/attachments/workspace-file-drag.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/attachments/workspace_file_drag.dart;packages/app/lib/widgets/workspace_explorer.dart;packages/app/lib/widgets/composer.dart;packages/app/lib/widgets/draft_session_composer.dart",
+      "evidence": [
+        "packages/app/test/workspace_file_drag_test.dart",
+        "packages/app/test/composer_test.dart",
+        "packages/app/test/draft_session_composer_test.dart"
+      ],
+      "notes": "Paseo v1 workspace-file MIME payload, strict parsing, host/workspace scope validation, Files explorer drag source, Composer and DraftSessionComposer targets, line-range preservation and draft focus are covered. Browser external DataTransfer adapter and Diff-pane source remain partial."
     },
     {
       "id": "source-unit:packages/app/src/attachments/workspace-file.ts",
@@ -2695,16 +2699,15 @@
     {
       "id": "source-unit:packages/app/src/components/add-project-flow.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/widgets/add_project_flow_host.dart;packages/app/lib/add_project_flow/model.dart;packages/app/lib/add_project_flow/options.dart;packages/app/lib/add_project_flow/project_picker_options.dart;packages/app/lib/core/daemon_client.dart",
+      "implementation": "packages/app/lib/widgets/add_project_flow_host.dart;packages/app/lib/add_project_flow/model.dart;packages/app/lib/state/add_project_flow_provider.dart;packages/app/lib/state/workspace_providers.dart;packages/app/lib/screens/new_workspace_screen.dart",
       "evidence": [
         "packages/app/test/add_project_flow_host_test.dart",
         "packages/app/test/add_project_flow_model_test.dart",
         "packages/app/test/new_workspace_screen_test.dart",
         "packages/app/test/project_conversation_vertical_e2e_test.dart",
-        "packages/daemon/test/ws_server_test.dart",
         "packages/daemon/test/daemon_project_conversation_vertical_e2e_test.dart"
       ],
-      "notes": "Global multi-host flow, capability-gated methods, page history, keyboard selection, debounced directory and GitHub-account search, direct path registration, desktop Browse wiring, URL/owner-repo clone, per-host last clone-parent preference, atomic create-directory, Add Host routing, path shortening, progress/error/empty states, result adoption, and frozen 640px/92%/80% responsive panel geometry are implemented. A real Flutter DaemonClient to Dart daemon vertical test proves project registration, local workspace creation, first prompt, assistant stream, idle transition, and timeline recovery through one socket. Exact platform-adaptive presentation, full accessibility-tree parity, and visual golden evidence remain."
+      "notes": "Project add result now preserves stable projectId through catalog state and the picker-footer add-project to workspace.create to first prompt journey. Exact platform presentation, accessibility tree and visual goldens remain."
     },
     {
       "id": "source-unit:packages/app/src/components/agent-list.tsx",
@@ -4428,12 +4431,13 @@
     {
       "id": "source-unit:packages/app/src/composer/attachments/drop.ts",
       "status": "partial",
-      "implementation": "packages/app/lib/composer/composer_image_attachments.dart; packages/app/lib/widgets/composer.dart",
+      "implementation": "packages/app/lib/widgets/composer.dart;packages/app/lib/widgets/draft_session_composer.dart;packages/app/lib/attachments/workspace_file_drag.dart",
       "evidence": [
-        "packages/app/test/composer_image_attachments_test.dart",
-        "packages/app/test/composer_test.dart"
+        "packages/app/test/composer_test.dart",
+        "packages/app/test/draft_session_composer_test.dart",
+        "packages/app/test/workspace_file_drag_test.dart"
       ],
-      "notes": "Raster image drops recognize the frozen extension and MIME surface, isolate unreadable files, render previews, and submit through the separate image array. General file uploads, workspace-file drag sources, and persistent attachment storage remain."
+      "notes": "Image drops and scoped workspace-file drops now share composer surfaces with mismatch rejection and draft persistence. General browser file DataTransfer and remaining heterogeneous attachment kinds remain."
     },
     {
       "id": "source-unit:packages/app/src/composer/attachments/submit.ts",
@@ -7344,15 +7348,13 @@
     {
       "id": "source-unit:packages/app/src/screens/new-workspace-screen.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/screens/new_workspace_screen.dart; packages/app/lib/state/create_flow_provider.dart; packages/app/lib/widgets/composer_image_preview.dart; packages/app/lib/widgets/draft_feature_control.dart; packages/app/lib/widgets/combined_model_selector.dart; packages/app/lib/composer/composer_draft_store.dart; packages/app/lib/composer/create_agent_preferences.dart; packages/app/lib/composer/provider_model_selection.dart; packages/app/lib/state/providers_snapshot_provider.dart; packages/app/lib/state/draft_provider_features_provider.dart; packages/app/lib/state/agents_provider.dart",
+      "implementation": "packages/app/lib/screens/new_workspace_screen.dart;packages/app/lib/state/workspace_providers.dart;packages/protocol/lib/src/messages/workspace.dart",
       "evidence": [
         "packages/app/test/new_workspace_screen_test.dart",
-        "packages/app/test/combined_model_selector_test.dart",
-        "packages/app/test/provider_model_selection_test.dart",
-        "packages/app/test/agents_provider_test.dart",
-        "packages/daemon/test/daemon_agent_continuation_e2e_test.dart"
+        "packages/app/test/messages_workspace_test.dart",
+        "packages/app/test/project_conversation_vertical_e2e_test.dart"
       ],
-      "notes": "New Workspace uses ready provider snapshots, persists provider-scoped model/mode/thinking/features/favorites plus isolation, and delegates omitted worktree branch/slug naming to the daemon so the frozen canonical placeholder and first-agent auto-name lifecycle apply. Prompt/image restore, picker/drop/removal, empty creation, worktree setup, and import entry are covered. Complete forge/PR choices, responsive presentation, setup recovery, templates, exact model-selector visuals, and all attachment types remain."
+      "notes": "Selected project identity is carried into directory and worktree workspace creation, including initial route projectId fallback. Forge/PR choices, recovery, responsive visuals and full attachment parity remain."
     },
     {
       "id": "source-unit:packages/app/src/screens/new-workspace/project-picker.ts",
@@ -12565,7 +12567,7 @@
         "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart",
         "packages/daemon/test/daemon_custom_acp_e2e_test.dart"
       ],
-      "notes": "Async per-provider loading, cached in-flight probes, loading/error entries, refresh generation stale-load suppression, workspace scopes, immutable snapshots, and push updates are covered. Full Paseo manager parity for diagnostics, warm-up, ready-provider enforcement, and complete builtin probing remains partial."
+      "notes": "Async loading, refresh generation suppression, immutable snapshots, push updates and ready-provider enforcement are covered. Full diagnostics/warm-up/provider-registry unification and injected runtime client parity remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/provider-subagents/store.ts",
@@ -15507,10 +15509,14 @@
     },
     {
       "id": "wire-message:agent_update",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/directory_updates.dart;packages/daemon/lib/src/daemon_server.dart;packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/protocol/test/directory_updates_test.dart",
+        "packages/daemon/test/ws_server_test.dart",
+        "packages/app/test/daemon_client_test.dart"
+      ],
+      "notes": "Agent upsert/remove directory updates decode into typed events and are delivered through the real client event stream."
     },
     {
       "id": "wire-message:archive_agent_request",
@@ -16241,23 +16247,25 @@
     },
     {
       "id": "wire-message:list_available_providers_request",
-      "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/provider_v2.dart",
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/provider_v2.dart;packages/daemon/lib/src/providers/paseo/provider_catalog_v2_service.dart;packages/app/lib/core/daemon_client.dart",
       "evidence": [
         "packages/protocol/test/provider_v2_test.dart",
-        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart"
+        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": null
+      "notes": "Typed request is served by the daemon and exposed through a correlated Flutter client convenience method."
     },
     {
       "id": "wire-message:list_available_providers_response",
-      "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/provider_v2.dart",
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/provider_v2.dart;packages/daemon/lib/src/providers/paseo/provider_catalog_v2_service.dart;packages/app/lib/core/daemon_client.dart",
       "evidence": [
         "packages/protocol/test/provider_v2_test.dart",
-        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart"
+        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": null
+      "notes": "Availability response preserves provider entries, fetchedAt and request correlation."
     },
     {
       "id": "wire-message:list_commands_request",
@@ -16297,43 +16305,47 @@
     },
     {
       "id": "wire-message:list_provider_models_request",
-      "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/provider_v2.dart",
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/provider_v2.dart;packages/daemon/lib/src/providers/paseo/provider_catalog_v2_service.dart;packages/app/lib/core/daemon_client.dart",
       "evidence": [
         "packages/protocol/test/provider_v2_test.dart",
-        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart"
+        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": null
+      "notes": "Provider and cwd request fields are validated end-to-end through the typed Flutter client method."
     },
     {
       "id": "wire-message:list_provider_models_response",
-      "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/provider_v2.dart",
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/provider_v2.dart;packages/daemon/lib/src/providers/paseo/provider_catalog_v2_service.dart;packages/app/lib/core/daemon_client.dart",
       "evidence": [
         "packages/protocol/test/provider_v2_test.dart",
-        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart"
+        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": null
+      "notes": "Model response preserves provider identity, model definitions, fetchedAt and correlated requestId."
     },
     {
       "id": "wire-message:list_provider_modes_request",
-      "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/provider_v2.dart",
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/provider_v2.dart;packages/daemon/lib/src/providers/paseo/provider_catalog_v2_service.dart;packages/app/lib/core/daemon_client.dart",
       "evidence": [
         "packages/protocol/test/provider_v2_test.dart",
-        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart"
+        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": null
+      "notes": "Provider and cwd mode request fields are validated end-to-end through the typed Flutter client method."
     },
     {
       "id": "wire-message:list_provider_modes_response",
-      "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/provider_v2.dart",
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/provider_v2.dart;packages/daemon/lib/src/providers/paseo/provider_catalog_v2_service.dart;packages/app/lib/core/daemon_client.dart",
       "evidence": [
         "packages/protocol/test/provider_v2_test.dart",
-        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart"
+        "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": null
+      "notes": "Mode response preserves provider identity, mode definitions, fetchedAt and correlated requestId."
     },
     {
       "id": "wire-message:list_terminals_request",

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../attachments/workspace_file_drag.dart';
 import '../composer/composer_image_attachments.dart';
 import '../composer/composer_image_attachment_service.dart';
 import '../composer/composer_clipboard_reader.dart';
@@ -101,6 +102,7 @@ class _ComposerState extends ConsumerState<Composer> {
   late final ComposerDraftStore _draftStore;
   late final void Function() _disposeKeyboardHandler;
   var _dropActive = false;
+  var _workspaceFileDropActive = false;
   var _addingImages = false;
   var _draftRevision = 0;
   var _suspendDraftPersistence = false;
@@ -913,6 +915,49 @@ class _ComposerState extends ConsumerState<Composer> {
     _focusNode.requestFocus();
   }
 
+  bool _canAcceptWorkspaceFileDrop(
+    WorkspaceFileDragPayload payload,
+    String? workspaceId,
+  ) {
+    if (workspaceId == null || workspaceId.isEmpty) return false;
+    return resolveWorkspaceFileDrop(
+          payload: payload,
+          serverId: widget.serverId,
+          workspaceId: workspaceId,
+        ) !=
+        null;
+  }
+
+  void _acceptWorkspaceFileDrop(
+    WorkspaceFileDragPayload payload,
+    String? workspaceId,
+  ) {
+    if (workspaceId == null || workspaceId.isEmpty) return;
+    final file = resolveWorkspaceFileDrop(
+      payload: payload,
+      serverId: widget.serverId,
+      workspaceId: workspaceId,
+    );
+    if (file == null) return;
+    ref
+        .read(workspaceAttachmentsProvider(_draftKey).notifier)
+        .add(
+          workspaceFileContextAttachment(file.path, selection: file.selection),
+        );
+    ref
+        .read(composerAttachmentFocusRequestProvider(_draftKey).notifier)
+        .request();
+    _draftRevision += 1;
+    _persistDraft();
+    _focusNode.requestFocus();
+    if (_dropActive || _workspaceFileDropActive) {
+      setState(() {
+        _dropActive = false;
+        _workspaceFileDropActive = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final runState = ref.watch(
@@ -923,6 +968,11 @@ class _ComposerState extends ConsumerState<Composer> {
     );
     final cwd = ref.watch(
       agentSummaryProvider(widget.agentId).select((agent) => agent?.cwd),
+    );
+    final workspaceId = ref.watch(
+      agentSummaryProvider(
+        widget.agentId,
+      ).select((agent) => agent?.workspaceId),
     );
     final attachments = mergeWorkspaceContextAttachments(
       cwd == null
@@ -1159,7 +1209,11 @@ class _ComposerState extends ConsumerState<Composer> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   alignment: Alignment.center,
-                  child: const Text('Drop images to attach'),
+                  child: Text(
+                    _workspaceFileDropActive
+                        ? 'Drop file to attach'
+                        : 'Drop images to attach',
+                  ),
                 ),
               ),
             ),
@@ -1167,9 +1221,33 @@ class _ComposerState extends ConsumerState<Composer> {
         ],
       ),
     );
+    final workspaceFileTarget = DragTarget<WorkspaceFileDragPayload>(
+      key: const ValueKey('composer-workspace-file-drop-target'),
+      onWillAcceptWithDetails: (details) {
+        final accepts = _canAcceptWorkspaceFileDrop(details.data, workspaceId);
+        if (accepts && (!_dropActive || !_workspaceFileDropActive)) {
+          setState(() {
+            _dropActive = true;
+            _workspaceFileDropActive = true;
+          });
+        }
+        return accepts;
+      },
+      onLeave: (_) {
+        if (_workspaceFileDropActive) {
+          setState(() {
+            _dropActive = false;
+            _workspaceFileDropActive = false;
+          });
+        }
+      },
+      onAcceptWithDetails: (details) =>
+          _acceptWorkspaceFileDrop(details.data, workspaceId),
+      builder: (context, candidateData, rejectedData) => composer,
+    );
     return ComposerVoiceSurface(
       showOverlay: widget.showVoiceOverlay,
-      composer: composer,
+      composer: workspaceFileTarget,
       overlay: widget.voiceOverlay ?? const SizedBox.shrink(),
     );
   }

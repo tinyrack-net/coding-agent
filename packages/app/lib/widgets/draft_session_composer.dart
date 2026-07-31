@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../attachments/attachment_store.dart';
+import '../attachments/workspace_file_drag.dart';
 import '../command_center/command_center.dart';
 import '../composer/agent_command_autocomplete.dart';
 import '../composer/composer_draft_store.dart';
@@ -364,6 +365,38 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
     _draftRevision += 1;
     _persistDraft();
     if (mounted) setState(() => _autocompleteSelectedIndex = 0);
+  }
+
+  bool _canAcceptWorkspaceFileDrop(WorkspaceFileDragPayload payload) {
+    final workspaceId = widget.workspaceId;
+    if (workspaceId == null || workspaceId.isEmpty || _submitting) {
+      return false;
+    }
+    return resolveWorkspaceFileDrop(
+          payload: payload,
+          serverId: widget.serverId,
+          workspaceId: workspaceId,
+        ) !=
+        null;
+  }
+
+  void _acceptWorkspaceFileDrop(WorkspaceFileDragPayload payload) {
+    final workspaceId = widget.workspaceId;
+    if (workspaceId == null || workspaceId.isEmpty || _submitting) return;
+    final file = resolveWorkspaceFileDrop(
+      payload: payload,
+      serverId: widget.serverId,
+      workspaceId: workspaceId,
+    );
+    if (file == null) return;
+    ref
+        .read(workspaceAttachmentsProvider(_draftKey).notifier)
+        .add(
+          workspaceFileContextAttachment(file.path, selection: file.selection),
+        );
+    _draftRevision += 1;
+    _persistDraft();
+    _promptFocusNode.requestFocus();
   }
 
   void _scheduleFileFilterQuery() {
@@ -1188,7 +1221,7 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
       enabled: widget.isPaneFocused && !isSubmitting,
     );
 
-    return DropTarget(
+    final composer = DropTarget(
       onDragDone: (details) => unawaited(_addDroppedImages(details.files)),
       child: Center(
         child: ConstrainedBox(
@@ -1484,6 +1517,13 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
           ),
         ),
       ),
+    );
+    return DragTarget<WorkspaceFileDragPayload>(
+      key: const ValueKey('draft-workspace-file-drop-target'),
+      onWillAcceptWithDetails: (details) =>
+          !isSubmitting && _canAcceptWorkspaceFileDrop(details.data),
+      onAcceptWithDetails: (details) => _acceptWorkspaceFileDrop(details.data),
+      builder: (context, candidateData, rejectedData) => composer,
     );
   }
 }

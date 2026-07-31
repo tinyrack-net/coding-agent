@@ -249,6 +249,45 @@ void main() {
   );
 
   test(
+    'requires a configured, enabled, ready provider before agent creation',
+    () async {
+      final catalog = registry();
+
+      Future<void> expectCreateError(String provider, Matcher message) async {
+        await expectLater(
+          catalog.resolveCreateAgentConfig(
+            AgentCreateConfigRequest(
+              cwd: '.',
+              targetProvider: provider,
+              requestedMode: null,
+              featureValues: const {},
+              parent: null,
+              unattended: false,
+            ),
+          ),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              message,
+            ),
+          ),
+        );
+      }
+
+      await expectCreateError(
+        'disabled',
+        equals("Provider 'disabled' is disabled"),
+      );
+      await expectCreateError(
+        'missing',
+        equals("Provider 'missing' is not available"),
+      );
+      await expectCreateError('broken', contains('probe failed'));
+    },
+  );
+
+  test(
     'normalizes OpenCode create mode and feature policy before agent launch',
     () async {
       final openCode = PaseoProviderManifest.find('opencode')!;

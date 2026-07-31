@@ -682,6 +682,11 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
       final selectedProject = projects
           .where((project) => project.path == projectPath)
           .firstOrNull;
+      final projectId =
+          selectedProject?.projectId ??
+          (widget.initialProjectPath?.trim() == projectPath
+              ? widget.initialProjectId?.trim()
+              : null);
       final isWorktree =
           _isolation == WorkspaceIsolation.worktree &&
           selectedProject?.isGitRepo == true;
@@ -693,7 +698,10 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
       }
       final WorkspaceCreateSource source;
       if (!isWorktree) {
-        source = DirectoryWorkspaceCreateSource(path: projectPath);
+        source = DirectoryWorkspaceCreateSource(
+          path: projectPath,
+          projectId: projectId?.isNotEmpty == true ? projectId : null,
+        );
       } else {
         final selection = _checkoutLinks.selection;
         if (selection is ChangeRequestCheckoutLinkSelection) {
@@ -702,6 +710,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
           final forge = (item.forge ?? 'github').toLowerCase();
           source = WorktreeWorkspaceCreateSource(
             cwd: projectPath,
+            projectId: projectId?.isNotEmpty == true ? projectId : null,
             action: WorktreeCreateAction.checkout,
             refName: headRefName?.isEmpty == false ? headRefName : null,
             checkoutSource: checkoutSourceForChangeRequest(item),
@@ -716,6 +725,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
                   : 'main');
           source = WorktreeWorkspaceCreateSource(
             cwd: projectPath,
+            projectId: projectId?.isNotEmpty == true ? projectId : null,
             action: WorktreeCreateAction.branchOff,
             refName: baseRef,
           );

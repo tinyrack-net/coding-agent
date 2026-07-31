@@ -1282,7 +1282,11 @@ void main() {
     final request = client.requests.singleWhere(
       (request) => request.$1 == 'workspace.create.request',
     );
-    expect(request.$2['source'], {'kind': 'directory', 'path': '/scratch'});
+    expect(request.$2['source'], {
+      'kind': 'directory',
+      'path': '/scratch',
+      'projectId': 'legacy-test-project-0',
+    });
   });
 
   testWidgets('ready provider without explicit models submits Default', (
@@ -1361,7 +1365,7 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey('add-project-flow-path-/scratch')),
     );
-    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pumpAndSettle();
 
     expect(
       client.requests.any((r) => r.$1 == MessageTypes.projectAddRequest),
@@ -1371,6 +1375,31 @@ void main() {
       container.read(projectsProvider).value?.map((p) => p.path),
       contains('/scratch'),
     );
+
+    await tester.enterText(
+      find.byType(TextBox).last,
+      'Start the first project conversation.',
+    );
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+
+    final request = client.requests.singleWhere(
+      (request) => request.$1 == 'workspace.create.request',
+    );
+    expect(request.$2['source'], {
+      'kind': 'directory',
+      'path': '/scratch',
+      'projectId': 'project-added',
+    });
+    expect(request.$2['firstAgentContext'], {
+      'prompt': 'Start the first project conversation.',
+    });
+    final submission = container
+        .read(workspaceDraftSubmissionProvider)
+        .values
+        .single;
+    expect(submission.workspaceDirectory, '/scratch');
+    expect(submission.text, 'Start the first project conversation.');
   });
 
   testWidgets('a failed create shows an inline error message', (tester) async {

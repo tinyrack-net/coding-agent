@@ -235,6 +235,8 @@ final class ProviderAvailabilityV2 {
 final class ListAvailableProvidersRequest {
   const ListAvailableProvidersRequest({required this.requestId});
 
+  static const type = 'list_available_providers_request';
+
   final String requestId;
 
   factory ListAvailableProvidersRequest.fromJson(Map<String, Object?> json) {
@@ -257,6 +259,8 @@ final class ListAvailableProvidersResponse {
     required this.fetchedAt,
     this.error,
   });
+
+  static const type = 'list_available_providers_response';
 
   final String requestId;
   final List<ProviderAvailabilityV2> providers;
@@ -296,6 +300,8 @@ final class ListProviderModelsRequest {
     this.cwd,
   });
 
+  static const type = 'list_provider_models_request';
+
   final String provider;
   final String? cwd;
   final String requestId;
@@ -325,6 +331,8 @@ final class ListProviderModelsResponse {
     this.models,
     this.error,
   });
+
+  static const type = 'list_provider_models_response';
 
   final String provider;
   final String requestId;
@@ -366,6 +374,8 @@ final class ListProviderModesRequest {
     this.cwd,
   });
 
+  static const type = 'list_provider_modes_request';
+
   final String provider;
   final String? cwd;
   final String requestId;
@@ -395,6 +405,8 @@ final class ListProviderModesResponse {
     this.modes,
     this.error,
   });
+
+  static const type = 'list_provider_modes_response';
 
   final String provider;
   final String requestId;

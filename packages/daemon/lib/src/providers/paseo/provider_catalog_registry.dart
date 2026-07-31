@@ -210,16 +210,13 @@ final class PaseoProviderCatalogRegistry {
     List<String>? availableModes;
     String? targetUnattendedMode;
     if (providerDefinition != null) {
-      final entries = await snapshot(
-        providers: [request.targetProvider],
+      final entry = await _requireReadyProvider(
+        providerDefinition,
         cwd: request.cwd,
       );
-      final entry = entries.firstOrNull;
-      if (entry?.status == ProviderCatalogStatus.ready) {
-        availableModes = [
-          for (final mode in entry?.modes ?? const <ProviderMode>[]) mode.id,
-        ];
-      }
+      availableModes = [
+        for (final mode in entry.modes ?? const <ProviderMode>[]) mode.id,
+      ];
       for (final mode in providerDefinition.modes) {
         if (mode.isUnattended) {
           targetUnattendedMode = mode.mode.id;
@@ -232,6 +229,24 @@ final class PaseoProviderCatalogRegistry {
       availableModes: availableModes,
       targetUnattendedMode: targetUnattendedMode,
     );
+  }
+
+  Future<ProviderSnapshotEntry> _requireReadyProvider(
+    PaseoProviderDefinition definition, {
+    required String cwd,
+  }) async {
+    final entry = (await snapshot(providers: [definition.id], cwd: cwd)).single;
+    if (!entry.enabled) {
+      throw StateError("Provider '${entry.provider}' is disabled");
+    }
+    return switch (entry.status) {
+      ProviderCatalogStatus.ready => entry,
+      ProviderCatalogStatus.error => throw StateError(
+        entry.error ?? "Failed to load provider '${entry.provider}'",
+      ),
+      ProviderCatalogStatus.unavailable || ProviderCatalogStatus.loading =>
+        throw StateError("Provider '${entry.provider}' is not available"),
+    };
   }
 
   ResolvedAgentCreateConfig _resolveProviderCreateAgentConfig(

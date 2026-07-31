@@ -3,23 +3,34 @@ library;
 
 final class ProjectInfo {
   const ProjectInfo({
+    this.projectId,
     required this.path,
     required this.name,
     required this.isGitRepo,
   });
 
+  /// Stable v2 project identity when the host exposes one.
+  ///
+  /// Legacy project-list responses only identify projects by path, so this
+  /// remains optional at the compatibility boundary.
+  final String? projectId;
   final String path;
   final String name;
   final bool isGitRepo;
 
   static ProjectInfo fromJson(Map<String, Object?> json) => ProjectInfo(
-        path: json['path'] as String,
-        name: (json['name'] as String?) ?? '',
-        isGitRepo: (json['isGitRepo'] as bool?) ?? false,
-      );
+    projectId: json['projectId'] as String?,
+    path: json['path'] as String,
+    name: (json['name'] as String?) ?? '',
+    isGitRepo: (json['isGitRepo'] as bool?) ?? false,
+  );
 
-  Map<String, Object?> toJson() =>
-      {'path': path, 'name': name, 'isGitRepo': isGitRepo};
+  Map<String, Object?> toJson() => {
+    if (projectId != null) 'projectId': projectId,
+    'path': path,
+    'name': name,
+    'isGitRepo': isGitRepo,
+  };
 }
 
 final class WorktreeInfo {
@@ -40,35 +51,39 @@ final class WorktreeInfo {
   final bool isMain;
 
   static WorktreeInfo fromJson(Map<String, Object?> json) => WorktreeInfo(
-        path: json['path'] as String,
-        branch: (json['branch'] as String?) ?? '',
-        projectPath: (json['projectPath'] as String?) ?? '',
-        isMain: (json['isMain'] as bool?) ?? false,
-      );
+    path: json['path'] as String,
+    branch: (json['branch'] as String?) ?? '',
+    projectPath: (json['projectPath'] as String?) ?? '',
+    isMain: (json['isMain'] as bool?) ?? false,
+  );
 
   Map<String, Object?> toJson() => {
-        'path': path,
-        'branch': branch,
-        'projectPath': projectPath,
-        'isMain': isMain,
-      };
+    'path': path,
+    'branch': branch,
+    'projectPath': projectPath,
+    'isMain': isMain,
+  };
 }
 
 /// Response of `branch.list.request`: local branches of a project, most
 /// recently committed first, plus the branch currently checked out.
 final class BranchListResponse {
-  const BranchListResponse({required this.branches, required this.currentBranch});
+  const BranchListResponse({
+    required this.branches,
+    required this.currentBranch,
+  });
 
   final List<String> branches;
   final String currentBranch;
 
   static BranchListResponse fromJson(Map<String, Object?> json) =>
       BranchListResponse(
-        branches:
-            ((json['branches'] as List?) ?? const []).cast<String>(),
+        branches: ((json['branches'] as List?) ?? const []).cast<String>(),
         currentBranch: (json['currentBranch'] as String?) ?? '',
       );
 
-  Map<String, Object?> toJson() =>
-      {'branches': branches, 'currentBranch': currentBranch};
+  Map<String, Object?> toJson() => {
+    'branches': branches,
+    'currentBranch': currentBranch,
+  };
 }

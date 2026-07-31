@@ -748,6 +748,79 @@ void main() {
   );
 
   test(
+    'provider catalog convenience methods preserve request and provider correlation',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      unawaited(
+        conn.nextRequest(ListAvailableProvidersRequest.type).then((frame) {
+          conn.respondNative(
+            ListAvailableProvidersResponse.type,
+            frame['requestId'] as String,
+            {
+              'providers': [
+                {'provider': 'codex', 'available': true},
+              ],
+              'fetchedAt': 'now',
+            },
+          );
+        }),
+      );
+      final available = await client.listAvailableProviders();
+      expect(available.providers.single.provider, 'codex');
+
+      unawaited(
+        conn.nextRequest(ListProviderModelsRequest.type).then((frame) {
+          expect(frame['provider'], 'codex');
+          expect(frame['cwd'], r'C:\repo');
+          conn.respondNative(
+            ListProviderModelsResponse.type,
+            frame['requestId'] as String,
+            {
+              'provider': 'codex',
+              'models': [
+                {'provider': 'codex', 'id': 'gpt-5.4', 'label': 'GPT-5.4'},
+              ],
+              'fetchedAt': 'now',
+            },
+          );
+        }),
+      );
+      final models = await client.listProviderModels(
+        provider: 'codex',
+        cwd: r'C:\repo',
+      );
+      expect(models.models?.single.id, 'gpt-5.4');
+
+      unawaited(
+        conn.nextRequest(ListProviderModesRequest.type).then((frame) {
+          expect(frame['provider'], 'codex');
+          conn.respondNative(
+            ListProviderModesResponse.type,
+            frame['requestId'] as String,
+            {
+              'provider': 'codex',
+              'modes': [
+                {'id': 'default', 'label': 'Default'},
+              ],
+              'fetchedAt': 'now',
+            },
+          );
+        }),
+      );
+      final modes = await client.listProviderModes(provider: 'codex');
+      expect(modes.modes?.single.id, 'default');
+    },
+  );
+
+  test(
     'cloneGithubProject sends and validates the typed clone request',
     () async {
       client = DaemonClient(uri: server.uri);
