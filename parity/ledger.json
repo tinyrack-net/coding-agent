@@ -4419,10 +4419,12 @@
     },
     {
       "id": "source-unit:packages/app/src/composer/agent-controls/layout.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/composer/agent_controls_layout.dart",
+      "evidence": [
+        "packages/app/test/composer/agent_controls_layout_test.dart"
+      ],
+      "notes": "Ports the frozen toolbar geometry, the full and condensed width floors (including the 7px-per-character label estimate and the font-scale clamp), the 12px hysteresis band that keeps density from churning while resizing, the per-density presentation table, and the platform glyph size. Upstream's layout.test.ts is ported 1:1."
     },
     {
       "id": "source-unit:packages/app/src/composer/agent-controls/mode-control.tsx",
@@ -4458,10 +4460,12 @@
     },
     {
       "id": "source-unit:packages/app/src/composer/agent-controls/utils.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/composer/agent_controls_utils.dart",
+      "evidence": [
+        "packages/app/test/composer/agent_controls_utils_test.dart"
+      ],
+      "notes": "Ports hint keys, model id normalization, feature tooltip fallback and highlight colors, the compact-label formatter (separator, camel, and acronym splitting with hyphens split only for derived labels), the xhigh special case, and resolveAgentModelSelection's preference order: a runtime model in the catalog wins, else the configured id, else an unknown runtime id that still displays rather than collapsing to the fallback. The 'default' thinking sentinel resolves to the model default and a stale thinking id falls back to the first option. Upstream's utils.test.ts is ported 1:1, with the translator injected because i18n/* is a separate slice."
     },
     {
       "id": "source-unit:packages/app/src/composer/attachments/drop.ts",
@@ -4573,10 +4577,12 @@
     },
     {
       "id": "source-unit:packages/app/src/composer/focused-chat-target.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/composer/focused_chat_target.dart",
+      "evidence": [
+        "packages/app/test/focused_chat_target_test.dart"
+      ],
+      "notes": "resolveFocusedChatTarget reads the focused pane's focused tab and maps an agent tab to its server-scoped agent draft key and a draft tab to its draft key, returning null for any non-chat tab. Tinyrack's draft tab carries no separate draft id - the tab id is the draft identity - so the draft branch keys on tabId where upstream keys on target.draftId; both yield the frozen draft:<serverId>:<draftId> shape."
     },
     {
       "id": "source-unit:packages/app/src/composer/github/auto-attach.ts",
@@ -7900,9 +7906,10 @@
       "status": "partial",
       "implementation": "packages/app/lib/composer/composer_draft_store.dart",
       "evidence": [
-        "packages/app/test/composer_draft_store_test.dart"
+        "packages/app/test/composer_draft_store_test.dart",
+        "packages/app/test/focused_chat_target_test.dart"
       ],
-      "notes": "Frozen agent, explicit draft, and new-workspace draft key shapes are implemented and validated. Upstream generateDraftId and legacy new-workspace key detection remain."
+      "notes": "buildComposerDraftKey matches the frozen buildDraftStoreKey exactly: an explicit draft id yields draft:<serverId>:<draftId>, otherwise agent:<serverId>:<agentId>, both trimmed. Remaining parity is the new-workspace draft key family (buildNewWorkspaceDraftKey, isLegacyNewWorkspaceDraftKey, generateDraftId), which belongs with the New Workspace draft surface."
     },
     {
       "id": "source-unit:packages/app/src/stores/draft-store/index.ts",
