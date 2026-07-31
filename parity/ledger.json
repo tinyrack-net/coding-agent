@@ -11423,10 +11423,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/features/app-update-rollout.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_features.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_features_test.dart"
+      ],
+      "notes": "The five ordered short-circuits, future-dated rejection, and the strict bucket comparison with pct capped at 100. The rollout bucket hash was taken from executing the frozen builder-util-runtime uuid reader under Node, not reasoned about: UUID.parse is an unvalidated fixed-offset reader with a lowercase-only hex table, so uppercase digits read as zero and malformed input buckets at 0 rather than throwing. Exact Node values are asserted."
     },
     {
       "id": "source-unit:packages/desktop/src/features/app-update-service.ts",
@@ -11528,10 +11530,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/features/browser-profile.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_features.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_features_test.dart"
+      ],
+      "notes": "Partition constant, legacy-id validation and dedupe with its 1000 cap, session resolution across the shared profile and legacy per-tab partitions, guest filtering, and the wipe ordering — all three clears started together and fully awaited before any reload, propagating on failure without reloading."
     },
     {
       "id": "source-unit:packages/desktop/src/features/browser-webviews/index.ts",
@@ -11570,10 +11574,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/features/editor-targets/registry.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_features.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_features_test.dart"
+      ],
+      "notes": "The registry plus target.ts and all 23 target modules, collapsed into five private behaviour families with one public const per upstream module; ids, labels, icons, command candidates and argument shapes are byte-identical, and openEditorTarget keeps upstream's validation order. The protocol's editor wire types are an adjacent layer, not a duplicate: they carry no kind, icon, line or column."
     },
     {
       "id": "source-unit:packages/desktop/src/features/editor-targets/runtime.ts",
@@ -11872,10 +11878,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/settings/desktop-settings-commands.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_features.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_features_test.dart"
+      ],
+      "notes": "The three handlers and their name constants are ported over an injected store. Remaining: upstream's settings document ({releaseChannel, daemon:{...}}) is modelled as PaseoDesktopSettings because this app's existing DesktopSettings is a different document — a tray-residency preference of {autoStartAtLogin, keepRunningAfterQuit} — that only overlaps on one field, at a different nesting level."
     },
     {
       "id": "source-unit:packages/desktop/src/settings/desktop-settings-electron.ts",
