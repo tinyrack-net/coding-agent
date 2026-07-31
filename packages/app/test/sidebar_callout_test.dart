@@ -134,7 +134,7 @@ void main() {
     );
     expect(
       (container.decoration! as BoxDecoration).border!.top.color,
-      buildAppTheme().resources.systemFillColorCritical,
+      paseoPaletteFor(AppThemeName.dark).statusDanger,
     );
     final semantics = tester.getSemantics(
       find.byKey(const ValueKey('callout')),

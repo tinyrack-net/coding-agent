@@ -58,7 +58,19 @@ class PullRequestPaneNotifier extends AsyncNotifier<PullRequestPaneData> {
   @override
   Future<PullRequestPaneData> build() async {
     final client = ref.watch(daemonClientProvider);
-    ref.watch(connectionStateProvider);
+    // Select the *effective* connection state rather than the raw
+    // AsyncValue. An already-connected client replays its terminal state on
+    // subscribe, so watching the AsyncValue rebuilds this notifier once
+    // shortly after mount (loading -> data) even though the connection never
+    // changed. That reload discards a fatal error before the retry
+    // affordance can be used, and double-fetches status on every mount.
+    // Collapsing to the value the load actually branches on makes that
+    // transition a no-op while a genuine (re)connect still rebuilds.
+    final connection = ref.watch(
+      connectionStateProvider.select(
+        (state) => state.value ?? client.currentState,
+      ),
+    );
     final serverId = _serverId(client);
     ref.watch(checkoutStatusPushRouterProvider(serverId));
     final pushed = ref.watch(
@@ -79,7 +91,7 @@ class PullRequestPaneNotifier extends AsyncNotifier<PullRequestPaneData> {
         fromPush: true,
       );
     }
-    if (client.currentState != DaemonConnectionState.connected) {
+    if (connection != DaemonConnectionState.connected) {
       return state.value ?? const PullRequestPaneData();
     }
     return _load(client, generation: generation);
