@@ -22,6 +22,7 @@ import 'bottom_anchor_controller.dart';
 import 'layout.dart';
 import 'render_model.dart';
 import 'stream_strategy.dart';
+import 'turn_footer.dart';
 
 /// Distance from the bottom still considered "at the bottom" for anchoring.
 /// Paseo's web strategy uses 64px; the desktop app resolves the web strategy
@@ -86,6 +87,8 @@ class AgentStreamView extends StatefulWidget {
     this.routeAnchorRequest,
     this.onNearHistoryStart,
     this.onAnchorModeChange,
+    this.supportsTimelineCursor = false,
+    this.onForkAssistantTurn,
     this.emptyState,
     this.padding = const EdgeInsets.symmetric(vertical: 12),
   });
@@ -116,6 +119,12 @@ class AgentStreamView extends StatefulWidget {
   final VoidCallback? onNearHistoryStart;
 
   final void Function(BottomAnchorMode mode)? onAnchorModeChange;
+
+  /// Whether the host can fork from a timeline cursor. Forking is offered
+  /// only when [onForkAssistantTurn] is also supplied.
+  final bool supportsTimelineCursor;
+
+  final AssistantTurnForkHandler? onForkAssistantTurn;
 
   /// Rendered when every segment is empty.
   final Widget? emptyState;
@@ -374,10 +383,26 @@ class AgentStreamViewState extends State<AgentStreamView> {
       timingByAssistantId: model.turnTiming.byAssistantId,
     );
     final rows = [...layout.history, ...layout.liveHead];
+    final isRunning = widget.agentStatus == 'running';
+    // The auxiliary slot trails the whole stream: the running indicator
+    // while a turn is in flight, otherwise the newest completed turn's
+    // footer. Layout already suppresses the completed host while running.
+    final auxiliaryFooter = TurnFooter(
+      isRunning: isRunning,
+      inFlightTurnStartedAt: model.turnTiming.runningStartedAt,
+      host: layout.auxiliaryTurnFooter,
+      strategy: _strategy,
+      supportsTimelineCursor: widget.supportsTimelineCursor,
+      onForkAssistantTurn: widget.onForkAssistantTurn,
+    );
+    final hasAuxiliaryFooter =
+        isRunning ||
+        model.turnTiming.isActive ||
+        layout.auxiliaryTurnFooter != null;
 
     SchedulerBinding.instance.addPostFrameCallback((_) => _reportGeometry());
 
-    if (rows.isEmpty) {
+    if (rows.isEmpty && !hasAuxiliaryFooter) {
       return widget.emptyState ?? const SizedBox.shrink();
     }
 
@@ -412,13 +437,32 @@ class AgentStreamViewState extends State<AgentStreamView> {
             child: ListView.builder(
               controller: _scrollController,
               padding: widget.padding,
-              itemCount: rows.length,
+              itemCount: rows.length + (hasAuxiliaryFooter ? 1 : 0),
               itemBuilder: (context, index) {
+                if (index == rows.length) return auxiliaryFooter;
                 final layoutItem = rows[index];
+                final completedFooter = layoutItem.completedFooter;
                 return Padding(
                   key: ValueKey(layoutItem.item.item.id),
                   padding: EdgeInsets.only(bottom: layoutItem.gapBelow),
-                  child: widget.rowBuilder(context, layoutItem),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      widget.rowBuilder(context, layoutItem),
+                      // A completed turn's footer renders after that turn's
+                      // last visible row, which is rarely the assistant row
+                      // itself (see layout.dart).
+                      if (completedFooter != null)
+                        CompletedTurnFooterRow(
+                          strategy: _strategy,
+                          items: completedFooter.items,
+                          timing: completedFooter.timing,
+                          startIndex: completedFooter.startIndex,
+                          supportsTimelineCursor: widget.supportsTimelineCursor,
+                          onForkAssistantTurn: widget.onForkAssistantTurn,
+                        ),
+                    ],
+                  ),
                 );
               },
             ),
