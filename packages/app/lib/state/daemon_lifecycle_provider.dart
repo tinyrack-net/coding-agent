@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/daemon_client.dart' show isLoopbackHost;
 import '../core/desktop/desktop_shell.dart';
 import '../core/desktop/tray_controller.dart';
+import '../desktop/paseo_desktop_daemon_launch.dart'
+    show isDesktopManagedDaemonRunning, shouldStopDesktopManagedDaemonOnQuit;
 import 'connection_settings_provider.dart';
 import 'desktop_settings_provider.dart';
 
@@ -92,12 +94,22 @@ class DaemonLifecycleNotifier extends AsyncNotifier<DaemonStatus?> {
   }
 
   /// Quit flow: leave the daemon alive unless the user disabled
-  /// keepRunningAfterQuit.
+  /// keepRunningAfterQuit — and, even then, only stop one this app started.
+  ///
+  /// A daemon the user launched themselves is not ours to kill just because
+  /// they closed the window. Upstream guards on exactly this
+  /// (`isDesktopManagedDaemonRunning`), and both halves of the rule live in
+  /// `desktop/paseo_desktop_daemon_launch.dart`.
   Future<void> _onQuit() async {
     final supervisor = _supervisor;
     if (supervisor == null) return;
-    final keepRunning = ref.read(desktopSettingsProvider).keepRunningAfterQuit;
-    if (!keepRunning) await supervisor.stop();
+    if (!shouldStopDesktopManagedDaemonOnQuit(
+      ref.read(desktopSettingsProvider),
+    )) {
+      return;
+    }
+    if (!isDesktopManagedDaemonRunning(state.value)) return;
+    await supervisor.stop();
   }
 
   void _pushToTray(DaemonStatus? status) {

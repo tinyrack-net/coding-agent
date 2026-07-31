@@ -204,4 +204,32 @@ void main() {
     await TrayController.instance.onQuit?.call();
     expect(supervisor.stopCalls, 1);
   });
+
+  test('quitting never stops a daemon this app does not manage', () async {
+    // A daemon the user started by hand reports desktopManaged: false.
+    final supervisor = FakeSupervisor(
+      initial: const DaemonStatus(
+        health: DaemonHealth.running,
+        hello: ServerHello(
+          daemonVersion: '0.2.0',
+          protocolVersion: 1,
+          pid: 4242,
+          desktopManaged: false,
+        ),
+      ),
+    );
+    final container = makeContainer(desktop: true, supervisor: supervisor);
+    await container.read(daemonLifecycleProvider.future);
+
+    await container
+        .read(desktopSettingsProvider.notifier)
+        .setKeepRunningAfterQuit(false);
+    await TrayController.instance.onQuit?.call();
+
+    expect(supervisor.stopCalls, 0);
+
+    // The tray's explicit Stop action is user intent, so it is still allowed.
+    await container.read(daemonLifecycleProvider.notifier).stopDaemon();
+    expect(supervisor.stopCalls, 1);
+  });
 }

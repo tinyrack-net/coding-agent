@@ -11323,17 +11323,21 @@
     },
     {
       "id": "source-unit:packages/desktop/src/daemon/cli/external.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_daemon_launch.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_daemon_launch_test.dart"
+      ],
+      "notes": "Failure message formatting, text and JSON command runs with the trim, empty check, first-brace scan and parse, and all four log breadcrumbs with their exact character slices."
     },
     {
       "id": "source-unit:packages/desktop/src/daemon/cli/passthrough.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_daemon_launch.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_daemon_launch_test.dart"
+      ],
+      "notes": "Argument parsing with its start-index and prefix-matched ignore rules, the null-versus-empty-list distinction, and forceCli."
     },
     {
       "id": "source-unit:packages/desktop/src/daemon/daemon-manager.ts",
@@ -11351,17 +11355,21 @@
     },
     {
       "id": "source-unit:packages/desktop/src/daemon/node-entrypoint-launcher.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_daemon_launch.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_daemon_launch_test.dart"
+      ],
+      "notes": "The decision rules are ported and tested — path resolution order, packaged-versus-dev branching, the argv contract, and the env rules. Remaining and deliberately not invented: the asar layout, the macOS Helper indirection, ELECTRON_RUN_AS_NODE and the Node runner itself are packaging artifacts with no analogue for a Dart binary, and this repo's real resolution order lives in resolveDaemonExe. Ported as frozen decision data, not as a live launcher."
     },
     {
       "id": "source-unit:packages/desktop/src/daemon/node-entrypoint-runner.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_daemon_launch.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_daemon_launch_test.dart"
+      ],
+      "notes": "The decision rules are ported and tested — path resolution order, packaged-versus-dev branching, the argv contract, and the env rules. Remaining and deliberately not invented: the asar layout, the macOS Helper indirection, ELECTRON_RUN_AS_NODE and the Node runner itself are packaging artifacts with no analogue for a Dart binary, and this repo's real resolution order lives in resolveDaemonExe. Ported as frozen decision data, not as a live launcher."
     },
     {
       "id": "source-unit:packages/desktop/src/daemon/package-paths.ts",
@@ -11372,24 +11380,30 @@
     },
     {
       "id": "source-unit:packages/desktop/src/daemon/quit-lifecycle.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_daemon_launch.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_daemon_launch_test.dart"
+      ],
+      "notes": "The stop-on-quit rule and the quit state machine including the two-bounded-wait updater handoff. Now wired: state/daemon_lifecycle_provider.dart's quit handler previously stopped the daemon whenever keepRunningAfterQuit was false, without checking whether the app manages it, so quitting killed a daemon the user had started themselves. It now applies both halves of the upstream guard."
     },
     {
       "id": "source-unit:packages/desktop/src/daemon/runtime-paths.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_daemon_launch.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_daemon_launch_test.dart"
+      ],
+      "notes": "The decision rules are ported and tested — path resolution order, packaged-versus-dev branching, the argv contract, and the env rules. Remaining and deliberately not invented: the asar layout, the macOS Helper indirection, ELECTRON_RUN_AS_NODE and the Node runner itself are packaging artifacts with no analogue for a Dart binary, and this repo's real resolution order lives in resolveDaemonExe. Ported as frozen decision data, not as a live launcher."
     },
     {
       "id": "source-unit:packages/desktop/src/desktop-startup.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_startup.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_startup_test.dart"
+      ],
+      "notes": "runDesktopStartup preserving the ordering that is the module's whole point: a pending GUI launch means the CLI passthrough is never called, a true passthrough ends startup before login-shell env inheritance, and skills auto-update fires last."
     },
     {
       "id": "source-unit:packages/desktop/src/diagnostics/app-logs.ts",
@@ -11400,10 +11414,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/diagnostics/tail-file.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_startup.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_startup_test.dart"
+      ],
+      "notes": "Missing files are empty under both settings; other read errors are empty by default and rethrown under throwOnReadError. Upstream's slice(-n) quirks are reproduced rather than corrected: lines 0 returns the whole file and a negative count drops from the front."
     },
     {
       "id": "source-unit:packages/desktop/src/features/app-update-rollout.ts",
@@ -11736,10 +11752,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/features/opener.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_startup.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_startup_test.dart"
+      ],
+      "notes": "isAllowedExternalUrl and the opener channel registration, with the allowlist running before the launcher is touched. Uri.tryParse differs from WHATWG URL in three ways, every one rejecting where upstream accepts, which is the safe direction for a security allowlist."
     },
     {
       "id": "source-unit:packages/desktop/src/features/react-devtools.ts",
@@ -11764,10 +11782,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/integrations/cli-install/path.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_startup.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_startup_test.dart"
+      ],
+      "notes": "The full source-path matrix including the ordering detail that the Windows branch precedes the packaging check."
     },
     {
       "id": "source-unit:packages/desktop/src/integrations/cli-install/paths.ts",
@@ -11827,17 +11847,21 @@
     },
     {
       "id": "source-unit:packages/desktop/src/open-project-routing.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_startup.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_startup_test.dart"
+      ],
+      "notes": "Argv slicing by isDefaultApp, prefix-filtered ignores, positional scan then the legacy flag. Filesystem access is split into isAbsolutePath and isExistingDirectory specifically so upstream's short-circuit — a relative argument never touches the disk — stays observable."
     },
     {
       "id": "source-unit:packages/desktop/src/pending-open-project-store.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_startup.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_startup_test.dart"
+      ],
+      "notes": "Blank paths clear rather than store, non-blank are stored trimmed, and take is destructive."
     },
     {
       "id": "source-unit:packages/desktop/src/preload.ts",
@@ -11876,10 +11900,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/system/arm64-translation.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_startup.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_startup_test.dart"
+      ],
+      "notes": "Non-darwin returns false without spawning; a host-reported true wins; otherwise sysctl with the exact call shape upstream pins, and any throw means not translated. The module-global memo becomes an instance so it is resettable between tests."
     },
     {
       "id": "source-unit:packages/desktop/src/vendor.d.ts",
