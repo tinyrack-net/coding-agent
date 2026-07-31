@@ -225,10 +225,30 @@ Never hand-edit `upstream_inventory.json`. `ledger.json` is merge-preserved by
   whitespace-only cwd sat idle instead of surfacing the daemon's error. And
   the app defaulted the theme to dark where the frozen default is `auto`, so
   a fresh install on a light-mode OS looked wrong.
-- Ledger status: 886 verified, 268 partial, and 766 not-started out of 1920.
+- The daemon, desktop and app utility surfaces are now ported too: server
+  process/env/workspace/agent/quota clusters, the desktop startup, daemon
+  launch and feature clusters, and the app's workspace-identity, routing,
+  git-ref, UI-utility and misc clusters.
+- Porting has been at least as valuable for what it exposed in existing code
+  as for the ports themselves. Six production bugs found and fixed this way:
+  quitting the app stopped a daemon it did not manage; four private copies of
+  a tree kill signalled only the direct child on POSIX, leaking every
+  grandchild a timed-out shell or a killed provider had spawned; provider
+  quota failures surfaced Dart internals ("Bad state: boom") instead of the
+  message; an over-quota provider reported a negative remaining percentage;
+  the theme defaulted to dark where the frozen default is `auto`; and
+  `isGitHubHost` did not recognize `ssh.github.com`, so GitHub's port-443 SSH
+  alias failed to parse as a GitHub remote.
+- Two engine differences worth remembering, both found by executing the frozen
+  TypeScript under Node rather than reasoning about it: `DateTime.tryParse`
+  reads '1778762475' as the year 177878 and rolls '2026-13-01' into 2027,
+  where JS rejects both; and electron-updater's rollout hash reads UUIDs
+  through an unvalidated fixed-offset table with lowercase-only hex, so
+  uppercase digits read as zero and malformed input buckets at 0.
+- Ledger status: 951 verified, 278 partial, and 691 not-started out of 1920.
 - Validation: `dart run tool/parity.dart --check` passes against the frozen
-  inventory; `dart analyze packages/app` is clean and packages/app runs its
-  full suite green. packages/daemon runs 1824 (one pre-existing CLI
+  inventory; `dart analyze` is clean and packages/app runs 4917 tests green.
+  packages/daemon runs 2190 (one pre-existing CLI
   connection-fallback timeout, reproducible on a clean tree). The Windows
   debug build succeeds and the app launches against a local daemon on 6868.
   Package coverage for app is below the 95% gate — that shortfall predates
