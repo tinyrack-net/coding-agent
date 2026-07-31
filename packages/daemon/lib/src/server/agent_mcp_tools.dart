@@ -1859,14 +1859,23 @@ String curateAgentActivity(
   List<TimelineItem> items, {
   int? maxItems,
   String? cwd,
+  bool labelAssistantMessages = false,
+  Set<String>? includeKinds,
+  bool includeExternalToolInput = true,
 }) {
   final projected = projectTimelineRows([
     for (var index = 0; index < items.length; index++)
       TimelineRow(seq: index + 1, timestamp: '', item: items[index]),
   ], projected: true).map((entry) => entry.item).toList(growable: false);
-  final recent = maxItems != null && maxItems > 0 && projected.length > maxItems
+  final capped = maxItems != null && maxItems > 0 && projected.length > maxItems
       ? projected.sublist(projected.length - maxItems)
       : projected;
+  final recent = includeKinds == null
+      ? capped
+      : [
+          for (final item in capped)
+            if (includeKinds.contains(item.kind)) item,
+        ];
   final lines = <String>[];
   var messageBuffer = '';
   var thoughtBuffer = '';
@@ -1886,7 +1895,13 @@ String curateAgentActivity(
   }
 
   void flushBuffers() {
-    if (messageBuffer.trim().isNotEmpty) lines.add(messageBuffer.trim());
+    if (messageBuffer.trim().isNotEmpty) {
+      lines.add(
+        labelAssistantMessages
+            ? '[Assistant] ${messageBuffer.trim()}'
+            : messageBuffer.trim(),
+      );
+    }
     if (thoughtBuffer.trim().isNotEmpty) {
       lines.add('[Thought] ${thoughtBuffer.trim()}');
     }
@@ -1905,7 +1920,13 @@ String curateAgentActivity(
         appendText(text, thought: true);
       case ToolCallItem():
         flushBuffers();
-        lines.add(_curatedToolSummary(item, cwd: cwd));
+        lines.add(
+          _curatedToolSummary(
+            item,
+            cwd: cwd,
+            includeExternalToolInput: includeExternalToolInput,
+          ),
+        );
       case TodoItem(:final items):
         flushBuffers();
         lines.add('[Tasks]');
@@ -1926,7 +1947,11 @@ String curateAgentActivity(
   return lines.isEmpty ? 'No activity to display.' : lines.join('\n');
 }
 
-String _curatedToolSummary(ToolCallItem item, {String? cwd}) {
+String _curatedToolSummary(
+  ToolCallItem item, {
+  String? cwd,
+  bool includeExternalToolInput = true,
+}) {
   final display = buildToolCallDisplayModel(
     ToolCallDisplayInput.fromItem(item, cwd: cwd),
   );
@@ -1934,7 +1959,9 @@ String _curatedToolSummary(ToolCallItem item, {String? cwd}) {
     item.toolName,
     display.displayName,
   );
-  if (isLikelyExternalToolName(item.toolName) && item.detail is GenericDetail) {
+  if (includeExternalToolInput &&
+      isLikelyExternalToolName(item.toolName) &&
+      item.detail is GenericDetail) {
     final input = (item.detail as GenericDetail).input;
     try {
       final encoded = jsonEncode(input);
