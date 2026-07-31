@@ -12476,10 +12476,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-archive.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/agent/paseo_agent_rules.dart",
+      "evidence": [
+        "packages/daemon/test/agent/paseo_agent_rules_test.dart"
+      ],
+      "notes": "buildArchivedAgentSummary stamps archivedAt, preserves updatedAt unless overridden, collapses busy run states to idle, and clears the attention fields. The daemon's awaitingPermission extension joins the collapse, since it is busy for the same reason running is. Clock injected."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-loading.ts",
@@ -12587,10 +12589,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-timeline-content.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/agent/paseo_agent_rules.dart",
+      "evidence": [
+        "packages/daemon/test/agent/paseo_agent_rules_test.dart"
+      ],
+      "notes": "limitAgentTimelineItemContent's three ordered 64KiB passes over failed-shell error text, plain-text detail, and shell output; items already within budget and non-tool-call items come back as the same instance."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-timeline-store-types.ts",
@@ -12776,10 +12780,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/provider-history-timestamps.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/agent/paseo_agent_rules.dart",
+      "evidence": [
+        "packages/daemon/test/agent/paseo_agent_rules_test.dart"
+      ],
+      "notes": "normalizeProviderReplayTimestamp with the >1e12 seconds-vs-milliseconds split, TimeClip bounds, truncation toward zero, and UTC ISO-8601 rendering. Deliberately validates strings against the ECMAScript Date Time String Format rather than DateTime.tryParse, which is load-bearing: tryParse reads '1778762475' as year 177878 and rolls '2026-13-01' into 2027, both of which JS rejects and both of which would corrupt a replayed timeline. Cost is that V8's non-standard extras (RFC 2822, lowercase z) are rejected; pinned in both directions by tests."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/provider-launch-config.ts",
@@ -13468,10 +13474,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/rewind/rewind.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/agent/paseo_agent_rules.dart",
+      "evidence": [
+        "packages/daemon/test/agent/paseo_agent_rules_test.dart"
+      ],
+      "notes": "The capability types and invokeRewindCapability with upstream's double guard (flag set and entry point present) are ported. Remaining: upstream's suite is an AgentManager integration test covering turn abort, timeline rehydration from provider history, and prompt gating on the rehydrate epoch — those are manager responsibilities, and AgentSession exposes no rewind surface today, so RewindAwareAgentSession is currently an extension point no production provider implements."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/rewind/test-rewind-session.ts",
@@ -13731,10 +13739,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/client-message-id.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/paseo_server_env.dart",
+      "evidence": [
+        "packages/daemon/test/paseo_server_env_test.dart"
+      ],
+      "notes": "Trim-normalizing with blank collapsing to null, and id resolution over an injectable generator."
     },
     {
       "id": "source-unit:packages/server/src/server/config.ts",
@@ -13804,10 +13814,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/daemon-version.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/paseo_server_env.dart",
+      "evidence": [
+        "packages/daemon/test/paseo_server_env_test.dart"
+      ],
+      "notes": "Upward walk for the owning package manifest (package.json becomes pubspec.yaml), skipping non-matching or unreadable ones and failing hard on matching-but-versionless. Adds a fallback to the shipped daemonVersion constant, because an AOT-compiled daemon has no pubspec on disk and the walk must fail in production."
     },
     {
       "id": "source-unit:packages/server/src/server/daemon-worker.ts",
@@ -13827,10 +13839,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/exports.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/paseo_server_env.dart",
+      "evidence": [
+        "packages/daemon/test/paseo_server_env_test.dart"
+      ],
+      "notes": "The public-entry symbol manifests and violation finder, with the final test walking the real agent_daemon.dart export list. Upstream imports the entry and inspects the namespace; dart:mirrors cannot see re-exported names, so the surface is recovered from the entry library's source."
     },
     {
       "id": "source-unit:packages/server/src/server/file-download/token-store.ts",
@@ -13974,17 +13988,21 @@
     },
     {
       "id": "source-unit:packages/server/src/server/messages.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/paseo_server_env.dart",
+      "evidence": [
+        "packages/daemon/test/paseo_server_env_test.dart"
+      ],
+      "notes": "serializeAgentStreamEvent normalizes attention_required, drops internal drift events and legacy invalid tool calls, and returns valid events by identity. Validation goes through the protocol codecs instead of zod."
     },
     {
       "id": "source-unit:packages/server/src/server/migrations/backfill-workspace-id.migration.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/workspace/paseo_workspace_identity.dart",
+      "evidence": [
+        "packages/daemon/test/workspace/paseo_workspace_identity_test.dart"
+      ],
+      "notes": "resolveLegacyWorkspaceOwner (oldest-createdAt tie-break, deepest prefix, home excluded) and the backfill itself are ported and tested against real on-disk storage. Remaining: packages/daemon has no migration runner, so nothing invokes this at startup yet."
     },
     {
       "id": "source-unit:packages/server/src/server/package-version.ts",
@@ -14033,17 +14051,21 @@
     },
     {
       "id": "source-unit:packages/server/src/server/paseo-env.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/paseo_server_env.dart",
+      "evidence": [
+        "packages/daemon/test/paseo_server_env_test.dart"
+      ],
+      "notes": "Control-var preservation for internal envs and scrubbing for external ones, with the ordering that matters: an overlay cannot smuggle a control var back into an external process, but a self-spawn can re-set one. Branding mapped to TINYRACK_NODE_ENV / TINYRACK_DESKTOP_MANAGED / TINYRACK_SUPERVISED; the two ELECTRON_ keys stay literal because they are Electron's names, and desktop_launch.dart already scrubs exactly those."
     },
     {
       "id": "source-unit:packages/server/src/server/paseo-home.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/paseo_server_env.dart",
+      "evidence": [
+        "packages/daemon/test/paseo_server_env_test.dart"
+      ],
+      "notes": "Home resolution, ~ expansion, absolutize/normalize, and owner-only directory creation. Keeps Tinyrack branding per the project's standing constraint: TINYRACK_HOME and ~/.tinyrack-agent replace PASEO_HOME and ~/.paseo, layered on the repo's existing resolveTinyrackHome."
     },
     {
       "id": "source-unit:packages/server/src/server/paseo-worktree-service.ts",
@@ -14132,10 +14154,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/push/token-store.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/services/paseo_quota_and_tasks.dart",
+      "evidence": [
+        "packages/daemon/test/services/paseo_quota_and_tasks_test.dart"
+      ],
+      "notes": "Trim-normalizing, blank-ignoring, deduping, insertion-ordered token store behind a storage interface, persisting only on real change and swallowing load/persist failures into a logger. Remaining: nothing in the daemon serves push notifications yet, so no caller exists. Upstream's own test only asserts POSIX file modes and is skipped on Windows, so the behavioural coverage here is new."
     },
     {
       "id": "source-unit:packages/server/src/server/relay-transport.ts",
@@ -14149,10 +14173,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/resolve-workspace-id-for-path.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/workspace/paseo_workspace_identity.dart",
+      "evidence": [
+        "packages/daemon/test/workspace/paseo_workspace_identity_test.dart"
+      ],
+      "notes": "Exact match first (archived included, so archive-by-path stays idempotent), then deepest enclosing live workspace, with home never enclosing its descendants. Path comparison goes through the repo's existing areEquivalentPaths rather than a new equality rule."
     },
     {
       "id": "source-unit:packages/server/src/server/resolve-worktree-creation-intent.ts",
@@ -14975,10 +15001,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/workspace-bootstrap-dedupe.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/workspace/paseo_workspace_identity.dart",
+      "evidence": [
+        "packages/daemon/test/workspace/paseo_workspace_identity_test.dart"
+      ],
+      "notes": "shouldEmitPendingBootstrapUpdate over a snapshot with a sentinel copyWith so an explicit null can be written. Status stays an opaque String because upstream compares it opaquely."
     },
     {
       "id": "source-unit:packages/server/src/server/workspace-directory.ts",
@@ -14992,10 +15020,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/workspace-git-metadata.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/workspace/paseo_workspace_identity.dart",
+      "evidence": [
+        "packages/daemon/test/workspace/paseo_workspace_identity_test.dart"
+      ],
+      "notes": "Project slug preferring the GitHub repo name (owner dropped, so forks collide by design) with basename and untitled fallbacks, plus the sha256-suffixed service slug. Reuses the already-ported parseGitHubRemoteUrl and slugify. Note: workspace_scripts_service.dart carries a simpler basename-only slug feeding the same consumers upstream feeds with this one; the two disagree and should be reconciled."
     },
     {
       "id": "source-unit:packages/server/src/server/workspace-git-service.ts",
@@ -15344,24 +15374,30 @@
     },
     {
       "id": "source-unit:packages/server/src/services/quota-fetcher/service.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/services/paseo_quota_and_tasks.dart",
+      "evidence": [
+        "packages/daemon/test/services/paseo_quota_and_tasks_test.dart"
+      ],
+      "notes": "Already ported as ProviderUsageService (TTL cache, in-flight coalescing, per-fetcher error isolation); re-exported rather than duplicated, and the upstream expectations are now pinned against it. This slice also fixed a divergence it exposed: the service reported the whole thrown object where upstream reports reason.message, so a failure read 'Bad state: boom' instead of 'boom'."
     },
     {
       "id": "source-unit:packages/server/src/services/quota-fetcher/usage.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/services/paseo_quota_and_tasks.dart",
+      "evidence": [
+        "packages/daemon/test/services/paseo_quota_and_tasks_test.dart"
+      ],
+      "notes": "The half with no existing Dart analogue: unavailable placeholders, the error message rule, the clamped remainder, ISO rendering with the 8.64e15 time-value bound, the API fetch with its 15s timeout, and the three z.coerce schemas. Fixed a divergence found here too: two shipped fetchers computed 100 - usedPct without upstream's clamp, so an over-quota provider reported a negative remainder."
     },
     {
       "id": "source-unit:packages/server/src/tasks/execution-order.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/services/paseo_quota_and_tasks.dart",
+      "evidence": [
+        "packages/daemon/test/services/paseo_quota_and_tasks_test.dart"
+      ],
+      "notes": "computeExecutionOrder and buildSortedChildrenMap with their task-graph dependencies, stable-sorted because Dart's List.sort is only stable under 32 elements. Remaining: the daemon has no task store, so the graph is loaded through an injected narrow interface with no production implementation."
     },
     {
       "id": "source-unit:packages/server/src/tasks/task-document.ts",

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:io';
 
@@ -243,7 +244,9 @@ final class KimiProviderUsageFetcher implements ProviderUsageFetcher {
           id: 'coding_usage',
           label: 'Coding usage',
           usedPct: usedPct,
-          remainingPct: usedPct == null ? null : 100 - usedPct,
+          // Upstream clamps at zero, so an over-quota provider reports 0%
+          // remaining rather than a negative number.
+          remainingPct: usedPct == null ? null : math.max(0, 100 - usedPct),
           resetsAt: _additionalString(usage?['resetTime']),
           tone: providerUsageToneFromUsedPct(usedPct),
         ),
@@ -481,7 +484,8 @@ ProviderUsageWindow? _minimaxWindow(
     id: id,
     label: label,
     usedPct: usedPct,
-    remainingPct: 100 - usedPct,
+    // Upstream clamps at zero; see the note above.
+    remainingPct: math.max(0, 100 - usedPct),
     resetsAt: resetValue == null || resetValue <= 0
         ? null
         : DateTime.fromMillisecondsSinceEpoch(

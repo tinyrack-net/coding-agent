@@ -1,5 +1,8 @@
 import 'package:agent_protocol/agent_protocol.dart';
 
+import '../../services/paseo_quota_and_tasks.dart'
+    show providerFetchErrorMessage;
+
 /// Frozen Paseo 0.2.0 risk thresholds for quota windows and known limits.
 ProviderUsageTone providerUsageToneFromUsedPct(double? usedPct) {
   if (usedPct == null || !usedPct.isFinite) {
@@ -104,7 +107,9 @@ final class ProviderUsageService {
         status: ProviderUsageStatus.error,
         planLabel: null,
         windows: const [],
-        error: '$error',
+        // Upstream reports `reason.message`, not the whole thrown object, so a
+        // failure reads "boom" rather than "Bad state: boom".
+        error: providerFetchErrorMessage(error),
       );
     }
   }
