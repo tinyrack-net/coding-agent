@@ -27,7 +27,12 @@ final class OptimisticUserMessage {
 }
 
 final class TimelineDisplayItem {
-  const TimelineDisplayItem({required this.item, this.userMessage, this.timestamp});
+  const TimelineDisplayItem({
+    required this.item,
+    this.userMessage,
+    this.timestamp,
+    this.optimistic = false,
+  });
 
   final TimelineItem item;
   final OptimisticUserMessage? userMessage;
@@ -37,6 +42,12 @@ final class TimelineDisplayItem {
   /// Paseo's turn-timing derivation; `null` only for items synthesized
   /// outside the timeline replica (e.g. subagent tool-call overlays).
   final DateTime? timestamp;
+
+  /// Mirrors Paseo's `StreamItem.optimistic`: `true` only for a user message
+  /// that is still a local, unconfirmed echo (not yet reconciled with a
+  /// canonical daemon item). A reconciled item keeps its [userMessage]
+  /// presentation for rendering but is no longer optimistic.
+  final bool optimistic;
 }
 
 enum TimelineCatchUpPhase { idle, syncing, error }
@@ -177,6 +188,7 @@ List<TimelineDisplayItem> _displayPending(
         message.timestamp,
         isUtc: true,
       ),
+      optimistic: true,
     ),
 ];
 

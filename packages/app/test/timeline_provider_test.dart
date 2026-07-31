@@ -1243,10 +1243,10 @@ void main() {
 
       final state = container.read(timelineProvider('a1'));
       final expected = DateTime.parse('2026-07-28T00:00:00.000Z');
-      expect(
-        state.displayItems.map((display) => display.timestamp),
-        [expected, expected],
-      );
+      expect(state.displayItems.map((display) => display.timestamp), [
+        expected,
+        expected,
+      ]);
     });
 
     test('live upsert records the event timestamp for its item', () async {
@@ -1307,7 +1307,9 @@ void main() {
         );
         expect(display.timestamp, isNotNull);
         expect(
-          display.timestamp!.isAfter(before.subtract(const Duration(seconds: 1))),
+          display.timestamp!.isAfter(
+            before.subtract(const Duration(seconds: 1)),
+          ),
           isTrue,
         );
         expect(
@@ -1317,44 +1319,41 @@ void main() {
       },
     );
 
-    test(
-      'an incremental after-page fetch populates timestamps for newly '
-      'fetched items',
-      () async {
-        final client = FakeDaemonClient()
-          ..fetchResponses.add(
-            const TimelineFetchResponse(epoch: 0, lastSeq: 1, items: [_msg1]),
-          );
-        final container = makeContainer(client);
-        container.read(timelineProvider('a1'));
-        await Future<void>.delayed(Duration.zero);
-        await Future<void>.delayed(Duration.zero);
+    test('an incremental after-page fetch populates timestamps for newly '
+        'fetched items', () async {
+      final client = FakeDaemonClient()
+        ..fetchResponses.add(
+          const TimelineFetchResponse(epoch: 0, lastSeq: 1, items: [_msg1]),
+        );
+      final container = makeContainer(client);
+      container.read(timelineProvider('a1'));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
-        // seq 5 skips 2..4: a gap, triggers an incremental after-page fetch.
-        client.fetchResponses.add(
-          const TimelineFetchResponse(epoch: 0, lastSeq: 5, items: [_msg2]),
-        );
-        client.eventsController.add(
-          RpcEvent(
-            type: MessageTypes.agentStreamEvent,
-            payload: const AgentStreamPayload(
-              agentId: 'a1',
-              epoch: 0,
-              seq: 5,
-              item: _msg2,
-            ).toJson(),
-          ),
-        );
-        await Future<void>.delayed(Duration.zero);
-        await Future<void>.delayed(Duration.zero);
+      // seq 5 skips 2..4: a gap, triggers an incremental after-page fetch.
+      client.fetchResponses.add(
+        const TimelineFetchResponse(epoch: 0, lastSeq: 5, items: [_msg2]),
+      );
+      client.eventsController.add(
+        RpcEvent(
+          type: MessageTypes.agentStreamEvent,
+          payload: const AgentStreamPayload(
+            agentId: 'a1',
+            epoch: 0,
+            seq: 5,
+            item: _msg2,
+          ).toJson(),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
-        final state = container.read(timelineProvider('a1'));
-        final display = state.displayItems.firstWhere(
-          (item) => item.item.id == 'm2',
-        );
-        expect(display.timestamp, DateTime.parse('2026-07-28T00:00:00.000Z'));
-      },
-    );
+      final state = container.read(timelineProvider('a1'));
+      final display = state.displayItems.firstWhere(
+        (item) => item.item.id == 'm2',
+      );
+      expect(display.timestamp, DateTime.parse('2026-07-28T00:00:00.000Z'));
+    });
 
     test(
       'loadOlder populates timestamps for the prepended before page',
