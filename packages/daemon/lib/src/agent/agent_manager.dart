@@ -2060,6 +2060,9 @@ class AgentManager {
         }
 
       case AssistantTextDelta(:final itemId, :final text):
+        // Paseo's stream coalescer swallows empty text events rather than
+        // emitting a redundant row update for them.
+        if (text.isEmpty) return;
         final buffer = runtime.textBuffers.putIfAbsent(itemId, StringBuffer.new)
           ..write(text);
         runtime.timeline.upsertCoalesced(
@@ -2071,6 +2074,7 @@ class AgentManager {
         );
 
       case ReasoningDelta(:final itemId, :final text):
+        if (text.isEmpty) return;
         final buffer = runtime.textBuffers.putIfAbsent(itemId, StringBuffer.new)
           ..write(text);
         runtime.timeline.upsertCoalesced(

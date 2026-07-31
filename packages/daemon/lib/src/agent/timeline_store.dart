@@ -53,6 +53,11 @@ final class TimelineRow {
   };
 }
 
+/// Paseo 0.2.0's frozen `AGENT_STREAM_COALESCE_DEFAULT_WINDOW_MS`: how long
+/// high-frequency streaming updates for one item are coalesced before the
+/// trailing edge commits.
+const agentStreamCoalesceDefaultWindow = Duration(milliseconds: 60);
+
 class TimelineStore {
   TimelineStore({
     required this.agentId,
@@ -61,7 +66,7 @@ class TimelineStore {
     List<TimelineItem> items = const [],
     List<TimelineRow> rows = const [],
     int? lastSeq,
-    this.coalesceWindow = const Duration(milliseconds: 80),
+    this.coalesceWindow = agentStreamCoalesceDefaultWindow,
   }) : _epoch = epoch {
     if (rows.isNotEmpty) {
       for (final row in rows) {

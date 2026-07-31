@@ -180,6 +180,17 @@ void main() {
       expect(store.snapshot().single.id, 'u2');
     });
 
+    test('defaults to the frozen 60ms coalesce window', () {
+      expect(
+        TimelineStore(agentId: 'a1').coalesceWindow,
+        agentStreamCoalesceDefaultWindow,
+      );
+      expect(
+        agentStreamCoalesceDefaultWindow,
+        const Duration(milliseconds: 60),
+      );
+    });
+
     test(
       'coalesces rapid updates: leading edge immediate, trailing on timer',
       () async {

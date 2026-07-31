@@ -1231,6 +1231,37 @@ void main() {
     );
   });
 
+  test('empty streaming text deltas are swallowed', () async {
+    final agent = await createAgent();
+    final session = client.sessions.single;
+    session.emit(const SessionStarted(sessionId: 'sess-empty'));
+    await pumpEventQueue();
+    await manager.prompt(agent.agentId, 'go');
+    await pumpEventQueue();
+    streamed.clear();
+
+    // Paseo's coalescer drops empty text events rather than emitting a
+    // redundant row update for them.
+    session
+      ..emit(const AssistantTextDelta(itemId: 'm1', text: ''))
+      ..emit(const ReasoningDelta(itemId: 'r1', text: ''));
+    await pumpEventQueue();
+
+    expect(
+      streamed.map((s) => s.item).whereType<AssistantMessageItem>(),
+      isEmpty,
+    );
+    expect(streamed.map((s) => s.item).whereType<ReasoningItem>(), isEmpty);
+
+    session.emit(const AssistantTextDelta(itemId: 'm1', text: 'hi'));
+    await pumpEventQueue();
+
+    expect(
+      streamed.map((s) => s.item).whereType<AssistantMessageItem>().single.text,
+      'hi',
+    );
+  });
+
   test(
     'full flow: create -> prompt -> stream -> permission -> complete',
     () async {
