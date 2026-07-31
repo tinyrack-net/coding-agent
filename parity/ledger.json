@@ -3128,10 +3128,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/file-pane-render-mode.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_small_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_small_utils_test.dart"
+      ],
+      "notes": "Markdown files (.md/.markdown, case- and whitespace-insensitive) open rendered rather than in the code editor."
     },
     {
       "id": "source-unit:packages/app/src/components/headers/back-header.tsx",
@@ -3480,10 +3482,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/message-compaction-label.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_small_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_small_utils_test.dart"
+      ],
+      "notes": "Loading wins over every other branch, then auto and manual triggers, then a token count in thousands, then the plain completed label. The translator is injected because i18n/* is a separate slice."
     },
     {
       "id": "source-unit:packages/app/src/components/message.tsx",
@@ -7734,10 +7738,12 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/workspace/workspace-draft-pane-focus.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_small_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_small_utils_test.dart"
+      ],
+      "notes": "The workspace draft composer takes focus with its pane but never while a submit is in flight."
     },
     {
       "id": "source-unit:packages/app/src/screens/workspace/workspace-empty-draft-seed.ts",
@@ -8848,10 +8854,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/desktop-badge-state.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_small_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_small_utils_test.dart"
+      ],
+      "notes": "Only attention, needs-input, and failed workspaces are badge-worthy, and an empty count reports no badge rather than a zero that would render an empty badge."
     },
     {
       "id": "source-unit:packages/app/src/utils/desktop-sidebar-toggle.ts",
@@ -8956,10 +8964,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/extract-agent-model.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_small_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_small_utils_test.dart"
+      ],
+      "notes": "Prefers the model the runtime reports over the configured one, treating blank as absent. Takes the two values directly rather than an Agent, since the Dart agent summary exposes them separately."
     },
     {
       "id": "source-unit:packages/app/src/utils/extract-tool-call-file-path.ts",
@@ -9051,10 +9061,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/latency.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_small_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_small_utils_test.dart"
+      ],
+      "notes": "Sub-millisecond latency renders in microseconds, under a second in whole milliseconds, and above that in seconds with at most one decimal. Upstream's latency.test.ts is ported 1:1."
     },
     {
       "id": "source-unit:packages/app/src/utils/markdown-ast.ts",
@@ -9159,10 +9171,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/project-display-name.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_small_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_small_utils_test.dart"
+      ],
+      "notes": "A GitHub remote id keeps its owner/repo while a path keeps its last segment, both falling back to the raw id; the placeholder icon label drops the owner. Upstream's project-display-name.test.ts is ported 1:1."
     },
     {
       "id": "source-unit:packages/app/src/utils/project-icon-color.ts",
@@ -9366,10 +9380,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/status-loader.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_small_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_small_utils_test.dart"
+      ],
+      "notes": "Only a running workspace shows the synced spinner; every other bucket is a settled state with its own glyph."
     },
     {
       "id": "source-unit:packages/app/src/utils/terminal-keys.ts",
