@@ -12058,10 +12058,12 @@
     },
     {
       "id": "source-unit:packages/protocol/src/agent-attention-notification.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/paseo_attention_notification.dart",
+      "evidence": [
+        "packages/protocol/test/paseo_attention_notification_test.dart"
+      ],
+      "notes": "Payload building with the markdown-strip, normalize, truncate and permission-detail pipeline. Every expectation was captured by executing the frozen dist module under Node across about 40 probes, plus a Dart probe confirming ECMA-262 regex parity for the non-obvious cases. Faithful rather than fixed: truncation slices at UTF-16 unit 217 and can leave a lone high surrogate, exactly as String.slice does, and an empty input object still yields the {} preview and short-circuits metadata."
     },
     {
       "id": "source-unit:packages/protocol/src/agent-deep-link.ts",
@@ -12085,10 +12087,12 @@
     },
     {
       "id": "source-unit:packages/protocol/src/agent-lifecycle.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/agent.dart",
+      "evidence": [
+        "packages/protocol/test/messages_test.dart"
+      ],
+      "notes": "Ledger correction: already ported as AgentRunState, which covers the five frozen statuses plus this daemon's awaitingPermission extension."
     },
     {
       "id": "source-unit:packages/protocol/src/agent-state-bucket.ts",
@@ -12102,10 +12106,12 @@
     },
     {
       "id": "source-unit:packages/protocol/src/agent-title-limits.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/agent_title_limits.dart",
+      "evidence": [
+        "packages/protocol/test/agent_title_limits_test.dart"
+      ],
+      "notes": "Ledger correction: this was already ported and marked not-started. maxExplicitAgentTitleChars is 200, matching the frozen constant."
     },
     {
       "id": "source-unit:packages/protocol/src/agent-types.ts",

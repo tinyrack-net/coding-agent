@@ -91,6 +91,7 @@ export 'src/tool_name_normalization.dart';
 export 'src/tool_call_display.dart';
 export 'src/schedule/cadence.dart';
 export 'src/schedule/cron_expression.dart';
+export 'src/paseo_attention_notification.dart';
 
 /// Bumped on breaking wire changes; clients refuse to talk across versions.
 const int protocolVersion = 2;

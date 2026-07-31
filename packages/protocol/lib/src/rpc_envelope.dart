@@ -58,10 +58,10 @@ final class RpcRequest extends RpcFrame {
 
   @override
   Map<String, Object?> toJson() => {
-        'type': type,
-        'requestId': requestId,
-        'payload': payload,
-      };
+    'type': type,
+    'requestId': requestId,
+    'payload': payload,
+  };
 }
 
 final class RpcResponse extends RpcFrame {
@@ -81,11 +81,11 @@ final class RpcResponse extends RpcFrame {
 
   @override
   Map<String, Object?> toJson() => {
-        'type': type,
-        'requestId': requestId,
-        if (error == null) 'payload': payload,
-        if (error != null) 'error': error!.toJson(),
-      };
+    'type': type,
+    'requestId': requestId,
+    if (error == null) 'payload': payload,
+    if (error != null) 'error': error!.toJson(),
+  };
 }
 
 final class RpcEvent extends RpcFrame {
@@ -105,9 +105,9 @@ final class RpcError {
   final String message;
 
   static RpcError fromJson(Map<String, Object?> json) => RpcError(
-        code: (json['code'] as String?) ?? 'unknown',
-        message: (json['message'] as String?) ?? '',
-      );
+    code: (json['code'] as String?) ?? 'unknown',
+    message: (json['message'] as String?) ?? '',
+  );
 
   Map<String, Object?> toJson() => {'code': code, 'message': message};
 

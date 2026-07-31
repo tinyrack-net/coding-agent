@@ -29,23 +29,23 @@ final class ProviderInfo {
   final String? unavailableReason;
 
   static ProviderInfo fromJson(Map<String, Object?> json) => ProviderInfo(
-        id: ProviderId.fromWire(json['id'] as String),
-        displayName: (json['displayName'] as String?) ?? '',
-        configured: (json['configured'] as bool?) ?? false,
-        models: ((json['models'] as List?) ?? const [])
-            .cast<Map<String, Object?>>()
-            .map(ProviderModel.fromJson)
-            .toList(),
-        unavailableReason: json['unavailableReason'] as String?,
-      );
+    id: ProviderId.fromWire(json['id'] as String),
+    displayName: (json['displayName'] as String?) ?? '',
+    configured: (json['configured'] as bool?) ?? false,
+    models: ((json['models'] as List?) ?? const [])
+        .cast<Map<String, Object?>>()
+        .map(ProviderModel.fromJson)
+        .toList(),
+    unavailableReason: json['unavailableReason'] as String?,
+  );
 
   Map<String, Object?> toJson() => {
-        'id': id.name,
-        'displayName': displayName,
-        'configured': configured,
-        'models': models.map((m) => m.toJson()).toList(),
-        if (unavailableReason != null) 'unavailableReason': unavailableReason,
-      };
+    'id': id.name,
+    'displayName': displayName,
+    'configured': configured,
+    'models': models.map((m) => m.toJson()).toList(),
+    if (unavailableReason != null) 'unavailableReason': unavailableReason,
+  };
 }
 
 final class ProviderModel {
@@ -55,9 +55,9 @@ final class ProviderModel {
   final String displayName;
 
   static ProviderModel fromJson(Map<String, Object?> json) => ProviderModel(
-        id: json['id'] as String,
-        displayName: (json['displayName'] as String?) ?? json['id'] as String,
-      );
+    id: json['id'] as String,
+    displayName: (json['displayName'] as String?) ?? json['id'] as String,
+  );
 
   Map<String, Object?> toJson() => {'id': id, 'displayName': displayName};
 }
@@ -76,8 +76,8 @@ final class ProviderListResponse {
       );
 
   Map<String, Object?> toJson() => {
-        'providers': providers.map((p) => p.toJson()).toList(),
-      };
+    'providers': providers.map((p) => p.toJson()).toList(),
+  };
 }
 
 /// Result of `provider.credential.test.request` — attempts a lightweight call
@@ -94,6 +94,8 @@ final class ProviderCredentialTestResult {
         error: json['error'] as String?,
       );
 
-  Map<String, Object?> toJson() =>
-      {'ok': ok, if (error != null) 'error': error};
+  Map<String, Object?> toJson() => {
+    'ok': ok,
+    if (error != null) 'error': error,
+  };
 }

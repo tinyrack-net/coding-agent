@@ -44,7 +44,9 @@ void main() {
         id: ProviderId.openai,
         displayName: 'Codex (OpenAI)',
         configured: true,
-        models: [ProviderModel(id: 'gpt-5.4-codex', displayName: 'GPT-5.4 Codex')],
+        models: [
+          ProviderModel(id: 'gpt-5.4-codex', displayName: 'GPT-5.4 Codex'),
+        ],
         unavailableReason: null,
       );
       final decoded = ProviderInfo.fromJson(roundTrip(info.toJson()));
@@ -96,8 +98,9 @@ void main() {
           ),
         ],
       );
-      final decoded =
-          ProviderListResponse.fromJson(roundTrip(response.toJson()));
+      final decoded = ProviderListResponse.fromJson(
+        roundTrip(response.toJson()),
+      );
       expect(decoded.providers, hasLength(2));
       expect(decoded.providers[0].id, ProviderId.openai);
       expect(decoded.providers[1].id, ProviderId.openrouter);
@@ -112,17 +115,21 @@ void main() {
   group('ProviderCredentialTestResult', () {
     test('round-trips success', () {
       const result = ProviderCredentialTestResult(ok: true);
-      final decoded =
-          ProviderCredentialTestResult.fromJson(roundTrip(result.toJson()));
+      final decoded = ProviderCredentialTestResult.fromJson(
+        roundTrip(result.toJson()),
+      );
       expect(decoded.ok, isTrue);
       expect(decoded.error, isNull);
     });
 
     test('round-trips failure with error', () {
-      const result =
-          ProviderCredentialTestResult(ok: false, error: 'invalid key');
-      final decoded =
-          ProviderCredentialTestResult.fromJson(roundTrip(result.toJson()));
+      const result = ProviderCredentialTestResult(
+        ok: false,
+        error: 'invalid key',
+      );
+      final decoded = ProviderCredentialTestResult.fromJson(
+        roundTrip(result.toJson()),
+      );
       expect(decoded.ok, isFalse);
       expect(decoded.error, 'invalid key');
     });

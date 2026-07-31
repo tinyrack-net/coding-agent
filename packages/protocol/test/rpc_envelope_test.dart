@@ -10,8 +10,9 @@ void main() {
       requestId: 'r1',
       payload: {'cwd': 'C:/repo'},
     );
-    final decoded =
-        RpcFrame.fromJson(jsonDecode(jsonEncode(req.toJson())) as Map<String, Object?>);
+    final decoded = RpcFrame.fromJson(
+      jsonDecode(jsonEncode(req.toJson())) as Map<String, Object?>,
+    );
     expect(decoded, isA<RpcRequest>());
     expect((decoded as RpcRequest).responseType, 'agent.create.response');
     expect(decoded.payload['cwd'], 'C:/repo');

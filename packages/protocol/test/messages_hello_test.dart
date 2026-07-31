@@ -76,7 +76,10 @@ void main() {
       expect(MessageTypes.clientHelloRequest, 'client.hello.request');
       expect(MessageTypes.agentCreateRequest, 'agent.create.request');
       expect(MessageTypes.agentStreamEvent, 'agent.stream');
-      expect(MessageTypes.terminalSubscribeRequest, 'terminal.subscribe.request');
+      expect(
+        MessageTypes.terminalSubscribeRequest,
+        'terminal.subscribe.request',
+      );
       expect(MessageTypes.daemonShutdownRequest, 'daemon.shutdown.request');
     });
   });
