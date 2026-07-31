@@ -9,30 +9,6 @@ import '../state/host_registry_provider.dart';
 import '../state/last_workspace_route_selection.dart';
 import '../state/workspace_catalog_provider.dart';
 
-enum WorkspaceSelectionStatus { unknown, exists, missing }
-
-WorkspaceSelectionStatus resolveWorkspaceSelectionStatus({
-  required bool hasHydratedWorkspaces,
-  required bool workspaceExists,
-}) {
-  if (workspaceExists) return WorkspaceSelectionStatus.exists;
-  return hasHydratedWorkspaces
-      ? WorkspaceSelectionStatus.missing
-      : WorkspaceSelectionStatus.unknown;
-}
-
-String resolveHostIndexRoute({
-  required String serverId,
-  required HostWorkspaceRoute? workspaceSelection,
-  required WorkspaceSelectionStatus workspaceSelectionStatus,
-}) {
-  if (workspaceSelection?.serverId == serverId &&
-      workspaceSelectionStatus != WorkspaceSelectionStatus.missing) {
-    return buildHostWorkspaceRoute(serverId, workspaceSelection!.workspaceId);
-  }
-  return buildOpenProjectRoute();
-}
-
 class HostIndexRouteScreen extends ConsumerStatefulWidget {
   const HostIndexRouteScreen({super.key, required this.serverId});
 

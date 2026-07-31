@@ -20,7 +20,9 @@ class AppearanceNotifier extends Notifier<AppThemeName> {
   @override
   AppThemeName build() {
     Future.microtask(_load);
-    return AppThemeName.dark;
+    // Paseo's frozen DEFAULT_CLIENT_SETTINGS.theme is "auto", so a fresh
+    // install follows the OS rather than forcing dark.
+    return AppThemeName.auto;
   }
 
   Future<void> _load() async {

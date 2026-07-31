@@ -4925,10 +4925,12 @@
     },
     {
       "id": "source-unit:packages/app/src/data/push-router.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/data/paseo_push_router.dart",
+      "evidence": [
+        "packages/app/test/data/paseo_push_router_test.dart"
+      ],
+      "notes": "Route metadata, subscription reconciliation for both domains, all five push appliers, reconnect repair policies, route resolution including the metadata-less-observer fallback, and unmount teardown are ported and tested. Remaining, and this is a real architecture seam: the router is defined against a query cache, so the port carries a minimal TanStack slice, while this app dispatches pushes per-consumer through Riverpod. Three of the five pushes already have owners (providers_snapshot_provider, daemon_config_provider, working_diff_provider — the last of which owns its own checkout-diff subscribe/unsubscribe lifecycle and would double-subscribe), terminals_changed has no handler and no protocol message at all, and the terminals query key and cache payload shapes differ from the app's."
     },
     {
       "id": "source-unit:packages/app/src/data/query-client.ts",
@@ -5173,10 +5175,12 @@
     },
     {
       "id": "source-unit:packages/app/src/desktop/permissions/desktop-permissions.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_services.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_services_test.dart"
+      ],
+      "notes": "Notification and microphone permission reads and requests over injected host/navigator interfaces, preserving the fallthrough order (host support check, then browser permission, then unavailable) and the distinction between a runtime-blocked query and a real query failure. DOM error discrimination uses an explicit name field, since Dart cannot read a structural property off an arbitrary thrown object."
     },
     {
       "id": "source-unit:packages/app/src/desktop/permissions/use-desktop-permissions.ts",
@@ -5203,10 +5207,12 @@
     },
     {
       "id": "source-unit:packages/app/src/desktop/updates/desktop-app-updater.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_services.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_services_test.dart"
+      ],
+      "notes": "The updater state machine with both invariants preserved: a monotonic request version so only the newest check writes state, and silent checks that never degrade the UI unless the failure carries an update. Reuses the DesktopAppUpdateStatus enum and the all-nullable IPC payload already ported in paseo_desktop_daemon_rules.dart rather than declaring parallels."
     },
     {
       "id": "source-unit:packages/app/src/desktop/updates/desktop-updates.ts",
@@ -5691,10 +5697,12 @@
     },
     {
       "id": "source-unit:packages/app/src/git/policy.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/git/paseo_git_policy.dart",
+      "evidence": [
+        "packages/app/test/git/paseo_git_policy_test.dart"
+      ],
+      "notes": "buildGitActions end to end: the 12-rung primary precedence ladder, the frozen secondary ordering with archive dedup, all four action builders, group separators, the capability predicates, the unavailable-message helpers, and merge-method allowlist resolution. Reuses forge_logic.dart's merge capability and the protocol merge-method enum. Every built-action expectation is pinned from running the frozen TypeScript under Node across 60 scenarios in en and zh-CN rather than reasoned about. The i18next singleton becomes injected labels defaulting to the vendored frozen English subtree, with an added test asserting all 66 keys still match assets/i18n/en.json. Note: getMergePrUnavailableMessage is unreachable through buildGitActions in 0.2.0 — every condition that makes it return a sentence also makes canMergePr false — so it is ported faithfully and documented as currently dead."
     },
     {
       "id": "source-unit:packages/app/src/git/pr-hint.ts",
@@ -6242,10 +6250,12 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-archive-agent.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/hooks/paseo_agent_settings_rules.dart",
+      "evidence": [
+        "packages/app/test/hooks/paseo_agent_settings_rules_test.dart"
+      ],
+      "notes": "Pending-archive state, both cache rewriters, the store writers with their same-millisecond skip, the rollback snapshot pair, and the mutation ordering (snapshot, optimistic apply, request, confirm or roll back, always clear pending and invalidate, rethrow) are ported and tested. Remaining: this is defined against a query cache, so the port carries a minimal slice of one, while the app archives agents through its own Riverpod flow — the two owners need reconciling before this is the code the product runs on."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-audio-recorder.d.ts",
@@ -6646,10 +6656,12 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-settings/storage.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/hooks/paseo_agent_settings_rules.dart",
+      "evidence": [
+        "packages/app/test/hooks/paseo_agent_settings_rules_test.dart"
+      ],
+      "notes": "The whole settings document, defaults, bounds, both load paths (current blob, legacy blob, seeded defaults), and every field validator are ported and tested. Reuses parseAppLanguage, AppThemeName, WorkspaceTitleSource, and ToolCallDetailLevel rather than redeclaring them. Remaining: upstream keeps all fourteen settings in one blob at @paseo:app-settings while this app persists a subset as individual SharedPreferences keys, and nine fields (sendBehavior, serviceUrlBehavior, terminalScrollbackLines, uiFontFamily, uiFontSize, syntaxTheme, workspaceTitleSource, autoExpandReasoning, vimKeybindings) are not persisted anywhere. This port also surfaced that the app defaults theme to dark where the frozen default is auto."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-shortcut-keys.ts",
@@ -6991,10 +7003,12 @@
     },
     {
       "id": "source-unit:packages/app/src/navigation/host-runtime-bootstrap.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/runtime/paseo_runtime_bootstrap.dart",
+      "evidence": [
+        "packages/app/test/runtime/paseo_runtime_bootstrap_test.dart"
+      ],
+      "notes": "Boot sequencing, startup blocker, navigation readiness, the give-up timer predicate, and both startup route resolvers are ported and tested. resolveHostIndexRoute and resolveWorkspaceSelectionStatus were already ported but lived inside host_index_route_screen.dart; this slice moved them into core/host_routes.dart so a pure-logic library no longer depends on a widget file. Remaining: app_router.dart has no startup policy at all (no splash, no give-up timer, /welcome renders the chat pane), and HostIndexRouteScreen still open-codes the /h/:serverId gate instead of delegating to resolveStartupRoute."
     },
     {
       "id": "source-unit:packages/app/src/navigation/themed-stack.tsx",
@@ -7221,10 +7235,12 @@
     },
     {
       "id": "source-unit:packages/app/src/provider-selection/resolve-agent-form.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/provider_selection/paseo_resolve_agent_form.dart",
+      "evidence": [
+        "packages/app/test/provider_selection/paseo_resolve_agent_form_test.dart"
+      ],
+      "notes": "The full 14-action reducer, both resolveFormState passes (provider resolved against a null catalog, then re-resolved against that provider's models), the default/effective model and thinking resolvers, initial-value combination, change detection, and preference merging. Reuses the protocol provider types and composer/create_agent_preferences.dart rather than declaring parallels. JS truthiness is reproduced via an explicit has-value helper, since upstream guards treat an empty string as absent; a null model catalog is distinguished from a loaded-but-empty one because an empty JS array is truthy. The thinking resolver's provider-before-user-modified guard order is an upstream asymmetry that is load-bearing and is preserved rather than tidied."
     },
     {
       "id": "source-unit:packages/app/src/provider-usage/balance-bar.tsx",
@@ -7370,10 +7386,12 @@
     },
     {
       "id": "source-unit:packages/app/src/runtime/daemon-start-service.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/runtime/paseo_runtime_bootstrap.dart",
+      "evidence": [
+        "packages/app/test/runtime/paseo_runtime_bootstrap_test.dart"
+      ],
+      "notes": "Counted reentrancy, the three ordered connection rejections, settings evaluation inside the running window, and the process singleton are ported and tested. Remaining: state/daemon_lifecycle_provider.dart is a second, independent managed-daemon startup path built on DaemonSupervisor.ensureRunning; both must not own startup, so the two need reconciling before this service is wired."
     },
     {
       "id": "source-unit:packages/app/src/runtime/directory-sync/agent-replica.ts",
@@ -7445,10 +7463,12 @@
     },
     {
       "id": "source-unit:packages/app/src/runtime/replica-cache/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/runtime/paseo_replica_sync.dart",
+      "evidence": [
+        "packages/app/test/runtime/paseo_replica_sync_test.dart"
+      ],
+      "notes": "Ported whole: version-gated all-or-nothing decode, focused-agent-only capture with a 50-item timeline tail, LRU byte-budget eviction over insertion-ordered hosts, setHosts pruning, serverId re-keying, identity-based skip of unchanged sessions, a serialized write queue where a failed write never propagates, and 750ms debounce through an injected scheduler. Remaining: upstream reads one session object per host while this app splits that across three replica stores with focus held only in the activity tracker, so an adapter must fan them in — and it must return an identical session instance while nothing changed, or every flush rewrites every host and destroys the LRU order."
     },
     {
       "id": "source-unit:packages/app/src/schedules/aggregated-schedules.ts",
@@ -8720,10 +8740,12 @@
     },
     {
       "id": "source-unit:packages/app/src/timeline/viewed-timeline-sync.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/runtime/paseo_replica_sync.dart",
+      "evidence": [
+        "packages/app/test/runtime/paseo_replica_sync_test.dart"
+      ],
+      "notes": "Ported whole: source-keyed visible-set union and normalization, membership reconciliation serialized to one in-flight run, generation-guarded per-agent catch-up paging until hasNewer is false, 1s retries, the 30s unsubscribe grace with cancel-on-return, legacy and selective delivery modes, and gap recovery with supersede plus parking of gaps found before acknowledgement. Remaining: TimelineNotifier already drives its own forward paging with equivalent guards, so running both would double-fetch; and there is no setSubscription RPC or delivery-mode concept in the daemon yet, so selective is a no-op until that capability exists."
     },
     {
       "id": "source-unit:packages/app/src/tool-calls/detail-level/grouping.ts",
@@ -8902,10 +8924,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/agent-grouping.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_agent_grouping.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_agent_grouping_test.dart"
+      ],
+      "notes": "Project key derivation (worktree to parent repo, scp-like then URL remotes, .git strip, GitHub normalization), display names, date grouping, and groupAgents with its 2-day grace period, per-project cap of five merely-recent agents alongside uncapped active ones, newest-first group ordering, and fixed inactive date order. Dart's unstable List.sort is given an index tiebreak in the three places upstream relies on stability. Deliberately does not reuse protocol/git_remote.dart's parseGitRemoteLocation: it ports a different upstream module and is observably stricter, so reusing it would change which remotes group together."
     },
     {
       "id": "source-unit:packages/app/src/utils/agent-initialization.ts",
@@ -9919,10 +9943,12 @@
     },
     {
       "id": "source-unit:packages/app/src/workspace/legacy-daemon-workspaces.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_agent_grouping.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_agent_grouping_test.dart"
+      ],
+      "notes": "The COMPAT(legacyWorkspaceDaemon) shim end to end: synthetic workspace rows per checkout with most-demanding status winning, id stamping, paged directory reads that subscribe only on the first page and accept both pageInfo spellings, ownership application, and empty-directory backfill. Upstream's module-scope session store and client become an injected store interface and fetch typedef, since this repo has no single session store."
     },
     {
       "id": "source-unit:packages/app/src/workspace/open-target-planner.ts",

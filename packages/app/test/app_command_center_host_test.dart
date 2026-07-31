@@ -198,17 +198,28 @@ Future<void> _sendShortcut(
 void main() {
   testWidgets('Ctrl+Alt+T cycles themes in Paseo order', (tester) async {
     final (container, _) = await _pumpHost(tester);
-    expect(container.read(appearanceProvider), AppThemeName.dark);
+    expect(container.read(appearanceProvider), AppThemeName.auto);
 
-    await _sendShortcut(
-      tester,
-      LogicalKeyboardKey.keyT,
-      physicalKey: PhysicalKeyboardKey.keyT,
-      control: true,
-      alt: true,
-    );
-
-    expect(container.read(appearanceProvider), AppThemeName.zinc);
+    // `auto` is deliberately absent from the cycle order, so upstream's
+    // `indexOf` returns -1 and the first press lands on the first entry.
+    for (final expected in const [
+      AppThemeName.dark,
+      AppThemeName.zinc,
+      AppThemeName.midnight,
+      AppThemeName.claude,
+      AppThemeName.ghostty,
+      AppThemeName.light,
+      AppThemeName.dark,
+    ]) {
+      await _sendShortcut(
+        tester,
+        LogicalKeyboardKey.keyT,
+        physicalKey: PhysicalKeyboardKey.keyT,
+        control: true,
+        alt: true,
+      );
+      expect(container.read(appearanceProvider), expected);
+    }
   });
 
   testWidgets('Ctrl+K toggles the command center and exposes root actions', (
@@ -369,7 +380,7 @@ void main() {
     await tester.tap(find.byType(TextBox));
     await tester.pump();
 
-    expect(container.read(appearanceProvider), AppThemeName.dark);
+    expect(container.read(appearanceProvider), AppThemeName.auto);
     await _sendShortcut(
       tester,
       LogicalKeyboardKey.keyT,
@@ -377,7 +388,8 @@ void main() {
       control: true,
       alt: true,
     );
-    expect(container.read(appearanceProvider), AppThemeName.dark);
+    // Swallowed by the composition, so the theme is untouched.
+    expect(container.read(appearanceProvider), AppThemeName.auto);
 
     controller.value = controller.value.copyWith(composing: TextRange.empty);
     await _sendShortcut(
@@ -387,7 +399,7 @@ void main() {
       control: true,
       alt: true,
     );
-    expect(container.read(appearanceProvider), AppThemeName.zinc);
+    expect(container.read(appearanceProvider), AppThemeName.dark);
   });
 
   testWidgets('modal barrier dismisses the active overlay', (tester) async {

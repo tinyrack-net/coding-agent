@@ -522,3 +522,35 @@ String? routeFromCodingAgentDeepLink(String value) {
     fragment: uri.hasFragment ? uri.fragment : null,
   ).toString();
 }
+
+/// Whether the remembered workspace selection is known to still exist.
+///
+/// [WorkspaceSelectionStatus.unknown] is not a synonym for missing: until the
+/// catalog has hydrated the app cannot tell a deleted workspace from one it
+/// has simply not loaded yet, and redirecting on that guess would bounce the
+/// user off a workspace that is about to appear.
+enum WorkspaceSelectionStatus { unknown, exists, missing }
+
+WorkspaceSelectionStatus resolveWorkspaceSelectionStatus({
+  required bool hasHydratedWorkspaces,
+  required bool workspaceExists,
+}) {
+  if (workspaceExists) return WorkspaceSelectionStatus.exists;
+  return hasHydratedWorkspaces
+      ? WorkspaceSelectionStatus.missing
+      : WorkspaceSelectionStatus.unknown;
+}
+
+/// Where `/h/:serverId` lands: back on the remembered workspace unless that
+/// workspace is known to be gone, otherwise the project picker.
+String resolveHostIndexRoute({
+  required String serverId,
+  required HostWorkspaceRoute? workspaceSelection,
+  required WorkspaceSelectionStatus workspaceSelectionStatus,
+}) {
+  if (workspaceSelection?.serverId == serverId &&
+      workspaceSelectionStatus != WorkspaceSelectionStatus.missing) {
+    return buildHostWorkspaceRoute(serverId, workspaceSelection!.workspaceId);
+  }
+  return buildOpenProjectRoute();
+}

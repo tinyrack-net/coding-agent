@@ -204,10 +204,31 @@ Never hand-edit `upstream_inventory.json`. `ledger.json` is merge-preserved by
   reconciliation and sidebar projection, the four new-workspace rules,
   attachment file types and identity, the client activity and input trackers,
   agent and workspace route resolution, and the markdown render policies.
-- Ledger status: 861 verified, 252 partial, and 807 not-started out of 1920.
+- The remaining large app modules are ported: the git action policy (its
+  12-rung precedence ladder pinned by running the frozen TypeScript under
+  Node across 60 scenarios in two locales), the agent-form reducer, the push
+  router, the replica cache and viewed-timeline sync, archive and settings
+  storage, agent grouping and the legacy-daemon workspace shim, desktop
+  permissions and the app updater, runtime bootstrap, the assistant
+  file-link parser, `html-ish`, and the UI geometry, command, attachment,
+  and platform clusters.
+- Several of those are marked `partial` rather than `verified` on purpose:
+  they are faithful ports defined against a TanStack query cache this app
+  does not use, so they carry a minimal cache slice and are not yet the code
+  the product runs on. Each ledger note names the existing owner it collides
+  with — `TimelineNotifier`'s own forward paging, `working_diff_provider`'s
+  checkout-diff subscription, `DaemonLifecycleNotifier`'s startup path, the
+  app's per-key settings storage. A port nothing calls is not parity.
+- Two divergences these ports surfaced in existing code are fixed here. The
+  checkout commit and commit-file-diff providers gated on
+  `cwd.trim().isEmpty` where upstream uses plain JS truthiness, so a
+  whitespace-only cwd sat idle instead of surfacing the daemon's error. And
+  the app defaulted the theme to dark where the frozen default is `auto`, so
+  a fresh install on a light-mode OS looked wrong.
+- Ledger status: 886 verified, 268 partial, and 766 not-started out of 1920.
 - Validation: `dart run tool/parity.dart --check` passes against the frozen
-  inventory; `dart analyze packages/app` is clean and packages/app runs 2690
-  tests green. packages/daemon runs 1824 (one pre-existing CLI
+  inventory; `dart analyze packages/app` is clean and packages/app runs its
+  full suite green. packages/daemon runs 1824 (one pre-existing CLI
   connection-fallback timeout, reproducible on a clean tree). The Windows
   debug build succeeds and the app launches against a local daemon on 6868.
   Package coverage for app is below the 95% gate — that shortfall predates
