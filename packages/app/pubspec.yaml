@@ -56,3 +56,6 @@ flutter:
   assets:
     - assets/tray/tray_icon.ico
     - assets/tray/tray_icon.png
+    # Frozen Paseo 0.2.0 translation resources, generated from the upstream
+    # i18n/resources/*.ts trees.
+    - assets/i18n/

@@ -2986,38 +2986,48 @@
     },
     {
       "id": "source-unit:packages/app/src/components/drag-reorder/drag-reducer.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/drag_reorder/drag_reorder.dart",
+      "evidence": [
+        "packages/app/test/drag_reorder/drag_reorder_test.dart"
+      ],
+      "notes": "dragStateReducer/dragStateInitial: start snapshots the list and replaces any in-flight drag; clear resets both fields together."
     },
     {
       "id": "source-unit:packages/app/src/components/drag-reorder/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/drag_reorder/drag_reorder.dart",
+      "evidence": [
+        "packages/app/test/drag_reorder/drag_reorder_test.dart"
+      ],
+      "notes": "Barrel; every re-exported symbol is ported into the single Dart library."
     },
     {
       "id": "source-unit:packages/app/src/components/drag-reorder/pointer-activation.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/drag_reorder/drag_reorder.dart",
+      "evidence": [
+        "packages/app/test/drag_reorder/drag_reorder_test.dart"
+      ],
+      "notes": "Mouse always activates on distance; touch switches to press-and-hold only when the row has a drag handle, so touch scrolling is not stolen."
     },
     {
       "id": "source-unit:packages/app/src/components/drag-reorder/reorder-items.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/drag_reorder/drag_reorder.dart",
+      "evidence": [
+        "packages/app/test/drag_reorder/drag_reorder_test.dart"
+      ],
+      "notes": "reorderItemsOnDragEnd returns null (skip persist) for no target / self-drop / unknown key; otherwise dnd-kit arrayMove semantics, reimplemented against the frozen dist source."
     },
     {
       "id": "source-unit:packages/app/src/components/drag-reorder/use-drag-reorder-state.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/drag_reorder/drag_reorder.dart",
+      "evidence": [
+        "packages/app/test/drag_reorder/drag_reorder_test.dart"
+      ],
+      "notes": "Reducer state machine ported and tested. Remaining: the React hook wrapper and its dnd-kit sensor binding have no Flutter host yet (draggable-list.* unported)."
     },
     {
       "id": "source-unit:packages/app/src/components/draggable-list.native.tsx",
@@ -3121,10 +3131,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/file-pane-enabled.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/file_explorer/file_explorer_rules.dart",
+      "evidence": [
+        "packages/app/test/file_explorer/file_explorer_rules_test.dart"
+      ],
+      "notes": "isFileQueryEnabled gates the pane read on read target + active tab + app visibility, so a revisited tab refetches."
     },
     {
       "id": "source-unit:packages/app/src/components/file-pane-render-mode.ts",
@@ -3934,10 +3946,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar/sidebar-workspace-title.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_session_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_session_rules_test.dart"
+      ],
+      "notes": "Branch mode falls back nullish (not falsy) to the name, so an empty-string branch is preserved; title mode always returns the name."
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar/use-limited-sidebar-group.ts",
@@ -4037,10 +4051,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/synced-loader-state.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_session_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_session_rules_test.dart"
+      ],
+      "notes": "950ms six-dot cycle with the frozen 6x6 opacity table; out-of-range step/dot reads as 0. Uses remainder() rather than % so negative clocks stay out of range as in JS."
     },
     {
       "id": "source-unit:packages/app/src/components/synced-loader.tsx",
@@ -4168,10 +4184,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/ui/combobox-keyboard.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/keyboard/paseo_shortcut_routing.dart",
+      "evidence": [
+        "packages/app/test/keyboard/paseo_shortcut_routing_test.dart"
+      ],
+      "notes": "getNextActiveIndex arrow-key wrapping over the option list."
     },
     {
       "id": "source-unit:packages/app/src/components/ui/combobox-options.ts",
@@ -4725,10 +4743,12 @@
     },
     {
       "id": "source-unit:packages/app/src/contexts/session-resume-revalidation.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_session_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_session_rules_test.dart"
+      ],
+      "notes": "Below the 60s staleness threshold it is inert; at or above it bumps history sync generation then refreshes directories in that order, returning false if either throws."
     },
     {
       "id": "source-unit:packages/app/src/contexts/session-status-tracking.ts",
@@ -5221,17 +5241,21 @@
     },
     {
       "id": "source-unit:packages/app/src/file-explorer/read-result.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/file_explorer/file_explorer_rules.dart",
+      "evidence": [
+        "packages/app/test/file_explorer/file_explorer_rules_test.dart"
+      ],
+      "notes": "Only text reads decode content and report utf-8; a leading BOM is stripped but recorded in hasBom so writes restore it. Dart deviations: explicit BOM slice and allowMalformed decode, reproducing TextDecoder."
     },
     {
       "id": "source-unit:packages/app/src/file-explorer/visibility.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/file_explorer/file_explorer_rules.dart",
+      "evidence": [
+        "packages/app/test/file_explorer/file_explorer_rules_test.dart"
+      ],
+      "notes": "isHiddenExplorerPath treats any dot-prefixed segment as hidden while exempting . and ..; filterVisibleExplorerEntries matches on the entry name only, ignoring the path."
     },
     {
       "id": "source-unit:packages/app/src/file-pane/bar.tsx",
@@ -6598,24 +6622,30 @@
     },
     {
       "id": "source-unit:packages/app/src/i18n/i18next.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/i18n/translations.dart",
+      "evidence": [
+        "packages/app/test/i18n/i18n_test.dart"
+      ],
+      "notes": "Minimal translator reproducing the i18next behaviour the app uses (dotted lookup, {{name}} interpolation, English fallback, missing key returns the key). Remaining: no provider wiring, so no UI string renders through it yet (see i18n/provider.tsx)."
     },
     {
       "id": "source-unit:packages/app/src/i18n/init.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/i18n/sync_language.dart",
+      "evidence": [
+        "packages/app/test/i18n/i18n_test.dart"
+      ],
+      "notes": "observeI18nInit reports a failed initialization instead of throwing; silent on success."
     },
     {
       "id": "source-unit:packages/app/src/i18n/locales.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/i18n/locales.dart",
+      "evidence": [
+        "packages/app/test/i18n/i18n_test.dart"
+      ],
+      "notes": "SupportedLocale/AppLanguage, frozen picker order, native+active-language labels, resolveSupportedLocale incl. the narrow pt->pt-BR rule."
     },
     {
       "id": "source-unit:packages/app/src/i18n/provider.tsx",
@@ -6626,66 +6656,84 @@
     },
     {
       "id": "source-unit:packages/app/src/i18n/resources/ar.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/assets/i18n/ar.json",
+      "evidence": [
+        "packages/app/test/i18n/i18n_test.dart"
+      ],
+      "notes": "Frozen resource tree vendored as a JSON asset (Flutter has no i18next). Key parity asserted against English: 1509 keys, exact set match."
     },
     {
       "id": "source-unit:packages/app/src/i18n/resources/en.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/assets/i18n/en.json",
+      "evidence": [
+        "packages/app/test/i18n/i18n_test.dart"
+      ],
+      "notes": "Frozen resource tree vendored as a JSON asset (Flutter has no i18next). Key parity asserted against English: 1509 keys, exact set match."
     },
     {
       "id": "source-unit:packages/app/src/i18n/resources/es.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/assets/i18n/es.json",
+      "evidence": [
+        "packages/app/test/i18n/i18n_test.dart"
+      ],
+      "notes": "Frozen resource tree vendored as a JSON asset (Flutter has no i18next). Key parity asserted against English: 1509 keys, exact set match."
     },
     {
       "id": "source-unit:packages/app/src/i18n/resources/fr.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/assets/i18n/fr.json",
+      "evidence": [
+        "packages/app/test/i18n/i18n_test.dart"
+      ],
+      "notes": "Frozen resource tree vendored as a JSON asset (Flutter has no i18next). Key parity asserted against English: 1509 keys, exact set match."
     },
     {
       "id": "source-unit:packages/app/src/i18n/resources/ja.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/assets/i18n/ja.json",
+      "evidence": [
+        "packages/app/test/i18n/i18n_test.dart"
+      ],
+      "notes": "Frozen resource tree vendored as a JSON asset (Flutter has no i18next). Key parity asserted against English: 1509 keys, exact set match."
     },
     {
       "id": "source-unit:packages/app/src/i18n/resources/pt-br.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/assets/i18n/pt-BR.json",
+      "evidence": [
+        "packages/app/test/i18n/i18n_test.dart"
+      ],
+      "notes": "Frozen resource tree vendored as a JSON asset (Flutter has no i18next). Key parity asserted against English: 1509 keys, exact set match."
     },
     {
       "id": "source-unit:packages/app/src/i18n/resources/ru.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/assets/i18n/ru.json",
+      "evidence": [
+        "packages/app/test/i18n/i18n_test.dart"
+      ],
+      "notes": "Frozen resource tree vendored as a JSON asset (Flutter has no i18next). Key parity asserted against English: 1509 keys, exact set match."
     },
     {
       "id": "source-unit:packages/app/src/i18n/resources/zh-cn.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/assets/i18n/zh-CN.json",
+      "evidence": [
+        "packages/app/test/i18n/i18n_test.dart"
+      ],
+      "notes": "Frozen resource tree vendored as a JSON asset (Flutter has no i18next). Key parity asserted against English: 1509 keys, exact set match."
     },
     {
       "id": "source-unit:packages/app/src/i18n/sync-language.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/i18n/sync_language.dart",
+      "evidence": [
+        "packages/app/test/i18n/i18n_test.dart"
+      ],
+      "notes": "ensureI18nLanguageForRender: inert when already matching, reports a failed switch instead of throwing."
     },
     {
       "id": "source-unit:packages/app/src/keyboard/actions.ts",
@@ -6719,10 +6767,12 @@
     },
     {
       "id": "source-unit:packages/app/src/keyboard/keyboard-shortcut-routing.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/keyboard/paseo_shortcut_routing.dart",
+      "evidence": [
+        "packages/app/test/keyboard/paseo_shortcut_routing_test.dart"
+      ],
+      "notes": "canToggleFileExplorerShortcut; route parsing reuses the already-ported lib/core/host_routes.dart rather than re-porting the upstream regexes."
     },
     {
       "id": "source-unit:packages/app/src/keyboard/keyboard-shortcuts.ts",
@@ -7552,10 +7602,12 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/settings/daemon-reconnect.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_session_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_session_rules_test.dart"
+      ],
+      "notes": "A reconnect needs status online plus either a bumped clientGeneration or a changed lastOnlineAt; a null start marker accepts any online connection."
     },
     {
       "id": "source-unit:packages/app/src/screens/settings/daemon-restart.ts",
@@ -7747,10 +7799,12 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/workspace/workspace-empty-draft-seed.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_markdown_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_markdown_rules_test.dart"
+      ],
+      "notes": "shouldSeedEmptyWorkspaceDraft: six knowledge gates (focus, persistence key, directory, layout/agents/terminals hydration) must all hold before the three emptiness counts are consulted."
     },
     {
       "id": "source-unit:packages/app/src/screens/workspace/workspace-file-open-command.ts",
@@ -8863,10 +8917,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/desktop-sidebar-toggle.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/paseo_navigation_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_navigation_rules_test.dart"
+      ],
+      "notes": "toggleDesktopSidebarsWithCheckoutIntent collapse/expand rule ported and tested. Remaining: bound to injected callbacks until the desktop sidebar stores land."
     },
     {
       "id": "source-unit:packages/app/src/utils/desktop-window.tsx",
@@ -9070,10 +9126,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/markdown-ast.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_markdown_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_markdown_rules_test.dart"
+      ],
+      "notes": "markdownNodeContainsType depth-first containment; the node itself counts as a match."
     },
     {
       "id": "source-unit:packages/app/src/utils/markdown-list.ts",
@@ -9256,10 +9314,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/schedule-cadence-policy.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_navigation_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_navigation_rules_test.dart"
+      ],
+      "notes": "nextCronCadence: editing a cron keeps its own timezone, a legacy timezone-less cron pins to UTC, and switching in from an interval adopts the device timezone."
     },
     {
       "id": "source-unit:packages/app/src/utils/schedule-format.ts",
@@ -9354,10 +9414,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/split-markdown-blocks.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_markdown_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_markdown_rules_test.dart"
+      ],
+      "notes": "Blank-line block splitting with fence awareness (3+ backticks/tildes, at most 3 spaces indent, closes only on the same char with a run at least as long; unterminated fence swallows the remainder). No upstream test suite, so expectations were pinned by executing the frozen TypeScript under Node."
     },
     {
       "id": "source-unit:packages/app/src/utils/split-navigation.ts",
@@ -9555,10 +9617,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/workspace-navigation.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/paseo_navigation_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_navigation_rules_test.dart"
+      ],
+      "notes": "prepareWorkspaceTabWithLayout ported over the existing pure prepareWorkspaceTab (persistence key, draft sentinel, pin-only-for-agents). Remaining: no workspace layout store exists yet, so openTabFocused/pinAgent are injected rather than read from the store."
     },
     {
       "id": "source-unit:packages/app/src/utils/workspace-script-links.ts",
