@@ -3100,45 +3100,57 @@
     },
     {
       "id": "source-unit:packages/app/src/components/file-drop/context.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/attachments/paseo_file_drop.dart",
+      "evidence": [
+        "packages/app/test/attachments/paseo_file_drop_test.dart"
+      ],
+      "notes": "Ported with the drag-counter arithmetic, the copy-effect gate, the workspace-file-then-generic-then-images fan-out, and the frozen 150ms fade and 0.7 dim. The backdrop label resolves through an injected translator against composer.attachments.dropFilesHere rather than shipping English into the other seven locales. Remaining: four widgets (composer, draft_session_composer, terminal_pane, new_workspace_screen) each own a private desktop_drop target with their own active state and inline overlay, so nothing is wired to this shared zone yet."
     },
     {
       "id": "source-unit:packages/app/src/components/file-drop/file-drop-backdrop.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/attachments/paseo_file_drop.dart",
+      "evidence": [
+        "packages/app/test/attachments/paseo_file_drop_test.dart"
+      ],
+      "notes": "Ported with the drag-counter arithmetic, the copy-effect gate, the workspace-file-then-generic-then-images fan-out, and the frozen 150ms fade and 0.7 dim. The backdrop label resolves through an injected translator against composer.attachments.dropFilesHere rather than shipping English into the other seven locales. Remaining: four widgets (composer, draft_session_composer, terminal_pane, new_workspace_screen) each own a private desktop_drop target with their own active state and inline overlay, so nothing is wired to this shared zone yet."
     },
     {
       "id": "source-unit:packages/app/src/components/file-drop/file-drop-zone.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/attachments/paseo_file_drop.dart",
+      "evidence": [
+        "packages/app/test/attachments/paseo_file_drop_test.dart"
+      ],
+      "notes": "Ported with the drag-counter arithmetic, the copy-effect gate, the workspace-file-then-generic-then-images fan-out, and the frozen 150ms fade and 0.7 dim. The backdrop label resolves through an injected translator against composer.attachments.dropFilesHere rather than shipping English into the other seven locales. Remaining: four widgets (composer, draft_session_composer, terminal_pane, new_workspace_screen) each own a private desktop_drop target with their own active state and inline overlay, so nothing is wired to this shared zone yet."
     },
     {
       "id": "source-unit:packages/app/src/components/file-drop/types.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/attachments/paseo_file_drop.dart",
+      "evidence": [
+        "packages/app/test/attachments/paseo_file_drop_test.dart"
+      ],
+      "notes": "Ported with the drag-counter arithmetic, the copy-effect gate, the workspace-file-then-generic-then-images fan-out, and the frozen 150ms fade and 0.7 dim. The backdrop label resolves through an injected translator against composer.attachments.dropFilesHere rather than shipping English into the other seven locales. Remaining: four widgets (composer, draft_session_composer, terminal_pane, new_workspace_screen) each own a private desktop_drop target with their own active state and inline overlay, so nothing is wired to this shared zone yet."
     },
     {
       "id": "source-unit:packages/app/src/components/file-drop/use-drop-listeners.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/attachments/paseo_file_drop.dart",
+      "evidence": [
+        "packages/app/test/attachments/paseo_file_drop_test.dart"
+      ],
+      "notes": "Ported with the drag-counter arithmetic, the copy-effect gate, the workspace-file-then-generic-then-images fan-out, and the frozen 150ms fade and 0.7 dim. The backdrop label resolves through an injected translator against composer.attachments.dropFilesHere rather than shipping English into the other seven locales. Remaining: four widgets (composer, draft_session_composer, terminal_pane, new_workspace_screen) each own a private desktop_drop target with their own active state and inline overlay, so nothing is wired to this shared zone yet."
     },
     {
       "id": "source-unit:packages/app/src/components/file-drop/use-file-drop.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/attachments/paseo_file_drop.dart",
+      "evidence": [
+        "packages/app/test/attachments/paseo_file_drop_test.dart"
+      ],
+      "notes": "Ported with the drag-counter arithmetic, the copy-effect gate, the workspace-file-then-generic-then-images fan-out, and the frozen 150ms fade and 0.7 dim. The backdrop label resolves through an injected translator against composer.attachments.dropFilesHere rather than shipping English into the other seven locales. Remaining: four widgets (composer, draft_session_composer, terminal_pane, new_workspace_screen) each own a private desktop_drop target with their own active state and inline overlay, so nothing is wired to this shared zone yet."
     },
     {
       "id": "source-unit:packages/app/src/components/file-explorer-pane.tsx",
@@ -3167,45 +3179,57 @@
     },
     {
       "id": "source-unit:packages/app/src/components/headers/back-header.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_headers.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_headers_test.dart"
+      ],
+      "notes": "Frozen visual contract carried over exactly: 48/56 row heights, 12/8 paddings, the 8px shared icon slot, 16px title at w300 desktop and w400 compact, 20px back arrow, and the hand-built 16/16/8 by 2px compact hamburger. Evidence is a self-authored widget suite pinning those numbers plus the conditional-render rules, since this component has no upstream test file; a driven visual comparison against the running app is still outstanding. Notable subtlety pinned: borderless only makes the hairline transparent rather than removing it, so toggling it never shifts content."
     },
     {
       "id": "source-unit:packages/app/src/components/headers/header-icon-badge.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_headers.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_headers_test.dart"
+      ],
+      "notes": "Frozen visual contract carried over exactly: 48/56 row heights, 12/8 paddings, the 8px shared icon slot, 16px title at w300 desktop and w400 compact, 20px back arrow, and the hand-built 16/16/8 by 2px compact hamburger. Evidence is a self-authored widget suite pinning those numbers plus the conditional-render rules, since this component has no upstream test file; a driven visual comparison against the running app is still outstanding. Notable subtlety pinned: borderless only makes the hairline transparent rather than removing it, so toggling it never shifts content."
     },
     {
       "id": "source-unit:packages/app/src/components/headers/header-toggle-button.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_headers.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_headers_test.dart"
+      ],
+      "notes": "Frozen visual contract carried over exactly: 48/56 row heights, 12/8 paddings, the 8px shared icon slot, 16px title at w300 desktop and w400 compact, 20px back arrow, and the hand-built 16/16/8 by 2px compact hamburger. Evidence is a self-authored widget suite pinning those numbers plus the conditional-render rules, since this component has no upstream test file; a driven visual comparison against the running app is still outstanding. Notable subtlety pinned: borderless only makes the hairline transparent rather than removing it, so toggling it never shifts content."
     },
     {
       "id": "source-unit:packages/app/src/components/headers/menu-header.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_headers.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_headers_test.dart"
+      ],
+      "notes": "Frozen visual contract carried over exactly: 48/56 row heights, 12/8 paddings, the 8px shared icon slot, 16px title at w300 desktop and w400 compact, 20px back arrow, and the hand-built 16/16/8 by 2px compact hamburger. Evidence is a self-authored widget suite pinning those numbers plus the conditional-render rules, since this component has no upstream test file; a driven visual comparison against the running app is still outstanding. Notable subtlety pinned: borderless only makes the hairline transparent rather than removing it, so toggling it never shifts content."
     },
     {
       "id": "source-unit:packages/app/src/components/headers/screen-header.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_headers.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_headers_test.dart"
+      ],
+      "notes": "Frozen visual contract carried over exactly: 48/56 row heights, 12/8 paddings, the 8px shared icon slot, 16px title at w300 desktop and w400 compact, 20px back arrow, and the hand-built 16/16/8 by 2px compact hamburger. Evidence is a self-authored widget suite pinning those numbers plus the conditional-render rules, since this component has no upstream test file; a driven visual comparison against the running app is still outstanding. Notable subtlety pinned: borderless only makes the hairline transparent rather than removing it, so toggling it never shifts content."
     },
     {
       "id": "source-unit:packages/app/src/components/headers/screen-title.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_headers.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_headers_test.dart"
+      ],
+      "notes": "Frozen visual contract carried over exactly: 48/56 row heights, 12/8 paddings, the 8px shared icon slot, 16px title at w300 desktop and w400 compact, 20px back arrow, and the hand-built 16/16/8 by 2px compact hamburger. Evidence is a self-authored widget suite pinning those numbers plus the conditional-render rules, since this component has no upstream test file; a driven visual comparison against the running app is still outstanding. Notable subtlety pinned: borderless only makes the hairline transparent rather than removing it, so toggling it never shifts content."
     },
     {
       "id": "source-unit:packages/app/src/components/highlighted-code-block.tsx",
@@ -11558,10 +11582,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/features/auto-updater.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_webviews.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_webviews_test.dart"
+      ],
+      "notes": "The rollout gate, install-on-quit rule, and staging user id with its memoization. The builder-util UUID check was verified against the frozen implementation: it lowercases and regex-tests only, with no version or variant validation, so the nil UUID passes."
     },
     {
       "id": "source-unit:packages/desktop/src/features/browser-automation/actionability.ts",
@@ -11630,10 +11656,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/features/browser-keyboard/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_webviews.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_webviews_test.dart"
+      ],
+      "notes": "The six channels and both message shapes over an injected registrar, re-validating guest-to-host against the registry on every event rather than only at attach."
     },
     {
       "id": "source-unit:packages/desktop/src/features/browser-keyboard/policy.ts",
@@ -11655,17 +11683,21 @@
     },
     {
       "id": "source-unit:packages/desktop/src/features/browser-webviews/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_webviews.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_webviews_test.dart"
+      ],
+      "notes": "The attach gate and all three navigation guards. Host web contents and session are compared with identical() rather than ==, because the reference-identity check is the entire security value."
     },
     {
       "id": "source-unit:packages/desktop/src/features/browser-webviews/registry.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_webviews.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_webviews_test.dart"
+      ],
+      "notes": "Three indexes kept in lockstep with JS Map insertion-order-as-recency preserved by delete-then-set, the same-triple re-register no-op that protects the active selection, and the preserve-active eviction path."
     },
     {
       "id": "source-unit:packages/desktop/src/features/browser-webviews/window-open.ts",
@@ -11701,10 +11733,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/features/editor-targets/runtime.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_webviews.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_webviews_test.dart"
+      ],
+      "notes": "Executable resolution, Windows command-script detection and cmd escaping, and the external process environment. PATH candidates are joined with a forward slash on Windows too, preserving upstream's literal template so the exact command string handed to the OS is unchanged."
     },
     {
       "id": "source-unit:packages/desktop/src/features/editor-targets/target.ts",
@@ -11862,10 +11896,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/features/menu.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_webviews.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_webviews_test.dart"
+      ],
+      "notes": "Menu template building, terminal context menu, and active-browser reload. Click closures become a command enum so the template is a comparable value — upstream never asserts on it and now it can be."
     },
     {
       "id": "source-unit:packages/desktop/src/features/notifications.ts",
@@ -11952,10 +11988,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/integrations/skills/sync.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_window_state.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_window_state_test.dart"
+      ],
+      "notes": "Recursive listing, the managed-files manifest, the three-way delete rule (ours, gone from the bundle, and hash unchanged) and empty-parent pruning. Manifest values stay untyped because upstream casts unchecked, so a non-string never matches a hash and conservatively keeps the file — tightening it would start deleting files upstream keeps."
     },
     {
       "id": "source-unit:packages/desktop/src/login-shell-env.ts",
@@ -12014,17 +12052,21 @@
     },
     {
       "id": "source-unit:packages/desktop/src/settings/desktop-settings.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_window_state.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_window_state_test.dart"
+      ],
+      "notes": "The on-disk store: cached load, first-launch seed, per-field coercion, patch merge, and the one-shot legacy import with its latch. Implements the store interface paseo_desktop_features.dart declared when it ported the commands half, so the two halves of upstream's settings feature now meet on one value type — asserted by a test rather than assumed."
     },
     {
       "id": "source-unit:packages/desktop/src/settings/window-state.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_window_state.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_window_state_test.dart"
+      ],
+      "notes": "Coercion, work-area clamping and the store with serialized atomic saves, plus a sync save that latches the store finalized so an in-flight async write unlinks its temp file instead of renaming a stale snapshot over it. JS rounds halves toward positive infinity where Dart rounds away from zero — reachable from real coordinates on a left-hand monitor, so it is reproduced explicitly."
     },
     {
       "id": "source-unit:packages/desktop/src/system/arm64-translation.ts",
@@ -12044,10 +12086,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/window/compositor-watchdog/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_window_state.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_window_state_test.dart"
+      ],
+      "notes": "The stall-recovery policy, GPU pid lookup and frame probe, with window, power monitor, metrics, scheduler, clock and warn sink all injected so a tick is driven deterministically without a real timer."
     },
     {
       "id": "source-unit:packages/desktop/src/window/window-manager.ts",
@@ -13299,10 +13343,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/cli-runtime.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_cli_runtimes.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_cli_runtimes_test.dart"
+      ],
+      "notes": "The real session over the already-ported JSONL transport: full RPC vocabulary, schema validation on every reply, known-event-type filtering that drops unknown frames, prompt ack merging the transport request id, and the session-stats to get-state compat fallback. Remaining: nothing in production calls it, because this daemon uses a native harness rather than driving the OMP binary."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/commands.ts",
@@ -13343,10 +13389,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/host-tools.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_cli_runtimes.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_cli_runtimes_test.dart"
+      ],
+      "notes": "Tool serialization and the per-session router keyed by an Expando, with the pre-registration error result, cancel dropping both late results and late updates, idle waiting, and the count/ids summary prefix on model-visible structured content. AbortController becomes a read-only cancellation object since Dart has no analogue."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/message-history.ts",
@@ -13371,10 +13419,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/rpc-ui-permission-mapper.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_cli_runtimes.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_cli_runtimes_test.dart"
+      ],
+      "notes": "OMP has no permission RPC, so tool approvals ride inside a generic select prompt; the full recognition gate is ported (method, the exact two options in order, the Allow tool prefix, the tool allowlist and a parseable body) along with the three body parsers and the deny-first action list. The command capture is dotAll so a multi-line or CRLF command survives verbatim."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/runtime.ts",
@@ -13555,17 +13605,21 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/pi/cli-runtime.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_cli_runtimes.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_cli_runtimes_test.dart"
+      ],
+      "notes": "The same facade with Pi's differences pinned: its own command RPC name, the three-step executable precedence, no reply validation anywhere (a non-object prompt ack yields just the request id rather than throwing), and compact with no wall-clock timeout. buildPiLaunch is ported alongside because the runtime is unusable without it. Remaining: unwired for the same native-harness reason."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/pi/history-mapper.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_cli_runtimes.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_cli_runtimes_test.dart"
+      ],
+      "notes": "Full replay across user, custom, assistant, tool-result and bash-execution entries with positional captured ids and the three hooks. Upstream's pi tool-call mapper was diffed against the OMP one and found byte-identical except a single MCP branch, so the OMP port is driven directly and only the MCP-aware name resolver is new."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/pi/rewind.ts",
@@ -13611,10 +13665,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/provider-image-output.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/server/paseo_registry_bootstrap.dart",
+      "evidence": [
+        "packages/daemon/test/server/paseo_registry_bootstrap_test.dart"
+      ],
+      "notes": "Image materialization and the assistant-markdown rendering. Base64 is sanitized before decoding because Node's Buffer never throws where Dart's decoder does, so garbage still yields a file rather than an exception the caller is not written against."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/provider-runner.ts",
@@ -15261,10 +15317,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/workspace-registry-bootstrap.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/server/paseo_registry_bootstrap.dart",
+      "evidence": [
+        "packages/daemon/test/server/paseo_registry_bootstrap_test.dart"
+      ],
+      "notes": "The bootstrap with its both-exist short-circuit, missing and file cwds dropped before git is consulted, grouping by worktree directory key, per-project timestamp roll-up, and existing workspace ids reused by resolved cwd. That last lookup is deliberately not case-folded, matching upstream, because changing it during a one-shot migration could silently re-own workspaces."
     },
     {
       "id": "source-unit:packages/server/src/server/workspace-registry-model.ts",
@@ -15621,10 +15679,12 @@
     },
     {
       "id": "source-unit:packages/server/src/tasks/task-store.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/server/paseo_registry_bootstrap.dart",
+      "evidence": [
+        "packages/daemon/test/server/paseo_registry_bootstrap_test.dart"
+      ],
+      "notes": "Document serialization, the file-backed store, and the ready/blocked predicates. Deliberately stricter in one place: an unknown status throws where upstream casts the raw string into its union and produces a task with an impossible status that then silently fails every scheduling predicate."
     },
     {
       "id": "source-unit:packages/server/src/tasks/types.ts",
@@ -15904,10 +15964,12 @@
     },
     {
       "id": "source-unit:packages/server/src/utils/path.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/server/paseo_registry_bootstrap.dart",
+      "evidence": [
+        "packages/daemon/test/server/paseo_registry_bootstrap_test.dart"
+      ],
+      "notes": "Tilde expansion, path equivalence and the realpath-aware matchers. Renamed from upstream's areEquivalentPaths because the daemon already has that name with different semantics — it resolves against the process cwd and case-folds by host platform — and a silent collision there would be a footgun."
     },
     {
       "id": "source-unit:packages/server/src/utils/project-icon.ts",
