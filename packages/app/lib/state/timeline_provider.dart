@@ -27,10 +27,16 @@ final class OptimisticUserMessage {
 }
 
 final class TimelineDisplayItem {
-  const TimelineDisplayItem({required this.item, this.userMessage});
+  const TimelineDisplayItem({required this.item, this.userMessage, this.timestamp});
 
   final TimelineItem item;
   final OptimisticUserMessage? userMessage;
+
+  /// When the item was last written. Populated from the daemon's page/stream
+  /// timestamp (or the optimistic message's local timestamp) and drives
+  /// Paseo's turn-timing derivation; `null` only for items synthesized
+  /// outside the timeline replica (e.g. subagent tool-call overlays).
+  final DateTime? timestamp;
 }
 
 enum TimelineCatchUpPhase { idle, syncing, error }
@@ -44,6 +50,7 @@ class TimelineState {
     this.pendingTailUserMessages = const [],
     this.pendingHeadUserMessages = const [],
     this.userMessagePresentations = const {},
+    this.itemTimestamps = const {},
     this.epoch,
     this.cursor,
     this.hasOlder = false,
@@ -59,6 +66,11 @@ class TimelineState {
   final List<OptimisticUserMessage> pendingTailUserMessages;
   final List<OptimisticUserMessage> pendingHeadUserMessages;
   final Map<String, OptimisticUserMessage> userMessagePresentations;
+
+  /// Last-known-write timestamp per canonical timeline item id. Mirrors
+  /// Paseo's `StreamItem.timestamp`, which `turn-time.ts` derives turn
+  /// duration from.
+  final Map<String, DateTime> itemTimestamps;
   final String? epoch;
   final AgentTimelineCursorRange? cursor;
   final bool hasOlder;
@@ -81,12 +93,12 @@ class TimelineState {
   ];
 
   List<TimelineDisplayItem> get tailDisplayItems => [
-    ..._displayCanonical(tailItems, userMessagePresentations),
+    ..._displayCanonical(tailItems, userMessagePresentations, itemTimestamps),
     ..._displayPending(pendingTailUserMessages),
   ];
 
   List<TimelineDisplayItem> get headDisplayItems => [
-    ..._displayCanonical(headItems, userMessagePresentations),
+    ..._displayCanonical(headItems, userMessagePresentations, itemTimestamps),
     ..._displayPending(pendingHeadUserMessages),
   ];
 
@@ -103,6 +115,7 @@ class TimelineState {
     List<OptimisticUserMessage>? pendingTailUserMessages,
     List<OptimisticUserMessage>? pendingHeadUserMessages,
     Map<String, OptimisticUserMessage>? userMessagePresentations,
+    Map<String, DateTime>? itemTimestamps,
     String? epoch,
     bool clearEpoch = false,
     AgentTimelineCursorRange? cursor,
@@ -124,6 +137,7 @@ class TimelineState {
         pendingHeadUserMessages ?? this.pendingHeadUserMessages,
     userMessagePresentations:
         userMessagePresentations ?? this.userMessagePresentations,
+    itemTimestamps: itemTimestamps ?? this.itemTimestamps,
     epoch: clearEpoch ? null : (epoch ?? this.epoch),
     cursor: clearCursor ? null : (cursor ?? this.cursor),
     hasOlder: hasOlder ?? this.hasOlder,
@@ -138,11 +152,13 @@ class TimelineState {
 List<TimelineDisplayItem> _displayCanonical(
   List<TimelineItem> items,
   Map<String, OptimisticUserMessage> presentations,
+  Map<String, DateTime> timestamps,
 ) => [
   for (final item in items)
     TimelineDisplayItem(
       item: item,
       userMessage: item is UserMessageItem ? presentations[item.id] : null,
+      timestamp: timestamps[item.id],
     ),
 ];
 
@@ -157,6 +173,10 @@ List<TimelineDisplayItem> _displayPending(
         attachments: message.attachments,
       ),
       userMessage: message,
+      timestamp: DateTime.fromMillisecondsSinceEpoch(
+        message.timestamp,
+        isUtc: true,
+      ),
     ),
 ];
 
@@ -303,6 +323,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
     _applyLiveUpsert(
       _mergeResolvedPermission(payload.item),
       math.max(state.lastSeq, payload.seq),
+      _payloadTimestamp(payload),
     );
   }
 
@@ -321,7 +342,16 @@ class TimelineNotifier extends Notifier<TimelineState> {
         catchUpPhase: TimelineCatchUpPhase.syncing,
       ),
     );
-    _applyLiveUpsert(payload.item, payload.seq);
+    _applyLiveUpsert(payload.item, payload.seq, _payloadTimestamp(payload));
+  }
+
+  DateTime _payloadTimestamp(AgentStreamPayload payload) {
+    final raw = payload.timestamp;
+    if (raw != null) {
+      final parsed = DateTime.tryParse(raw);
+      if (parsed != null) return parsed;
+    }
+    return DateTime.now().toUtc();
   }
 
   TimelineItem _mergeResolvedPermission(TimelineItem item) {
@@ -348,7 +378,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
     return item;
   }
 
-  void _applyLiveUpsert(TimelineItem item, int endSeq) {
+  void _applyLiveUpsert(TimelineItem item, int endSeq, DateTime timestamp) {
     final pendingTail = List<OptimisticUserMessage>.of(
       state.pendingTailUserMessages,
     );
@@ -358,6 +388,8 @@ class TimelineNotifier extends Notifier<TimelineState> {
     final presentations = Map<String, OptimisticUserMessage>.of(
       state.userMessagePresentations,
     );
+    final itemTimestamps = Map<String, DateTime>.of(state.itemTimestamps)
+      ..[item.id] = timestamp;
     final matchedSegment = _reconcileUserMessage(
       item,
       pendingTail,
@@ -380,6 +412,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
         pendingTailUserMessages: List.unmodifiable(pendingTail),
         pendingHeadUserMessages: List.unmodifiable(pendingHead),
         userMessagePresentations: Map.unmodifiable(presentations),
+        itemTimestamps: Map.unmodifiable(itemTimestamps),
         cursor: cursor == null
             ? AgentTimelineCursorRange(
                 epoch: state.epoch!,
@@ -638,6 +671,14 @@ class TimelineNotifier extends Notifier<TimelineState> {
     }
     final pageIds = items.map((item) => item.id).toSet();
     final liveIds = {...pageIds, for (final item in head) item.id};
+    final entryTimestamps = {
+      for (final entry in page.entries) entry.item.id: entry.timestamp,
+    };
+    final itemTimestamps = <String, DateTime>{
+      for (final item in items)
+        item.id: _parseEntryTimestamp(entryTimestamps[item.id]!),
+      for (final item in head) item.id: ?state.itemTimestamps[item.id],
+    };
     final cursor = pageCursor == null
         ? (retainsLiveHead ? currentCursor : null)
         : AgentTimelineCursorRange(
@@ -657,6 +698,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
           for (final entry in presentations.entries)
             if (liveIds.contains(entry.key)) entry.key: entry.value,
         }),
+        itemTimestamps: Map.unmodifiable(itemTimestamps),
         epoch: page.epoch,
         cursor: cursor,
         hasOlder: page.hasOlder,
@@ -680,6 +722,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
     );
     final tail = List<TimelineItem>.of(state.tailItems);
     final head = List<TimelineItem>.of(state.headItems);
+    final itemTimestamps = Map<String, DateTime>.of(state.itemTimestamps);
     for (final entry in page.entries) {
       final item = entry.item;
       final matched = _reconcileUserMessage(
@@ -691,6 +734,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
       if (_replaceExisting(item, tail, head) == null) {
         (matched == _TimelineSegment.tail ? tail : head).add(item);
       }
+      itemTimestamps[item.id] = _parseEntryTimestamp(entry.timestamp);
     }
     _publish(
       state.copyWith(
@@ -699,6 +743,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
         pendingTailUserMessages: List.unmodifiable(pendingTail),
         pendingHeadUserMessages: List.unmodifiable(pendingHead),
         userMessagePresentations: Map.unmodifiable(presentations),
+        itemTimestamps: Map.unmodifiable(itemTimestamps),
         cursor: _combineCursor(state.cursor, page.cursorRange),
         hasOlder: state.hasOlder || page.hasOlder,
         loading: false,
@@ -719,10 +764,12 @@ class TimelineNotifier extends Notifier<TimelineState> {
     final tail = List<TimelineItem>.of(state.tailItems);
     final head = List<TimelineItem>.of(state.headItems);
     final older = <TimelineItem>[];
+    final itemTimestamps = Map<String, DateTime>.of(state.itemTimestamps);
     for (final entry in page.entries) {
       final item = entry.item;
       _reconcileUserMessage(item, pendingTail, pendingHead, presentations);
       if (_replaceExisting(item, tail, head) == null) older.add(item);
+      itemTimestamps[item.id] = _parseEntryTimestamp(entry.timestamp);
     }
     final pageCursor = page.cursorRange;
     final currentCursor = state.cursor;
@@ -740,6 +787,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
         pendingTailUserMessages: List.unmodifiable(pendingTail),
         pendingHeadUserMessages: List.unmodifiable(pendingHead),
         userMessagePresentations: Map.unmodifiable(presentations),
+        itemTimestamps: Map.unmodifiable(itemTimestamps),
         cursor: cursor,
         hasOlder: page.hasOlder,
         loading: false,
@@ -747,6 +795,9 @@ class TimelineNotifier extends Notifier<TimelineState> {
       ),
     );
   }
+
+  DateTime _parseEntryTimestamp(String raw) =>
+      DateTime.tryParse(raw) ?? DateTime.now().toUtc();
 
   _TimelineSegment? _replaceExisting(
     TimelineItem item,
