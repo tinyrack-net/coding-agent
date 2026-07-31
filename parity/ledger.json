@@ -5308,10 +5308,12 @@
     },
     {
       "id": "source-unit:packages/app/src/file-explorer/preview-target.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_app_misc.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_app_misc_test.dart"
+      ],
+      "notes": "Read-target resolution in upstream's order: blank, tilde, relative against the workspace root (refused without one), absolute-inside-workspace, then any other absolute against its own volume root. Normalization only informs containment — the returned path and cwd stay verbatim."
     },
     {
       "id": "source-unit:packages/app/src/file-explorer/read-result.ts",
@@ -6580,10 +6582,12 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-preferred-editor.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_app_misc.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_app_misc_test.dart"
+      ],
+      "notes": "Preference resolution, load, and the controller. The loading-versus-loaded-but-empty split is load-bearing, so the stored id is a sealed pending/known pair rather than a nullable string. Deliberately does not use the repo's PaseoQueryCache, which maps react-query's undefined onto null and would turn clearing the preference into a no-op."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-project-icon-query.ts",
@@ -7174,17 +7178,21 @@
     },
     {
       "id": "source-unit:packages/app/src/projects/host-project-model.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_app_misc.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_app_misc_test.dart"
+      ],
+      "notes": "The project list model and its identity map. Upstream's buildHostProjectList is a structural identity map between two shapes Dart must make nominal, so a test pins that hosts and workspaceKeys are shared by reference as upstream does."
     },
     {
       "id": "source-unit:packages/app/src/projects/host-projects.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_app_misc.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_app_misc_test.dart"
+      ],
+      "notes": "The full host-project API plus the hook's selector. The asymmetry between the two initial-project resolvers is preserved and pinned: the workspace one re-reads candidates from the hydrated list and host-checks them, while the worktree one trusts the stub and checks only worktree capability."
     },
     {
       "id": "source-unit:packages/app/src/projects/project-icons.ts",
@@ -7755,10 +7763,12 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/settings/daemon-restart.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_app_misc.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_app_misc_test.dart"
+      ],
+      "notes": "Restart with upstream's short-circuit order preserved, so a remote restart never reads local settings and desktop-path failures propagate."
     },
     {
       "id": "source-unit:packages/app/src/screens/settings/editor-section.tsx",
@@ -9473,10 +9483,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/review-attachments.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_app_misc.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_app_misc_test.dart"
+      ],
+      "notes": "The forge attachment builders with the GitHub alias kept as a real const alias rather than a copy (asserted by identity). Declared as its own hierarchy because the protocol's AgentAttachment is sealed over text and review only; toJson emits upstream's exact object."
     },
     {
       "id": "source-unit:packages/app/src/utils/rich-clipboard-default-environment.ts",
@@ -9937,10 +9949,12 @@
     },
     {
       "id": "source-unit:packages/app/src/workspace-service-routes/store.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_app_misc.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_app_misc_test.dart"
+      ],
+      "notes": "Route preferences with zustand-persist's envelope reproduced exactly, merge-time sanitizing, and version-mismatch drop. Rehydration is explicit rather than construction-time."
     },
     {
       "id": "source-unit:packages/app/src/workspace-tabs/agent-visibility.ts",
