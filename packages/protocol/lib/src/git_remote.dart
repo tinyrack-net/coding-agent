@@ -86,8 +86,16 @@ GitHubRemoteIdentity? parseGitHubRemoteIdentity(String path) {
   );
 }
 
+/// GitHub's cloud hosts, matching the `cloudHosts` entry for `github` in the
+/// frozen forge manifest (mirrored in the app's `core/forge.dart`).
+///
+/// `ssh.github.com` is the SSH alias GitHub hands out for port-443 access, so
+/// `ssh://git@ssh.github.com/owner/repo.git` is an ordinary GitHub remote and
+/// has to parse as one.
+const _gitHubCloudHosts = {'github.com', 'ssh.github.com'};
+
 bool isGitHubHost(String host) =>
-    const {'github.com'}.contains(normalizeGitRemoteHost(host));
+    _gitHubCloudHosts.contains(normalizeGitRemoteHost(host));
 
 String normalizeGitRemoteHost(String host) =>
     host.trim().replaceFirst(RegExp(r'\.+$'), '').toLowerCase();

@@ -5673,10 +5673,12 @@
     },
     {
       "id": "source-unit:packages/app/src/git/forges/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/git/paseo_git_refs.dart",
+      "evidence": [
+        "packages/app/test/git/paseo_git_refs_test.dart"
+      ],
+      "notes": "The client forge module registry and facts parsers as a thin wiring layer over the already-ported forge logic and URL grammar. Upstream's completeness test reads the forges directory; Dart has no bundler-independent module enumeration, so the same invariant is asserted against core/forge.dart's manifest."
     },
     {
       "id": "source-unit:packages/app/src/git/forges/view.ts",
@@ -7884,10 +7886,12 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/workspace/visible-agent-ids.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_pins.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_pins_test.dart"
+      ],
+      "notes": "Blur or a null layout yields nothing; otherwise the active tab of each counted pane, agent targets only, deduped and sorted, with focusedPaneOnly narrowing to the focused pane. Delegates to the existing deriveWorkspacePaneState rather than restating normalization."
     },
     {
       "id": "source-unit:packages/app/src/screens/workspace/workspace-bulk-close.ts",
@@ -8043,10 +8047,12 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/workspace/workspace-tab-model.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_pins.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_pins_test.dart"
+      ],
+      "notes": "The paneless projection with its preference order: a normalized preferredTarget beats focusedTabId, both yield to the tab actually existing, falling back to the first tab. Note the existing workspace_tab_model.dart is NOT this module despite the matching filename — it ports workspace-tabs/model.ts plus identity.ts — so this facade was genuinely missing and delegates to it."
     },
     {
       "id": "source-unit:packages/app/src/screens/workspace/workspace-tab-presentation.tsx",
@@ -8184,10 +8190,12 @@
     },
     {
       "id": "source-unit:packages/app/src/stores/last-workspace-selection.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_pins.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_pins_test.dart"
+      ],
+      "notes": "Memoized hydration with a revision guard so a remember() during hydration wins, fire-and-forget writes, and subscription. Reuses the existing parse/encode helpers and storage key so this store and the Riverpod notifier cannot drift apart."
     },
     {
       "id": "source-unit:packages/app/src/stores/navigation-active-workspace-store/index.ts",
@@ -8940,17 +8948,21 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/agent-snapshots.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/navigation/paseo_agent_routing.dart",
+      "evidence": [
+        "packages/app/test/navigation/paseo_agent_routing_test.dart"
+      ],
+      "notes": "derivePendingPermissionKey reproducing the JS || waterfall rung by rung, and snapshot normalization with timestamp coercion, the lastActivityAt alias, and label-derived parent. Takes the decoded AgentSummary because the JSON step is already the protocol codec's job."
     },
     {
       "id": "source-unit:packages/app/src/utils/agent-working-directory-suggestions.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/git/paseo_git_refs.dart",
+      "evidence": [
+        "packages/app/test/git/paseo_git_refs_test.dart"
+      ],
+      "notes": "Dedupe by trimmed path keeping the newest timestamp, lastActivityAt preferred over createdAt, and the worktree exclusion applied after folding backslashes. Tie-breaking uses code-unit order rather than localeCompare; the divergence was verified under Node and pinned, and the primary timestamp sort key is unaffected."
     },
     {
       "id": "source-unit:packages/app/src/utils/app-version.ts",
@@ -8961,10 +8973,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/app-visibility.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_ui_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_ui_utils_test.dart"
+      ],
+      "notes": "Both visibility predicates over an injected host, where a null answer means the host cannot answer and resolves true — reproducing upstream's typeof document undefined short-circuits."
     },
     {
       "id": "source-unit:packages/app/src/utils/assistant-image-metadata.ts",
@@ -8975,10 +8989,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/assistant-image-source.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_ui_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_ui_utils_test.dart"
+      ],
+      "notes": "The sealed direct-versus-file-RPC resolution. Carries a private copy of file-explorer/preview-target.ts, which is outside this cluster and has no public Dart home yet; it is commented for deletion once that module is ported."
     },
     {
       "id": "source-unit:packages/app/src/utils/assistant-message-height-estimate.ts",
@@ -8996,17 +9012,21 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/branch-suggestions.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/git/paseo_git_refs.dart",
+      "evidence": [
+        "packages/app/test/git/paseo_git_refs_test.dart"
+      ],
+      "notes": "Option building preserving the load-bearing strip structure: refs/heads else-if refs/remotes, then an independent origin/ strip, with HEAD rejected both before and after."
     },
     {
       "id": "source-unit:packages/app/src/utils/client-id.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/navigation/paseo_agent_routing.dart",
+      "evidence": [
+        "packages/app/test/navigation/paseo_agent_routing_test.dart"
+      ],
+      "notes": "Memoized resolution with in-flight dedupe over injected storage and randomness. Upstream's Date.now()+Math.random() fallback is deliberately not ported: it exists only for runtimes without crypto, and Dart's Random is always available."
     },
     {
       "id": "source-unit:packages/app/src/utils/command-center-focus-restore.ts",
@@ -9159,10 +9179,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/explorer-paths.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_paths.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_paths_test.dart"
+      ],
+      "notes": "Absolute explorer path building with the separator flavour inferred from the root — the daemon's OS, not the client's. Pins the quirk that a root of / normalizes to blank and returns the bare entry path, and that a UNC prefix short-circuits as absolute."
     },
     {
       "id": "source-unit:packages/app/src/utils/extract-agent-model.ts",
@@ -9193,17 +9215,21 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/format-shortcut.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_ui_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_ui_utils_test.dart"
+      ],
+      "notes": "macOS modifier re-ordering and glyph concatenation, Shift spelled out and flipping the whole string to plus-separated, element-wise mapping elsewhere. Upstream collapses duplicate modifiers on the mac branch only, so Ctrl+Ctrl+B survives while duplicate mod does not; preserved and pinned rather than normalized."
     },
     {
       "id": "source-unit:packages/app/src/utils/github-refs.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/git/paseo_git_refs.dart",
+      "evidence": [
+        "packages/app/test/git/paseo_git_refs_test.dart"
+      ],
+      "notes": "Remote normalization, ref parsing and scanning with the asymmetric pull/issues path spelling, owner/repo matched case-insensitively but emitted with the remote's casing, canonical URL rebuild, and dedupe by kind and number in first-seen order. The scanner regex was checked against Node across 21 edge cases with identical output."
     },
     {
       "id": "source-unit:packages/app/src/utils/highlight-cache.ts",
@@ -9295,24 +9321,30 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/navigate-to-agent/resolve.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/navigation/paseo_agent_routing.dart",
+      "evidence": [
+        "packages/app/test/navigation/paseo_agent_routing_test.dart"
+      ],
+      "notes": "A caller-supplied workspace id short-circuits the store read; a normalized id opens the workspace tab, otherwise the bare host agent deep link, and it never errors. Route building reuses core/host_routes.dart wholesale."
     },
     {
       "id": "source-unit:packages/app/src/utils/new-agent-routing.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/navigation/paseo_agent_routing.dart",
+      "evidence": [
+        "packages/app/test/navigation/paseo_agent_routing_test.dart"
+      ],
+      "notes": "Last-colon key splitting so a host:port server id survives, route agent outranking sidebar selection, and worktree working-directory resolution preferring checkout metadata over path inference. Upstream indexes one past the end of a string, which Dart throws on, so that bound is explicit."
     },
     {
       "id": "source-unit:packages/app/src/utils/notification-routing.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/navigation/paseo_agent_routing.dart",
+      "evidence": [
+        "packages/app/test/navigation/paseo_agent_routing_test.dart"
+      ],
+      "notes": "Four-key target extraction — cwd is deliberately not treated as a workspace alias — and the degrading agent, terminal, host root, then / route ladder."
     },
     {
       "id": "source-unit:packages/app/src/utils/open-external-url.ts",
@@ -9393,10 +9425,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/project-placement.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_paths.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_paths_test.dart"
+      ],
+      "notes": "Placement derivation from cwd and the resolver, with a non-git fallback and the worktree-to-parent-repo rollup. The zod worktreeRoot transform differs per union member, so each sealed member pins its own."
     },
     {
       "id": "source-unit:packages/app/src/utils/projects.ts",
@@ -9453,10 +9487,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/rich-clipboard.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/paseo_ui_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_ui_utils_test.dart"
+      ],
+      "notes": "The clipboard content shape, MIME flavours, attempt-rich-then-degrade write, and the render-nothing-when-unavailable rule are ported and tested. Remaining: Dart has no markdown-it, so the markdown-to-HTML step is an injected renderer and the upstream HTML assertions are exercised against a fake — they pin the plumbing, not markdown-it's output."
     },
     {
       "id": "source-unit:packages/app/src/utils/schedule-cadence-policy.ts",
@@ -9476,17 +9512,21 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/score-match.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_ui_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_ui_utils_test.dart"
+      ],
+      "notes": "The six-tier ladder with substring always beating subsequence and the best occurrence chosen across all occurrences. This is the public home for the three private copies in agent_command_autocomplete.dart, provider_model_selection.dart and paseo_control_geometry.dart; all three were diffed against it, and the two composer copies differ only in ways unobservable at their call sites (they do not lowercase the query, and treat spread as non-nullable)."
     },
     {
       "id": "source-unit:packages/app/src/utils/server-info-capabilities.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/git/paseo_git_refs.dart",
+      "evidence": [
+        "packages/app/test/git/paseo_git_refs_test.dart"
+      ],
+      "notes": "Capability and voice-readiness resolution with the unavailable-message rule. Validation moved to read time because the Dart ServerInfoStatus keeps capabilities raw, so a malformed voice group collapses the whole block as upstream's schema does."
     },
     {
       "id": "source-unit:packages/app/src/utils/shortcut-platform.ts",
@@ -9708,10 +9748,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/web-focus.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_ui_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_ui_utils_test.dart"
+      ],
+      "notes": "focusWithRetries with a synchronous first attempt, two frames per retry, >= deadline semantics, and swallowed focus exceptions. Cancellation is checked at the start of each attempt rather than at schedule time, matching upstream, so a cancelled loop still lets its queued frame pair run and do nothing."
     },
     {
       "id": "source-unit:packages/app/src/utils/working-directory-suggestions.ts",
@@ -9735,10 +9777,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/workspace-archive-navigation.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_paths.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_paths_test.dart"
+      ],
+      "notes": "Archive redirect to the new-workspace screen for the archived project, falling back to the host root."
     },
     {
       "id": "source-unit:packages/app/src/utils/workspace-archive-redirect.ts",
@@ -9749,17 +9793,21 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/workspace-directory.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_paths.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_paths_test.dart"
+      ],
+      "notes": "The directory resolver and its throwing variant, with upstream's two exact messages preserved. An empty workspace id must take the generic message, so the guard is an explicit emptiness check rather than a null check."
     },
     {
       "id": "source-unit:packages/app/src/utils/workspace-identity.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_paths.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_paths_test.dart"
+      ],
+      "notes": "Opaque-id trimming, path normalization (backslash to slash, trailing slashes stripped, all-slash collapsing to /), route id resolution, and identity map lookup that never matches directories. This is the public home for the private copies that had accumulated in paseo_session_projection.dart and paseo_agent_grouping.dart; they were diffed and are behaviourally identical."
     },
     {
       "id": "source-unit:packages/app/src/utils/workspace-navigation.ts",
@@ -9772,10 +9820,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/workspace-script-links.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_paths.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_paths_test.dart"
+      ],
+      "notes": "Script link resolution including the COMPAT(workspaceScriptSplitUrls) legacy proxy-url classifier. Dart's Uri is lenient where WHATWG URL is not, so three adjustments were verified against real Node output; the observable one is that IPv6 brackets are re-added, because http://[::1]:6767 must classify as public rather than loopback."
     },
     {
       "id": "source-unit:packages/app/src/voice/audio-engine-types.ts",
@@ -9842,10 +9892,12 @@
     },
     {
       "id": "source-unit:packages/app/src/workspace-pins/run.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_pins.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_pins_test.dart"
+      ],
+      "notes": "Exhaustive dispatch by target kind, with an unknown profile id staying a silent no-op."
     },
     {
       "id": "source-unit:packages/app/src/workspace-pins/store.ts",
@@ -9856,10 +9908,12 @@
     },
     {
       "id": "source-unit:packages/app/src/workspace-pins/target.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_pins.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_pins_test.dart"
+      ],
+      "notes": "The sealed pinned-target hierarchy with profile targets namespaced, browser targets gated on Electron, and a toggle that returns a new list."
     },
     {
       "id": "source-unit:packages/app/src/workspace-recovery/model.ts",
@@ -9959,10 +10013,12 @@
     },
     {
       "id": "source-unit:packages/app/src/workspace/project-workspace-archive.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_pins.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_pins_test.dart"
+      ],
+      "notes": "Non-worktree kinds pass through unprompted while worktrees are confirmed sequentially in list order. Reuses the worktree archive risk model already ported in git/paseo_pr_rules.dart."
     },
     {
       "id": "source-unit:packages/app/src/workspace/use-workspace-archive.ts",

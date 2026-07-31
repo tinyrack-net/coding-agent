@@ -52,6 +52,26 @@ void main() {
     expect(isGitHubHost('GitHub.COM.'), isTrue);
   });
 
+  test('treats ssh.github.com as GitHub, per the forge manifest', () {
+    // GitHub hands out ssh.github.com for port-443 SSH access, and the frozen
+    // forge manifest lists it alongside github.com in `cloudHosts`.
+    for (final host in const [
+      'github.com',
+      'ssh.github.com',
+      'SSH.GitHub.com',
+      'ssh.github.com.',
+    ]) {
+      expect(isGitHubHost(host), isTrue, reason: host);
+    }
+    expect(isGitHubHost('gitlab.com'), isFalse);
+    expect(isGitHubHost('notgithub.com'), isFalse);
+
+    final parsed = parseGitHubRemoteUrl(
+      'ssh://git@ssh.github.com/owner/repo.git',
+    );
+    expect(parsed?.repo, 'owner/repo');
+  });
+
   test('rejects malformed hosts, paths, and escapes', () {
     for (final remote in const [
       'https://-invalid/repo',
