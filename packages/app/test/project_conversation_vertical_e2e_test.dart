@@ -7,12 +7,16 @@ import 'package:agent_daemon/src/providers/agent_session.dart';
 import 'package:agent_daemon/src/providers/provider_event.dart';
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
+import 'package:coding_agent_app/state/agents_provider.dart';
+import 'package:coding_agent_app/state/daemon_providers.dart';
+import 'package:coding_agent_app/state/workspace_providers.dart';
 import 'package:daemon_lifecycle/daemon_lifecycle.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
-    'Flutter client adds a project and completes its first conversation',
+    'Flutter state adds a project and completes initial and follow-up turns',
     () async {
       final temp = Directory.systemTemp.createTempSync(
         'tinyrack-flutter-project-conversation-e2e-',
@@ -54,10 +58,17 @@ void main() {
       addTearDown(client.dispose);
       await client.connect();
 
-      final added = await client.addProject(cwd: projectRootPath);
-      expect(added.error, isNull);
-      expect(added.project?.projectRootPath, projectRootPath);
-      expect(added.project?.projectKind, WorkspaceProjectKind.git);
+      final container = ProviderContainer(
+        overrides: [daemonClientProvider.overrideWithValue(client)],
+      );
+      addTearDown(container.dispose);
+
+      final registeredProject = await container
+          .read(projectsProvider.notifier)
+          .add(projectRootPath);
+      expect(registeredProject.projectId, isNotNull);
+      expect(registeredProject.path, projectRootPath);
+      expect(registeredProject.isGitRepo, isTrue);
 
       final workspaceResponse = WorkspaceCreateResponse.fromJson(
         await client.requestSessionMessage(
@@ -65,7 +76,7 @@ void main() {
             requestId: 'flutter-workspace-create',
             source: DirectoryWorkspaceCreateSource(
               path: projectRootPath,
-              projectId: added.project!.projectId,
+              projectId: registeredProject.projectId,
             ),
           ).toJson(),
         ),
@@ -78,36 +89,50 @@ void main() {
       final assistantStream = client.agentStreamEvents
           .firstWhere((event) => event.item is AssistantMessageItem)
           .timeout(const Duration(seconds: 5));
-      final createdResponse = await client
-          .request(MessageTypes.agentCreateRequest, {
-            'cwd': workspace.workspaceDirectory,
-            'provider': 'codex',
-            'model': 'fake',
-            'mode': 'normal',
-            'workspaceId': workspace.id,
-            'projectPath': projectRootPath,
-            'branch': 'main',
-            'isWorktree': false,
-            'initialPrompt': prompt,
-            'clientMessageId': clientMessageId,
-          });
-      final created = AgentSummary.fromJson(
-        createdResponse['agent'] as Map<String, Object?>,
+      final actions = container.read(agentActionsProvider);
+      final created = await actions.create(
+        cwd: workspace.workspaceDirectory,
+        provider: 'codex',
+        model: 'fake',
+        mode: AgentMode.normal,
+        workspaceId: workspace.id,
+        projectPath: projectRootPath,
+        branch: 'main',
+        initialPrompt: prompt,
+        clientMessageId: clientMessageId,
       );
       final streamedAssistant = await assistantStream;
       expect(streamedAssistant.agentId, created.agentId);
       expect(
         (streamedAssistant.item as AssistantMessageItem).text,
-        'Deterministic Flutter response.',
+        'Deterministic Flutter response 1.',
       );
 
-      AgentSummary? fetched;
-      for (var attempt = 0; attempt < 100; attempt++) {
-        fetched = (await client.fetchAgent(created.agentId))?.agent;
-        if (fetched?.runState == AgentRunState.idle) break;
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
+      var fetched = await _waitForIdle(client, created.agentId);
       expect(fetched?.workspaceId, workspace.id);
+      expect(fetched?.runState, AgentRunState.idle);
+
+      const followUp = 'Send a second deterministic response.';
+      const followUpMessageId = 'flutter-follow-up-message';
+      final followUpAssistantStream = client.agentStreamEvents
+          .firstWhere(
+            (event) =>
+                event.agentId == created.agentId &&
+                event.item is AssistantMessageItem &&
+                (event.item as AssistantMessageItem).text.endsWith('2.'),
+          )
+          .timeout(const Duration(seconds: 5));
+      await actions.prompt(
+        created.agentId,
+        followUp,
+        clientMessageId: followUpMessageId,
+      );
+      final followUpAssistant = await followUpAssistantStream;
+      expect(
+        (followUpAssistant.item as AssistantMessageItem).text,
+        'Deterministic Flutter response 2.',
+      );
+      fetched = await _waitForIdle(client, created.agentId);
       expect(fetched?.runState, AgentRunState.idle);
 
       final timeline = await client.fetchAgentTimeline(
@@ -115,21 +140,26 @@ void main() {
         limit: 100,
       );
       expect(timeline.error, isNull);
-      final user = timeline.entries
+      final users = timeline.entries
           .map((entry) => entry.item)
           .whereType<UserMessageItem>()
-          .single;
-      expect(user.text, prompt);
-      expect(user.clientMessageId, clientMessageId);
+          .toList(growable: false);
+      expect(users.map((item) => item.text), [prompt, followUp]);
+      expect(users.map((item) => item.clientMessageId), [
+        clientMessageId,
+        followUpMessageId,
+      ]);
       expect(
         timeline.entries
             .map((entry) => entry.item)
             .whereType<AssistantMessageItem>()
-            .single
-            .text,
-        'Deterministic Flutter response.',
+            .map((item) => item.text),
+        [
+          'Deterministic Flutter response 1.',
+          'Deterministic Flutter response 2.',
+        ],
       );
-      expect(provider.prompts, [prompt]);
+      expect(provider.prompts, [prompt, followUp]);
     },
     timeout: const Timeout(Duration(seconds: 30)),
   );
@@ -164,12 +194,13 @@ final class _CompletingAgentSession implements AgentSession {
   @override
   Future<void> prompt(String text) async {
     prompts.add(text);
+    final responseNumber = prompts.length;
     scheduleMicrotask(() {
       _events
         ..add(
-          const AssistantMessageComplete(
-            itemId: 'deterministic-flutter-assistant-message',
-            fullText: 'Deterministic Flutter response.',
+          AssistantMessageComplete(
+            itemId: 'deterministic-flutter-assistant-message-$responseNumber',
+            fullText: 'Deterministic Flutter response $responseNumber.',
           ),
         )
         ..add(const TurnCompleted());
@@ -181,6 +212,16 @@ final class _CompletingAgentSession implements AgentSession {
 
   @override
   Future<void> dispose() => _events.close();
+}
+
+Future<AgentSummary?> _waitForIdle(DaemonClient client, String agentId) async {
+  AgentSummary? fetched;
+  for (var attempt = 0; attempt < 100; attempt++) {
+    fetched = (await client.fetchAgent(agentId))?.agent;
+    if (fetched?.runState == AgentRunState.idle) return fetched;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  return fetched;
 }
 
 Future<void> _git(List<String> arguments, String cwd) async {

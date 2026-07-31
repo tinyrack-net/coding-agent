@@ -50,6 +50,7 @@ final class PaseoProviderCatalogRegistry {
     ExecutableResolver? executableResolver,
     ProviderCommandResolver? commandResolver,
     List<PaseoProviderDefinition>? definitions,
+    Iterable<String> runtimeProviderIds = const [],
     ProviderConfigResolver? configResolver,
     ProviderCatalogProbe? catalogProbe,
     ProviderModeCatalogResolver? modeCatalogResolver,
@@ -58,6 +59,11 @@ final class PaseoProviderCatalogRegistry {
   }) : _resolver = executableResolver ?? ExecutableResolver(),
        _commandResolver = commandResolver,
        _baseDefinitions = definitions ?? PaseoProviderManifest.definitions,
+       _runtimeProviderIds = Set.unmodifiable(
+         runtimeProviderIds
+             .map((provider) => provider.trim())
+             .where((provider) => provider.isNotEmpty),
+       ),
        _configResolver = configResolver,
        _catalogProbe = catalogProbe,
        _modeCatalogResolver = modeCatalogResolver,
@@ -72,6 +78,7 @@ final class PaseoProviderCatalogRegistry {
   final DateTime Function() _now;
   final ProviderSnapshotChangeListener? _onSnapshotChanged;
   final List<PaseoProviderDefinition> _baseDefinitions;
+  final Set<String> _runtimeProviderIds;
   final Map<String, _CatalogLoad> _catalogLoads = {};
   final Map<String, Map<String, ProviderSnapshotEntry>> _snapshots = {};
   final Map<String, Map<String, _ProviderLoad>> _providerLoads = {};
@@ -80,8 +87,7 @@ final class PaseoProviderCatalogRegistry {
 
   List<PaseoProviderDefinition> get definitions {
     final config = _configResolver?.call();
-    if (config == null) return _baseDefinitions;
-    final overrides = config.providers;
+    final overrides = config?.providers ?? const {};
     final resolved = <PaseoProviderDefinition>[
       for (final definition in _baseDefinitions)
         _applyOverride(definition, overrides[definition.id]),
@@ -92,6 +98,12 @@ final class PaseoProviderCatalogRegistry {
     for (final entry in overrides.entries) {
       if (builtinIds.contains(entry.key)) continue;
       resolved.add(_customDefinition(entry.key, entry.value));
+    }
+    final resolvedIds = {for (final definition in resolved) definition.id};
+    for (final provider in _runtimeProviderIds) {
+      if (resolvedIds.add(provider)) {
+        resolved.add(_runtimeDefinition(provider));
+      }
     }
     return List.unmodifiable(resolved);
   }
@@ -104,6 +116,9 @@ final class PaseoProviderCatalogRegistry {
   }
 
   Future<String?> resolveCommand(PaseoProviderDefinition definition) {
+    if (_runtimeProviderIds.contains(definition.id)) {
+      return Future.value('runtime:${definition.id}');
+    }
     final override = _commandResolver;
     if (override != null) return override(definition);
     if (definition.id == 'codex') return _resolver.findCodex();
@@ -214,9 +229,14 @@ final class PaseoProviderCatalogRegistry {
         providerDefinition,
         cwd: request.cwd,
       );
-      availableModes = [
-        for (final mode in entry.modes ?? const <ProviderMode>[]) mode.id,
-      ];
+      final hasKnownModeCatalog =
+          !_runtimeProviderIds.contains(providerDefinition.id) ||
+          providerDefinition.modes.isNotEmpty;
+      if (hasKnownModeCatalog) {
+        availableModes = [
+          for (final mode in entry.modes ?? const <ProviderMode>[]) mode.id,
+        ];
+      }
       for (final mode in providerDefinition.modes) {
         if (mode.isUnattended) {
           targetUnattendedMode = mode.mode.id;
@@ -660,6 +680,7 @@ final class PaseoProviderCatalogRegistry {
     required String cwd,
     required bool force,
   }) {
+    if (_runtimeProviderIds.contains(definition.id)) return Future.value();
     final probe = _catalogProbe;
     if (probe == null) return Future.value();
     final key = '${definition.id}\u0000$cwd';
@@ -770,6 +791,17 @@ PaseoProviderDefinition _customDefinition(
     source: 'custom',
   );
 }
+
+PaseoProviderDefinition _runtimeDefinition(String id) =>
+    PaseoProviderDefinition(
+      id: id,
+      label: id,
+      description: 'Runtime-injected provider',
+      command: id,
+      defaultModeId: null,
+      modes: const [],
+      source: 'custom',
+    );
 
 String? _string(Object? value) =>
     value is String && value.isNotEmpty ? value : null;

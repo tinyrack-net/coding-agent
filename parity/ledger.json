@@ -1377,10 +1377,14 @@
     },
     {
       "id": "release-feature:009-configure-workspace-service-ports-with-a-fixed-range-or-external-allocator",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/workspace/service_port_allocator.dart; packages/daemon/lib/src/workspace/workspace_service_port_registry.dart; packages/daemon/lib/src/workspace/workspace_scripts_service.dart",
+      "evidence": [
+        "packages/daemon/test/workspace/service_port_allocator_test.dart",
+        "packages/daemon/test/workspace/workspace_service_port_registry_test.dart",
+        "packages/daemon/test/workspace/workspace_scripts_service_test.dart"
+      ],
+      "notes": "Fixed range, external port script, deterministic reservation/collision handling, release/refresh, service env and proxy lifecycle are implemented and covered. Flutter service-script UI and all upstream configuration/reconciliation edges remain."
     },
     {
       "id": "release-feature:010-search-keyboard-shortcuts-by-action-note-or-key-combination",
@@ -2486,17 +2490,23 @@
     },
     {
       "id": "source-unit:packages/app/src/attachments/use-workspace-file-drag-source.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/attachments/workspace_file_drag.dart; packages/app/lib/attachments/workspace_file_data_transfer.dart",
+      "evidence": [
+        "packages/app/test/workspace_file_drag_test.dart",
+        "packages/app/test/workspace_file_data_transfer_test.dart"
+      ],
+      "notes": "Workspace-file payload serialization, strict scope validation, and cross-platform DataTransfer trust boundary are covered. Flutter drag-source lifecycle and Diff-pane source remain."
     },
     {
       "id": "source-unit:packages/app/src/attachments/use-workspace-file-drag-source.web.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/attachments/workspace_file_data_transfer_web.dart; packages/app/lib/attachments/workspace_file_data_transfer.dart",
+      "evidence": [
+        "packages/app/test/workspace_file_data_transfer_test.dart",
+        "packages/app/test/workspace_file_data_transfer_web_test.dart"
+      ],
+      "notes": "Real package:web DataTransfer adapter preserves Paseo custom MIME, copy effect semantics, malformed/empty rejection, and accepted-drop cursor behavior. DOM event listener/canvas bridge remains; Chrome compiler was unavailable in this environment."
     },
     {
       "id": "source-unit:packages/app/src/attachments/utils.ts",
@@ -2532,10 +2542,13 @@
     },
     {
       "id": "source-unit:packages/app/src/attachments/workspace-file-drag-source.types.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/attachments/workspace_file_drag.dart; packages/app/lib/attachments/workspace_file_data_transfer.dart",
+      "evidence": [
+        "packages/app/test/workspace_file_drag_test.dart",
+        "packages/app/test/workspace_file_data_transfer_test.dart"
+      ],
+      "notes": "Typed v1 workspace-file payload and DataTransfer boundary are implemented with host/workspace scope and selection preservation. Full upstream drag-source type union and Diff source remain."
     },
     {
       "id": "source-unit:packages/app/src/attachments/workspace-file-drag.ts",
@@ -4431,13 +4444,14 @@
     {
       "id": "source-unit:packages/app/src/composer/attachments/drop.ts",
       "status": "partial",
-      "implementation": "packages/app/lib/widgets/composer.dart;packages/app/lib/widgets/draft_session_composer.dart;packages/app/lib/attachments/workspace_file_drag.dart",
+      "implementation": "packages/app/lib/widgets/composer.dart; packages/app/lib/widgets/draft_session_composer.dart; packages/app/lib/attachments/workspace_file_drag.dart; packages/app/lib/attachments/workspace_file_data_transfer.dart",
       "evidence": [
         "packages/app/test/composer_test.dart",
         "packages/app/test/draft_session_composer_test.dart",
-        "packages/app/test/workspace_file_drag_test.dart"
+        "packages/app/test/workspace_file_drag_test.dart",
+        "packages/app/test/workspace_file_data_transfer_test.dart"
       ],
-      "notes": "Image drops and scoped workspace-file drops now share composer surfaces with mismatch rejection and draft persistence. General browser file DataTransfer and remaining heterogeneous attachment kinds remain."
+      "notes": "Image drops and scoped workspace-file drops share composer surfaces, persistence, mismatch rejection, and browser DataTransfer serialization. General heterogeneous browser file drops, DOM bridge, and remaining attachment kinds remain."
     },
     {
       "id": "source-unit:packages/app/src/composer/attachments/submit.ts",
@@ -12252,12 +12266,14 @@
     {
       "id": "source-unit:packages/server/src/server/agent/agent-prompt.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/agent/agent_manager.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart",
+      "implementation": "packages/daemon/lib/src/agent/agent_manager.dart;packages/daemon/lib/src/server/agent_mcp_tools.dart;packages/daemon/lib/src/daemon_server.dart;packages/app/lib/state/agents_provider.dart",
       "evidence": [
         "packages/daemon/test/agent_manager_test.dart",
-        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/daemon/test/daemon_project_conversation_vertical_e2e_test.dart",
+        "packages/app/test/project_conversation_vertical_e2e_test.dart"
       ],
-      "notes": "MCP prompt orchestration now applies session mode, supports blocking/background defaults, and sends the exact paseo-system finish/error/permission notification body with the last assistant response. Archived-agent unarchive, out-of-band commands, replacement-run ordering, run options, and parent ownership enforcement remain."
+      "notes": "MCP prompt orchestration and the project-to-workspace-to-agent vertical flow preserve clientMessageId across first and follow-up agent.prompt requests and timeline projection, with deterministic assistant ordering verified over real WebSocket/Riverpod paths. Archived-agent unarchive, out-of-band commands, replacement-run ordering, run options, and parent ownership enforcement remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-response-loop.ts",
@@ -12541,9 +12557,10 @@
         "packages/daemon/test/providers/paseo/generic_acp_agent_client_test.dart",
         "packages/daemon/test/agent_manager_test.dart",
         "packages/daemon/test/daemon_config_store_test.dart",
-        "packages/daemon/test/daemon_custom_acp_e2e_test.dart"
+        "packages/daemon/test/daemon_custom_acp_e2e_test.dart",
+        "packages/daemon/test/daemon_provider_runtime_registry_e2e_test.dart"
       ],
-      "notes": "Builtin overrides and custom extends:acp definitions rebuild from persisted config without restart, surface as custom snapshots, and dynamically resolve to executable generic ACP clients in the live daemon. Builtin profile/model replacement, special Cursor/Kiro/Trae wrappers, and non-ACP inheritance remain."
+      "notes": "Builtin overrides, custom ACP definitions, and runtime-injected AgentClient overlays now participate in definitions, availability, snapshots, and create readiness without launching executable/catalog probes. Runtime clients preserve injected builtin metadata and unknown clients get custom runtime definitions. Builtin profile/model replacement and special provider wrappers remain partial; dynamic model/mode capability discovery for generic AgentClient remains."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/provider-session-import.ts",
@@ -12565,9 +12582,10 @@
       "evidence": [
         "packages/daemon/test/providers/paseo/provider_catalog_registry_test.dart",
         "packages/daemon/test/providers/paseo/provider_catalog_v2_service_test.dart",
-        "packages/daemon/test/daemon_custom_acp_e2e_test.dart"
+        "packages/daemon/test/daemon_custom_acp_e2e_test.dart",
+        "packages/daemon/test/daemon_provider_runtime_registry_e2e_test.dart"
       ],
-      "notes": "Async loading, refresh generation suppression, immutable snapshots, push updates and ready-provider enforcement are covered. Full diagnostics/warm-up/provider-registry unification and injected runtime client parity remain."
+      "notes": "Async loading, refresh generation suppression, immutable snapshots, push updates, ready-provider enforcement, and runtime-injected client merging are covered. Injected providers are marked ready without CLI probes. Full Paseo diagnostics/warm-up/quota and provider capability surface remain."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/provider-subagents/store.ts",
@@ -14197,13 +14215,14 @@
     {
       "id": "source-unit:packages/server/src/server/session/workspace-scripts/workspace-scripts-service.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/workspace/workspace_scripts_service.dart; packages/daemon/lib/src/server/agent_mcp_tools.dart",
+      "implementation": "packages/daemon/lib/src/workspace/workspace_scripts_service.dart;packages/daemon/lib/src/workspace/service_port_allocator.dart;packages/daemon/lib/src/workspace/workspace_service_port_registry.dart;packages/daemon/lib/src/server/agent_mcp_tools.dart;packages/app/lib/core/daemon_client.dart",
       "evidence": [
         "packages/daemon/test/workspace/workspace_scripts_service_test.dart",
         "packages/daemon/test/daemon_workspace_scripts_e2e_test.dart",
-        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart"
+        "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "List, legacy and management start/stop, terminal lifecycle, runtime projection, errors, broadcasts, service proxy URLs, dynamic port allocation, environment projection, health monitoring, live branch route replacement, and the frozen MCP list/start/stop surface are implemented. Full workspace lifecycle reconciliation and every upstream configuration edge remain."
+      "notes": "List, legacy and management start/stop, terminal lifecycle, runtime projection, errors, broadcasts, service proxy URLs, dynamic port allocation, environment projection, health monitoring, live branch route replacement, and MCP list/start/stop are covered; Flutter now exposes correlated list/start/stop APIs plus typed script_status_update stream with strict response validation. Session/workspace-script UI consumption and full lifecycle reconciliation remain."
     },
     {
       "id": "source-unit:packages/server/src/server/speech/audio.ts",

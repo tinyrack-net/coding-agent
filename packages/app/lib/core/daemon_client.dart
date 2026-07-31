@@ -98,6 +98,8 @@ class DaemonClient {
       StreamController<WorkspaceSetupProgress>.broadcast();
   final _providersSnapshotUpdates =
       StreamController<ProvidersSnapshotUpdate>.broadcast();
+  final _workspaceScriptStatusUpdates =
+      StreamController<WorkspaceScriptStatusUpdate>.broadcast();
   final _daemonUpdateProgress =
       StreamController<DaemonUpdateProgress>.broadcast();
   final _serverInfoUpdates = StreamController<ServerInfoStatus>.broadcast();
@@ -138,6 +140,8 @@ class DaemonClient {
       _workspaceSetupProgress.stream;
   Stream<ProvidersSnapshotUpdate> get providersSnapshotUpdates =>
       _providersSnapshotUpdates.stream;
+  Stream<WorkspaceScriptStatusUpdate> get workspaceScriptStatusUpdates =>
+      _workspaceScriptStatusUpdates.stream;
   Stream<DaemonUpdateProgress> get daemonUpdateProgress =>
       _daemonUpdateProgress.stream;
   Stream<ServerInfoStatus> get serverInfoUpdates => _serverInfoUpdates.stream;
@@ -1458,6 +1462,151 @@ class DaemonClient {
     return response;
   }
 
+  Future<StartWorkspaceScriptResponse> startWorkspaceScript(
+    String workspaceId,
+    String scriptName, {
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = StartWorkspaceScriptResponse.fromJson(
+      await requestSessionMessage(
+        StartWorkspaceScriptRequest(
+          workspaceId: workspaceId,
+          scriptName: scriptName,
+          requestId: correlatedId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    _validateWorkspaceScriptResponse(
+      responseRequestId: response.requestId,
+      responseWorkspaceId: response.workspaceId,
+      responseScriptName: response.scriptName,
+      requestId: correlatedId,
+      workspaceId: workspaceId,
+      scriptName: scriptName,
+      operation: 'legacy start',
+    );
+    return response;
+  }
+
+  Future<WorkspaceScriptOperationResponse> listWorkspaceScripts(
+    String workspaceId, {
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = WorkspaceScriptOperationResponse.fromJson(
+      await requestSessionMessage(
+        WorkspaceScriptListRequest(
+          workspaceId: workspaceId,
+          requestId: correlatedId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    _validateWorkspaceScriptResponse(
+      responseType: response.type,
+      responseRequestId: response.requestId,
+      responseWorkspaceId: response.workspaceId,
+      requestId: correlatedId,
+      workspaceId: workspaceId,
+      operation: 'list',
+      expectedType: 'workspace.script.list.response',
+    );
+    return response;
+  }
+
+  Future<WorkspaceScriptOperationResponse> startWorkspaceScriptWithStatus(
+    String workspaceId,
+    String scriptName, {
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) => _mutateWorkspaceScript(
+    request: WorkspaceScriptStartRequest(
+      workspaceId: workspaceId,
+      scriptName: scriptName,
+      requestId: requestId ?? _uuid.v4(),
+    ),
+    operation: 'start',
+    timeout: timeout,
+  );
+
+  Future<WorkspaceScriptOperationResponse> stopWorkspaceScript(
+    String workspaceId,
+    String scriptName, {
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) => _mutateWorkspaceScript(
+    request: WorkspaceScriptStopRequest(
+      workspaceId: workspaceId,
+      scriptName: scriptName,
+      requestId: requestId ?? _uuid.v4(),
+    ),
+    operation: 'stop',
+    timeout: timeout,
+  );
+
+  Future<WorkspaceScriptOperationResponse> _mutateWorkspaceScript({
+    required WorkspaceScriptRequest request,
+    required String operation,
+    required Duration timeout,
+  }) async {
+    final scriptName = switch (request) {
+      WorkspaceScriptStartRequest value => value.scriptName,
+      WorkspaceScriptStopRequest value => value.scriptName,
+      _ => throw ArgumentError.value(
+        request,
+        'request',
+        'must be a workspace script start or stop request',
+      ),
+    };
+    final response = WorkspaceScriptOperationResponse.fromJson(
+      await requestSessionMessage(request.toJson(), timeout: timeout),
+    );
+    final expectedType = switch (request) {
+      WorkspaceScriptStartRequest() => 'workspace.script.start.response',
+      WorkspaceScriptStopRequest() => 'workspace.script.stop.response',
+      _ => throw StateError('Unreachable workspace script request type'),
+    };
+    _validateWorkspaceScriptResponse(
+      responseType: response.type,
+      responseRequestId: response.requestId,
+      responseWorkspaceId: response.workspaceId,
+      responseScriptName: response.scriptName,
+      requestId: request.requestId,
+      workspaceId: request.workspaceId,
+      scriptName: scriptName,
+      operation: operation,
+      expectedType: expectedType,
+    );
+    return response;
+  }
+
+  void _validateWorkspaceScriptResponse({
+    required String responseRequestId,
+    required String responseWorkspaceId,
+    required String requestId,
+    required String workspaceId,
+    required String operation,
+    String? responseType,
+    String? expectedType,
+    String? responseScriptName,
+    String? scriptName,
+  }) {
+    if ((expectedType != null && responseType != expectedType) ||
+        responseRequestId != requestId ||
+        responseWorkspaceId != workspaceId ||
+        (scriptName != null && responseScriptName != scriptName)) {
+      throw FormatException(
+        'Workspace script $operation response mismatch: '
+        '${responseType ?? ''}/$responseRequestId/$responseWorkspaceId/'
+        '${responseScriptName ?? ''}',
+      );
+    }
+  }
+
   Future<ProjectCreateDirectoryResponse> createProjectDirectory({
     required String parentPath,
     required String name,
@@ -1914,6 +2063,14 @@ class DaemonClient {
       } catch (_) {}
       return;
     }
+    if (message['type'] == 'script_status_update') {
+      try {
+        _workspaceScriptStatusUpdates.add(
+          WorkspaceScriptStatusUpdate.fromJson(message),
+        );
+      } catch (_) {}
+      return;
+    }
     if (message['type'] == 'agent_stream') {
       try {
         _agentStreamEvents.add(PaseoAgentStreamCodec.decode(message));
@@ -2061,6 +2218,7 @@ class DaemonClient {
     _checkoutDiffUpdates.close();
     _workspaceSetupProgress.close();
     _providersSnapshotUpdates.close();
+    _workspaceScriptStatusUpdates.close();
     _daemonUpdateProgress.close();
     _serverInfoUpdates.close();
     _daemonConfigChanges.close();

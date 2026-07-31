@@ -1174,7 +1174,7 @@ class _SidebarState extends ConsumerState<_Sidebar> {
               serverId: serverId,
               sourceDirectory: section.project.path,
               displayName: displayName,
-              projectId: section.project.path,
+              projectId: section.project.projectId,
             ),
           );
         }
@@ -1497,7 +1497,7 @@ class _SidebarState extends ConsumerState<_Sidebar> {
                                         sourceDirectory:
                                             action.target.iconWorkingDir,
                                         displayName: displayName,
-                                        projectId: project.path,
+                                        projectId: project.projectId,
                                       ),
                                     ),
                                   )

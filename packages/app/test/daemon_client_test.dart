@@ -342,6 +342,190 @@ void main() {
     expect((response['payload'] as Map)['cwd'], '/repo');
   });
 
+  test(
+    'workspace script client exposes legacy, lifecycle, and status contracts',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      const stopped = WorkspaceScript(
+        scriptName: 'web',
+        type: WorkspaceScriptType.service,
+        hostname: 'web-main-project',
+        port: 4321,
+        proxyUrl: 'http://web-main-project.localhost:6868',
+        lifecycle: WorkspaceScriptLifecycle.stopped,
+        health: null,
+        exitCode: 0,
+        terminalId: 'terminal-web',
+      );
+      const running = WorkspaceScript(
+        scriptName: 'web',
+        type: WorkspaceScriptType.service,
+        hostname: 'web-main-project',
+        port: 4321,
+        proxyUrl: 'http://web-main-project.localhost:6868',
+        lifecycle: WorkspaceScriptLifecycle.running,
+        health: WorkspaceScriptHealth.healthy,
+        exitCode: null,
+        terminalId: 'terminal-web',
+      );
+
+      unawaited(
+        conn.nextRequest('start_workspace_script_request').then((frame) {
+          expect(frame['workspaceId'], 'workspace-1');
+          expect(frame['scriptName'], 'web');
+          conn.socket.add(
+            jsonEncode({
+              'type': 'session',
+              'message': const StartWorkspaceScriptResponse(
+                requestId: 'script-legacy',
+                workspaceId: 'workspace-1',
+                scriptName: 'web',
+                terminalId: 'terminal-web',
+                error: null,
+              ).toJson(),
+            }),
+          );
+        }),
+      );
+      final legacy = await client.startWorkspaceScript(
+        'workspace-1',
+        'web',
+        requestId: 'script-legacy',
+      );
+      expect(legacy.terminalId, 'terminal-web');
+
+      unawaited(
+        conn.nextRequest('workspace.script.list.request').then((frame) {
+          conn.socket.add(
+            jsonEncode({
+              'type': 'session',
+              'message': const WorkspaceScriptOperationResponse(
+                type: 'workspace.script.list.response',
+                requestId: 'script-list',
+                workspaceId: 'workspace-1',
+                scripts: [stopped],
+                error: null,
+              ).toJson(),
+            }),
+          );
+        }),
+      );
+      final listed = await client.listWorkspaceScripts(
+        'workspace-1',
+        requestId: 'script-list',
+      );
+      expect(listed.scripts!.single.toJson(), stopped.toJson());
+
+      unawaited(
+        conn.nextRequest('workspace.script.start.request').then((frame) {
+          conn.socket.add(
+            jsonEncode({
+              'type': 'session',
+              'message': const WorkspaceScriptOperationResponse(
+                type: 'workspace.script.start.response',
+                requestId: 'script-start',
+                workspaceId: 'workspace-1',
+                scriptName: 'web',
+                script: running,
+                error: null,
+              ).toJson(),
+            }),
+          );
+        }),
+      );
+      final started = await client.startWorkspaceScriptWithStatus(
+        'workspace-1',
+        'web',
+        requestId: 'script-start',
+      );
+      expect(started.script!.toJson(), running.toJson());
+
+      final update = client.workspaceScriptStatusUpdates.first;
+      conn.socket.add(
+        jsonEncode({
+          'type': 'session',
+          'message': const WorkspaceScriptStatusUpdate(
+            workspaceId: 'workspace-1',
+            scripts: [running],
+          ).toJson(),
+        }),
+      );
+      expect((await update).scripts.single.toJson(), running.toJson());
+
+      unawaited(
+        conn.nextRequest('workspace.script.stop.request').then((frame) {
+          conn.socket.add(
+            jsonEncode({
+              'type': 'session',
+              'message': const WorkspaceScriptOperationResponse(
+                type: 'workspace.script.stop.response',
+                requestId: 'script-stop',
+                workspaceId: 'workspace-1',
+                scriptName: 'web',
+                script: stopped,
+                error: null,
+              ).toJson(),
+            }),
+          );
+        }),
+      );
+      final stoppedResponse = await client.stopWorkspaceScript(
+        'workspace-1',
+        'web',
+        requestId: 'script-stop',
+      );
+      expect(stoppedResponse.script!.toJson(), stopped.toJson());
+    },
+  );
+
+  test(
+    'workspace script client rejects mismatched correlated responses',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      unawaited(
+        conn.nextRequest('workspace.script.start.request').then((frame) {
+          conn.socket.add(
+            jsonEncode({
+              'type': 'session',
+              'message': const WorkspaceScriptOperationResponse(
+                type: 'workspace.script.start.response',
+                requestId: 'script-mismatch',
+                workspaceId: 'workspace-2',
+                scriptName: 'web',
+                error: null,
+              ).toJson(),
+            }),
+          );
+        }),
+      );
+
+      await expectLater(
+        client.startWorkspaceScriptWithStatus(
+          'workspace-1',
+          'web',
+          requestId: 'script-mismatch',
+        ),
+        throwsFormatException,
+      );
+    },
+  );
+
   test('file download URI uses a correlated one-time daemon token', () async {
     client = DaemonClient(uri: server.uri);
     final connFuture = nextConnection(server);

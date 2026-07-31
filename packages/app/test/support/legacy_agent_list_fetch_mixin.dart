@@ -29,9 +29,7 @@ mixin LegacyAgentListFetchMixin on DaemonClient {
         ? rawProjects
               .whereType<Map>()
               .map(
-                (json) => ProjectInfo.fromJson(
-                  Map<String, Object?>.from(json),
-                ),
+                (json) => ProjectInfo.fromJson(Map<String, Object?>.from(json)),
               )
               .toList()
         : const <ProjectInfo>[];
@@ -44,7 +42,8 @@ mixin LegacyAgentListFetchMixin on DaemonClient {
       emptyProjects: [
         for (var index = 0; index < projects.length; index++)
           WorkspaceProjectDescriptor(
-            projectId: 'legacy-test-project-$index',
+            projectId:
+                projects[index].projectId ?? 'legacy-test-project-$index',
             projectDisplayName: projects[index].name,
             projectRootPath: projects[index].path,
             projectKind: projects[index].isGitRepo

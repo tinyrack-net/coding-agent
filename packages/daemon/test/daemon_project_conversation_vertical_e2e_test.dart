@@ -13,7 +13,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 void main() {
   test(
-    'project add creates a local workspace and completes its first conversation',
+    'project add creates a workspace and completes initial and follow-up turns',
     () async {
       final temp = Directory.systemTemp.createTempSync(
         'daemon-project-conversation-',
@@ -195,8 +195,83 @@ void main() {
           .map((entry) => entry.item)
           .whereType<AssistantMessageItem>()
           .single;
-      expect(assistantMessage.text, 'Deterministic provider response.');
-      expect(provider.prompts, [prompt]);
+      expect(assistantMessage.text, 'Deterministic provider response 1.');
+
+      const followUp = 'Continue the deterministic conversation.';
+      const followUpMessageId = 'vertical-follow-up-message';
+      await request(
+        RpcRequest(
+          type: MessageTypes.agentPromptRequest,
+          requestId: 'agent-follow-up',
+          payload: {
+            'agentId': agentId,
+            'text': followUp,
+            'clientMessageId': followUpMessageId,
+          },
+        ).toJson(),
+        'agent.prompt.response',
+      );
+      AgentTimelinePage? continuedTimeline;
+      for (var attempt = 0; attempt < 100; attempt++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        final requestSuffix = DateTime.now().microsecondsSinceEpoch;
+        fetchedAgent = FetchAgentResponse.fromJson(
+          await request(
+            FetchAgentRequest(
+              requestId: 'agent-refetch-$requestSuffix',
+              agentId: agentId,
+            ).toJson(),
+            FetchAgentResponse.type,
+          ),
+        );
+        continuedTimeline = AgentTimelinePage.fromResponseJson(
+          await request(
+            FetchAgentTimelineRequest(
+              agentId: agentId,
+              requestId: 'timeline-refetch-$requestSuffix',
+              direction: AgentTimelineDirection.tail,
+              limit: 100,
+            ).toJson(),
+            AgentTimelinePage.responseType,
+          ),
+        );
+        final hasFollowUp = continuedTimeline.entries
+            .map((entry) => entry.item)
+            .whereType<UserMessageItem>()
+            .any((item) => item.clientMessageId == followUpMessageId);
+        final assistantCount = continuedTimeline.entries
+            .map((entry) => entry.item)
+            .whereType<AssistantMessageItem>()
+            .length;
+        if (hasFollowUp &&
+            assistantCount == 2 &&
+            fetchedAgent.agent?.runState == AgentRunState.idle) {
+          break;
+        }
+      }
+      expect(continuedTimeline, isNotNull);
+      expect(fetchedAgent.agent?.runState, AgentRunState.idle);
+      final completedTimeline = continuedTimeline!;
+      final userMessages = completedTimeline.entries
+          .map((entry) => entry.item)
+          .whereType<UserMessageItem>()
+          .toList(growable: false);
+      expect(userMessages.map((item) => item.text), [prompt, followUp]);
+      expect(userMessages.map((item) => item.clientMessageId), [
+        clientMessageId,
+        followUpMessageId,
+      ]);
+      expect(
+        completedTimeline.entries
+            .map((entry) => entry.item)
+            .whereType<AssistantMessageItem>()
+            .map((item) => item.text),
+        [
+          'Deterministic provider response 1.',
+          'Deterministic provider response 2.',
+        ],
+      );
+      expect(provider.prompts, [prompt, followUp]);
     },
     timeout: const Timeout(Duration(seconds: 30)),
   );
@@ -231,12 +306,13 @@ final class _CompletingSession implements AgentSession {
   @override
   Future<void> prompt(String text) async {
     prompts.add(text);
+    final responseNumber = prompts.length;
     scheduleMicrotask(() {
       _events
         ..add(
-          const AssistantMessageComplete(
-            itemId: 'deterministic-assistant-message',
-            fullText: 'Deterministic provider response.',
+          AssistantMessageComplete(
+            itemId: 'deterministic-assistant-message-$responseNumber',
+            fullText: 'Deterministic provider response $responseNumber.',
           ),
         )
         ..add(const TurnCompleted());

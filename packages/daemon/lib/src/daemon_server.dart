@@ -247,26 +247,29 @@ Future<DaemonServerHandle> startDaemonServer({
   final registry = ProviderRegistry(credentials, nativeBackends);
   late final WsServer server;
   late final PaseoProviderCatalogRegistry paseoProviderCatalog;
-  final resolvedAgentClients =
-      agentClients ??
-      <String, AgentClient>{
-        'claude': ClaudeAgentClient(
-          runtimeSettingsResolver: () => providerRuntimeSettingsFromOverride(
-            configStore.config.providers['claude'],
-          ),
-        ),
-        'codex': CodexAgentClient(
-          runtimeSettingsResolver: () => providerRuntimeSettingsFromOverride(
-            configStore.config.providers['codex'],
-          ),
-        ),
-        for (final entry in ProviderCatalog.all)
-          entry.id.name: NativeClient(
-            providerId: entry.id,
-            backend: nativeBackends[entry.id]!,
-            credentials: credentials,
-          ),
-      };
+  final defaultAgentClients = <String, AgentClient>{
+    'claude': ClaudeAgentClient(
+      runtimeSettingsResolver: () => providerRuntimeSettingsFromOverride(
+        configStore.config.providers['claude'],
+      ),
+    ),
+    'codex': CodexAgentClient(
+      runtimeSettingsResolver: () => providerRuntimeSettingsFromOverride(
+        configStore.config.providers['codex'],
+      ),
+    ),
+    for (final entry in ProviderCatalog.all)
+      entry.id.name: NativeClient(
+        providerId: entry.id,
+        backend: nativeBackends[entry.id]!,
+        credentials: credentials,
+      ),
+  };
+  final runtimeAgentClients = agentClients ?? const <String, AgentClient>{};
+  final resolvedAgentClients = <String, AgentClient>{
+    ...defaultAgentClients,
+    ...runtimeAgentClients,
+  };
   GenericAcpAgentClient? genericAcpClient(PaseoProviderDefinition definition) {
     if (!definition.enabledByDefault ||
         (definition.source != 'custom' && definition.id != 'copilot')) {
@@ -285,6 +288,7 @@ Future<DaemonServerHandle> startDaemonServer({
 
   paseoProviderCatalog = PaseoProviderCatalogRegistry(
     configResolver: () => configStore.config,
+    runtimeProviderIds: runtimeAgentClients.keys,
     catalogProbe: (definition, cwd) async =>
         genericAcpClient(definition)?.fetchCatalog(cwd: cwd),
     onSnapshotChanged: (cwd, entries) => server.broadcastV2(
@@ -327,22 +331,17 @@ Future<DaemonServerHandle> startDaemonServer({
   final agentDirectorySubscriptions = <String, AgentDirectorySubscription>{};
   manager = AgentManager(
     clients: resolvedAgentClients,
-    clientResolver: agentClients == null
-        ? (provider) {
-            final definition = paseoProviderCatalog.definition(provider);
-            return definition == null ? null : genericAcpClient(definition);
-          }
-        : null,
-    providerIdsResolver: agentClients == null
-        ? () => paseoProviderCatalog.definitions
-              .where(
-                (definition) =>
-                    definition.enabledByDefault &&
-                    (definition.source == 'custom' ||
-                        definition.id == 'copilot'),
-              )
-              .map((definition) => definition.id)
-        : null,
+    clientResolver: (provider) {
+      final definition = paseoProviderCatalog.definition(provider);
+      return definition == null ? null : genericAcpClient(definition);
+    },
+    providerIdsResolver: () => paseoProviderCatalog.definitions
+        .where(
+          (definition) =>
+              definition.enabledByDefault &&
+              (definition.source == 'custom' || definition.id == 'copilot'),
+        )
+        .map((definition) => definition.id),
     mcpAuthToken: agentMcpAuthToken,
     injectMcpIntoAgents:
         injectMcpIntoAgents ?? configStore.config.injectMcpIntoAgents,
@@ -708,8 +707,15 @@ Future<DaemonServerHandle> startDaemonServer({
       final text = _requireString(payload, 'text');
       final images = AgentPromptImage.normalizeList(payload['images']);
       final attachments = AgentAttachment.normalizeList(payload['attachments']);
+      final clientMessageId = payload['clientMessageId'] as String?;
       unawaited(
-        manager.prompt(agentId, text, images: images, attachments: attachments),
+        manager.prompt(
+          agentId,
+          text,
+          images: images,
+          attachments: attachments,
+          clientMessageId: clientMessageId,
+        ),
       );
       return const <String, Object?>{};
     })

@@ -121,8 +121,18 @@ const _agent4 = AgentSummary(
   createdAtMs: 400,
 );
 
-const _projectA = ProjectInfo(path: '/repo-a', name: 'repo-a', isGitRepo: true);
-const _projectB = ProjectInfo(path: '/repo-b', name: 'repo-b', isGitRepo: true);
+const _projectA = ProjectInfo(
+  projectId: 'project-a',
+  path: '/repo-a',
+  name: 'repo-a',
+  isGitRepo: true,
+);
+const _projectB = ProjectInfo(
+  projectId: 'project-b',
+  path: '/repo-b',
+  name: 'repo-b',
+  isGitRepo: true,
+);
 
 const _testHost = HostProfile(
   serverId: 'server-1',
@@ -928,7 +938,7 @@ void main() {
         'serverId': 'server-1',
         'dir': '/repo-a',
         'name': 'repo-a',
-        'projectId': '/repo-a',
+        'projectId': 'project-a',
       });
     },
   );
@@ -1044,7 +1054,7 @@ void main() {
       'serverId': 'server-1',
       'dir': '/repo-a',
       'name': 'repo-a',
-      'projectId': '/repo-a',
+      'projectId': 'project-a',
     });
   });
 

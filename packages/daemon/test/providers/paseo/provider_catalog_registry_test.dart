@@ -86,6 +86,81 @@ void main() {
   );
 
   test(
+    'runtime providers extend definitions and are ready without executable probes',
+    () async {
+      var commandProbeCount = 0;
+      var catalogProbeCount = 0;
+      final catalog = PaseoProviderCatalogRegistry(
+        definitions: const [ready],
+        runtimeProviderIds: const ['ready', 'fixture', ' ', 'fixture'],
+        commandResolver: (_) async {
+          commandProbeCount++;
+          return null;
+        },
+        catalogProbe: (_, __) async {
+          catalogProbeCount++;
+          throw StateError('runtime clients must not launch a CLI probe');
+        },
+        now: () => DateTime.utc(2026, 7, 31),
+      );
+
+      expect(catalog.definitions.map((definition) => definition.id), [
+        'ready',
+        'fixture',
+      ]);
+      expect(catalog.definition('ready')?.label, 'Ready');
+      expect(catalog.definition('ready')?.source, 'builtin');
+      expect(catalog.definition('fixture')?.label, 'fixture');
+      expect(catalog.definition('fixture')?.source, 'custom');
+
+      final availability = await catalog.listAvailability();
+      expect(availability, [
+        isA<ProviderAvailabilityV2>()
+            .having((entry) => entry.provider, 'provider', 'ready')
+            .having((entry) => entry.available, 'available', isTrue),
+        isA<ProviderAvailabilityV2>()
+            .having((entry) => entry.provider, 'provider', 'fixture')
+            .having((entry) => entry.available, 'available', isTrue),
+      ]);
+
+      final entries = await catalog.snapshot();
+      expect(entries, [
+        isA<ProviderSnapshotEntry>()
+            .having((entry) => entry.provider, 'provider', 'ready')
+            .having(
+              (entry) => entry.status,
+              'status',
+              ProviderCatalogStatus.ready,
+            )
+            .having((entry) => entry.modes?.single.id, 'mode', 'default'),
+        isA<ProviderSnapshotEntry>()
+            .having((entry) => entry.provider, 'provider', 'fixture')
+            .having(
+              (entry) => entry.status,
+              'status',
+              ProviderCatalogStatus.ready,
+            )
+            .having((entry) => entry.source, 'source', 'custom'),
+      ]);
+      expect(commandProbeCount, 0);
+      expect(catalogProbeCount, 0);
+
+      final createConfig = await catalog.resolveCreateAgentConfig(
+        const AgentCreateConfigRequest(
+          cwd: '.',
+          targetProvider: 'fixture',
+          requestedMode: 'runtime-mode',
+          featureValues: {},
+          parent: null,
+          unattended: false,
+        ),
+      );
+      expect(createConfig.modeId, 'runtime-mode');
+      expect(createConfig.featureValues, isEmpty);
+    },
+  );
+
+  test(
     'snapshot exposes exact status, metadata, modes, and filtering',
     () async {
       final catalog = registry();
