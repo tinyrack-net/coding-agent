@@ -61,6 +61,7 @@ import 'server/daemon_diagnostics.dart';
 import 'server/daemon_identity.dart';
 import 'server/file_explorer_service.dart';
 import 'server/file_transfer_service.dart';
+import 'server/legacy_checkout_service.dart';
 import 'server/project_config_service.dart';
 import 'server/provider_visibility.dart';
 import 'server/hostnames.dart';
@@ -907,6 +908,11 @@ Future<DaemonServerHandle> startDaemonServer({
   final workspaceGitObserverBackend = PollingWorkspaceGitBackend(
     forgeStatus: forgeStatus,
   );
+  final legacyCheckout = LegacyCheckoutService(
+    git: gitService,
+    onMutation: (cwd, _) => workspaceGitObserverBackend.refreshNow(cwd),
+  );
+  final legacyEditors = LegacyEditorService();
   final checkoutStatus = CheckoutStatusService(
     loadSnapshot: workspaceGitObserverBackend.getSnapshot,
     resolveWorkspace: (cwd) =>
@@ -1291,6 +1297,7 @@ Future<DaemonServerHandle> startDaemonServer({
       'message': DaemonConfigChangedStatus(config: config).toJson(),
     });
   });
+  Future<void> Function(String reason)? requestShutdown;
   server.onV2SessionMessage = (connection, message) async {
     if (await voiceSessions.handle(connection, message)) {
       return v2HandledNoResponse;
@@ -1307,6 +1314,101 @@ Future<DaemonServerHandle> startDaemonServer({
         }
       }
       return null;
+    }
+    if (message['type'] == RestartServerRequest.type) {
+      final request = RestartServerRequest.fromJson(message);
+      if (!connection.isLoopback) {
+        throw RpcException(
+          RpcErrorCodes.unauthorized,
+          'restart is only allowed from loopback connections',
+        );
+      }
+      final response = RestartRequestedStatus(
+        clientId: connection.id,
+        requestId: request.requestId,
+        reason: request.reason,
+      ).toJson();
+      Timer(const Duration(milliseconds: 200), () {
+        unawaited(requestShutdown?.call('restart request'));
+      });
+      return response;
+    }
+    if (message['type'] == ShutdownServerRequest.type) {
+      final request = ShutdownServerRequest.fromJson(message);
+      if (!connection.isLoopback) {
+        throw RpcException(
+          RpcErrorCodes.unauthorized,
+          'shutdown is only allowed from loopback connections',
+        );
+      }
+      final response = ShutdownRequestedStatus(
+        clientId: connection.id,
+        requestId: request.requestId,
+      ).toJson();
+      Timer(const Duration(milliseconds: 200), () {
+        unawaited(requestShutdown?.call('shutdown request'));
+      });
+      return response;
+    }
+    if (message['type'] == ResumeAgentRequest.type) {
+      final request = ResumeAgentRequest.fromJson(message);
+      final handle = request.handle;
+      if (handle == null) {
+        return {
+          'type': 'rpc_error',
+          'payload': {
+            'requestId': request.requestId,
+            'requestType': ResumeAgentRequest.type,
+            'error': 'Unable to resume agent: missing persistence handle',
+            'code': 'agent_resume_failed',
+          },
+        };
+      }
+      try {
+        final candidate = manager
+            .list(includeArchived: true)
+            .where(
+              (agent) =>
+                  agent.provider == handle.provider &&
+                  agent.sessionId == handle.sessionId,
+            );
+        final current = candidate.firstOrNull;
+        if (current == null) {
+          throw StateError(
+            'No agent found for provider session ${handle.sessionId}',
+          );
+        }
+        final resumed = await manager.reloadAgentSession(
+          current.agentId,
+          systemPrompt: request.overrides?.systemPrompt ?? current.systemPrompt,
+          rehydrateFromProvider: true,
+          unarchive: true,
+        );
+        return {
+          'type': 'status',
+          'payload': {
+            'status': AgentResumedStatus.status,
+            'agentId': resumed.agentId,
+            'requestId': request.requestId,
+            'timelineSize': manager.fetchTimeline(resumed.agentId).items.length,
+            'agent': _paseoAgentSnapshot(
+              manager,
+              paseoProviderCatalog,
+              resumed.agentId,
+            ),
+          },
+        };
+      } catch (error) {
+        return {
+          'type': 'rpc_error',
+          'payload': {
+            'requestId': request.requestId,
+            'requestType': ResumeAgentRequest.type,
+            'error': _cancelAgentError(error),
+            'code': 'agent_resume_failed',
+          },
+        };
+      }
     }
     if (message['type'] == CreateAgentRequest.type) {
       final requestId = message['requestId'] as String? ?? '';
@@ -1710,6 +1812,10 @@ Future<DaemonServerHandle> startDaemonServer({
       message,
     );
     if (fileTransferResponse != null) return fileTransferResponse;
+    final legacyCheckoutResponse = await legacyCheckout.handle(message);
+    if (legacyCheckoutResponse != null) return legacyCheckoutResponse;
+    final legacyEditorResponse = await legacyEditors.handle(message);
+    if (legacyEditorResponse != null) return legacyEditorResponse;
     if (message['type'] == DaemonGetPairingOfferRequest.type) {
       final request = DaemonGetPairingOfferRequest.fromJson(message);
       final pairing = await generateLocalPairingOffer(
@@ -1921,6 +2027,8 @@ Future<DaemonServerHandle> startDaemonServer({
       onShutdownRequested();
     }
   }
+
+  requestShutdown = shutdown;
 
   router
     ..on(MessageTypes.daemonStatusRequest, (_, __) {

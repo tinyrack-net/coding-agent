@@ -395,27 +395,16 @@ class DaemonClient {
     required String path,
     Duration timeout = const Duration(seconds: 30),
   }) async {
-    final requestId = _uuid.v4();
-    final response = await requestSessionMessage({
-      'type': 'file_download_token_request',
-      'cwd': cwd,
-      'path': path,
-      'requestId': requestId,
-    }, timeout: timeout);
-    if (response['type'] != 'file_download_token_response') {
-      throw const FormatException('Unexpected file download response');
-    }
-    final payload = Map<String, Object?>.from(response['payload'] as Map);
-    if (payload['requestId'] != requestId ||
-        payload['cwd'] != cwd ||
-        payload['path'] != path) {
-      throw const FormatException('File download response mismatch');
-    }
-    if (payload['error'] case final String error when error.isNotEmpty) {
+    final response = await requestFileDownloadToken(
+      cwd: cwd,
+      path: path,
+      timeout: timeout,
+    );
+    if (response.error case final error? when error.isNotEmpty) {
       throw StateError(error);
     }
-    final token = payload['token'];
-    if (token is! String || token.isEmpty) {
+    final token = response.token;
+    if (token == null || token.isEmpty) {
       throw const FormatException('Missing file download token');
     }
     return uri.replace(
@@ -424,6 +413,355 @@ class DaemonClient {
       queryParameters: {'token': token},
       fragment: '',
     );
+  }
+
+  /// Requests a one-time download token using Paseo's legacy desktop
+  /// contract.  The typed response is exposed for callers that need the
+  /// filename, MIME type, or size in addition to the token itself.
+  Future<FileDownloadTokenResponse> requestFileDownloadToken({
+    required String cwd,
+    required String path,
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = FileDownloadTokenResponse.fromJson(
+      await requestSessionMessage(
+        FileDownloadTokenRequest(
+          cwd: cwd,
+          path: path,
+          requestId: correlatedId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    _ensureLegacyCorrelation(
+      requestId: correlatedId,
+      responseRequestId: response.requestId,
+      cwd: cwd,
+      responseCwd: response.cwd,
+      path: path,
+      responsePath: response.path,
+      responseType: FileDownloadTokenResponse.type,
+    );
+    return response;
+  }
+
+  /// Alias matching Paseo's TypeScript client method name.
+  Future<FileDownloadTokenResponse> requestDownloadToken(
+    String cwd,
+    String path, {
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) => requestFileDownloadToken(
+    cwd: cwd,
+    path: path,
+    requestId: requestId,
+    timeout: timeout,
+  );
+
+  /// Commits the current checkout using Paseo's legacy checkout contract.
+  ///
+  /// A failed commit is returned as a typed response with [error]; callers
+  /// can decide whether to show an inline checkout error or retry.
+  Future<CheckoutCommitResponse> checkoutCommit(
+    String cwd, {
+    String? message,
+    bool? addAll,
+    String? requestId,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = CheckoutCommitResponse.fromJson(
+      await requestSessionMessage(
+        CheckoutCommitRequest(
+          cwd: cwd,
+          message: message,
+          addAll: addAll,
+          requestId: correlatedId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    _ensureLegacyCorrelation(
+      requestId: correlatedId,
+      responseRequestId: response.requestId,
+      cwd: cwd,
+      responseCwd: response.cwd,
+      responseType: CheckoutCommitResponse.type,
+    );
+    return response;
+  }
+
+  Future<ValidateBranchResponse> validateBranch({
+    required String cwd,
+    required String branchName,
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = ValidateBranchResponse.fromJson(
+      await requestSessionMessage(
+        ValidateBranchRequest(
+          cwd: cwd,
+          branchName: branchName,
+          requestId: correlatedId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    _ensureLegacyCorrelation(
+      requestId: correlatedId,
+      responseRequestId: response.requestId,
+      responseType: ValidateBranchResponse.type,
+    );
+    return response;
+  }
+
+  Future<BranchSuggestionsResponse> getBranchSuggestions({
+    required String cwd,
+    String? query,
+    int? limit,
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = BranchSuggestionsResponse.fromJson(
+      await requestSessionMessage(
+        BranchSuggestionsRequest(
+          cwd: cwd,
+          query: query,
+          limit: limit,
+          requestId: correlatedId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    _ensureLegacyCorrelation(
+      requestId: correlatedId,
+      responseRequestId: response.requestId,
+      responseType: BranchSuggestionsResponse.type,
+    );
+    return response;
+  }
+
+  Future<StashSaveResponse> stashSave(
+    String cwd, {
+    String? branch,
+    String? requestId,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = StashSaveResponse.fromJson(
+      await requestSessionMessage(
+        StashSaveRequest(
+          cwd: cwd,
+          branch: branch,
+          requestId: correlatedId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    _ensureLegacyCorrelation(
+      requestId: correlatedId,
+      responseRequestId: response.requestId,
+      cwd: cwd,
+      responseCwd: response.cwd,
+      responseType: StashSaveResponse.type,
+    );
+    return response;
+  }
+
+  Future<StashPopResponse> stashPop(
+    String cwd,
+    int stashIndex, {
+    String? requestId,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = StashPopResponse.fromJson(
+      await requestSessionMessage(
+        StashPopRequest(
+          cwd: cwd,
+          stashIndex: stashIndex,
+          requestId: correlatedId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    _ensureLegacyCorrelation(
+      requestId: correlatedId,
+      responseRequestId: response.requestId,
+      cwd: cwd,
+      responseCwd: response.cwd,
+      responseType: StashPopResponse.type,
+    );
+    return response;
+  }
+
+  Future<StashListResponse> stashList(
+    String cwd, {
+    bool? paseoOnly,
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = StashListResponse.fromJson(
+      await requestSessionMessage(
+        StashListRequest(
+          cwd: cwd,
+          paseoOnly: paseoOnly,
+          requestId: correlatedId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    _ensureLegacyCorrelation(
+      requestId: correlatedId,
+      responseRequestId: response.requestId,
+      cwd: cwd,
+      responseCwd: response.cwd,
+      responseType: StashListResponse.type,
+    );
+    return response;
+  }
+
+  Future<ListAvailableEditorsResponse> listAvailableEditors({
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = ListAvailableEditorsResponse.fromJson(
+      await requestSessionMessage(
+        ListAvailableEditorsRequest(requestId: correlatedId).toJson(),
+        timeout: timeout,
+      ),
+    );
+    _ensureLegacyCorrelation(
+      requestId: correlatedId,
+      responseRequestId: response.requestId,
+      responseType: ListAvailableEditorsResponse.type,
+    );
+    return response;
+  }
+
+  Future<OpenInEditorResponse> openInEditor({
+    required String path,
+    required String editorId,
+    EditorOpenMode? mode,
+    String? cwd,
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = OpenInEditorResponse.fromJson(
+      await requestSessionMessage(
+        OpenInEditorRequest(
+          path: path,
+          editorId: editorId,
+          mode: mode,
+          cwd: cwd,
+          requestId: correlatedId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    _ensureLegacyCorrelation(
+      requestId: correlatedId,
+      responseRequestId: response.requestId,
+      responseType: OpenInEditorResponse.type,
+    );
+    return response;
+  }
+
+  /// Resumes a persisted agent and waits for the correlated status message.
+  Future<AgentResumedStatus> resumeAgent({
+    AgentPersistenceHandle? handle,
+    AgentSessionConfigOverrides? overrides,
+    String? requestId,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = AgentResumedStatus.fromJson(
+      await requestSessionMessage(
+        ResumeAgentRequest(
+          handle: handle,
+          overrides: overrides,
+          requestId: correlatedId,
+        ).toJson(),
+        timeout: timeout,
+      ),
+    );
+    _ensureLegacyCorrelation(
+      requestId: correlatedId,
+      responseRequestId: response.requestId,
+      responseType: '${AgentResumedStatus.type}/${AgentResumedStatus.status}',
+    );
+    return response;
+  }
+
+  Future<RestartRequestedStatus> restartServer({
+    String? reason,
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = RestartRequestedStatus.fromJson(
+      await requestSessionMessage(
+        RestartServerRequest(reason: reason, requestId: correlatedId).toJson(),
+        timeout: timeout,
+      ),
+    );
+    _ensureLegacyCorrelation(
+      requestId: correlatedId,
+      responseRequestId: response.requestId,
+      responseType:
+          '${RestartRequestedStatus.type}/${RestartRequestedStatus.status}',
+    );
+    return response;
+  }
+
+  Future<ShutdownRequestedStatus> shutdownServer({
+    String? requestId,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final correlatedId = requestId ?? _uuid.v4();
+    final response = ShutdownRequestedStatus.fromJson(
+      await requestSessionMessage(
+        ShutdownServerRequest(requestId: correlatedId).toJson(),
+        timeout: timeout,
+      ),
+    );
+    _ensureLegacyCorrelation(
+      requestId: correlatedId,
+      responseRequestId: response.requestId,
+      responseType:
+          '${ShutdownRequestedStatus.type}/${ShutdownRequestedStatus.status}',
+    );
+    return response;
+  }
+
+  void _ensureLegacyCorrelation({
+    required String requestId,
+    required String responseRequestId,
+    required String responseType,
+    String? cwd,
+    String? responseCwd,
+    String? path,
+    String? responsePath,
+  }) {
+    if (requestId != responseRequestId ||
+        (cwd != null && cwd != responseCwd) ||
+        (path != null && path != responsePath)) {
+      throw DaemonProtocolException(
+        requestId: requestId,
+        responseType: responseType,
+        cause: FormatException(
+          'Legacy response correlation mismatch: '
+          'request=$requestId response=$responseRequestId',
+        ),
+      );
+    }
   }
 
   Future<ReadProjectConfigResponse> readProjectConfig(

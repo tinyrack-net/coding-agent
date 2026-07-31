@@ -2155,4 +2155,316 @@ void main() {
         .then((_) => true, onError: (_) => false);
     expect(gotAnother, isFalse);
   });
+
+  test(
+    'legacy checkout requests send typed payloads and correlate responses',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      unawaited(
+        conn.nextRequest(CheckoutCommitRequest.type).then((frame) {
+          expect(frame, {
+            'type': CheckoutCommitRequest.type,
+            'cwd': '/repo',
+            'message': 'save',
+            'addAll': true,
+            'requestId': 'commit-1',
+          });
+          conn.respondNative(
+            CheckoutCommitResponse.type,
+            frame['requestId'] as String,
+            const {'cwd': '/repo', 'success': true, 'error': null},
+          );
+        }),
+      );
+      final commit = await client.checkoutCommit(
+        '/repo',
+        message: 'save',
+        addAll: true,
+        requestId: 'commit-1',
+      );
+      expect(commit.success, isTrue);
+      expect(commit.cwd, '/repo');
+
+      unawaited(
+        conn.nextRequest(ValidateBranchRequest.type).then((frame) {
+          expect(frame['branchName'], 'feature/a');
+          conn.respondNative(
+            ValidateBranchResponse.type,
+            frame['requestId'] as String,
+            const {
+              'exists': true,
+              'resolvedRef': 'refs/heads/feature/a',
+              'isRemote': false,
+              'error': null,
+            },
+          );
+        }),
+      );
+      final branch = await client.validateBranch(
+        cwd: '/repo',
+        branchName: 'feature/a',
+        requestId: 'branch-1',
+      );
+      expect(branch.resolvedRef, 'refs/heads/feature/a');
+
+      unawaited(
+        conn.nextRequest(BranchSuggestionsRequest.type).then((frame) {
+          expect(frame['cwd'], '/repo');
+          expect(frame['query'], 'fea');
+          expect(frame['limit'], 5);
+          conn.respondNative(
+            BranchSuggestionsResponse.type,
+            frame['requestId'] as String,
+            const {
+              'branches': ['feature/a'],
+              'error': null,
+            },
+          );
+        }),
+      );
+      final suggestions = await client.getBranchSuggestions(
+        cwd: '/repo',
+        query: 'fea',
+        limit: 5,
+        requestId: 'branches-1',
+      );
+      expect(suggestions.branches, ['feature/a']);
+
+      unawaited(
+        conn.nextRequest(StashListRequest.type).then((frame) {
+          expect(frame['paseoOnly'], isTrue);
+          conn.respondNative(
+            StashListResponse.type,
+            frame['requestId'] as String,
+            const {
+              'cwd': '/repo',
+              'entries': [
+                {
+                  'index': 0,
+                  'message': 'WIP',
+                  'branch': 'main',
+                  'isPaseo': true,
+                },
+              ],
+              'error': null,
+            },
+          );
+        }),
+      );
+      final stashes = await client.stashList(
+        '/repo',
+        paseoOnly: true,
+        requestId: 'stash-list-1',
+      );
+      expect(stashes.entries.single.message, 'WIP');
+
+      unawaited(
+        conn.nextRequest(StashSaveRequest.type).then((frame) {
+          expect(frame['branch'], 'main');
+          conn.respondNative(
+            StashSaveResponse.type,
+            frame['requestId'] as String,
+            const {'cwd': '/repo', 'success': true, 'error': null},
+          );
+        }),
+      );
+      expect(
+        (await client.stashSave(
+          '/repo',
+          branch: 'main',
+          requestId: 'stash-save-1',
+        )).success,
+        isTrue,
+      );
+
+      unawaited(
+        conn.nextRequest(StashPopRequest.type).then((frame) {
+          expect(frame['stashIndex'], 0);
+          conn.respondNative(
+            StashPopResponse.type,
+            frame['requestId'] as String,
+            const {'cwd': '/repo', 'success': true, 'error': null},
+          );
+        }),
+      );
+      expect(
+        (await client.stashPop('/repo', 0, requestId: 'stash-pop-1')).success,
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'legacy editor and file download methods expose typed metadata',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      unawaited(
+        conn.nextRequest(ListAvailableEditorsRequest.type).then((frame) {
+          conn.respondNative(
+            ListAvailableEditorsResponse.type,
+            frame['requestId'] as String,
+            const {
+              'editors': [
+                {'id': 'code', 'label': 'VS Code'},
+              ],
+              'error': null,
+            },
+          );
+        }),
+      );
+      final editors = await client.listAvailableEditors(requestId: 'editors-1');
+      expect(editors.editors.single.id, 'code');
+
+      unawaited(
+        conn.nextRequest(OpenInEditorRequest.type).then((frame) {
+          expect(frame['path'], '/repo/lib/main.dart');
+          expect(frame['editorId'], 'code');
+          expect(frame['mode'], 'reveal');
+          expect(frame['cwd'], '/repo');
+          conn.respondNative(
+            OpenInEditorResponse.type,
+            frame['requestId'] as String,
+            const {'error': null},
+          );
+        }),
+      );
+      expect(
+        (await client.openInEditor(
+          path: '/repo/lib/main.dart',
+          editorId: 'code',
+          mode: EditorOpenMode.reveal,
+          cwd: '/repo',
+          requestId: 'editor-open-1',
+        )).error,
+        isNull,
+      );
+
+      unawaited(
+        conn.nextRequest(FileDownloadTokenRequest.type).then((frame) {
+          conn.respondNative(
+            FileDownloadTokenResponse.type,
+            frame['requestId'] as String,
+            const {
+              'cwd': '/repo',
+              'path': 'a.txt',
+              'token': 'download-1',
+              'fileName': 'a.txt',
+              'mimeType': 'text/plain',
+              'size': 12,
+              'error': null,
+            },
+          );
+        }),
+      );
+      final token = await client.requestFileDownloadToken(
+        cwd: '/repo',
+        path: 'a.txt',
+        requestId: 'download-1',
+      );
+      expect(token.token, 'download-1');
+      expect(token.size, 12);
+    },
+  );
+
+  test(
+    'legacy resume, restart, and shutdown wait for matching status',
+    () async {
+      client = DaemonClient(uri: server.uri);
+      final connFuture = nextConnection(server);
+      unawaited(client.connect());
+      final conn = await connFuture;
+      await conn.respondToHello(
+        const ServerHello(daemonVersion: '0.2.0', protocolVersion: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      const agent = AgentSummary(
+        agentId: 'agent-resumed',
+        title: 'Resumed',
+        cwd: '/repo',
+        provider: 'codex',
+        model: 'gpt-5',
+        mode: AgentMode.normal,
+        runState: AgentRunState.idle,
+        createdAtMs: 1,
+      );
+      unawaited(
+        conn.nextRequest(ResumeAgentRequest.type).then((frame) {
+          expect((frame['handle'] as Map)['sessionId'], 'session-1');
+          conn.respondNative(
+            AgentResumedStatus.type,
+            frame['requestId'] as String,
+            {
+              'status': AgentResumedStatus.status,
+              'agentId': agent.agentId,
+              'agent': PaseoAgentSnapshotCodec.encode(agent),
+            },
+          );
+        }),
+      );
+      final resumed = await client.resumeAgent(
+        handle: const AgentPersistenceHandle(
+          provider: 'codex',
+          sessionId: 'session-1',
+        ),
+        requestId: 'resume-1',
+      );
+      expect(resumed.agent.agentId, agent.agentId);
+
+      unawaited(
+        conn.nextRequest(RestartServerRequest.type).then((frame) {
+          expect(frame['reason'], 'settings');
+          conn.respondNative(
+            RestartRequestedStatus.type,
+            frame['requestId'] as String,
+            const {
+              'status': RestartRequestedStatus.status,
+              'clientId': 'client-1',
+              'reason': 'settings',
+            },
+          );
+        }),
+      );
+      expect(
+        (await client.restartServer(
+          reason: 'settings',
+          requestId: 'restart-1',
+        )).clientId,
+        'client-1',
+      );
+
+      unawaited(
+        conn.nextRequest(ShutdownServerRequest.type).then((frame) {
+          conn.respondNative(
+            ShutdownRequestedStatus.type,
+            frame['requestId'] as String,
+            const {
+              'status': ShutdownRequestedStatus.status,
+              'clientId': 'client-1',
+            },
+          );
+        }),
+      );
+      expect(
+        (await client.shutdownServer(requestId: 'shutdown-1')).clientId,
+        'client-1',
+      );
+    },
+  );
 }

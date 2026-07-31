@@ -105,6 +105,32 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
   final _checkoutLinks = CheckoutLinkSelectionLifecycle();
   var _checkoutLookupsInFlight = 0;
 
+  /// Resolve the transport selected by the route before falling back to the
+  /// compatibility active-host client.
+  ///
+  /// Add Project opens `/new` with the host that registered the project. The
+  /// active-host provider can still be one frame behind that navigation (and
+  /// is intentionally mutable while another host is selected), so using it
+  /// for the create flow can send provider/workspace requests to the wrong
+  /// daemon. Keep every request in this screen pinned to the route host.
+  DaemonClient _routeClient(WidgetRef ref) {
+    final serverId = widget.initialServerId?.trim();
+    if (serverId != null && serverId.isNotEmpty) {
+      final hostClient = ref.read(hostDaemonClientProvider(serverId));
+      if (hostClient != null) return hostClient;
+    }
+    return ref.read(daemonClientProvider);
+  }
+
+  DaemonClient _watchRouteClient(WidgetRef ref) {
+    final serverId = widget.initialServerId?.trim();
+    if (serverId != null && serverId.isNotEmpty) {
+      final hostClient = ref.watch(hostDaemonClientProvider(serverId));
+      if (hostClient != null) return hostClient;
+    }
+    return ref.watch(daemonClientProvider);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -297,7 +323,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
   CheckoutLinkTarget? _checkoutTarget([String? projectPath]) {
     final cwd = (projectPath ?? _projectChoice)?.trim();
     if (cwd == null || cwd.isEmpty) return null;
-    final client = ref.read(daemonClientProvider);
+    final client = _routeClient(ref);
     return CheckoutLinkTarget(
       serverId: client.serverInfo?.serverId ?? 'local',
       cwd: cwd,
@@ -325,7 +351,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
       setState(() => _checkoutLookupsInFlight += 1);
     }
     try {
-      final client = ref.read(daemonClientProvider);
+      final client = _routeClient(ref);
       for (final lookup in lookups) {
         try {
           final response = ForgeSearchResponse.fromJson(
@@ -461,9 +487,11 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
   }
 
   Future<void> _addProject() async {
-    final preferredHostId =
-        ref.read(activeHostProvider)?.serverId ??
-        ref.read(daemonClientProvider).serverInfo?.serverId;
+    final routeServerId = widget.initialServerId?.trim();
+    final preferredHostId = routeServerId != null && routeServerId.isNotEmpty
+        ? routeServerId
+        : ref.read(activeHostProvider)?.serverId ??
+              _routeClient(ref).serverInfo?.serverId;
     final result = await ref
         .read(addProjectFlowProvider.notifier)
         .open(preferredHostId: preferredHostId);
@@ -581,7 +609,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
     );
     if (config == null) return null;
     return DraftProviderFeaturesScope(
-      client: ref.read(daemonClientProvider),
+      client: _routeClient(ref),
       serverId: serverId,
       draftConfig: config,
     );
@@ -634,7 +662,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
       _errorMessage = null;
     });
     try {
-      final client = ref.read(daemonClientProvider);
+      final client = _routeClient(ref);
       final serverId = widget.initialServerId?.trim().isNotEmpty == true
           ? widget.initialServerId!.trim()
           : client.serverInfo?.serverId ?? 'local';
@@ -848,7 +876,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
   Future<void> _openImportSessions() async {
     final imported = await showImportSessionDialog(
       context: context,
-      client: ref.read(daemonClientProvider),
+      client: _routeClient(ref),
       onImported: (agent) {
         ref.read(agentsProvider.notifier).upsert(agent);
         ref
@@ -864,7 +892,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final client = ref.watch(daemonClientProvider);
+    final client = _watchRouteClient(ref);
     final serverId = widget.initialServerId?.trim().isNotEmpty == true
         ? widget.initialServerId!.trim()
         : client.serverInfo?.serverId ?? 'local';

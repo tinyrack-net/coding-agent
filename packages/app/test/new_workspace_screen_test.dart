@@ -358,12 +358,20 @@ Future<ProviderContainer> pumpNewWorkspaceScreen(
   WidgetTester tester,
   FakeDaemonClient client, {
   String? initialProjectPath,
+  String? initialServerId,
+  DaemonClient? routeClient,
   ComposerImageAttachmentService? imageAttachmentService,
   ComposerDraftStore? draftStore,
   CreateAgentPreferencesService? preferencesService,
 }) async {
   final container = ProviderContainer(
-    overrides: [daemonClientProvider.overrideWithValue(client)],
+    overrides: [
+      daemonClientProvider.overrideWithValue(client),
+      if (routeClient != null)
+        hostDaemonClientProvider.overrideWith((ref, serverId) {
+          return serverId == initialServerId ? routeClient : null;
+        }),
+    ],
   );
   addTearDown(container.dispose);
 
@@ -376,6 +384,7 @@ Future<ProviderContainer> pumpNewWorkspaceScreen(
           children: [
             NewWorkspaceScreen(
               initialProjectPath: initialProjectPath,
+              initialServerId: initialServerId,
               imageAttachmentService:
                   imageAttachmentService ??
                   ComposerImageAttachmentService(
@@ -397,6 +406,34 @@ Future<ProviderContainer> pumpNewWorkspaceScreen(
 }
 
 void main() {
+  testWidgets(
+    'route host client owns provider discovery when active host differs',
+    (tester) async {
+      final active = FakeDaemonClient()..providerSnapshots = const [];
+      final route = FakeDaemonClient()
+        ..serverInfo = const ServerInfoStatus(
+          serverId: 'remote',
+          hostname: 'remote',
+          version: '0.2.0',
+          desktopManaged: false,
+          features: {'providersSnapshot': true},
+        )
+        ..providerSnapshots = const [_codexSnapshot];
+      await pumpNewWorkspaceScreen(
+        tester,
+        active,
+        initialServerId: 'remote',
+        routeClient: route,
+      );
+
+      expect(find.text('Codex'), findsOneWidget);
+      expect(
+        find.textContaining('No agent providers are available'),
+        findsNothing,
+      );
+    },
+  );
+
   testWidgets('no providers available shows guidance instead of the form', (
     tester,
   ) async {

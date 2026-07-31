@@ -15545,20 +15545,24 @@
     {
       "id": "wire-message:branch_suggestions_request",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/daemon/lib/src/server/legacy_checkout_service.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/daemon/test/server/legacy_checkout_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary plus wired daemon legacy adapter and Flutter client request methods are implemented and focused-tested. Full Paseo conformance still requires a real daemon-to-client WebSocket journey for this legacy contract."
     },
     {
       "id": "wire-message:branch_suggestions_response",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/daemon/lib/src/server/legacy_checkout_service.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/daemon/test/server/legacy_checkout_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary plus wired daemon legacy adapter and Flutter client request methods are implemented and focused-tested. Full Paseo conformance still requires a real daemon-to-client WebSocket journey for this legacy contract."
     },
     {
       "id": "wire-message:cancel_agent_request",
@@ -15613,20 +15617,24 @@
     {
       "id": "wire-message:checkout_commit_request",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/daemon/lib/src/server/legacy_checkout_service.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/daemon/test/server/legacy_checkout_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary plus wired daemon legacy adapter and Flutter client request methods are implemented and focused-tested. Full Paseo conformance still requires a real daemon-to-client WebSocket journey for this legacy contract."
     },
     {
       "id": "wire-message:checkout_commit_response",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/daemon/lib/src/server/legacy_checkout_service.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/daemon/test/server/legacy_checkout_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary plus wired daemon legacy adapter and Flutter client request methods are implemented and focused-tested. Full Paseo conformance still requires a real daemon-to-client WebSocket journey for this legacy contract."
     },
     {
       "id": "wire-message:checkout_diff_update",
@@ -16067,21 +16075,25 @@
     },
     {
       "id": "wire-message:file_download_token_request",
-      "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/file_transfer.dart; packages/daemon/lib/src/server/file_transfer_service.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/daemon/test/daemon_file_transfer_e2e_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed request, daemon token issuance/download route, and Flutter typed token/URI methods are covered across the real daemon and client boundaries."
     },
     {
       "id": "wire-message:file_download_token_response",
-      "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/file_transfer.dart; packages/daemon/lib/src/server/file_transfer_service.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/daemon/test/daemon_file_transfer_e2e_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed response metadata and correlation, daemon issuance/download behavior, and Flutter typed token/URI handling are covered across the real daemon and client boundaries."
     },
     {
       "id": "wire-message:file_explorer_request",
@@ -16205,20 +16217,22 @@
     {
       "id": "wire-message:list_available_editors_request",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/editor.dart; packages/daemon/lib/src/daemon_server.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary, daemon dispatch, and Flutter request surface are implemented. Full Paseo parity remains partial because the current adapter intentionally returns an explicit unsupported response instead of enumerating or launching desktop editors."
     },
     {
       "id": "wire-message:list_available_editors_response",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/editor.dart; packages/daemon/lib/src/daemon_server.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary, daemon dispatch, and Flutter request surface are implemented. Full Paseo parity remains partial because the current adapter intentionally returns an explicit unsupported response instead of enumerating or launching desktop editors."
     },
     {
       "id": "wire-message:list_available_providers_request",
@@ -16341,20 +16355,22 @@
     {
       "id": "wire-message:open_in_editor_request",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/editor.dart; packages/daemon/lib/src/daemon_server.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary, daemon dispatch, and Flutter request surface are implemented. Full Paseo parity remains partial because the current adapter intentionally returns an explicit unsupported response instead of enumerating or launching desktop editors."
     },
     {
       "id": "wire-message:open_in_editor_response",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/editor.dart; packages/daemon/lib/src/daemon_server.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary, daemon dispatch, and Flutter request surface are implemented. Full Paseo parity remains partial because the current adapter intentionally returns an explicit unsupported response instead of enumerating or launching desktop editors."
     },
     {
       "id": "wire-message:open_project_request",
@@ -16548,20 +16564,22 @@
     {
       "id": "wire-message:restart_server_request",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/daemon/lib/src/daemon_server.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary, daemon dispatch, and Flutter request/status correlation are implemented. Full Paseo lifecycle parity remains partial until real daemon recovery/restart/resume integration evidence covers failure, reconnect, and persistence edge cases."
     },
     {
       "id": "wire-message:resume_agent_request",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/daemon/lib/src/daemon_server.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary, daemon dispatch, and Flutter request/status correlation are implemented. Full Paseo lifecycle parity remains partial until real daemon recovery/restart/resume integration evidence covers failure, reconnect, and persistence edge cases."
     },
     {
       "id": "wire-message:script_status_update",
@@ -16709,11 +16727,12 @@
     {
       "id": "wire-message:shutdown_server_request",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/daemon/lib/src/daemon_server.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary, daemon dispatch, and Flutter request/status correlation are implemented. Full Paseo lifecycle parity remains partial until real daemon recovery/restart/resume integration evidence covers failure, reconnect, and persistence edge cases."
     },
     {
       "id": "wire-message:start_workspace_script_request",
@@ -16738,56 +16757,68 @@
     {
       "id": "wire-message:stash_list_request",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/daemon/lib/src/server/legacy_checkout_service.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/daemon/test/server/legacy_checkout_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary plus wired daemon legacy adapter and Flutter client request methods are implemented and focused-tested. Full Paseo conformance still requires a real daemon-to-client WebSocket journey for this legacy contract."
     },
     {
       "id": "wire-message:stash_list_response",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/daemon/lib/src/server/legacy_checkout_service.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/daemon/test/server/legacy_checkout_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary plus wired daemon legacy adapter and Flutter client request methods are implemented and focused-tested. Full Paseo conformance still requires a real daemon-to-client WebSocket journey for this legacy contract."
     },
     {
       "id": "wire-message:stash_pop_request",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/daemon/lib/src/server/legacy_checkout_service.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/daemon/test/server/legacy_checkout_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary plus wired daemon legacy adapter and Flutter client request methods are implemented and focused-tested. Full Paseo conformance still requires a real daemon-to-client WebSocket journey for this legacy contract."
     },
     {
       "id": "wire-message:stash_pop_response",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/daemon/lib/src/server/legacy_checkout_service.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/daemon/test/server/legacy_checkout_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary plus wired daemon legacy adapter and Flutter client request methods are implemented and focused-tested. Full Paseo conformance still requires a real daemon-to-client WebSocket journey for this legacy contract."
     },
     {
       "id": "wire-message:stash_save_request",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/daemon/lib/src/server/legacy_checkout_service.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/daemon/test/server/legacy_checkout_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary plus wired daemon legacy adapter and Flutter client request methods are implemented and focused-tested. Full Paseo conformance still requires a real daemon-to-client WebSocket journey for this legacy contract."
     },
     {
       "id": "wire-message:stash_save_response",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/daemon/lib/src/server/legacy_checkout_service.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/daemon/test/server/legacy_checkout_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary plus wired daemon legacy adapter and Flutter client request methods are implemented and focused-tested. Full Paseo conformance still requires a real daemon-to-client WebSocket journey for this legacy contract."
     },
     {
       "id": "wire-message:subscribe_checkout_diff_request",
@@ -16897,20 +16928,24 @@
     {
       "id": "wire-message:validate_branch_request",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/daemon/lib/src/server/legacy_checkout_service.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/daemon/test/server/legacy_checkout_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary plus wired daemon legacy adapter and Flutter client request methods are implemented and focused-tested. Full Paseo conformance still requires a real daemon-to-client WebSocket journey for this legacy contract."
     },
     {
       "id": "wire-message:validate_branch_response",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/daemon/lib/src/server/legacy_checkout_service.dart; packages/app/lib/core/daemon_client.dart",
       "evidence": [
-        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+        "packages/protocol/test/checkout_legacy_contracts_test.dart",
+        "packages/daemon/test/server/legacy_checkout_service_test.dart",
+        "packages/app/test/daemon_client_test.dart"
       ],
-      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
+      "notes": "Typed boundary plus wired daemon legacy adapter and Flutter client request methods are implemented and focused-tested. Full Paseo conformance still requires a real daemon-to-client WebSocket journey for this legacy contract."
     },
     {
       "id": "wire-message:wait_for_finish_request",
