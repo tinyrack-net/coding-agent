@@ -192,6 +192,43 @@ void main() {
     expect(output.toString(), contains('Providers'));
   });
 
+  test('status accepts injected probe and provider transports', () async {
+    await File(p.join(home.path, 'config.json')).writeAsString(
+      jsonEncode({
+        'version': 1,
+        'daemon': {'listen': '127.0.0.1:7331'},
+      }),
+    );
+    final probes = <({String host, int port, String? token})>[];
+    final output = StringBuffer();
+    final code = await runDaemonCommand(
+      arguments: ['status', '--home', home.path, '--json'],
+      runtime: DaemonCommandRuntime(
+        environment: const {'TINYRACK_PASSWORD': 'probe-secret'},
+        probe: ({required host, required port, required token}) async {
+          probes.add((host: host, port: port, token: token));
+          return const ServerHello(
+            daemonVersion: '0.2.0',
+            protocolVersion: paseoWebSocketProtocolVersion,
+          );
+        },
+        resolveProviders: () async => const [
+          {'label': 'Claude', 'path': '/fake/claude', 'version': '1.0'},
+        ],
+      ),
+      writeOutput: output.write,
+    );
+
+    expect(code, 0);
+    expect(probes, [(host: '127.0.0.1', port: 7331, token: 'probe-secret')]);
+    final result = jsonDecode(output.toString()) as Map<String, dynamic>;
+    expect(result['connectedDaemon'], 'reachable');
+    expect(result['daemonVersion'], '0.2.0');
+    expect(result['providers'], [
+      {'label': 'Claude', 'path': '/fake/claude', 'version': '1.0'},
+    ]);
+  });
+
   test('runtime toolchain rejects invalid process ids', () async {
     expect(await resolveDaemonRuntimeExecutable(0), isNull);
   });
@@ -340,6 +377,51 @@ void main() {
     expect(forces, [false, true]);
     expect(output.toString(), contains('"pid": "-"'));
   });
+
+  test(
+    'restart force fallback recognizes a TimeoutException without text matching',
+    () async {
+      final forces = <bool>[];
+      final output = StringBuffer();
+      final code = await runDaemonCommand(
+        arguments: ['restart', '--home', home.path, '--json'],
+        runtime: DaemonCommandRuntime(
+          resolveExe: () async => 'daemon.exe',
+          stop:
+              ({
+                required paths,
+                required host,
+                required port,
+                required token,
+                required force,
+                required exitWait,
+              }) async {
+                forces.add(force);
+                if (!force) throw TimeoutException('transport timeout');
+              },
+          start:
+              ({
+                required exePath,
+                required paths,
+                required host,
+                required port,
+                required additionalArguments,
+                required additionalEnvironment,
+                required timeout,
+              }) async => const ServerHello(
+                daemonVersion: '0.2.0',
+                protocolVersion: paseoWebSocketProtocolVersion,
+              ),
+          environment: const {},
+        ),
+        writeOutput: output.write,
+      );
+
+      expect(code, 0);
+      expect(forces, [false, true]);
+      expect(output.toString(), contains('restarted'));
+    },
+  );
 
   test('set-password preserves config and stores only a bcrypt hash', () async {
     await File(p.join(home.path, 'config.json')).writeAsString(

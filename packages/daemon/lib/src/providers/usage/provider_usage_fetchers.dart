@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
 import 'provider_usage.dart';
+import 'provider_usage_additional_fetchers.dart';
 
 typedef ProviderUsageHttpCall =
     Future<http.Response> Function(
@@ -30,6 +31,27 @@ List<ProviderUsageFetcher> createDefaultProviderUsageFetchers({
     environment: environment,
     userHome: userHome,
   ),
+  CopilotProviderUsageFetcher(
+    httpCall: httpCall,
+    environment: environment,
+    userHome: userHome,
+  ),
+  GrokProviderUsageFetcher(
+    httpCall: httpCall,
+    environment: environment,
+    userHome: userHome,
+  ),
+  KimiProviderUsageFetcher(
+    httpCall: httpCall,
+    environment: environment,
+    userHome: userHome,
+  ),
+  MiniMaxProviderUsageFetcher(
+    httpCall: httpCall,
+    environment: environment,
+    userHome: userHome,
+  ),
+  ZaiProviderUsageFetcher(httpCall: httpCall, environment: environment),
 ];
 
 final class ClaudeProviderUsageFetcher implements ProviderUsageFetcher {

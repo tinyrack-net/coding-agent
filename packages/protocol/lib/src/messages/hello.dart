@@ -59,6 +59,29 @@ abstract final class MessageTypes {
   // daemon lifecycle (desktop shell)
   static const daemonShutdownRequest = 'daemon.shutdown.request';
   static const daemonStatusRequest = 'daemon.status.request';
+  // Paseo 0.2.0 legacy compatibility messages.
+  static const resumeAgentRequest = 'resume_agent_request';
+  static const restartServerRequest = 'restart_server_request';
+  static const shutdownServerRequest = 'shutdown_server_request';
+  static const checkoutCommitRequest = 'checkout_commit_request';
+  static const checkoutCommitResponse = 'checkout_commit_response';
+  static const validateBranchRequest = 'validate_branch_request';
+  static const validateBranchResponse = 'validate_branch_response';
+  static const branchSuggestionsRequest = 'branch_suggestions_request';
+  static const branchSuggestionsResponse = 'branch_suggestions_response';
+  static const stashSaveRequest = 'stash_save_request';
+  static const stashSaveResponse = 'stash_save_response';
+  static const stashPopRequest = 'stash_pop_request';
+  static const stashPopResponse = 'stash_pop_response';
+  static const stashListRequest = 'stash_list_request';
+  static const stashListResponse = 'stash_list_response';
+  static const listAvailableEditorsRequest = 'list_available_editors_request';
+  static const listAvailableEditorsResponse = 'list_available_editors_response';
+  static const openInEditorRequest = 'open_in_editor_request';
+  static const openInEditorResponse = 'open_in_editor_response';
+  static const fileDownloadTokenRequest = 'file_download_token_request';
+  static const fileDownloadTokenResponse = 'file_download_token_response';
+  static const workspaceUpdateEvent = 'workspace_update';
 }
 
 final class ClientHello {

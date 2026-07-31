@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/host_registry_provider.dart';
 import '../state/daemon_providers.dart';
+import '../core/host_routes.dart';
 import '../widgets/host_daemon_update_card.dart';
+import '../widgets/provider_usage_settings_section.dart';
 import 'host_connections_settings_screen.dart';
 import 'host_providers_settings_section.dart';
 import 'settings_screen.dart';
@@ -47,19 +49,38 @@ class _HostSettingsRouteScreenState
   @override
   Widget build(BuildContext context) {
     final registry = ref.watch(hostRegistryProvider);
+    final section =
+        normalizeHostSectionSlug(widget.section)?.name ??
+        HostSectionSlug.connections.name;
     if (!registry.loaded) {
       return const Center(child: ProgressRing());
     }
     if (!registry.hosts.any((host) => host.serverId == widget.serverId)) {
       return const Center(child: Text('Host not found'));
     }
-    if (widget.section == 'connections') {
+    if (section == 'connections') {
       return HostConnectionsSettingsScreen(serverId: widget.serverId);
     }
-    if (widget.section == 'providers') {
+    if (section == 'providers') {
       return HostProvidersSettingsSection(serverId: widget.serverId);
     }
-    if (widget.section == 'host') {
+    if (section == 'usage') {
+      return ScaffoldPage(
+        header: const PageHeader(title: Text('Plan usage')),
+        content: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: ListView(
+              padding: const EdgeInsets.all(24),
+              children: [
+                ProviderUsageSettingsSection(serverId: widget.serverId),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    if (section == 'host') {
       ref.watch(hostConnectionStateProvider(widget.serverId));
       final host = registry.hosts.firstWhere(
         (host) => host.serverId == widget.serverId,
@@ -87,6 +108,6 @@ class _HostSettingsRouteScreenState
         ),
       );
     }
-    return SettingsScreen(section: widget.section);
+    return SettingsScreen(section: section);
   }
 }

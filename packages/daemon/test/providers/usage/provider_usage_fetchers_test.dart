@@ -122,4 +122,117 @@ void main() {
       everyElement(ProviderUsageStatus.unavailable),
     );
   });
+
+  test('additional provider quota adapters preserve frozen payloads', () async {
+    final home = await Directory.systemTemp.createTemp('additional-usage-');
+    addTearDown(() => home.delete(recursive: true));
+    final calls = <String>[];
+    Future<http.Response> call(
+      String _,
+      Uri uri, {
+      Map<String, String>? headers,
+      Object? body,
+    }) async {
+      calls.add(uri.host);
+      return switch (uri.host) {
+        'api.github.com' => http.Response(
+          jsonEncode({
+            'copilot_plan': 'individual',
+            'quota_reset_date': '2026-08-01',
+          }),
+          200,
+        ),
+        'cli-chat-proxy.grok.com' => http.Response(
+          jsonEncode({
+            'config': {
+              'monthlyLimit': {'val': 100},
+            },
+            'usage': {'creditUsage': 25},
+          }),
+          200,
+        ),
+        'api.kimi.com' => http.Response(
+          jsonEncode({
+            'usage': {
+              'limit': '100',
+              'remaining': '25',
+              'resetTime': '2026-08-02T00:00:00Z',
+            },
+          }),
+          200,
+        ),
+        'api.z.ai' => http.Response(
+          jsonEncode({
+            'data': [
+              {
+                'productName': 'Pro',
+                'status': 'active',
+                'valid': 'true',
+                'purchaseTime': '2026-07-01',
+              },
+            ],
+          }),
+          200,
+        ),
+        'api.minimax.io' => http.Response(
+          jsonEncode({
+            'model_remains': [
+              {
+                'model_name': 'MiniMax-M1',
+                'current_interval_remaining_percent': 20,
+                'end_time': 1785542400000,
+                'current_weekly_remaining_percent': 50,
+                'weekly_end_time': 1786147200000,
+              },
+            ],
+          }),
+          200,
+        ),
+        _ => http.Response('{}', 404),
+      };
+    }
+
+    final env = const {
+      'COPILOT_TOKEN': 'copilot-token',
+      'GROK_API_KEY': 'grok-token',
+      'KIMI_TOKEN': 'kimi-token',
+      'ZAI_API_KEY': 'zai-token',
+      'MINIMAX_API_KEY': 'minimax-token',
+    };
+    final fetchers = createDefaultProviderUsageFetchers(
+      userHome: home.path,
+      environment: env,
+      httpCall: call,
+    );
+    final byId = {
+      for (final usage in await Future.wait(
+        fetchers.map((fetcher) => fetcher.fetchUsage()),
+      ))
+        usage.providerId: usage,
+    };
+
+    expect(byId['copilot']?.planLabel, 'individual');
+    expect(byId['copilot']?.details.single.value, '2026-08-01');
+    expect(byId['grok']?.balances.single.remaining, 75);
+    expect(byId['kimi']?.windows.single.usedPct, 75);
+    expect(byId['zai']?.details.map((detail) => detail.id), [
+      'status',
+      'valid',
+      'purchaseTime',
+    ]);
+    expect(byId['minimax']?.windows.map((window) => window.label), [
+      'MiniMax-M1 · Interval',
+      'MiniMax-M1 · Weekly',
+    ]);
+    expect(
+      calls,
+      containsAll(<String>[
+        'api.github.com',
+        'cli-chat-proxy.grok.com',
+        'api.kimi.com',
+        'api.z.ai',
+        'api.minimax.io',
+      ]),
+    );
+  });
 }

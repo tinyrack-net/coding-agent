@@ -332,5 +332,31 @@ void main() {
       expect(() => buildSettingsHostRoute(' '), throwsArgumentError);
       expect(() => buildProjectSettingsRoute(' '), throwsArgumentError);
     });
+
+    test('canonicalizes unknown and legacy settings sections', () {
+      expect(canonicalSettingsSectionPath('appearance'), isNull);
+      expect(canonicalSettingsSectionPath('keyboard'), '/settings/shortcuts');
+      expect(
+        canonicalSettingsSectionPath('not-a-section'),
+        '/settings/general',
+      );
+      expect(canonicalSettingsSectionPath('projects'), isNull);
+    });
+
+    test('canonicalizes host aliases and unknown sections', () {
+      expect(
+        canonicalHostSettingsSectionPath('server-a', 'orchestration'),
+        '/settings/hosts/server-a/agents',
+      );
+      expect(
+        canonicalHostSettingsSectionPath('server-a', 'daemon'),
+        '/settings/hosts/server-a/host',
+      );
+      expect(
+        canonicalHostSettingsSectionPath('server-a', 'unknown'),
+        '/settings/hosts/server-a/connections',
+      );
+      expect(canonicalHostSettingsSectionPath('server-a', 'usage'), isNull);
+    });
   });
 }

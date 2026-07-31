@@ -124,31 +124,49 @@
     },
     {
       "id": "app-route:/settings-1",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/screens/settings_shell.dart; packages/app/lib/screens/settings_screen.dart",
+      "evidence": [
+        "packages/app/test/app_router_test.dart",
+        "packages/app/test/settings_shell_test.dart",
+        "packages/app/test/settings_screen_test.dart"
+      ],
+      "notes": "Global /settings now preserves mobile root behavior, canonicalizes legacy sections, exposes Paseo app/host navigation, and has semantics/loading tests."
     },
     {
       "id": "app-route:/settings/[section]",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/core/host_routes.dart; packages/app/lib/screens/settings_screen.dart",
+      "evidence": [
+        "packages/app/test/app_router_test.dart",
+        "packages/app/test/host_routes_test.dart",
+        "packages/app/test/settings_screen_test.dart"
+      ],
+      "notes": "Settings section routes normalize unknown and legacy slugs, render root/editor/integrations/permissions/about sections, and preserve existing host settings sections."
     },
     {
       "id": "app-route:/settings/hosts/[serverid]-1",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/core/host_routes.dart; packages/app/lib/screens/settings_shell.dart; packages/app/lib/screens/host_settings_route_screen.dart",
+      "evidence": [
+        "packages/app/test/app_router_test.dart",
+        "packages/app/test/host_routes_test.dart",
+        "packages/app/test/settings_shell_test.dart",
+        "packages/app/test/host_settings_route_screen_test.dart"
+      ],
+      "notes": "Host settings index redirects to canonical connections, retains opaque server ids, and waits for host registry hydration."
     },
     {
       "id": "app-route:/settings/hosts/[serverid]/[hostsection]",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/core/host_routes.dart; packages/app/lib/screens/settings_shell.dart; packages/app/lib/screens/host_settings_route_screen.dart",
+      "evidence": [
+        "packages/app/test/app_router_test.dart",
+        "packages/app/test/host_routes_test.dart",
+        "packages/app/test/settings_shell_test.dart",
+        "packages/app/test/host_settings_route_screen_test.dart"
+      ],
+      "notes": "Host sections canonicalize orchestration/daemon aliases, expose usage, preserve unknown-host recovery, and use accessible navigation."
     },
     {
       "id": "app-route:/settings/projects-1",
@@ -2221,10 +2239,14 @@
     },
     {
       "id": "source-unit:packages/app/src/app/new.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/core/host_routes.dart; packages/app/lib/screens/new_workspace_screen.dart",
+      "evidence": [
+        "packages/app/test/host_routes_test.dart",
+        "packages/app/test/new_workspace_screen_test.dart",
+        "packages/app/test/app_router_test.dart"
+      ],
+      "notes": "The canonical /new route now carries server, project, display-name, directory, and draft metadata into the Flutter creation flow; the remaining exact visual contract stays partial."
     },
     {
       "id": "source-unit:packages/app/src/app/open-project.tsx",
@@ -2260,31 +2282,44 @@
     },
     {
       "id": "source-unit:packages/app/src/app/settings/[section].tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/core/host_routes.dart; packages/app/lib/screens/settings_screen.dart",
+      "evidence": [
+        "packages/app/test/app_router_test.dart",
+        "packages/app/test/host_routes_test.dart",
+        "packages/app/test/settings_screen_test.dart"
+      ],
+      "notes": "Typed route normalization and section rendering cover current and legacy Paseo settings slugs."
     },
     {
       "id": "source-unit:packages/app/src/app/settings/hosts/[serverid]/[hostsection].tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/core/host_routes.dart; packages/app/lib/screens/host_settings_route_screen.dart",
+      "evidence": [
+        "packages/app/test/host_routes_test.dart",
+        "packages/app/test/host_settings_route_screen_test.dart"
+      ],
+      "notes": "Host section routing and usage/provider/connection rendering preserve the frozen route boundary."
     },
     {
       "id": "source-unit:packages/app/src/app/settings/hosts/[serverid]/index.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/screens/settings_shell.dart; packages/app/lib/screens/host_settings_route_screen.dart",
+      "evidence": [
+        "packages/app/test/host_settings_route_screen_test.dart",
+        "packages/app/test/settings_shell_test.dart"
+      ],
+      "notes": "Host settings index waits for registry hydration and canonicalizes the default section."
     },
     {
       "id": "source-unit:packages/app/src/app/settings/index.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/app_router.dart; packages/app/lib/screens/settings_shell.dart; packages/app/lib/screens/settings_screen.dart",
+      "evidence": [
+        "packages/app/test/settings_shell_test.dart",
+        "packages/app/test/settings_screen_test.dart"
+      ],
+      "notes": "Flutter settings shell ports the frozen global settings information architecture, responsive root, navigation semantics, and bootstrap redirect behavior."
     },
     {
       "id": "source-unit:packages/app/src/app/settings/projects/[projectkey].tsx",
@@ -14966,10 +15001,13 @@
     },
     {
       "id": "source-unit:packages/server/src/services/quota-fetcher/providers/copilot.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/usage/provider_usage_additional_fetchers.dart",
+      "evidence": [
+        "packages/daemon/test/providers/usage/provider_usage_fetchers_test.dart",
+        "packages/daemon/test/providers/usage/provider_usage_test.dart"
+      ],
+      "notes": "GitHub Copilot token discovery, quota endpoint, plan label, reset detail, unavailable/auth failure behavior, and injected transport are ported."
     },
     {
       "id": "source-unit:packages/server/src/services/quota-fetcher/providers/cursor.ts",
@@ -14980,31 +15018,42 @@
     },
     {
       "id": "source-unit:packages/server/src/services/quota-fetcher/providers/grok.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/usage/provider_usage_additional_fetchers.dart",
+      "evidence": [
+        "packages/daemon/test/providers/usage/provider_usage_fetchers_test.dart",
+        "packages/daemon/test/providers/usage/provider_usage_test.dart"
+      ],
+      "notes": "Grok token discovery, billing endpoint, monthly credit balance and tone projection, unavailable/auth failure behavior, and injected transport are ported."
     },
     {
       "id": "source-unit:packages/server/src/services/quota-fetcher/providers/kimi.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/usage/provider_usage_additional_fetchers.dart",
+      "evidence": [
+        "packages/daemon/test/providers/usage/provider_usage_fetchers_test.dart",
+        "packages/daemon/test/providers/usage/provider_usage_test.dart"
+      ],
+      "notes": "Kimi token discovery, coding usage window, reset timestamp, percentage normalization, unavailable/auth failure behavior, and injected transport are ported."
     },
     {
       "id": "source-unit:packages/server/src/services/quota-fetcher/providers/minimax.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/providers/usage/provider_usage_additional_fetchers.dart",
+      "evidence": [
+        "packages/daemon/test/providers/usage/provider_usage_fetchers_test.dart"
+      ],
+      "notes": "MiniMax regional token-plan quota adapter is implemented and tested; exact Paseo credential-file precedence, OAuth expiry/resource_url resolution, and refresh persistence remain."
     },
     {
       "id": "source-unit:packages/server/src/services/quota-fetcher/providers/zai.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/usage/provider_usage_additional_fetchers.dart",
+      "evidence": [
+        "packages/daemon/test/providers/usage/provider_usage_fetchers_test.dart",
+        "packages/daemon/test/providers/usage/provider_usage_test.dart"
+      ],
+      "notes": "Z.ai subscription endpoint, plan/status/purchase details, token environment precedence, unavailable/auth failure behavior, and injected transport are ported."
     },
     {
       "id": "source-unit:packages/server/src/services/quota-fetcher/service.ts",
@@ -15495,17 +15544,21 @@
     },
     {
       "id": "wire-message:branch_suggestions_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:branch_suggestions_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:cancel_agent_request",
@@ -15559,17 +15612,21 @@
     },
     {
       "id": "wire-message:checkout_commit_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:checkout_commit_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:checkout_diff_update",
@@ -16010,17 +16067,21 @@
     },
     {
       "id": "wire-message:file_download_token_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:file_download_token_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:file_explorer_request",
@@ -16143,17 +16204,21 @@
     },
     {
       "id": "wire-message:list_available_editors_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:list_available_editors_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:list_available_providers_request",
@@ -16275,17 +16340,21 @@
     },
     {
       "id": "wire-message:open_in_editor_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:open_in_editor_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:open_project_request",
@@ -16478,17 +16547,21 @@
     },
     {
       "id": "wire-message:restart_server_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:resume_agent_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:script_status_update",
@@ -16635,10 +16708,12 @@
     },
     {
       "id": "wire-message:shutdown_server_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:start_workspace_script_request",
@@ -16662,45 +16737,57 @@
     },
     {
       "id": "wire-message:stash_list_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:stash_list_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:stash_pop_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:stash_pop_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:stash_save_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:stash_save_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:subscribe_checkout_diff_request",
@@ -16809,17 +16896,21 @@
     },
     {
       "id": "wire-message:validate_branch_request",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:validate_branch_response",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/protocol/lib/src/messages/checkout_legacy.dart; packages/protocol/lib/src/messages/editor.dart; packages/protocol/lib/src/messages/agent_lifecycle.dart; packages/protocol/lib/src/messages/file_transfer.dart",
+      "evidence": [
+        "packages/protocol/test/checkout_legacy_contracts_test.dart"
+      ],
+      "notes": "Typed Dart boundary and validation are ported and tested. Daemon request handlers and Flutter client runtime methods for this legacy message remain before full conformance verification."
     },
     {
       "id": "wire-message:wait_for_finish_request",
@@ -16864,10 +16955,14 @@
     },
     {
       "id": "wire-message:workspace_update",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/protocol/lib/src/messages/directory_updates.dart; packages/daemon/lib/src/workspace/workspace_v2_service.dart; packages/app/lib/core/daemon_client.dart",
+      "evidence": [
+        "packages/protocol/test/directory_updates_test.dart",
+        "packages/daemon/test/daemon_workspace_directory_subscription_e2e_test.dart",
+        "packages/app/test/daemon_client_v2_e2e_test.dart"
+      ],
+      "notes": "Workspace update snapshots and live mutations are typed, filtered, and consumed across protocol, daemon, and Flutter client; focused protocol, daemon, and app tests cover the event boundary."
     },
     {
       "id": "wire-message:write_project_config_request",

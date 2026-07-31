@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/desktop/desktop_shell.dart';
+import '../core/host_routes.dart';
 import '../core/theme.dart';
+import '../state/daemon_lifecycle_provider.dart';
+import '../state/daemon_providers.dart';
 import '../state/host_registry_provider.dart';
 
 class SettingsShell extends StatelessWidget {
@@ -13,6 +16,11 @@ class SettingsShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Paseo keeps the compact settings root as a full-screen list. Desktop
+    // uses the split sidebar shell and redirects /settings to /general.
+    if (!isDesktopShell && GoRouterState.of(context).uri.path == '/settings') {
+      return child;
+    }
     return Container(
       color: FluentTheme.of(context).scaffoldBackgroundColor,
       child: Row(
@@ -22,6 +30,52 @@ class SettingsShell extends StatelessWidget {
           Expanded(child: child),
         ],
       ),
+    );
+  }
+}
+
+/// Compatibility landing route for the old `/settings/daemon` deep link.
+/// Paseo waits for host/bootstrap state before choosing the managed host view.
+class SettingsDaemonRedirectScreen extends ConsumerStatefulWidget {
+  const SettingsDaemonRedirectScreen({super.key});
+
+  @override
+  ConsumerState<SettingsDaemonRedirectScreen> createState() =>
+      _SettingsDaemonRedirectScreenState();
+}
+
+class _SettingsDaemonRedirectScreenState
+    extends ConsumerState<SettingsDaemonRedirectScreen> {
+  String? _scheduledTarget;
+
+  void _redirect(String target) {
+    if (_scheduledTarget == target) return;
+    _scheduledTarget = target;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.replace(target);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final registry = ref.watch(hostRegistryProvider);
+    final lifecycle = ref.watch(daemonLifecycleProvider);
+    final desktopServerId = ref.watch(desktopManagedDaemonServerIdProvider);
+
+    if (!registry.loaded || lifecycle.isLoading) {
+      return const Center(
+        child: ProgressRing(key: ValueKey('settings-bootstrap-loading')),
+      );
+    }
+
+    final target =
+        desktopServerId != null &&
+            registry.hosts.any((host) => host.serverId == desktopServerId)
+        ? buildSettingsHostSectionRoute(desktopServerId, HostSectionSlug.host)
+        : buildSettingsRoute();
+    _redirect(target);
+    return const Center(
+      child: ProgressRing(key: ValueKey('settings-bootstrap-redirecting')),
     );
   }
 }
@@ -53,6 +107,65 @@ class _SettingsSidebar extends StatelessWidget {
         Expanded(
           child: ListView(
             children: [
+              const _SettingsSectionLabel('App'),
+              _SettingsNavItem(
+                icon: FluentIcons.settings,
+                label: 'General',
+                section: 'general',
+                active: currentSection == 'general',
+              ),
+              _SettingsNavItem(
+                icon: FluentIcons.color,
+                label: 'Appearance',
+                section: 'appearance',
+                active: currentSection == 'appearance',
+              ),
+              _SettingsNavItem(
+                icon: FluentIcons.code,
+                label: 'Editor',
+                section: 'editor',
+                active: currentSection == 'editor',
+              ),
+              _SettingsNavItem(
+                icon: FluentIcons.keyboard_classic,
+                label: 'Keyboard shortcuts',
+                // Keep the legacy segment for embedded/test routers; the
+                // application router canonicalizes it to /shortcuts.
+                section: 'keyboard',
+                active:
+                    currentSection == 'keyboard' ||
+                    currentSection == 'shortcuts',
+              ),
+              _SettingsNavItem(
+                icon: FluentIcons.puzzle,
+                label: 'Integrations',
+                section: 'integrations',
+                active: currentSection == 'integrations',
+              ),
+              _SettingsNavItem(
+                icon: FluentIcons.permissions,
+                label: 'Permissions',
+                section: 'permissions',
+                active: currentSection == 'permissions',
+              ),
+              _SettingsNavItem(
+                icon: FluentIcons.diagnostic,
+                label: 'Diagnostics',
+                section: 'diagnostics',
+                active: currentSection == 'diagnostics',
+              ),
+              _SettingsNavItem(
+                icon: FluentIcons.info,
+                label: 'About',
+                section: 'about',
+                active: currentSection == 'about',
+              ),
+              _SettingsNavItem(
+                icon: FluentIcons.fabric_folder,
+                label: 'Projects',
+                section: 'projects',
+                active: currentSection == 'projects',
+              ),
               const _SettingsSectionLabel('Host'),
               _SettingsNavItem(
                 icon: FluentIcons.settings,
@@ -78,30 +191,11 @@ class _SettingsSidebar extends StatelessWidget {
                 section: 'terminals',
                 active: currentSection == 'terminals',
               ),
-              const _SettingsSectionLabel('App'),
               _SettingsNavItem(
-                icon: FluentIcons.cloud,
-                label: 'Providers',
-                section: 'providers',
-                active: currentSection == 'providers',
-              ),
-              _SettingsNavItem(
-                icon: FluentIcons.fabric_folder,
-                label: 'Projects',
-                section: 'projects',
-                active: currentSection == 'projects',
-              ),
-              _SettingsNavItem(
-                icon: FluentIcons.keyboard_classic,
-                label: 'Keyboard shortcuts',
-                section: 'keyboard',
-                active: currentSection == 'keyboard',
-              ),
-              _SettingsNavItem(
-                icon: FluentIcons.diagnostic,
-                label: 'Diagnostics',
-                section: 'diagnostics',
-                active: currentSection == 'diagnostics',
+                icon: FluentIcons.analytics_view,
+                label: 'Usage',
+                section: 'usage',
+                active: currentSection == 'usage',
               ),
               if (isDesktopShell)
                 _SettingsNavItem(
@@ -210,30 +304,34 @@ class _SettingsHeaderRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      child: HoverButton(
-        onPressed: onTap,
-        builder: (context, states) {
-          final hovering = states.contains(WidgetState.hovered);
-          return Container(
-            color: hovering
-                ? context.tokens.surfaceContainerHighest
-                : Colors.transparent,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Row(
-              children: [
-                Icon(icon, size: 16),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: HoverButton(
+          onPressed: onTap,
+          builder: (context, states) {
+            final hovering = states.contains(WidgetState.hovered);
+            return Container(
+              color: hovering
+                  ? context.tokens.surfaceContainerHighest
+                  : Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(icon, size: 16),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-              ],
-            ),
-          );
-        },
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -259,40 +357,45 @@ class _SettingsNavItem extends StatelessWidget {
     final accent = FluentTheme.of(context).accentColor.normal;
     return SizedBox(
       width: double.infinity,
-      child: HoverButton(
-        onPressed: () => context.go(route ?? '/settings/$section'),
-        builder: (context, states) {
-          final hovering = states.contains(WidgetState.hovered);
-          return Container(
-            color: (active || hovering)
-                ? context.tokens.surfaceContainerHighest
-                : Colors.transparent,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                Container(
-                  width: 3,
-                  height: 16,
-                  margin: const EdgeInsets.only(right: 9),
-                  decoration: BoxDecoration(
-                    color: active ? accent : Colors.transparent,
-                    borderRadius: BorderRadius.circular(2),
+      child: Semantics(
+        button: true,
+        selected: active,
+        label: label,
+        child: HoverButton(
+          onPressed: () => context.go(route ?? '/settings/$section'),
+          builder: (context, states) {
+            final hovering = states.contains(WidgetState.hovered);
+            return Container(
+              color: (active || hovering)
+                  ? context.tokens.surfaceContainerHighest
+                  : Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 3,
+                    height: 16,
+                    margin: const EdgeInsets.only(right: 9),
+                    decoration: BoxDecoration(
+                      color: active ? accent : Colors.transparent,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                ),
-                Icon(icon, size: 16, color: active ? accent : null),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: active ? accent : null),
+                  Icon(icon, size: 16, color: active ? accent : null),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: active ? accent : null),
+                    ),
                   ),
-                ),
-              ],
-            ),
-          );
-        },
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }

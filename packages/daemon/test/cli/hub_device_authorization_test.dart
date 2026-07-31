@@ -142,6 +142,38 @@ void main() {
       );
     });
 
+    test('poll sends the frozen endpoint and JSON device code', () async {
+      late http.BaseRequest request;
+      final client = HubCloudDeviceAuthorizationClient(
+        client: _RequestClient((value) async {
+          request = value;
+          return http.Response(
+            '{"status":"pending","interval":5}',
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      final outcome = await client.poll(
+        'https://hub.example.test/base/',
+        'device-code-with-more-than-thirty-two-characters',
+        const Duration(seconds: 1),
+      );
+
+      expect(outcome, isA<HubDeviceAuthorizationPending>());
+      expect(request.method, 'POST');
+      expect(
+        request.url.toString(),
+        'https://hub.example.test/base/api/device-authorizations/poll',
+      );
+      expect(request.headers['content-type'], 'application/json');
+      expect(
+        (request as http.Request).body,
+        '{"deviceCode":"device-code-with-more-than-thirty-two-characters"}',
+      );
+    });
+
     test('poll validates completed response status and schema', () async {
       final malformed = HubCloudDeviceAuthorizationClient(
         client: _RequestClient((_) async => http.Response('not-json', 200)),
@@ -388,6 +420,30 @@ void main() {
         contains('approved-enrollment-token'),
       );
     });
+
+    test(
+      'recovers after a lost poll response without resetting cadence',
+      () async {
+        final cloud = _FakeCloud([
+          const HubDeviceAuthorizationRetryLater(),
+          const HubDeviceAuthorizationApproved(
+            interval: 5,
+            enrollmentToken:
+                'approved-enrollment-token-with-thirty-two-characters',
+          ),
+        ]);
+        final journey = _AuthorizationJourney(cloud);
+
+        expect(
+          await journey.workflow.authorize(
+            'https://hub.example.test',
+            'Studio Windows',
+          ),
+          contains('approved-enrollment-token'),
+        );
+        expect(journey.waiter.waited, [5000, 5000]);
+      },
+    );
   });
 }
 

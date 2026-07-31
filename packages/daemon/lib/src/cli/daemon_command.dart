@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -35,6 +36,14 @@ typedef DaemonStopper =
       required bool force,
       required Duration exitWait,
     });
+typedef DaemonStatusProber =
+    Future<ServerHello?> Function({
+      required String host,
+      required int port,
+      required String? token,
+    });
+typedef DaemonProviderStatusResolver =
+    Future<List<Map<String, Object?>>> Function();
 typedef PasswordReader = Future<String?> Function(String prompt);
 
 final class DaemonCommandRuntime {
@@ -43,6 +52,8 @@ final class DaemonCommandRuntime {
     this.resolveRuntimeExecutable = resolveDaemonRuntimeExecutable,
     this.start = _startDaemon,
     this.stop = stopDaemon,
+    this.probe = _probeDaemon,
+    this.resolveProviders = _resolveProviderStatuses,
     this.readPassword = _readPassword,
     this.environment,
   });
@@ -51,6 +62,8 @@ final class DaemonCommandRuntime {
   final DaemonRuntimeExecutableResolver resolveRuntimeExecutable;
   final DaemonStarter start;
   final DaemonStopper stop;
+  final DaemonStatusProber probe;
+  final DaemonProviderStatusResolver resolveProviders;
   final PasswordReader readPassword;
   final Map<String, String>? environment;
 }
@@ -87,6 +100,12 @@ Future<String?> _readPassword(String prompt) async {
   }
 }
 // coverage:ignore-end
+
+Future<ServerHello?> _probeDaemon({
+  required String host,
+  required int port,
+  required String? token,
+}) => probeDaemon(host, port, token: token);
 
 Future<String?> resolveDaemonRuntimeExecutable(int processId) async {
   if (processId <= 0) return null;
@@ -322,7 +341,11 @@ Future<CliOutputResult> _status(
   final host = lock?.host ?? config.host;
   final port = lock?.port ?? config.port;
   final alive = lock != null && await isPidAlive(lock.pid);
-  final hello = await probeDaemon(host, port, token: _daemonPassword(runtime));
+  final hello = await runtime.probe(
+    host: host,
+    port: port,
+    token: _daemonPassword(runtime),
+  );
   final daemonExecutable = lock == null
       ? null
       : await runtime.resolveRuntimeExecutable(lock.pid);
@@ -341,13 +364,7 @@ Future<CliOutputResult> _status(
             ? 'auth_required'
             : 'auth_failed')
       : 'unreachable';
-  final providers = await Future.wait(
-    const [
-      ('Claude', 'claude'),
-      ('Codex', 'codex'),
-      ('OpenCode', 'opencode'),
-    ].map(_providerStatus),
-  );
+  final providers = await runtime.resolveProviders();
   final result = <String, Object?>{
     'serverId': await _readServerId(config.home),
     'localDaemon': local,
@@ -457,9 +474,9 @@ Future<CliOutputResult> _restart(
         exitWait: timeout,
       );
     } on Object catch (error) {
-      final isTimeout = _message(
-        error,
-      ).contains('Timed out waiting for daemon PID');
+      final isTimeout =
+          error is TimeoutException ||
+          _message(error).contains('Timed out waiting for daemon');
       if (options.force || !isTimeout) rethrow;
       await runtime.stop(
         paths: paths,
@@ -647,6 +664,15 @@ Future<Map<String, Object?>> _providerStatus((String, String) binary) async {
   }
   return {'label': label, 'path': path, 'version': version, 'source': 'local'};
 }
+
+Future<List<Map<String, Object?>>> _resolveProviderStatuses() async =>
+    Future.wait(
+      const [
+        ('Claude', 'claude'),
+        ('Codex', 'codex'),
+        ('OpenCode', 'opencode'),
+      ].map(_providerStatus),
+    );
 
 Future<String?> _readServerId(String home) async {
   final file = File(p.join(home, 'server-id'));

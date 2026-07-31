@@ -55,6 +55,10 @@ class NewWorkspaceScreen extends ConsumerStatefulWidget {
   const NewWorkspaceScreen({
     super.key,
     this.initialProjectPath,
+    this.initialServerId,
+    this.initialDisplayName,
+    this.initialProjectId,
+    this.initialDraftId,
     this.imageAttachmentService,
     this.draftStore,
     this.preferencesService,
@@ -62,6 +66,10 @@ class NewWorkspaceScreen extends ConsumerStatefulWidget {
   });
 
   final String? initialProjectPath;
+  final String? initialServerId;
+  final String? initialDisplayName;
+  final String? initialProjectId;
+  final String? initialDraftId;
   final ComposerImageAttachmentService? imageAttachmentService;
   final ComposerDraftStore? draftStore;
   final CreateAgentPreferencesService? preferencesService;
@@ -106,9 +114,26 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
     _preferencesService =
         widget.preferencesService ?? createAgentPreferencesService;
     _promptController.addListener(_onDraftTextChanged);
+    unawaited(_activateInitialHost());
     unawaited(_hydrateDraft());
     unawaited(_hydratePreferences());
   }
+
+  Future<void> _activateInitialHost() async {
+    final serverId = widget.initialServerId?.trim();
+    if (serverId == null || serverId.isEmpty) return;
+    final registry = ref.read(hostRegistryProvider);
+    if (!registry.hosts.any((host) => host.serverId == serverId)) return;
+    if (registry.activeServerId == serverId) return;
+    try {
+      await ref.read(hostRegistryProvider.notifier).selectHost(serverId);
+    } catch (_) {
+      // Keep the launcher usable if a host disappears during bootstrap.
+    }
+  }
+
+  String get _draftKey =>
+      buildNewWorkspaceComposerDraftKey(widget.initialDraftId);
 
   @override
   void dispose() {
@@ -339,7 +364,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
 
   Future<void> _hydrateDraft() async {
     final revision = _draftRevision;
-    final draft = await _draftStore.load(newWorkspaceComposerDraftKey);
+    final draft = await _draftStore.load(_draftKey);
     if (!mounted || revision != _draftRevision) return;
     if (draft == null) {
       _scheduleAttachmentGc();
@@ -367,10 +392,10 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
     _draftWrite = _draftWrite
         .then((_) async {
           if (draft.hasContent) {
-            await _draftStore.save(newWorkspaceComposerDraftKey, draft);
+            await _draftStore.save(_draftKey, draft);
           } else {
             await _draftStore.clear(
-              newWorkspaceComposerDraftKey,
+              _draftKey,
               lifecycle: ComposerDraftLifecycle.abandoned,
             );
           }
@@ -610,7 +635,9 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
     });
     try {
       final client = ref.read(daemonClientProvider);
-      final serverId = client.serverInfo?.serverId ?? 'local';
+      final serverId = widget.initialServerId?.trim().isNotEmpty == true
+          ? widget.initialServerId!.trim()
+          : client.serverInfo?.serverId ?? 'local';
       final featureValues = _resolvedFeatureValues(
         serverId: serverId,
         cwd: projectPath,
@@ -698,7 +725,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
             .read(selectedWorktreeProvider.notifier)
             .select(workspace.workspaceDirectory);
         await _draftStore.clear(
-          newWorkspaceComposerDraftKey,
+          _draftKey,
           lifecycle: ComposerDraftLifecycle.sent,
         );
         _openCreatedWorkspace(
@@ -774,7 +801,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
           .select(workspace.workspaceDirectory);
       try {
         await _draftStore.clear(
-          newWorkspaceComposerDraftKey,
+          _draftKey,
           lifecycle: ComposerDraftLifecycle.sent,
         );
         await _garbageCollectDraftAttachments();
@@ -838,14 +865,25 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
   @override
   Widget build(BuildContext context) {
     final client = ref.watch(daemonClientProvider);
-    final serverId = client.serverInfo?.serverId ?? 'local';
+    final serverId = widget.initialServerId?.trim().isNotEmpty == true
+        ? widget.initialServerId!.trim()
+        : client.serverInfo?.serverId ?? 'local';
     final projects = ref.watch(projectsProvider).value ?? const <ProjectInfo>[];
 
     // Keep the choice valid if the project list changed under us; default to
     // the first available project (Paseo: route project -> last active ->
     // first available).
     final requestedProject =
-        _projectChoice ?? widget.initialProjectPath?.trim();
+        _projectChoice ??
+        widget.initialProjectPath?.trim() ??
+        projects
+            .where(
+              (project) =>
+                  widget.initialDisplayName?.trim().isNotEmpty == true &&
+                  project.name == widget.initialDisplayName!.trim(),
+            )
+            .firstOrNull
+            ?.path;
     final choice =
         requestedProject != null &&
             requestedProject.isNotEmpty &&

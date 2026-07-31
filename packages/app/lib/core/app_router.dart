@@ -1,5 +1,6 @@
 import 'package:go_router/go_router.dart';
 
+import 'desktop/desktop_shell.dart';
 import 'host_routes.dart';
 import '../screens/home_shell.dart';
 import '../screens/host_agent_route_screen.dart';
@@ -92,6 +93,10 @@ GoRouter buildAppRouter({String initialLocation = '/'}) {
             path: '/new',
             builder: (context, state) => NewWorkspaceScreen(
               initialProjectPath: state.uri.queryParameters['dir'],
+              initialServerId: state.uri.queryParameters['serverId'],
+              initialDisplayName: state.uri.queryParameters['name'],
+              initialProjectId: state.uri.queryParameters['projectId'],
+              initialDraftId: state.uri.queryParameters['draftId'],
             ),
           ),
           GoRoute(
@@ -121,7 +126,8 @@ GoRouter buildAppRouter({String initialLocation = '/'}) {
         routes: [
           GoRoute(
             path: '/settings',
-            redirect: (context, state) => '/settings/general',
+            redirect: (context, state) =>
+                isDesktopShell ? '/settings/general' : null,
           ),
           GoRoute(
             path: '/settings/projects/:projectKey',
@@ -131,8 +137,16 @@ GoRouter buildAppRouter({String initialLocation = '/'}) {
           ),
           GoRoute(
             path: '/settings/:section',
+            redirect: (context, state) {
+              final section = state.pathParameters['section'] ?? '';
+              if (section == 'daemon') return null;
+              return canonicalSettingsSectionPath(section);
+            },
             builder: (context, state) {
               final section = state.pathParameters['section']!;
+              if (section == 'daemon') {
+                return const SettingsDaemonRedirectScreen();
+              }
               return SettingsScreen(section: section);
             },
           ),
@@ -143,6 +157,15 @@ GoRouter buildAppRouter({String initialLocation = '/'}) {
           ),
           GoRoute(
             path: '/settings/hosts/:serverId/:hostSection',
+            redirect: (context, state) {
+              final serverId = state.pathParameters['serverId'] ?? '';
+              final section = state.pathParameters['hostSection'] ?? '';
+              final canonical = canonicalHostSettingsSectionPath(
+                serverId,
+                section,
+              );
+              return canonical;
+            },
             builder: (context, state) => HostSettingsRouteScreen(
               serverId: state.pathParameters['serverId']!,
               section: state.pathParameters['hostSection']!,

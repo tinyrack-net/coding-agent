@@ -429,6 +429,50 @@ String buildSettingsRoute() => '/settings';
 String buildSettingsSectionRoute(SettingsSectionSlug section) =>
     '/settings/${section.name}';
 
+/// Returns the canonical settings URL for a raw route segment.
+///
+/// Paseo keeps unknown app sections on the general view, while retaining a
+/// small set of pre-0.2 aliases so old desktop shortcuts do not strand users.
+String? canonicalSettingsSectionPath(String rawSection) {
+  final section = rawSection.trim();
+  if (section.isEmpty) {
+    return buildSettingsSectionRoute(SettingsSectionSlug.general);
+  }
+  if (isSettingsSectionSlug(section)) {
+    return null;
+  }
+  return switch (section) {
+    'keyboard' => buildSettingsSectionRoute(SettingsSectionSlug.shortcuts),
+    // These sections existed in the Flutter MVP. Keep their routes usable
+    // until their content is migrated to the corresponding Paseo section.
+    'desktop' ||
+    'reset' ||
+    'projects' ||
+    'agents' ||
+    'workspaces' ||
+    'providers' ||
+    'terminals' => null,
+    _ => buildSettingsSectionRoute(SettingsSectionSlug.general),
+  };
+}
+
+/// Returns a host settings URL only when [rawSection] is not already
+/// canonical. A null result means the current URL is canonical or the host
+/// id is invalid and should be handled by the leaf screen.
+String? canonicalHostSettingsSectionPath(String serverId, String rawSection) {
+  final normalizedServer = _trimNonEmpty(serverId);
+  if (normalizedServer == null) return null;
+  final normalized = normalizeHostSectionSlug(rawSection.trim());
+  if (normalized == null) {
+    return buildSettingsHostSectionRoute(
+      normalizedServer,
+      HostSectionSlug.connections,
+    );
+  }
+  if (normalized.name == rawSection.trim()) return null;
+  return buildSettingsHostSectionRoute(normalizedServer, normalized);
+}
+
 String buildSettingsAddHostRoute([Object intentId = '1']) =>
     '/settings/general?addHost=${Uri.encodeComponent('$intentId')}';
 

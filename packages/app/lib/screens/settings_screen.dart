@@ -4,6 +4,7 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../core/app_diagnostic_report.dart';
 import '../core/daemon_client.dart';
@@ -33,6 +34,7 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return switch (section) {
+      'root' => const _SettingsRootSection(key: ValueKey('root')),
       'general' => _ConnectionSettingsSection(key: const ValueKey('general')),
       'agents' => const HostAgentsSettingsSection(key: ValueKey('agents')),
       'workspaces' => const HostWorkspacesSettingsSection(
@@ -45,8 +47,24 @@ class SettingsScreen extends ConsumerWidget {
         key: const ValueKey('providers'),
       ),
       'projects' => const ProjectsSettingsScreen(key: ValueKey('projects')),
-      'keyboard' => const KeyboardShortcutsSettingsSection(
+      'shortcuts' || 'keyboard' => const KeyboardShortcutsSettingsSection(
         key: ValueKey('keyboard'),
+      ),
+      'editor' => const _EditorSettingsSection(key: ValueKey('editor')),
+      'integrations' => const _SettingsInfoSection(
+        key: ValueKey('integrations'),
+        title: 'Integrations',
+        description: 'Connect editor, browser, and automation integrations.',
+      ),
+      'permissions' => const _SettingsInfoSection(
+        key: ValueKey('permissions'),
+        title: 'Permissions',
+        description: 'Review desktop permissions used by the coding agent.',
+      ),
+      'about' => const _SettingsInfoSection(
+        key: ValueKey('about'),
+        title: 'About',
+        description: 'Coding Agent based on Paseo 0.2.0.',
       ),
       'appearance' => const _AppearanceSettingsSection(
         key: ValueKey('appearance'),
@@ -58,6 +76,129 @@ class SettingsScreen extends ConsumerWidget {
       'reset' => _DataResetSection(key: const ValueKey('reset')),
       _ => _ConnectionSettingsSection(key: const ValueKey('general')),
     };
+  }
+}
+
+class _SettingsRootSection extends StatelessWidget {
+  const _SettingsRootSection({super.key});
+
+  static const _items = <(String, String)>[
+    ('general', 'General'),
+    ('appearance', 'Appearance'),
+    ('editor', 'Editor'),
+    ('shortcuts', 'Keyboard shortcuts'),
+    ('diagnostics', 'Diagnostics'),
+    ('about', 'About'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaffoldPage(
+      header: const PageHeader(title: Text('Settings')),
+      content: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          for (final item in _items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Semantics(
+                button: true,
+                label: item.$2,
+                child: HoverButton(
+                  onPressed: () => context.go('/settings/${item.$1}'),
+                  builder: (context, states) => Container(
+                    color: states.contains(WidgetState.hovered)
+                        ? context.tokens.surfaceContainerHighest
+                        : Colors.transparent,
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        Expanded(child: Text(item.$2)),
+                        const Icon(FluentIcons.chevron_right),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EditorSettingsSection extends ConsumerWidget {
+  const _EditorSettingsSection({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final codeAppearance = ref.watch(codeAppearanceProvider);
+    return ScaffoldPage(
+      header: const PageHeader(title: Text('Editor')),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              _SelectSettingsRow<int>(
+                title: 'Code font size',
+                subtitle: 'Set the text size used by the editor and diffs.',
+                value: codeAppearance.codeFontSize.round(),
+                items: [
+                  for (
+                    var size = minimumCodeFontSize.toInt();
+                    size <= maximumCodeFontSize.toInt();
+                    size++
+                  )
+                    ComboBoxItem(value: size, child: Text('$size px')),
+                ],
+                onChanged: (value) => ref
+                    .read(codeAppearanceProvider.notifier)
+                    .setCodeFontSize(value),
+              ),
+              const SizedBox(height: 12),
+              _TextSettingsRow(
+                title: 'Monospace font',
+                subtitle: 'Override the font family used by the editor.',
+                value: codeAppearance.monoFontFamily,
+                placeholder: 'System monospace',
+                onSubmitted: (value) => ref
+                    .read(codeAppearanceProvider.notifier)
+                    .setMonoFontFamily(value),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsInfoSection extends StatelessWidget {
+  const _SettingsInfoSection({
+    super.key,
+    required this.title,
+    required this.description,
+  });
+
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaffoldPage(
+      header: PageHeader(title: Text(title)),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: InfoBar(title: Text(title), content: Text(description)),
+          ),
+        ),
+      ),
+    );
   }
 }
 
