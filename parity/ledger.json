@@ -2396,10 +2396,12 @@
     },
     {
       "id": "source-unit:packages/app/src/assistant-file-links/parse.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/assistant_file_links/paseo_file_links.dart",
+      "evidence": [
+        "packages/app/test/assistant_file_links/paseo_file_links_test.dart"
+      ],
+      "notes": "The full 7-branch link cascade plus inline path tokens and file-URL parsing. WHATWG URL has no Dart analogue, so a subset is implemented and its percent-encode sets were brute-forced byte-by-byte against Node rather than read off the spec. Dart's trim() strips U+0085 where JS's does not, so trimming runs off RegExp \\s instead."
     },
     {
       "id": "source-unit:packages/app/src/assistant-file-links/provider.tsx",
@@ -2410,10 +2412,12 @@
     },
     {
       "id": "source-unit:packages/app/src/assistant-file-links/resolver.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/assistant_file_links/paseo_file_links.dart",
+      "evidence": [
+        "packages/app/test/assistant_file_links/paseo_file_links_test.dart"
+      ],
+      "notes": "Resolution classification, daemon lookup, suggestion queries, and the unresolved-link error. Reuses the protocol's DirectorySuggestionEntry; the i18n singleton upstream reads at construction becomes an injected describe callback."
     },
     {
       "id": "source-unit:packages/app/src/assistant-file-links/use-file-link.ts",
@@ -2447,10 +2451,12 @@
     },
     {
       "id": "source-unit:packages/app/src/attachments/local-file-attachment-store.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/attachments/paseo_attachment_stores.dart",
+      "evidence": [
+        "packages/app/test/attachments/paseo_attachment_stores_test.dart"
+      ],
+      "notes": "Ported end to end against injected filesystem/IndexedDB/desktop-bridge primitives, with the upstream error messages preserved. Remaining: the app's own attachment code still uses the narrower bytes-only AttachmentStore in attachments/attachment_store.dart, so these are not yet the store the product runs on; reconciling the two contracts is tracked separately."
     },
     {
       "id": "source-unit:packages/app/src/attachments/native/native-file-attachment-store.ts",
@@ -2539,10 +2545,12 @@
     },
     {
       "id": "source-unit:packages/app/src/attachments/web/indexeddb-attachment-store.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/attachments/paseo_attachment_stores.dart",
+      "evidence": [
+        "packages/app/test/attachments/paseo_attachment_stores_test.dart"
+      ],
+      "notes": "Ported end to end against injected filesystem/IndexedDB/desktop-bridge primitives, with the upstream error messages preserved. Remaining: the app's own attachment code still uses the narrower bytes-only AttachmentStore in attachments/attachment_store.dart, so these are not yet the store the product runs on; reconciling the two contracts is tracked separately."
     },
     {
       "id": "source-unit:packages/app/src/attachments/workspace-attachment-utils.ts",
@@ -2605,17 +2613,21 @@
     },
     {
       "id": "source-unit:packages/app/src/browser/new-tab-requests/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_command_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_command_rules_test.dart"
+      ],
+      "notes": "Scheme allowlist and workspace-membership gates. Uri.parse cannot stand in for new URL() throwing, so the needed slice of WHATWG parsing is implemented and checked case by case against Node; host validity is deliberately not reproduced, which only ever loosens the check for strings no browser resolves."
     },
     {
       "id": "source-unit:packages/app/src/client-slash-commands/index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_command_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_command_rules_test.dart"
+      ],
+      "notes": "The command table with aliases, submit-time interception of bare argument-free commands, and draft setup carrying provider/cwd/mode/model/thinking/features from the archived agent. Reuses the existing ComposerClientSlashCommand enum and autocomplete entry types."
     },
     {
       "id": "source-unit:packages/app/src/command-center/command-center.tsx",
@@ -3460,10 +3472,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/markdown/html-ish.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_html_ish.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_html_ish_test.dart"
+      ],
+      "notes": "Both entry points plus details/image lifting, inline rewriting, and the src/href allow-lists. Upstream calls htmlparser2 directly and no Dart parser reproduces its token boundaries, so htmlparser2 12.0.0's Tokenizer and Parser are ported alongside (MIT; noticed in THIRD_PARTY_NOTICES.md) — chunk-boundary text flushing, implied tags, void-element close synthesis, and raw-text scanning are all observable in the output. Validated by a differential harness against the frozen TypeScript running the real htmlparser2 under Node over 244 inputs, with no behavioural diffs; every non-upstream expectation is captured from that run. Reuses the part hierarchy already ported in paseo_render_rules.dart rather than declaring parallel types."
     },
     {
       "id": "source-unit:packages/app/src/components/markdown/inline-image-size.ts",
@@ -3632,10 +3646,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/question-form-card-core.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_command_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_command_rules_test.dart"
+      ],
+      "notes": "Strict all-or-nothing question parsing, answered predicates, answer building, and dismissal rules. resolveDismissLabel keeps upstream's truthiness test so an empty dismissLabel is skipped rather than shipping a blank button."
     },
     {
       "id": "source-unit:packages/app/src/components/question-form-card.tsx",
@@ -4304,10 +4320,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/ui/isolated-bottom-sheet-modal/visibility-tracker.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_command_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_command_rules_test.dart"
+      ],
+      "notes": "The four-phase closed/presenting/presented/dismissing machine with the notified-close latch, fully call-driven with no timers."
     },
     {
       "id": "source-unit:packages/app/src/components/ui/keyboard-dismiss.ts",
@@ -4949,10 +4967,12 @@
     },
     {
       "id": "source-unit:packages/app/src/desktop/attachments/desktop-attachment-store.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/attachments/paseo_attachment_stores.dart",
+      "evidence": [
+        "packages/app/test/attachments/paseo_attachment_stores_test.dart"
+      ],
+      "notes": "Ported end to end against injected filesystem/IndexedDB/desktop-bridge primitives, with the upstream error messages preserved. Remaining: the app's own attachment code still uses the narrower bytes-only AttachmentStore in attachments/attachment_store.dart, so these are not yet the store the product runs on; reconciling the two contracts is tracked separately."
     },
     {
       "id": "source-unit:packages/app/src/desktop/attachments/desktop-file-commands.ts",
@@ -4963,10 +4983,12 @@
     },
     {
       "id": "source-unit:packages/app/src/desktop/attachments/desktop-preview-url.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/attachments/paseo_attachment_stores.dart",
+      "evidence": [
+        "packages/app/test/attachments/paseo_attachment_stores_test.dart"
+      ],
+      "notes": "Ported end to end against injected filesystem/IndexedDB/desktop-bridge primitives, with the upstream error messages preserved. Remaining: the app's own attachment code still uses the narrower bytes-only AttachmentStore in attachments/attachment_store.dart, so these are not yet the store the product runs on; reconciling the two contracts is tracked separately."
     },
     {
       "id": "source-unit:packages/app/src/desktop/attachments/test-utils/fake-desktop-attachment-bridge.ts",
@@ -5026,17 +5048,21 @@
     },
     {
       "id": "source-unit:packages/app/src/desktop/daemon/daemon-management-error.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_daemon_rules.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_daemon_rules_test.dart"
+      ],
+      "notes": "Both error types and the presentation rule, which unwraps an operation error exactly one level and uses the captured (not live) management flag to choose the message."
     },
     {
       "id": "source-unit:packages/app/src/desktop/daemon/daemon-management-toggle.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_daemon_rules.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_daemon_rules_test.dart"
+      ],
+      "notes": "Enable persists then starts without confirming; disable confirms first, bails untouched on decline, persists before stopping, and stops only when the daemon is both running and desktop-managed. Reuses daemon_lifecycle's DaemonStatus."
     },
     {
       "id": "source-unit:packages/app/src/desktop/daemon/desktop-daemon-transport.ts",
@@ -5082,10 +5108,12 @@
     },
     {
       "id": "source-unit:packages/app/src/desktop/electron/idle.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_platform_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_platform_rules_test.dart"
+      ],
+      "notes": "readDesktopSystemIdleTimeMs; non-numeric, non-finite, and negative values collapse to null while zero stays a valid answer."
     },
     {
       "id": "source-unit:packages/app/src/desktop/electron/invoke.ts",
@@ -5159,10 +5187,12 @@
     },
     {
       "id": "source-unit:packages/app/src/desktop/pick-directory.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_platform_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_platform_rules_test.dart"
+      ],
+      "notes": "Exact request shape, null for cancel, a list response (host ignored multiple:false) as an error, and a missing bridge as an error."
     },
     {
       "id": "source-unit:packages/app/src/desktop/settings/desktop-settings.ts",
@@ -5180,17 +5210,21 @@
     },
     {
       "id": "source-unit:packages/app/src/desktop/updates/desktop-updates.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_daemon_rules.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_daemon_rules_test.dart"
+      ],
+      "notes": "The five defensive parsers, version normalization and mismatch, download URL building, and daemon diagnostics over an injected desktop bridge. Upstream's case-sensitive v prefix against case-insensitive comparison is preserved, so V0.2.0 still renders as vV0.2.0."
     },
     {
       "id": "source-unit:packages/app/src/desktop/updates/resolve-update-callout.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_daemon_rules.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_daemon_rules_test.dart"
+      ],
+      "notes": "Callout construction with the frozen null cases. Upstream's branch-order quirk — isInstalling picks title and body while isError picks the actions — is preserved and pinned."
     },
     {
       "id": "source-unit:packages/app/src/desktop/updates/rosetta-callout-source.tsx",
@@ -5231,10 +5265,12 @@
     },
     {
       "id": "source-unit:packages/app/src/diagnostics/desktop-diagnostic-report.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_platform_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_platform_rules_test.dart"
+      ],
+      "notes": "collectDesktopDiagnosticSections with all three sources started before the first await and each half degrading independently. Reuses formatDiagnosticSection from the existing app_diagnostic_report.dart."
     },
     {
       "id": "source-unit:packages/app/src/diagnostics/store.ts",
@@ -5877,10 +5913,12 @@
     },
     {
       "id": "source-unit:packages/app/src/git/query-keys.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/git/paseo_git_queries.dart",
+      "evidence": [
+        "packages/app/test/git/paseo_git_queries_test.dart"
+      ],
+      "notes": "All five key builders plus the guard and predicate. TanStack's two matching modes (prefix key vs. kind+server+cwd predicate) are reified as a sealed matcher rather than collapsed, and the invalidate helpers become the matcher sets they actually express."
     },
     {
       "id": "source-unit:packages/app/src/git/themed-chevron.ts",
@@ -5898,17 +5936,21 @@
     },
     {
       "id": "source-unit:packages/app/src/git/use-commits-query.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/git/paseo_git_queries.dart",
+      "evidence": [
+        "packages/app/test/git/paseo_git_queries_test.dart"
+      ],
+      "notes": "The result union, capability/canFetch/enabled predicates, and the queryFn body are ported. Remaining: state/checkout_commits_provider.dart still re-implements the gate inline instead of calling these — an inline copy already drifted once (it trimmed cwd where upstream uses plain JS truthiness; fixed in this slice)."
     },
     {
       "id": "source-unit:packages/app/src/git/use-diff-files.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/git/paseo_git_queries.dart",
+      "evidence": [
+        "packages/app/test/git/paseo_git_queries_test.dart"
+      ],
+      "notes": "Per-file diff resolution, the commit-file selector, and the enabled gate are ported. Remaining: the same provider wiring as use-commits-query. Upstream's undefined-vs-null distinction (pending vs. no textual diff) becomes a sealed hierarchy, since a Dart map cannot tell a missing key from a null value."
     },
     {
       "id": "source-unit:packages/app/src/git/use-diff-query.ts",
@@ -5922,10 +5964,12 @@
     },
     {
       "id": "source-unit:packages/app/src/git/use-forge-search-query.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/git/paseo_git_queries.dart",
+      "evidence": [
+        "packages/app/test/git/paseo_git_queries_test.dart"
+      ],
+      "notes": "Query key, options, both payload normalizers, the legacy GitHub request mapping, and the item schemas are ported, deliberately re-implementing the schemas rather than reusing the protocol parser (which accepts legacy spellings on every transport and would admit items upstream drops). Remaining: the hook shell has no consumer yet."
     },
     {
       "id": "source-unit:packages/app/src/git/use-pr-status-query.ts",
@@ -6070,10 +6114,12 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/sidebar-status-view-model.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/sidebar/paseo_sidebar_view_models.dart",
+      "evidence": [
+        "packages/app/test/sidebar/paseo_sidebar_view_models_test.dart"
+      ],
+      "notes": "buildStatusGroups and the shortcut index; Dart's unstable List.sort is given an index tiebreak because the row comparator relies on JS sort stability."
     },
     {
       "id": "source-unit:packages/app/src/hooks/sidebar-workspaces-view-model.ts",
@@ -6399,10 +6445,12 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-form-preferences.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/sidebar/paseo_sidebar_view_models.dart",
+      "evidence": [
+        "packages/app/test/sidebar/paseo_sidebar_view_models_test.dart"
+      ],
+      "notes": "Default preferences, provider merge, and the read-once controller stating react-query's staleTime/gcTime Infinity intent directly. The storage layer is reused from composer/create_agent_preferences.dart."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-global-new-workspace-action.ts",
@@ -6619,10 +6667,12 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-sidebar-pins.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/sidebar/paseo_sidebar_view_models.dart",
+      "evidence": [
+        "packages/app/test/sidebar/paseo_sidebar_view_models_test.dart"
+      ],
+      "notes": "Pinned-key building, equality, and group splitting, with the useRef identity retainer as an explicit object. Upstream's empty-key quirk (an empty workspace key compares by position only, so its pinnedAt change goes unnoticed) is reproduced rather than fixed."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-sidebar-shortcut-model.ts",
@@ -6633,10 +6683,12 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-sidebar-workspace-entries.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/sidebar/paseo_sidebar_view_models.dart",
+      "evidence": [
+        "packages/app/test/sidebar/paseo_sidebar_view_models_test.dart"
+      ],
+      "notes": "Session selection, equality, and the retainer's three-way disabled-retains / empty-clears / thread-previous behaviour are ported. Remaining: buildSidebarWorkspaceEntries lives in the unported sidebar-workspaces-view-model.ts and is injected as a builder typedef."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-sidebar-workspace-pin.ts",
@@ -7032,10 +7084,12 @@
     },
     {
       "id": "source-unit:packages/app/src/panels/panel-instance-attributes.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_platform_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_platform_rules_test.dart"
+      ],
+      "notes": "Key building and the attribute store, preserving that unmodified panels are deleted rather than stored and that the no-op check compares against the stored entry. Module-global state becomes an object so it cannot leak across tests."
     },
     {
       "id": "source-unit:packages/app/src/panels/panel-registry.ts",
@@ -7088,10 +7142,12 @@
     },
     {
       "id": "source-unit:packages/app/src/polyfills/install-crypto-polyfills.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/paseo_platform_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_platform_rules_test.dart"
+      ],
+      "notes": "The two portable behaviours are ported and pinned against upstream's exact vectors: the UUIDv4 derivation and the host-entropy-wins precedence rule. Remaining and deliberately not faked: the installer's actual job is mutating the JS global to patch TextEncoder/TextDecoder/crypto onto a Hermes runtime that omits them. Dart has no mutable global namespace and nothing missing, so that half has no analogue."
     },
     {
       "id": "source-unit:packages/app/src/polyfills/screen-orientation.ts",

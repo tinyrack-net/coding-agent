@@ -78,8 +78,11 @@ final checkoutCommitsProvider = FutureProvider.autoDispose
       final connection = ref
           .watch(checkoutStatusConnectionProvider(key.serverId))
           .value;
+      // Paseo gates on `Boolean(cwd)`, so only an empty string is rejected.
+      // A whitespace-only cwd is sent and surfaces the daemon's error rather
+      // than sitting idle, which is what the frozen UI shows.
       if (!supportsCheckoutCommits(client) ||
-          key.cwd.trim().isEmpty ||
+          key.cwd.isEmpty ||
           (connection ?? client?.currentState) !=
               DaemonConnectionState.connected) {
         return null;
@@ -118,9 +121,10 @@ final checkoutCommitFileDiffProvider = FutureProvider.autoDispose
       final connection = ref
           .watch(checkoutStatusConnectionProvider(key.serverId))
           .value;
+      // As above: upstream's gate is `Boolean(cwd) && Boolean(sha)`.
       if (!supportsCheckoutCommits(client) ||
-          key.cwd.trim().isEmpty ||
-          key.sha.trim().isEmpty ||
+          key.cwd.isEmpty ||
+          key.sha.isEmpty ||
           key.path.isEmpty ||
           (connection ?? client?.currentState) !=
               DaemonConnectionState.connected) {
