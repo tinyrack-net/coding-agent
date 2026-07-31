@@ -15761,17 +15761,21 @@
     },
     {
       "id": "source-unit:packages/server/src/utils/script-hostname.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/utils/paseo_process_utils.dart",
+      "evidence": [
+        "packages/daemon/test/utils/paseo_process_utils_test.dart"
+      ],
+      "notes": "Pure delegation to the already-ported service proxy naming, keeping upstream's compatibility-boundary role."
     },
     {
       "id": "source-unit:packages/server/src/utils/spawn.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/utils/paseo_process_utils.dart",
+      "evidence": [
+        "packages/daemon/test/utils/paseo_process_utils_test.dart"
+      ],
+      "notes": "Split into pure launch resolution and a thin execution half behind a process-host seam, so timeout, kill signal, buffer limit, encoding and non-zero-exit rejection all stay in ported code. Deliberately does not re-quote on Windows: dart:io builds the command line itself with MSVCRT escaping, so upstream's pre-quoting would double-escape — verified empirically. Upstream's exact quoting is preserved for callers that assemble a raw command line by hand."
     },
     {
       "id": "source-unit:packages/server/src/utils/ssh-hostname.ts",
@@ -15782,24 +15786,30 @@
     },
     {
       "id": "source-unit:packages/server/src/utils/string-command-shell.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/utils/paseo_process_utils.dart",
+      "evidence": [
+        "packages/daemon/test/utils/paseo_process_utils_test.dart"
+      ],
+      "notes": "The three shell invocations (bash -c, powershell with its four frozen flags, cmd /c) plus the environment and overlay builders."
     },
     {
       "id": "source-unit:packages/server/src/utils/tool-call-parsers.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/utils/paseo_process_utils.dart",
+      "evidence": [
+        "packages/daemon/test/utils/paseo_process_utils_test.dart"
+      ],
+      "notes": "stripShellWrapperPrefix and extractTodos with its status model. Named with a Paseo prefix because agent_protocol already exports a differently-shaped TodoItem, and the app-side equivalent lives in a package the daemon cannot import."
     },
     {
       "id": "source-unit:packages/server/src/utils/tree-kill.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/utils/paseo_process_utils.dart",
+      "evidence": [
+        "packages/daemon/test/utils/paseo_process_utils_test.dart"
+      ],
+      "notes": "The graceful-then-force ladder and all four outcomes are ported, with the npm tree-kill dependency replaced by taskkill /T on Windows and a recursive pgrep -P leaf-first walk on POSIX, covered by a real-process test that asserts a grandchild is reaped. Remaining: four private copies of this body already exist in the daemon (jsonl_rpc_process, acp_rpc_process, bash_tool, service_port_allocator) and their POSIX branches do not walk descendants at all, so they leak grandchildren; consolidating them onto this helper is tracked separately."
     },
     {
       "id": "source-unit:packages/server/src/utils/windows-command.ts",
