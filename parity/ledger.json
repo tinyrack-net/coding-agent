@@ -4662,13 +4662,13 @@
     },
     {
       "id": "source-unit:packages/app/src/composer/submit.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/widgets/composer.dart; packages/app/lib/state/queued_messages_provider.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/composer/composer_submit.dart; packages/app/lib/widgets/composer.dart",
       "evidence": [
-        "packages/app/test/composer_test.dart",
-        "packages/app/test/queued_messages_provider_test.dart"
+        "packages/app/test/composer/composer_submit_test.dart",
+        "packages/app/test/composer_test.dart"
       ],
-      "notes": "Empty submission is ignored, running-agent input queues unless explicitly sent now, visible input clears immediately, direct failures restore input, and queued failures restore the item to the front. Every actual prompt appends a rich optimistic timeline row before transport and rolls it back on failure. Generic parent-managed submit behavior, preserve-and-lock, external-content/allow-empty paths, and exact processing/error state contract remain."
+      "notes": "submitAgentInput is ported as the generic submit contract every composer surface shares: the no-op guard across text, attachments, external content, and explicit empty submit; the canSubmit gate; queueing behind a running turn unless force-send is set; clearing the visible draft before awaiting so the optimistic row does not duplicate it; preserve-and-lock leaving content in place on both success and failure; restoring exactly what was about to be sent when a send fails; and the sent-draft clear on success. Upstream's submit.test.ts is ported along with force-send, attachment-only, cannot-submit, trimming, and error-copy fallback cases. The agent chat composer keeps its own send path for the agent-specific work (images, review drafts, workspace attachments, optimistic rows), which composer_test.dart covers."
     },
     {
       "id": "source-unit:packages/app/src/composer/types.ts",
