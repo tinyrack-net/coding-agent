@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import '../../utils/paseo_process_utils.dart' show signalSystemProcessTree;
 
 const jsonlRpcDefaultTimeout = Duration(seconds: 30);
 const _stderrBufferLimit = 8192;
@@ -362,12 +363,10 @@ Future<Process> _spawnProcess(JsonlRpcLaunch launch) {
   );
 }
 
+/// Kills the whole tree. The previous POSIX branch signalled only the direct
+/// child, leaving any grandchildren the provider spawned running.
 Future<void> _forceKillProcessTree(Process process) async {
-  if (Platform.isWindows) {
-    await Process.run('taskkill', ['/T', '/F', '/PID', '${process.pid}']);
-    return;
-  }
-  Process.killPid(process.pid, ProcessSignal.sigkill);
+  await signalSystemProcessTree(process.pid, ProcessSignal.sigkill);
 }
 
 void _ignoreWarning(String message, Object? error, String? line) {}

@@ -6,6 +6,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import '../../../utils/paseo_process_utils.dart' show signalSystemProcessTree;
 
 const _defaultTimeout = Duration(seconds: 120);
 const _maxOutputLength = 20000;
@@ -64,10 +65,11 @@ Future<BashToolResult> runBash(
   );
 }
 
+/// Kills the whole tree, not just [pid].
+///
+/// The previous POSIX branch signalled only the direct child, so a timed-out
+/// `bash -c` left its grandchildren running. `signalSystemProcessTree` walks
+/// descendants leaf-first.
 void _killTree(int pid) {
-  if (Platform.isWindows) {
-    Process.runSync('taskkill', ['/T', '/F', '/PID', '$pid']);
-  } else {
-    Process.killPid(pid, ProcessSignal.sigkill);
-  }
+  unawaited(signalSystemProcessTree(pid, ProcessSignal.sigkill));
 }

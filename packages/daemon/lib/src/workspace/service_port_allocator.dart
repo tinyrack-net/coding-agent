@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import '../utils/paseo_process_utils.dart' show signalSystemProcessTree;
 
 const int servicePortScriptMaxOutputBytes = 1024;
 const Duration servicePortScriptTimeout = Duration(seconds: 10);
@@ -127,19 +128,11 @@ Future<int> _allocateFromScript({
 }
 
 Future<void> _terminatePortScript(Process process) async {
-  if (Platform.isWindows) {
-    // Process.start(runInShell: true) owns a cmd.exe which can itself own the
-    // configured script's child processes. Killing only cmd.exe leaks those
-    // children and keeps the workspace (and its temporary test fixture) open.
-    await Process.run('taskkill', [
-      '/PID',
-      '${process.pid}',
-      '/T',
-      '/F',
-    ], runInShell: false);
-  } else {
-    process.kill();
-  }
+  // Process.start(runInShell: true) owns a shell which can itself own the
+  // configured script's child processes. Killing only that shell leaks them
+  // and keeps the workspace (and its temporary test fixture) open — which is
+  // why this walks the tree on every platform, not just Windows.
+  await signalSystemProcessTree(process.pid, ProcessSignal.sigterm);
   try {
     await process.exitCode.timeout(const Duration(seconds: 2));
   } on TimeoutException {
