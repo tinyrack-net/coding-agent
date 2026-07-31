@@ -474,9 +474,10 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     await Future<void>.delayed(Duration.zero);
 
-    // seq 5 skips 2..4: a gap, triggers _fetch() (incremental).
+    // seq 5 skips 2..4: a gap, triggers _fetch() (incremental). The
+    // catch-up page resumes contiguously from the replica's cursor.
     client.fetchResponses.add(
-      const TimelineFetchResponse(epoch: 0, lastSeq: 5, items: [_msg2]),
+      const TimelineFetchResponse(epoch: 0, lastSeq: 2, items: [_msg2]),
     );
     client.eventsController.add(
       RpcEvent(
@@ -497,7 +498,42 @@ void main() {
     expect(client.fetchRequests.last['cursor'], {'epoch': '0', 'seq': 1});
     final state = container.read(timelineProvider('a1'));
     expect(state.items.map((i) => i.id), ['m1', 'm2']);
-    expect(state.lastSeq, 5);
+    expect(state.lastSeq, 2);
+  });
+
+  test('a forward page that would leave a hole is dropped', () async {
+    final client = FakeDaemonClient()
+      ..fetchResponses.add(
+        const TimelineFetchResponse(epoch: 0, lastSeq: 1, items: [_msg1]),
+      );
+    final container = makeContainer(client);
+    container.read(timelineProvider('a1'));
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    // Starts at seq 5 while the replica holds through 1, so applying it
+    // would silently skip 2..4.
+    client.fetchResponses.add(
+      const TimelineFetchResponse(epoch: 0, lastSeq: 5, items: [_msg2]),
+    );
+    client.eventsController.add(
+      RpcEvent(
+        type: MessageTypes.agentStreamEvent,
+        payload: const AgentStreamPayload(
+          agentId: 'a1',
+          epoch: 0,
+          seq: 5,
+          item: _msg2,
+        ).toJson(),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    final state = container.read(timelineProvider('a1'));
+    expect(state.items.map((i) => i.id), ['m1']);
+    // The cursor stays put so the next catch-up re-requests the same window.
+    expect(state.lastSeq, 1);
   });
 
   test(
@@ -898,43 +934,39 @@ void main() {
     expect(client.fetchRequests.last['cursor'], {'epoch': '0', 'seq': 2});
   });
 
-  test(
-    'before-page overlap updates the existing projected item once',
-    () async {
-      final client = FakeDaemonClient()
-        ..fetchResponses.add(
-          const TimelineFetchResponse(epoch: 0, lastSeq: 2, items: [_msg2]),
-        )
-        ..hasOlderResponses.addAll([true, false]);
-      final container = makeContainer(client);
-      final notifier = container.read(timelineProvider('a1').notifier);
-      await Future<void>.delayed(Duration.zero);
-      await Future<void>.delayed(Duration.zero);
+  test('an older page overlapping the retained window is rejected', () async {
+    final client = FakeDaemonClient()
+      ..fetchResponses.add(
+        const TimelineFetchResponse(epoch: 0, lastSeq: 2, items: [_msg2]),
+      )
+      ..hasOlderResponses.addAll([true, false]);
+    final container = makeContainer(client);
+    final notifier = container.read(timelineProvider('a1').notifier);
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
 
-      client.fetchResponses.add(
-        const TimelineFetchResponse(
-          epoch: 0,
-          lastSeq: 2,
-          items: [
-            _msg1,
-            AssistantMessageItem(
-              id: 'm2',
-              text: 'updated overlap',
-              complete: true,
-            ),
-          ],
-        ),
-      );
-      expect(await notifier.loadOlder(), isTrue);
+    client.fetchResponses.add(
+      const TimelineFetchResponse(
+        epoch: 0,
+        lastSeq: 2,
+        items: [
+          _msg1,
+          AssistantMessageItem(
+            id: 'm2',
+            text: 'updated overlap',
+            complete: true,
+          ),
+        ],
+      ),
+    );
+    expect(await notifier.loadOlder(), isTrue);
 
-      final state = container.read(timelineProvider('a1'));
-      expect(state.items.map((item) => item.id), ['m1', 'm2']);
-      expect(
-        (state.items.last as AssistantMessageItem).text,
-        'updated overlap',
-      );
-    },
-  );
+    // The page ends at seq 2, which the replica already holds, so
+    // prepending it would duplicate or reorder history.
+    final state = container.read(timelineProvider('a1'));
+    expect(state.items.map((item) => item.id), ['m2']);
+    expect((state.items.single as AssistantMessageItem).text, 'hi there');
+  });
 
   test(
     'optimistic rows move from tail placement to active head placement',
@@ -1330,9 +1362,10 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       await Future<void>.delayed(Duration.zero);
 
-      // seq 5 skips 2..4: a gap, triggers an incremental after-page fetch.
+      // seq 5 skips 2..4: a gap, triggers an incremental after-page fetch
+      // whose page resumes contiguously from the replica's cursor.
       client.fetchResponses.add(
-        const TimelineFetchResponse(epoch: 0, lastSeq: 5, items: [_msg2]),
+        const TimelineFetchResponse(epoch: 0, lastSeq: 2, items: [_msg2]),
       );
       client.eventsController.add(
         RpcEvent(

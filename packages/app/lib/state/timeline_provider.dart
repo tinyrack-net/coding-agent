@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../attachments/attachment_store.dart';
 import '../core/daemon_client.dart';
+import '../timeline/session_stream_acceptance.dart';
 import 'daemon_providers.dart';
 import 'host_registry_provider.dart';
 
@@ -345,39 +346,47 @@ class TimelineNotifier extends Notifier<TimelineState> {
   void _onAgentStream(AgentStreamPayload payload) {
     if (payload.agentId != agentId) return;
     final eventEpoch = payload.epoch.toString();
-    if (state.epoch == null) {
-      _startLiveEpoch(payload, eventEpoch);
-      // The in-flight cold fetch may belong to an older epoch. Always queue
-      // an authoritative request for the epoch established by this event.
-      _fetch(full: true);
-      return;
-    }
-    if (eventEpoch != state.epoch) {
-      // Paseo accepts seq 1 as the first event of a replacement epoch. This
-      // keeps a freshly-created conversation live while its authoritative
-      // tail fetch is still in flight.
-      if (payload.seq == 1) {
-        _startLiveEpoch(payload, eventEpoch);
-        // Always request the replacement epoch authoritatively. If an older
-        // epoch fetch is still in flight, _fetch queues this full request.
-        _fetch(full: true);
-        return;
-      }
-      _fetch(full: true);
-      return;
-    }
-    if (payload.seq <= state.lastSeq) {
-      return;
-    }
-    if (payload.seq > state.lastSeq + 1) {
-      _fetch();
-      return;
-    }
-    _applyLiveUpsert(
-      _mergeResolvedPermission(payload.item),
-      math.max(state.lastSeq, payload.seq),
-      _payloadTimestamp(payload),
+    final knownEpoch = state.epoch;
+    final decision = classifySessionTimelineSeq(
+      // Only a replica with no established epoch is uninitialized. An empty
+      // authoritative page establishes the epoch without a cursor range, and
+      // that still counts as "known, holding nothing" (endSeq 0) rather than
+      // uninitialized.
+      cursor: knownEpoch == null
+          ? null
+          : state.cursor ??
+                AgentTimelineCursorRange(
+                  epoch: knownEpoch,
+                  startSeq: 0,
+                  endSeq: 0,
+                ),
+      epoch: eventEpoch,
+      seq: payload.seq,
     );
+    switch (decision) {
+      case SessionTimelineSeqDecision.init:
+        _startLiveEpoch(payload, eventEpoch);
+        // The in-flight cold fetch may belong to an older epoch. Always
+        // queue an authoritative request for the epoch this event
+        // established.
+        _fetch(full: true);
+      case SessionTimelineSeqDecision.dropEpoch:
+        // Paseo accepts seq 1 as the first event of a replacement epoch,
+        // which keeps a freshly-created conversation live while its
+        // authoritative tail fetch is still in flight.
+        if (payload.seq == 1) _startLiveEpoch(payload, eventEpoch);
+        _fetch(full: true);
+      case SessionTimelineSeqDecision.dropStale:
+        return;
+      case SessionTimelineSeqDecision.gap:
+        _fetch();
+      case SessionTimelineSeqDecision.accept:
+        _applyLiveUpsert(
+          _mergeResolvedPermission(payload.item),
+          math.max(state.lastSeq, payload.seq),
+          _payloadTimestamp(payload),
+        );
+    }
   }
 
   void _startLiveEpoch(AgentStreamPayload payload, String eventEpoch) {
@@ -764,6 +773,19 @@ class TimelineNotifier extends Notifier<TimelineState> {
   }
 
   void _applyAfterPage(AgentTimelinePage page) {
+    // Never apply a forward page that is stale, from another epoch, or that
+    // starts past the end of what the replica holds (which would leave a
+    // hole). A gap cursor means catch up first instead.
+    final acceptance = acceptIncrementalTimelineUnits(
+      page: page,
+      currentCursor: state.cursor,
+    );
+    if (!acceptance.accepted) {
+      // Leave the cursor untouched so the next catch-up re-requests from the
+      // same position. Re-fetching from here instead would risk ping-ponging
+      // against a host that keeps answering with the same gapped window.
+      return;
+    }
     final pendingTail = List<OptimisticUserMessage>.of(
       state.pendingTailUserMessages,
     );
@@ -797,7 +819,8 @@ class TimelineNotifier extends Notifier<TimelineState> {
         pendingHeadUserMessages: List.unmodifiable(pendingHead),
         userMessagePresentations: Map.unmodifiable(presentations),
         itemTimestamps: Map.unmodifiable(itemTimestamps),
-        cursor: _combineCursor(state.cursor, page.cursorRange),
+        cursor:
+            acceptance.cursor ?? _combineCursor(state.cursor, page.cursorRange),
         hasOlder: state.hasOlder || page.hasOlder,
         loading: false,
       ),
@@ -805,6 +828,16 @@ class TimelineNotifier extends Notifier<TimelineState> {
   }
 
   void _applyBeforePage(AgentTimelinePage page) {
+    // An older page must sit strictly below what the replica already holds;
+    // anything overlapping or newer would duplicate or reorder history.
+    final acceptance = acceptOlderTimelineUnits(
+      page: page,
+      currentCursor: state.cursor,
+    );
+    if (!acceptance.accepted) {
+      _publish(state.copyWith(hasOlder: page.hasOlder, clearError: true));
+      return;
+    }
     final presentations = Map<String, OptimisticUserMessage>.of(
       state.userMessagePresentations,
     );
