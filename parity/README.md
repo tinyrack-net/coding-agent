@@ -186,15 +186,33 @@ Never hand-edit `upstream_inventory.json`. `ledger.json` is merge-preserved by
   text events. The fork-context attachment builder is ported, including its
   boundary selection and failure messages; it awaits a fork RPC before it
   has a runtime consumer.
-- Ledger status: 786 verified, 247 partial, and 887 not-started out of 1920.
+- The app now ships Paseo's eight frozen translation resource trees, vendored
+  as JSON assets (1509 keys each, key parity asserted against English) behind
+  a translator reproducing the i18next behavior the app uses: dotted lookup,
+  `{{name}}` interpolation, English fallback, and missing-key-returns-the-key.
+  The frozen resources use no plural or context suffixes, so that is the whole
+  observable surface. A persisted `settings.language` plus the OS locale list
+  resolve to one locale, and the translator reloads when it changes — Riverpod
+  derives where upstream must imperatively push at the mutable i18next
+  singleton. The settings language picker renders the frozen option list.
+- Fifteen further clusters of pure upstream logic are ported with their
+  upstream test suites: drag-reorder, file-explorer visibility and read
+  decoding, workspace/sidebar navigation rules, the synced loader and daemon
+  reconnect detection, markdown AST and fence-aware block splitting, keyboard
+  and combobox routing, git PR hint/status and worktree archive warnings, the
+  UI control geometry and combobox tables, session status/workspace/directory
+  reconciliation and sidebar projection, the four new-workspace rules,
+  attachment file types and identity, the client activity and input trackers,
+  agent and workspace route resolution, and the markdown render policies.
+- Ledger status: 861 verified, 252 partial, and 807 not-started out of 1920.
 - Validation: `dart run tool/parity.dart --check` passes against the frozen
-  inventory; root analysis is clean; packages/app runs 1929 tests green and
-  packages/daemon 1824 (one pre-existing CLI connection-fallback timeout,
-  reproducible on a clean tree). The Windows debug build succeeds and the
-  app launches against a local daemon on 6868. Package coverage for app is
-  93.6%, below the 95% gate — that shortfall predates this slice (93.28% at
-  3d14816, before any of this work) and is concentrated in files this slice
-  does not touch; closing it is tracked separately.
+  inventory; `dart analyze packages/app` is clean and packages/app runs 2690
+  tests green. packages/daemon runs 1824 (one pre-existing CLI
+  connection-fallback timeout, reproducible on a clean tree). The Windows
+  debug build succeeds and the app launches against a local daemon on 6868.
+  Package coverage for app is below the 95% gate — that shortfall predates
+  this work (93.28% at 3d14816) and is concentrated in files these slices do
+  not touch; closing it is tracked separately.
 - Not yet verified for this slice: a driven visual smoke of the chat surface
   (streaming stick-to-bottom, scroll-away detach and jump-to-latest, turn
   footer elapsed/duration). The widget suite exercises these paths, but the
