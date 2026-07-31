@@ -167,9 +167,36 @@ Never hand-edit `upstream_inventory.json`. `ledger.json` is merge-preserved by
   field contract. The custom Model trigger carries the frozen provider glyph
   and interaction state, while project/thinking/isolation options use the
   frozen Lucide paths and Cadence preserves custom cron as display-only state.
-- Ledger status: 427 verified, 242 partial, and 1251 not-started out of 1920.
-- Validation: protocol 332 tests, daemon 898 tests, Flutter 802 tests, root
-  analysis, frozen
-  inventory validation, and package coverage of protocol 95.24%, relay 95.17%,
-  daemon lifecycle 100%, daemon 95.02%, and app 95.05% passed on 2026-07-28.
-  The current daemon coverage run completed all 898 tests cleanly and serially.
+- The chat stream now renders through a full port of Paseo's agent-stream
+  pipeline. The render model segments committed history from the live head
+  (splitting desktop-web history into virtualized and mounted windows at a
+  user-message boundary), layout resolves each row's strategy-aware
+  neighbors, gap, tool-sequence position, and completed-turn footer host,
+  and the bottom-anchor controller owns sticking to the newest content
+  through its scroll-then-verify retry ladder. Turn timing, the turn footer
+  (running elapsed, completed duration with hover-revealed timestamp,
+  copy-turn-content), and the per-platform strategy config tables are ported
+  with their upstream test suites.
+- The timeline replica now enforces the frozen acceptance tables: live
+  events classify through the shared seq decision table, forward pages that
+  are stale, cross-epoch, or hole-leaving are rejected with a gap cursor,
+  older pages must sit strictly below the retained window, and inbound
+  events batch for one 48ms window into a single commit.
+- Daemon stream coalescing uses the frozen 60ms window and swallows empty
+  text events. The fork-context attachment builder is ported, including its
+  boundary selection and failure messages; it awaits a fork RPC before it
+  has a runtime consumer.
+- Ledger status: 786 verified, 247 partial, and 887 not-started out of 1920.
+- Validation: `dart run tool/parity.dart --check` passes against the frozen
+  inventory; root analysis is clean; packages/app runs 1929 tests green and
+  packages/daemon 1824 (one pre-existing CLI connection-fallback timeout,
+  reproducible on a clean tree). The Windows debug build succeeds and the
+  app launches against a local daemon on 6868. Package coverage for app is
+  93.6%, below the 95% gate — that shortfall predates this slice (93.28% at
+  3d14816, before any of this work) and is concentrated in files this slice
+  does not touch; closing it is tracked separately.
+- Not yet verified for this slice: a driven visual smoke of the chat surface
+  (streaming stick-to-bottom, scroll-away detach and jump-to-latest, turn
+  footer elapsed/duration). The widget suite exercises these paths, but the
+  frozen cross-platform visual conformance still needs eyes on the running
+  app, which is why `view.tsx` and `strategy-web.tsx` remain partial.

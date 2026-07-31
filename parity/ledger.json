@@ -2072,93 +2072,111 @@
     },
     {
       "id": "source-unit:packages/app/src/agent-stream/bottom-anchor-controller.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/agent_stream/bottom_anchor_controller.dart",
+      "evidence": [
+        "packages/app/test/agent_stream/bottom_anchor_controller_test.dart"
+      ],
+      "notes": "Ports the driver state machine in full: sticky/detached modes, deduplicated route requests and local requests, the four blocked reasons including the container-key staleness guard, the bounded scroll-then-verify retry ladder with per-transport rescroll/recheck disposition, the web partial-virtualized confirmation pass, restick on viewport resize and content growth, the sticky measurement revision pair, and detach only on a deliberate >=24px scroll away. Upstream ships a driver plus a React hook that only wires refs to it; the driver is ported as a plain class the Flutter viewport drives, with frame scheduling injected. All 23 upstream cases are ported."
     },
     {
       "id": "source-unit:packages/app/src/agent-stream/layout.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/agent_stream/layout.dart",
+      "evidence": [
+        "packages/app/test/agent_stream/layout_test.dart"
+      ],
+      "notes": "Ports layoutStream: strategy-aware neighbors resolved across the history/live-head boundary, tool-sequence classification, user-group edges, gap assignment, and completed-turn footer placement after a turn's last visible row, with the auxiliary footer suppressed while running and the boundary-crossing search that keeps a split turn from rendering two footers. History layout is memoized on list identity. Upstream's layout.test.ts is ported for both platform strategies."
     },
     {
       "id": "source-unit:packages/app/src/agent-stream/model.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/state/timeline_provider.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/agent_stream/render_model.dart",
       "evidence": [
-        "packages/app/test/timeline_provider_test.dart"
+        "packages/app/test/agent_stream/render_model_test.dart"
       ],
-      "notes": "Tail/head projected item composition and optimistic presentation are implemented; the complete upstream render model remains."
+      "notes": "buildAgentStreamRenderModel orders tail and live head through the resolved strategy, splits desktop-web history into the virtualized and mounted segments (mobile web and native keep the whole committed tail mounted), derives per-turn timing across both segments, and reports the history/live boundary flags. Upstream memoizes every stage on source-array identity via WeakMap; the Dart port uses Expando and the ported tests assert the same object-identity reuse. The auxiliary slots stay framework-agnostic because upstream's model always emits null there and the view supplies the real nodes."
     },
     {
       "id": "source-unit:packages/app/src/agent-stream/spacing.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/agent_stream/spacing.dart",
+      "evidence": [
+        "packages/app/test/agent_stream/spacing_test.dart"
+      ],
+      "notes": "Ports isSameAssistantBlockGroup, getAssistantBlockSpacing, and the full inter-row gap table. The SPACING scale lands in core/theme.dart as PaseoSpacing."
     },
     {
       "id": "source-unit:packages/app/src/agent-stream/strategy-native.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/screens/agent_chat_screen.dart",
+      "implementation": "packages/app/lib/agent_stream/stream_strategy.dart",
       "evidence": [
-        "packages/app/test/agent_chat_screen_test.dart"
+        "packages/app/test/agent_stream/stream_strategy_test.dart"
       ],
-      "notes": "Shared Flutter list strategy implements oldest-edge loading and viewport preservation. Native-specific virtualization and complete interaction behavior remain."
+      "notes": "The native strategy's pure config is ported and verified (inverted ordering, raw-offset near-bottom, header edge slot, footer-then-content frames, maintainVisibleContentPosition, and the 2-frame recheck transport). Its FlatList render body is not ported: the Flutter client resolves web semantics on every target it ships today, so the inverted native viewport has no consumer."
     },
     {
       "id": "source-unit:packages/app/src/agent-stream/strategy-resolver.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/agent_stream/stream_strategy.dart",
+      "evidence": [
+        "packages/app/test/agent_stream/stream_strategy_test.dart"
+      ],
+      "notes": "resolveStreamRenderStrategy selects the web strategy for \"web\" and the native strategy for every other platform, matching the frozen resolver."
     },
     {
       "id": "source-unit:packages/app/src/agent-stream/strategy-web.tsx",
       "status": "partial",
-      "implementation": "packages/app/lib/screens/agent_chat_screen.dart",
+      "implementation": "packages/app/lib/agent_stream/agent_stream_view.dart",
       "evidence": [
-        "packages/app/test/agent_chat_screen_test.dart"
+        "packages/app/test/agent_stream/stream_strategy_test.dart"
       ],
-      "notes": "Shared Flutter list strategy implements oldest-edge loading and viewport preservation. Exact web virtualization and browser-specific behavior remain."
+      "notes": "The web strategy's pure config and its 64px near-bottom rule are ported and drive the Flutter desktop viewport, which resolves web semantics because Paseo's desktop app runs the same web surface. Remaining parity is the DOM-specific render body: the overlay scrollbar, the spacer-backed virtualized section, and exact scroll-container styling."
     },
     {
       "id": "source-unit:packages/app/src/agent-stream/strategy.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/agent_stream/stream_strategy.dart",
+      "evidence": [
+        "packages/app/test/agent_stream/stream_strategy_test.dart"
+      ],
+      "notes": "Ports every pure per-platform config value the render pipeline branches on: ordering, assistant-turn traversal and content collection, near-bottom/bottom-offset math, edge slot, history/live-head boundary edges, frame child order, list inversion, and bottom-anchor transport behavior including the native settling bump. Upstream's render-strategy.test.ts is ported 1:1. The React render closure has no Flutter analogue; the viewport widget consumes this config directly."
     },
     {
       "id": "source-unit:packages/app/src/agent-stream/turn-boundary.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/agent_stream/turn_boundary.dart",
+      "evidence": [
+        "packages/app/test/agent_stream/turn_boundary_test.dart"
+      ],
+      "notes": "resolveAssistantTurnForkBoundary prefers the row's own timeline cursor, falls back to the provider message id, and never borrows an id from a neighboring assistant row. Upstream's turn-boundary.test.ts is ported 1:1."
     },
     {
       "id": "source-unit:packages/app/src/agent-stream/turn-footer.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/agent_stream/turn_footer.dart",
+      "evidence": [
+        "packages/app/test/agent_stream/turn_footer_test.dart"
+      ],
+      "notes": "Ports the turn slot together with the AssistantTurnFooter and LiveElapsed pieces of components/message.tsx that it composes: the running indicator with a one-second elapsed ticker (omitted for an optimistic prompt with no authoritative start), and a completed turn's copy-turn-content plus duration label that swaps to the end timestamp on hover behind a hidden width sizer. The fork affordance is implemented behind an optional handler but stays hidden because no fork RPC exists in the protocol or daemon yet, so nothing can supply the handler; boundary resolution is already ported. LiveElapsed takes an injectable clock because widget tests advance fake async time rather than the wall clock."
     },
     {
       "id": "source-unit:packages/app/src/agent-stream/view.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/agent_stream/agent_stream_view.dart",
+      "evidence": [
+        "packages/app/test/agent_chat_screen_test.dart"
+      ],
+      "notes": "The stream viewport composes the ported render model, layout, and bottom-anchor controller, renders both footer slots, and drives near-bottom and history-start paging. Two Flutter-specific accommodations are documented at their call sites: ListView.builder refines its extent estimate as rows mount so an anchor can land past the shrunken end (a DOM scroller clamps scrollTop and never sees this), and observing that shrink needs a ScrollMetricsNotification listener as the analogue of upstream's ResizeObserver. Remaining parity is the retained-panel active gating and exact cross-platform visual conformance."
     },
     {
       "id": "source-unit:packages/app/src/agent-stream/web-virtualization.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/agent_stream/web_virtualization.dart",
+      "evidence": [
+        "packages/app/test/agent_stream/web_virtualization_test.dart"
+      ],
+      "notes": "Ports the 100-item threshold, 50-item mounted window, findMountedWindowStart's rewind to the preceding user_message, splitWebVirtualizedHistory, and the per-kind row height estimates. The assistant-message height estimate is injected because upstream's implementation (utils/assistant-message-height-estimate.ts and friends) is tracked separately and depends on DOM measurement caches. Upstream's globalThis __PASEO_E2E_* overrides become setWebVirtualizationOverrides with identical positive-integer normalization."
     },
     {
       "id": "source-unit:packages/app/src/app/_layout.tsx",
@@ -8469,14 +8487,11 @@
     {
       "id": "source-unit:packages/app/src/timeline/session-stream-reducers.ts",
       "status": "partial",
-      "implementation": "packages/protocol/lib/src/timeline/paseo_agent_stream_codec.dart; packages/app/lib/core/daemon_client.dart; packages/app/lib/state/timeline_provider.dart",
+      "implementation": "packages/app/lib/timeline/session_stream_acceptance.dart; packages/app/lib/state/timeline_provider.dart",
       "evidence": [
-        "packages/protocol/test/paseo_timeline_codec_test.dart",
-        "packages/app/test/daemon_client_test.dart",
-        "packages/app/test/daemon_client_v2_e2e_test.dart",
-        "packages/app/test/timeline_provider_test.dart"
+        "packages/app/test/timeline/session_stream_acceptance_test.dart"
       ],
-      "notes": "Native agent_stream timeline, turn, and permission events are strictly decoded without the legacy capability adapter and merged into projected replicas with gap recovery and permission-detail preservation. Full frozen AgentSnapshot reduction and remaining session event domains remain."
+      "notes": "The acceptance decision tables are ported and enforced: classifySessionTimelineSeq backs the live-event path, forward pages are rejected when stale, cross-epoch, or hole-leaving (reporting a gap cursor), and older pages must sit strictly below the retained window. Inbound events batch for one 48ms window and apply in arrival order as a single commit, matching upstream's reducer queue. Remaining parity is the rest of the reducer surface: bootstrap tail init policy, init-deferred resolution, and the side-effect channel."
     },
     {
       "id": "source-unit:packages/app/src/timeline/timeline-fetch-policy.ts",
@@ -8499,10 +8514,12 @@
     },
     {
       "id": "source-unit:packages/app/src/timeline/turn-time.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/agent_stream/turn_time.dart",
+      "evidence": [
+        "packages/app/test/agent_stream/turn_time_test.dart"
+      ],
+      "notes": "deriveStreamTurnTiming ports byAssistantId turn timing, the optimistic-prompt reserved turn, and runningStartedAt. Upstream's turn-time.test.ts cases are ported 1:1."
     },
     {
       "id": "source-unit:packages/app/src/timeline/viewed-timeline-sync.ts",
@@ -8625,7 +8642,7 @@
       "evidence": [
         "packages/app/test/timeline_provider_test.dart"
       ],
-      "notes": "Agent stream tail/head composition and optimistic user placement are implemented. The complete upstream stream helper surface remains broader."
+      "notes": "TimelineDisplayItem now carries the StreamItem fields the render pipeline reads: per-item timestamp, the optimistic flag, blockGroupId, messageId, and timelineCursor. Chunk-append and block-promotion have no runtime analogue because the daemon projects whole items that upsert by id; the block-group spacing contract is still ported and tested. Remaining parity is the rest of the StreamItem union and its reducers."
     },
     {
       "id": "source-unit:packages/app/src/types/use-sync-external-store-with-selector.d.ts",
@@ -9385,12 +9402,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/time.ts",
-      "status": "partial",
-      "implementation": "packages/app/lib/widgets/agent_list.dart",
+      "status": "verified",
+      "implementation": "packages/app/lib/core/time_format.dart",
       "evidence": [
-        "packages/app/test/agent_list_test.dart"
+        "packages/app/test/time_format_test.dart"
       ],
-      "notes": "The frozen formatTimeAgo contract is ported and boundary-tested for seconds, minutes, hours, days, and abbreviated month/day. Message timestamp and compact duration formatting remain."
+      "notes": "Ports formatTimeAgo, formatMessageTimestamp, and formatDuration. Upstream's cached Intl formatter becomes DateFormat; ICU separates the time from the day period with a narrow no-break space, which the tests normalize."
     },
     {
       "id": "source-unit:packages/app/src/utils/to-xterm-theme.ts",
@@ -12204,14 +12221,15 @@
     {
       "id": "source-unit:packages/server/src/server/agent/activity-curator.ts",
       "status": "partial",
-      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/loop/loop_agent_runtime.dart",
+      "implementation": "packages/daemon/lib/src/server/agent_mcp_tools.dart; packages/daemon/lib/src/loop/loop_agent_runtime.dart; packages/daemon/lib/src/agent/fork_context.dart",
       "evidence": [
         "packages/daemon/test/agent_mcp_tools_test.dart",
         "packages/daemon/test/daemon_agent_mcp_e2e_test.dart",
         "packages/daemon/test/loop/loop_agent_runtime_test.dart",
-        "packages/daemon/test/daemon_loop_e2e_test.dart"
+        "packages/daemon/test/daemon_loop_e2e_test.dart",
+        "packages/daemon/test/agent/fork_context_test.dart"
       ],
-      "notes": "Core projected curation and the loop service single-event path cover user, assistant, thought, canonical/external/subagent tool, task, error, compaction, limits, and empty output. Fork-context attachment remains pending."
+      "notes": "Core projected curation and the loop service single-event path cover user, assistant, thought, canonical/external/subagent tool, task, error, compaction, limits, and empty output. The fork-context attachment is now ported: rows are selected up to a cursor or assistant-message boundary, curated with the frozen labelAssistantMessages / includeKinds / includeExternalToolInput options, and wrapped in the chat-history-summary envelope with the frozen failure messages. It has no runtime consumer yet because no fork RPC exists. Remaining parity is the caller-side wiring once that RPC lands."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-archive.ts",
@@ -12317,10 +12335,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-stream-coalescer.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/agent/timeline_store.dart; packages/daemon/lib/src/agent/agent_manager.dart",
+      "evidence": [
+        "packages/daemon/test/timeline_store_test.dart"
+      ],
+      "notes": "The frozen 60ms coalesce window and the swallowing of empty text events are ported. The rest of upstream's coalescer has no Dart analogue because the designs differ where it matters: upstream buffers per agent and concatenates text deltas, so it needs same-message-id grouping, tool-call latest-wins by callId, and an immediate flush on a terminal tool call to keep ordering intact. Tinyrack's daemon accumulates text itself and emits the full item, upserted by id, so a row's position is fixed at its first commit and later updates land in place; ordering is preserved structurally and latest-wins-per-id yields the same final text. TimelineStore.upsert also cancels any pending coalesced update for the same id, so a completed message cannot be regressed by a late partial."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-timeline-content.ts",
