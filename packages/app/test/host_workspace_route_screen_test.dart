@@ -10,6 +10,7 @@ import 'package:coding_agent_app/state/host_registry_provider.dart';
 import 'package:coding_agent_app/state/workspace_catalog_provider.dart';
 import 'package:coding_agent_app/state/workspace_recovery_provider.dart';
 import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
+import 'package:coding_agent_app/widgets/worktree_tabbed_pane.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -132,6 +133,12 @@ void main() {
       } else {
         expect(find.text('Host A is offline'), findsNothing);
         expect(find.byType(WorkspaceDeckPane), findsOneWidget);
+        final tabbedPane = find.byType(WorktreeTabbedPane);
+        expect(tabbedPane, findsOneWidget);
+        expect(
+          tester.widget<WorktreeTabbedPane>(tabbedPane).workspaceId,
+          'workspace-1',
+        );
       }
     }
   });

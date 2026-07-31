@@ -536,35 +536,306 @@ void main() {
     },
   );
 
-  test('a stream event before any successful fetch (epoch < 0) triggers '
-      'a fetch instead of upserting directly', () async {
+  test(
+    'replacement epoch queues a full fetch behind an old in-flight page',
+    () async {
+      final client = FakeDaemonClient()
+        ..fetchResponses.add(
+          const TimelineFetchResponse(epoch: 0, lastSeq: 1, items: [_msg1]),
+        );
+      final container = makeContainer(client);
+      container.read(timelineProvider('a1'));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      final oldFetchGate = Completer<void>();
+      client.nextFetchGate = oldFetchGate;
+      client.fetchResponses.addAll([
+        const TimelineFetchResponse(
+          epoch: 0,
+          lastSeq: 2,
+          items: [
+            AssistantMessageItem(
+              id: 'old-epoch-item',
+              text: 'stale old epoch',
+              complete: true,
+            ),
+          ],
+        ),
+        const TimelineFetchResponse(
+          epoch: 1,
+          lastSeq: 1,
+          items: [
+            UserMessageItem(id: 'new-epoch-item', text: 'replacement epoch'),
+          ],
+        ),
+      ]);
+      client.setState(DaemonConnectionState.connected);
+      await Future<void>.delayed(Duration.zero);
+
+      client.nativeEventsController.add(
+        const AgentStreamPayload(
+          agentId: 'a1',
+          epoch: 1,
+          seq: 1,
+          item: UserMessageItem(
+            id: 'new-epoch-item',
+            text: 'replacement epoch',
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        container.read(timelineProvider('a1')).items.map((item) => item.id),
+        ['new-epoch-item'],
+      );
+
+      oldFetchGate.complete();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      final state = container.read(timelineProvider('a1'));
+      expect(state.epoch, '1');
+      expect(state.items.map((item) => item.id), ['new-epoch-item']);
+      expect(
+        state.items.map((item) => item.id),
+        isNot(contains('old-epoch-item')),
+      );
+      expect(state.lastSeq, 1);
+      expect(client.fetchRequests, hasLength(3));
+      expect(client.fetchRequests.last.containsKey('cursor'), isFalse);
+    },
+  );
+
+  test(
+    'cold live epoch queues hydration behind a mismatched initial page',
+    () async {
+      final oldFetchGate = Completer<void>();
+      final client = FakeDaemonClient()
+        ..nextFetchGate = oldFetchGate
+        ..fetchResponses.addAll([
+          const TimelineFetchResponse(
+            epoch: 0,
+            lastSeq: 1,
+            items: [UserMessageItem(id: 'cold-old', text: 'old epoch')],
+          ),
+          const TimelineFetchResponse(
+            epoch: 1,
+            lastSeq: 1,
+            items: [UserMessageItem(id: 'cold-new', text: 'new epoch')],
+          ),
+        ]);
+      final container = makeContainer(client);
+      container.read(timelineProvider('a1'));
+      await Future<void>.delayed(Duration.zero);
+
+      client.nativeEventsController.add(
+        const AgentStreamPayload(
+          agentId: 'a1',
+          epoch: 1,
+          seq: 1,
+          item: UserMessageItem(id: 'cold-new', text: 'new epoch'),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(timelineProvider('a1')).epoch, '1');
+      expect(
+        container.read(timelineProvider('a1')).items.map((item) => item.id),
+        ['cold-new'],
+      );
+
+      oldFetchGate.complete();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      final state = container.read(timelineProvider('a1'));
+      expect(state.epoch, '1');
+      expect(state.items.map((item) => item.id), ['cold-new']);
+      expect(state.catchUpPhase, TimelineCatchUpPhase.idle);
+      expect(client.fetchRequests, hasLength(2));
+      expect(client.fetchRequests.last.containsKey('cursor'), isFalse);
+    },
+  );
+
+  test('first-conversation stream stays visible while its authoritative tail '
+      'fetch is pending', () async {
     final client = FakeDaemonClient(
       initial: DaemonConnectionState.disconnected,
     );
     final container = makeContainer(client);
-    container.read(timelineProvider('a1'));
+    final notifier = container.read(timelineProvider('a1').notifier);
+    notifier.appendOptimisticUserMessage(
+      optimistic(id: 'first-client', text: 'first prompt'),
+    );
     expect(container.read(timelineProvider('a1')).epoch, isNull);
 
-    client.fetchResponses.add(
-      const TimelineFetchResponse(epoch: 0, lastSeq: 1, items: [_msg1]),
-    );
-    client.eventsController.add(
-      RpcEvent(
-        type: MessageTypes.agentStreamEvent,
-        payload: const AgentStreamPayload(
+    final gate = Completer<void>();
+    client.nextFetchGate = gate;
+    client.fetchResponses.addAll([
+      const TimelineFetchResponse(
+        epoch: 0,
+        lastSeq: 2,
+        items: [
+          UserMessageItem(
+            id: 'provider-user',
+            clientMessageId: 'first-client',
+            text: 'first prompt',
+          ),
+          AssistantMessageItem(
+            id: 'assistant-live',
+            text: 'stale partial answer',
+            complete: false,
+          ),
+        ],
+      ),
+      const TimelineFetchResponse(
+        epoch: 0,
+        lastSeq: 3,
+        items: [
+          UserMessageItem(
+            id: 'provider-user',
+            clientMessageId: 'first-client',
+            text: 'first prompt',
+          ),
+          AssistantMessageItem(
+            id: 'assistant-live',
+            text: 'completed answer',
+            complete: true,
+          ),
+        ],
+      ),
+    ]);
+    client.setState(DaemonConnectionState.connected);
+    await Future<void>.delayed(Duration.zero);
+
+    client.nativeEventsController
+      ..add(
+        const AgentStreamPayload(
           agentId: 'a1',
           epoch: 0,
           seq: 1,
-          item: _msg1,
-        ).toJson(),
-      ),
+          item: UserMessageItem(
+            id: 'provider-user',
+            clientMessageId: 'first-client',
+            text: 'first prompt',
+          ),
+        ),
+      )
+      ..add(
+        const AgentStreamPayload(
+          agentId: 'a1',
+          epoch: 0,
+          seq: 2,
+          item: AssistantMessageItem(
+            id: 'assistant-live',
+            text: 'streaming answer',
+            complete: false,
+          ),
+        ),
+      )
+      ..add(
+        const AgentStreamPayload(
+          agentId: 'a1',
+          epoch: 0,
+          seq: 3,
+          item: AssistantMessageItem(
+            id: 'assistant-live',
+            text: 'completed answer',
+            complete: true,
+          ),
+        ),
+      )
+      ..add(
+        const AgentStreamPayload(
+          agentId: 'a1',
+          epoch: 0,
+          seq: 4,
+          item: TurnItem(
+            id: 'turn-first',
+            phase: TurnPhase.failed,
+            errorMessage: 'provider exited',
+          ),
+        ),
+      );
+    await Future<void>.delayed(Duration.zero);
+
+    var state = container.read(timelineProvider('a1'));
+    expect(state.epoch, '0');
+    expect(state.lastSeq, 4);
+    expect(state.displayItems.map((item) => item.item.id), [
+      'provider-user',
+      'assistant-live',
+      'turn-first',
+    ]);
+    expect(
+      state.userMessagePresentations['provider-user']?.text,
+      'first prompt',
     );
+
+    // The response was captured before the assistant event. Applying that
+    // older tail must not erase the already-rendered live head.
+    gate.complete();
+    await Future<void>.delayed(Duration.zero);
     await Future<void>.delayed(Duration.zero);
     await Future<void>.delayed(Duration.zero);
 
-    expect(container.read(timelineProvider('a1')).items.map((i) => i.id), [
-      'm1',
+    state = container.read(timelineProvider('a1'));
+    expect(state.items.map((item) => item.id), [
+      'provider-user',
+      'assistant-live',
+      'turn-first',
     ]);
+    expect(
+      state.items.whereType<TurnItem>().single.errorMessage,
+      'provider exited',
+    );
+    final assistant = state.items.whereType<AssistantMessageItem>().single;
+    expect(assistant.text, 'completed answer');
+    expect(assistant.complete, isTrue);
+    expect(state.lastSeq, 4);
+    expect(state.catchUpPhase, TimelineCatchUpPhase.idle);
+  });
+
+  test('same-epoch duplicate and stale stream sequences are ignored', () async {
+    final client = FakeDaemonClient()
+      ..fetchResponses.add(
+        const TimelineFetchResponse(epoch: 0, lastSeq: 1, items: [_msg1]),
+      );
+    final container = makeContainer(client);
+    container.read(timelineProvider('a1'));
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    client.nativeEventsController
+      ..add(
+        const AgentStreamPayload(
+          agentId: 'a1',
+          epoch: 0,
+          seq: 1,
+          item: UserMessageItem(id: 'm1', text: 'duplicate regression'),
+        ),
+      )
+      ..add(
+        const AgentStreamPayload(
+          agentId: 'a1',
+          epoch: 0,
+          seq: 0,
+          item: AssistantMessageItem(
+            id: 'stale',
+            text: 'must not render',
+            complete: true,
+          ),
+        ),
+      );
+    await Future<void>.delayed(Duration.zero);
+
+    final state = container.read(timelineProvider('a1'));
+    expect(state.items.map((item) => item.id), ['m1']);
+    expect((state.items.single as UserMessageItem).text, 'hello');
+    expect(state.lastSeq, 1);
+    expect(client.fetchRequests, hasLength(1));
   });
 
   test('malformed agent.stream event is ignored', () async {

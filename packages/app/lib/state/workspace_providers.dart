@@ -129,7 +129,29 @@ class ProjectsNotifier extends AsyncNotifier<List<ProjectInfo>> {
 
   Future<ProjectInfo> add(String path) async {
     final client = ref.read(daemonClientProvider);
-    final scope = _projectScope(client);
+    return _addForScope(_projectScope(client), client, path);
+  }
+
+  /// Registers an imported session's working directory on the host that
+  /// performed the import. Global import flows may target an inactive host, so
+  /// they must not fall back to [daemonClientProvider]'s active client.
+  Future<ProjectInfo> addForHost({
+    required String serverId,
+    required DaemonClient client,
+    required String path,
+  }) {
+    final normalizedServerId = serverId.trim();
+    if (normalizedServerId.isEmpty) {
+      throw ArgumentError.value(serverId, 'serverId', 'Host id is required');
+    }
+    return _addForScope(normalizedServerId, client, path);
+  }
+
+  Future<ProjectInfo> _addForScope(
+    Object scope,
+    DaemonClient client,
+    String path,
+  ) async {
     final response = await client.addProject(cwd: path.trim());
     final descriptor = response.project;
     if (response.error != null || descriptor == null) {

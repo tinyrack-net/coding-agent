@@ -13,6 +13,7 @@ const websocketRuntimeCounterNames = <String>[
   'pendingMessageRejectedBeforeHello',
   'missingConnectionForMessage',
   'unexpectedHelloOnActiveConnection',
+  'sessionHandlerFailed',
   'relayExternalSocketAttached',
   'originRejected',
   'hostRejected',

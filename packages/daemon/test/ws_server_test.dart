@@ -347,6 +347,162 @@ void main() {
   });
 
   test(
+    'v2 post-send failures keep the successful response as the only reply',
+    () async {
+      server.onV2SessionMessage = (_, message) {
+        if (message['type'] == 'snapshot.request') {
+          return V2SessionResponse(
+            message: const {
+              'type': 'snapshot.response',
+              'payload': {'requestId': 'snapshot-1'},
+            },
+            afterSend: () => throw StateError('synthetic post-send failure'),
+          );
+        }
+        if (message['type'] == 'ok.request') {
+          return {'type': 'ok.response', 'requestId': message['requestId']};
+        }
+        return null;
+      };
+      final channel = WebSocketChannel.connect(
+        Uri.parse('ws://127.0.0.1:${server.port}/ws'),
+      );
+      await channel.ready;
+      final frames = channel.stream
+          .map((frame) => jsonDecode(frame as String) as Map<String, Object?>)
+          .asBroadcastStream();
+      channel.sink.add(
+        jsonEncode(
+          const WebSocketHello(
+            clientId: 'post-send-error-client',
+            clientType: WebSocketClientType.cli,
+            protocolVersion: paseoWebSocketProtocolVersion,
+          ).toJson(),
+        ),
+      );
+      await frames.firstWhere((frame) => frame['status'] == 'server_info');
+
+      final sessionMessages = <Map<String, Object?>>[];
+      final subscription = frames
+          .where((frame) => frame['type'] == 'session')
+          .map((frame) => frame['message'] as Map<String, Object?>)
+          .listen(sessionMessages.add);
+      final firstResponse = frames.firstWhere(
+        (frame) =>
+            frame['type'] == 'session' &&
+            (frame['message'] as Map<String, Object?>)['type'] ==
+                'snapshot.response',
+      );
+      channel.sink.add(
+        jsonEncode({
+          'type': 'session',
+          'message': {'type': 'snapshot.request', 'requestId': 'snapshot-1'},
+        }),
+      );
+      await firstResponse;
+      final secondResponse = frames.firstWhere(
+        (frame) =>
+            frame['type'] == 'session' &&
+            (frame['message'] as Map<String, Object?>)['type'] == 'ok.response',
+      );
+      channel.sink.add(
+        jsonEncode({
+          'type': 'session',
+          'message': {'type': 'ok.request', 'requestId': 'ok-1'},
+        }),
+      );
+      await secondResponse;
+      await subscription.cancel();
+      expect(sessionMessages.map((message) => message['type']), [
+        'snapshot.response',
+        'ok.response',
+      ]);
+      expect(
+        sessionMessages.where((message) => message['type'] == 'rpc_error'),
+        isEmpty,
+      );
+      await channel.sink.close();
+    },
+  );
+
+  test(
+    'v2 handler failures return correlated rpc_error and keep the socket alive',
+    () async {
+      final logs = <String>[];
+      final handlerServer = WsServer(router: RpcRouter(), log: logs.add);
+      await handlerServer.start(host: '127.0.0.1', port: 0);
+      addTearDown(handlerServer.stop);
+
+      var failedRequests = 0;
+      handlerServer.onV2SessionMessage = (_, message) {
+        if (message['type'] == 'explode.request') {
+          failedRequests += 1;
+          throw StateError('synthetic handler failure');
+        }
+        if (message['type'] == 'ok.request') {
+          return {'type': 'ok.response', 'requestId': message['requestId']};
+        }
+        return null;
+      };
+
+      final channel = WebSocketChannel.connect(
+        Uri.parse('ws://127.0.0.1:${handlerServer.port}/ws'),
+      );
+      await channel.ready;
+      final frames = channel.stream
+          .map((frame) => jsonDecode(frame as String) as Map<String, Object?>)
+          .asBroadcastStream();
+      channel.sink.add(
+        jsonEncode(
+          const WebSocketHello(
+            clientId: 'handler-error-client',
+            clientType: WebSocketClientType.cli,
+            protocolVersion: paseoWebSocketProtocolVersion,
+          ).toJson(),
+        ),
+      );
+      await frames.firstWhere((frame) => frame['status'] == 'server_info');
+
+      channel.sink.add(
+        jsonEncode({
+          'type': 'session',
+          'message': {'type': 'explode.request', 'requestId': 'explode-1'},
+        }),
+      );
+      final failure = await frames.firstWhere(
+        (frame) =>
+            frame['type'] == 'session' &&
+            (frame['message'] as Map<String, Object?>)['type'] == 'rpc_error',
+      );
+      final failureMessage = failure['message'] as Map<String, Object?>;
+      expect(failureMessage['payload'], {
+        'requestId': 'explode-1',
+        'requestType': 'explode.request',
+        'error': 'Request failed: Bad state: synthetic handler failure',
+        'code': 'handler_error',
+      });
+      expect(failedRequests, 1);
+      expect(logs.single, contains('requestId=explode-1'));
+      expect(logs.single, contains('explode.request'));
+
+      channel.sink.add(
+        jsonEncode({
+          'type': 'session',
+          'message': {'type': 'ok.request', 'requestId': 'ok-1'},
+        }),
+      );
+      final success = await frames.firstWhere(
+        (frame) =>
+            frame['type'] == 'session' &&
+            (frame['message'] as Map<String, Object?>)['type'] == 'ok.response',
+      );
+      expect((success['message'] as Map<String, Object?>)['requestId'], 'ok-1');
+      expect(handlerServer.connectionCount, 1);
+      await channel.sink.close();
+    },
+  );
+
+  test(
     'v2 broadcast selects canonical timeline unless legacy is requested',
     () async {
       Future<(WebSocketChannel, Stream<Map<String, Object?>>)> connectV2(

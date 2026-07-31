@@ -23,6 +23,14 @@ final class WorkspaceCatalogCacheNotifier
     state = Map<String, List<WorkspaceDescriptor>>.unmodifiable(next);
   }
 
+  void upsert(String serverId, WorkspaceDescriptor workspace) {
+    final workspaces = {
+      for (final current in read(serverId)) current.id: current,
+      workspace.id: workspace,
+    }.values.toList(growable: false)..sort(_compareWorkspaceCatalogEntries);
+    replace(serverId, workspaces);
+  }
+
   void clearServer(String serverId) {
     if (!state.containsKey(serverId)) return;
     final next = Map<String, List<WorkspaceDescriptor>>.of(state)

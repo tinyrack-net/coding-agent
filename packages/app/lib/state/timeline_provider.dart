@@ -273,11 +273,27 @@ class TimelineNotifier extends Notifier<TimelineState> {
     if (payload.agentId != agentId) return;
     final eventEpoch = payload.epoch.toString();
     if (state.epoch == null) {
-      _fetch();
+      _startLiveEpoch(payload, eventEpoch);
+      // The in-flight cold fetch may belong to an older epoch. Always queue
+      // an authoritative request for the epoch established by this event.
+      _fetch(full: true);
       return;
     }
     if (eventEpoch != state.epoch) {
+      // Paseo accepts seq 1 as the first event of a replacement epoch. This
+      // keeps a freshly-created conversation live while its authoritative
+      // tail fetch is still in flight.
+      if (payload.seq == 1) {
+        _startLiveEpoch(payload, eventEpoch);
+        // Always request the replacement epoch authoritatively. If an older
+        // epoch fetch is still in flight, _fetch queues this full request.
+        _fetch(full: true);
+        return;
+      }
       _fetch(full: true);
+      return;
+    }
+    if (payload.seq <= state.lastSeq) {
       return;
     }
     if (payload.seq > state.lastSeq + 1) {
@@ -288,6 +304,24 @@ class TimelineNotifier extends Notifier<TimelineState> {
       _mergeResolvedPermission(payload.item),
       math.max(state.lastSeq, payload.seq),
     );
+  }
+
+  void _startLiveEpoch(AgentStreamPayload payload, String eventEpoch) {
+    _publish(
+      TimelineState(
+        pendingTailUserMessages: state.pendingTailUserMessages,
+        pendingHeadUserMessages: state.pendingHeadUserMessages,
+        epoch: eventEpoch,
+        cursor: AgentTimelineCursorRange(
+          epoch: eventEpoch,
+          startSeq: payload.seq,
+          endSeq: payload.seq,
+        ),
+        loading: false,
+        catchUpPhase: TimelineCatchUpPhase.syncing,
+      ),
+    );
+    _applyLiveUpsert(payload.item, payload.seq);
   }
 
   TimelineItem _mergeResolvedPermission(TimelineItem item) {
@@ -486,6 +520,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
 
   Future<void> _fetch({bool full = false}) async {
     final generation = _generation;
+    final requestEpoch = state.epoch;
     if (_fetching) {
       _refetchQueued = true;
       _refetchQueuedFull = _refetchQueuedFull || full;
@@ -502,6 +537,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
       if (cursor == null) {
         final page = await client.fetchAgentTimeline(agentId: agentId);
         if (!ref.mounted || generation != _generation) return;
+        if (_isSupersededFetchPage(requestEpoch, page)) return;
         _applyTailPage(page);
       } else {
         var afterCursor = cursor.end;
@@ -512,6 +548,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
             cursor: afterCursor,
           );
           if (!ref.mounted || generation != _generation) return;
+          if (_isSupersededFetchPage(requestEpoch, page)) return;
           if (page.reset || page.epoch != state.epoch) {
             _applyTailPage(page);
             break;
@@ -557,6 +594,13 @@ class TimelineNotifier extends Notifier<TimelineState> {
     }
   }
 
+  bool _isSupersededFetchPage(String? requestEpoch, AgentTimelinePage page) {
+    final currentEpoch = state.epoch;
+    return currentEpoch != requestEpoch &&
+        currentEpoch != null &&
+        page.epoch != currentEpoch;
+  }
+
   void _applyTailPage(AgentTimelinePage page) {
     final pendingTail = List<OptimisticUserMessage>.of(
       state.pendingTailUserMessages,
@@ -567,14 +611,46 @@ class TimelineNotifier extends Notifier<TimelineState> {
     final presentations = Map<String, OptimisticUserMessage>.of(
       state.userMessagePresentations,
     );
-    final items = [for (final entry in page.entries) entry.item];
+    final pageCursor = page.cursorRange;
+    final currentCursor = state.cursor;
+    final retainsLiveHead =
+        !page.reset &&
+        state.epoch == page.epoch &&
+        currentCursor != null &&
+        (pageCursor == null || currentCursor.endSeq > pageCursor.endSeq);
+    final head = retainsLiveHead
+        ? List<TimelineItem>.of(state.headItems)
+        : const <TimelineItem>[];
+    final headIds = head.map((item) => item.id).toSet();
+    // A tail response can have been captured before a later live update for
+    // the same item id. The live head owns that newer version until a tail
+    // reaches its cursor; never regress completed/error state to the stale
+    // projected copy.
+    final items = [
+      for (final entry in page.entries)
+        if (!headIds.contains(entry.item.id)) entry.item,
+    ];
     for (final item in items) {
       _reconcileUserMessage(item, pendingTail, pendingHead, presentations);
     }
-    final liveIds = items.map((item) => item.id).toSet();
+    for (final item in head) {
+      _reconcileUserMessage(item, pendingTail, pendingHead, presentations);
+    }
+    final pageIds = items.map((item) => item.id).toSet();
+    final liveIds = {...pageIds, for (final item in head) item.id};
+    final cursor = pageCursor == null
+        ? (retainsLiveHead ? currentCursor : null)
+        : AgentTimelineCursorRange(
+            epoch: pageCursor.epoch,
+            startSeq: pageCursor.startSeq,
+            endSeq: retainsLiveHead
+                ? math.max(pageCursor.endSeq, currentCursor.endSeq)
+                : pageCursor.endSeq,
+          );
     _publish(
       TimelineState(
         tailItems: List.unmodifiable(items),
+        headItems: List.unmodifiable(head),
         pendingTailUserMessages: List.unmodifiable(pendingTail),
         pendingHeadUserMessages: List.unmodifiable(pendingHead),
         userMessagePresentations: Map.unmodifiable({
@@ -582,7 +658,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
             if (liveIds.contains(entry.key)) entry.key: entry.value,
         }),
         epoch: page.epoch,
-        cursor: page.cursorRange,
+        cursor: cursor,
         hasOlder: page.hasOlder,
         loading: false,
         catchUpPhase: TimelineCatchUpPhase.idle,

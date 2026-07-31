@@ -206,7 +206,10 @@ class _HostWorkspaceRouteScreenState
         }
         _selectWorkspace(workspace.workspaceDirectory);
         _applyOpenIntent(workspace.workspaceDirectory);
-        return WorkspaceDeckPane(worktreePath: workspace.workspaceDirectory);
+        return WorkspaceDeckPane(
+          worktreePath: workspace.workspaceDirectory,
+          workspaceId: workspace.id,
+        );
       },
     );
   }

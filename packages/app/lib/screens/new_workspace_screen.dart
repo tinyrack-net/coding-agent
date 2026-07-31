@@ -4,6 +4,7 @@ import 'package:agent_protocol/agent_protocol.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../attachments/attachment_store.dart';
@@ -17,6 +18,7 @@ import '../composer/draft_feature_values.dart';
 import '../composer/provider_model_selection.dart';
 import '../composer/workspace_draft_submission.dart';
 import '../core/daemon_client.dart';
+import '../core/host_routes.dart';
 import '../core/theme.dart';
 import '../import_sessions/import_session_dialog.dart';
 import '../providers/draft_provider_features.dart';
@@ -31,6 +33,7 @@ import '../state/host_registry_provider.dart';
 import '../state/queued_messages_provider.dart';
 import '../state/timeline_provider.dart';
 import '../state/workspace_attachments_provider.dart';
+import '../state/workspace_catalog_provider.dart';
 import '../state/workspace_providers.dart';
 import '../state/worktree_tabs_provider.dart';
 import '../workspace/workspace_tab_model.dart';
@@ -55,12 +58,14 @@ class NewWorkspaceScreen extends ConsumerStatefulWidget {
     this.imageAttachmentService,
     this.draftStore,
     this.preferencesService,
+    this.navigateToCreatedWorkspace,
   });
 
   final String? initialProjectPath;
   final ComposerImageAttachmentService? imageAttachmentService;
   final ComposerDraftStore? draftStore;
   final CreateAgentPreferencesService? preferencesService;
+  final ValueChanged<String>? navigateToCreatedWorkspace;
 
   @override
   ConsumerState<NewWorkspaceScreen> createState() => _NewWorkspaceScreenState();
@@ -577,6 +582,8 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
     required bool isModelLoading,
     required bool hasClient,
   }) async {
+    final navigateToCreatedWorkspace =
+        widget.navigateToCreatedWorkspace ?? GoRouter.maybeOf(context)?.go;
     final provider = _provider;
     final model = _model ?? '';
     final projectPath = _projectChoice;
@@ -682,7 +689,11 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
           workspaceResponse.error ?? 'Workspace creation returned no workspace',
         );
       }
+      ref
+          .read(workspaceCatalogCacheProvider.notifier)
+          .upsert(serverId, workspace);
       if (prompt.isEmpty && promptImages.isEmpty) {
+        if (mounted) setState(() => _submitting = false);
         ref
             .read(selectedWorktreeProvider.notifier)
             .select(workspace.workspaceDirectory);
@@ -690,11 +701,11 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
           newWorkspaceComposerDraftKey,
           lifecycle: ComposerDraftLifecycle.sent,
         );
-        if (mounted) {
-          setState(() => _submitting = false);
-          final navigator = Navigator.of(context);
-          if (navigator.canPop()) navigator.pop();
-        }
+        _openCreatedWorkspace(
+          serverId,
+          workspace.id,
+          navigate: navigateToCreatedWorkspace,
+        );
         return;
       }
 
@@ -757,6 +768,7 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
       ref
           .read(worktreeTabsProvider(workspace.workspaceDirectory).notifier)
           .focusOpenIntentTarget(WorkspaceDraftTabTarget(draftId: draftId));
+      if (mounted) setState(() => _submitting = false);
       ref
           .read(selectedWorktreeProvider.notifier)
           .select(workspace.workspaceDirectory);
@@ -769,11 +781,12 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
       } catch (_) {
         // Workspace and agent creation already succeeded.
       }
-      if (mounted) {
-        setState(() => _submitting = false);
-        final navigator = Navigator.of(context);
-        if (navigator.canPop()) navigator.pop();
-      }
+      _openCreatedWorkspace(
+        serverId,
+        workspace.id,
+        openIntent: 'draft:$draftId',
+        navigate: navigateToCreatedWorkspace,
+      );
     } catch (e) {
       if (!mounted) return;
       _persistDraft();
@@ -782,6 +795,27 @@ class _NewWorkspaceScreenState extends ConsumerState<NewWorkspaceScreen> {
         _errorMessage = 'Failed to create worktree: $e';
       });
     }
+  }
+
+  void _openCreatedWorkspace(
+    String serverId,
+    String workspaceId, {
+    String? openIntent,
+    ValueChanged<String>? navigate,
+  }) {
+    final route = openIntent == null
+        ? buildHostWorkspaceRoute(serverId, workspaceId)
+        : buildHostWorkspaceOpenRoute(serverId, workspaceId, openIntent);
+    if (navigate != null) {
+      // Paseo prepares the target tab in its local workspace layout store and
+      // then replaces the launcher with the canonical workspace route.
+      navigate(route);
+      return;
+    }
+    // Keep isolated widget hosts usable when no application router is mounted.
+    if (!mounted) return;
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) navigator.pop();
   }
 
   Future<void> _openImportSessions() async {

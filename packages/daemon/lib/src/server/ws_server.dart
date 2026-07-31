@@ -51,6 +51,7 @@ class WsServer {
     this.hostnames,
     this.desktopManaged = false,
     this.helloTimeout = const Duration(seconds: 15),
+    this.log,
     this.terminalActivityHandler,
     this.publicStaticHandler,
     this.webUiHandler,
@@ -78,6 +79,10 @@ class WsServer {
   /// echoed to clients in the server hello.
   final bool desktopManaged;
   final Duration helloTimeout;
+
+  /// Receives daemon-level WebSocket diagnostics. Kept optional so embedded
+  /// and unit-test servers can remain silent by default.
+  final void Function(String message)? log;
   final Duration runtimeMetricsFlushInterval;
   final AdditionalHttpHandler? terminalActivityHandler;
   final OptionalHttpHandler? publicStaticHandler;
@@ -611,89 +616,187 @@ class WsServer {
       await connection.close(4002, 'Invalid session message');
       return;
     }
-    try {
-      final message = json['message'] as Map<String, Object?>;
-      final requestType = message['type'];
-      if (requestType is String) {
-        _runtimeMetrics.recordInboundSessionRequest(requestType);
-      }
-      final startedAt = Stopwatch()..start();
-      if (connection.transport == 'hub' &&
-          !_scopeAllows(connection.scopes, message['type'])) {
-        connection.sendJson({
-          'type': 'session',
-          'message': {
-            'type': 'rpc_error',
-            'payload': {
-              'requestId': message['requestId'] as String? ?? '',
-              'requestType': message['type'] as String? ?? '',
-              'error': 'Hub scope does not allow this request',
-              'code': 'unauthorized',
-            },
+    final message = json['message'] as Map<String, Object?>;
+    final requestType = message['type'];
+    if (requestType is String) {
+      _runtimeMetrics.recordInboundSessionRequest(requestType);
+    }
+    final startedAt = Stopwatch()..start();
+    if (connection.transport == 'hub' &&
+        !_scopeAllows(connection.scopes, message['type'])) {
+      connection.sendJson({
+        'type': 'session',
+        'message': {
+          'type': 'rpc_error',
+          'payload': {
+            'requestId': message['requestId'] is String
+                ? message['requestId']
+                : '',
+            'requestType': message['type'] is String ? message['type'] : '',
+            'error': 'Hub scope does not allow this request',
+            'code': 'unauthorized',
           },
-        });
-        if (requestType is String) {
-          _runtimeMetrics.recordRequestLatency(
-            requestType,
-            startedAt.elapsedMicroseconds / 1000,
-          );
-        }
-        return;
-      }
-      final nativeResponse = await onV2SessionMessage?.call(
-        connection,
-        message,
-      );
-      if (nativeResponse is V2HandledNoResponse) {
-        if (requestType is String) {
-          _runtimeMetrics.recordRequestLatency(
-            requestType,
-            startedAt.elapsedMicroseconds / 1000,
-          );
-        }
-        return;
-      }
-      if (nativeResponse is V2SessionResponse) {
-        connection.sendJson({
-          'type': 'session',
-          'message': nativeResponse.message,
-        });
-        await nativeResponse.afterSend?.call();
-        if (requestType is String) {
-          _runtimeMetrics.recordRequestLatency(
-            requestType,
-            startedAt.elapsedMicroseconds / 1000,
-          );
-        }
-        return;
-      }
-      if (nativeResponse != null) {
-        connection.sendJson({
-          'type': 'session',
-          'message': nativeResponse as Map<String, Object?>,
-        });
-        if (requestType is String) {
-          _runtimeMetrics.recordRequestLatency(
-            requestType,
-            startedAt.elapsedMicroseconds / 1000,
-          );
-        }
-        return;
-      }
-      final request = RpcFrame.fromJson(message);
-      if (request is! RpcRequest) return;
-      final response = await router.dispatch(connection, request);
-      connection.sendJson({'type': 'session', 'message': response.toJson()});
+        },
+      });
       if (requestType is String) {
         _runtimeMetrics.recordRequestLatency(
           requestType,
           startedAt.elapsedMicroseconds / 1000,
         );
       }
-    } catch (_) {
+      return;
+    }
+
+    // Paseo keeps a live session after a handler failure. The previous broad
+    // catch closed the socket for both handler failures and malformed frames,
+    // making a transient request failure look like a transport failure. Keep
+    // protocol validation below its own boundary, and report only execution
+    // failures as a correlated rpc_error.
+    Object? nativeResponse;
+    try {
+      nativeResponse = await onV2SessionMessage?.call(connection, message);
+    } on Object catch (error) {
+      _reportV2SessionHandlerError(connection, message, error);
+      return;
+    }
+    if (nativeResponse is V2HandledNoResponse) {
+      if (requestType is String) {
+        _runtimeMetrics.recordRequestLatency(
+          requestType,
+          startedAt.elapsedMicroseconds / 1000,
+        );
+      }
+      return;
+    }
+    if (nativeResponse is V2SessionResponse) {
+      try {
+        connection.sendJson({
+          'type': 'session',
+          'message': nativeResponse.message,
+        });
+      } on Object catch (error) {
+        _reportV2SessionHandlerError(connection, message, error);
+        return;
+      }
+      try {
+        await nativeResponse.afterSend?.call();
+      } on Object catch (error) {
+        // The response is already on the wire. Reporting this as rpc_error
+        // would make one request appear to have both succeeded and failed.
+        // Keep the diagnostic and metric, but preserve the successful reply.
+        _recordV2SessionHandlerFailure(connection, message, error);
+      }
+      if (requestType is String) {
+        _runtimeMetrics.recordRequestLatency(
+          requestType,
+          startedAt.elapsedMicroseconds / 1000,
+        );
+      }
+      return;
+    }
+    if (nativeResponse != null) {
+      try {
+        connection.sendJson({
+          'type': 'session',
+          'message': nativeResponse as Map<String, Object?>,
+        });
+      } on Object catch (error) {
+        _reportV2SessionHandlerError(connection, message, error);
+        return;
+      }
+      if (requestType is String) {
+        _runtimeMetrics.recordRequestLatency(
+          requestType,
+          startedAt.elapsedMicroseconds / 1000,
+        );
+      }
+      return;
+    }
+
+    // RpcFrame parsing is the protocol boundary. Preserve the existing close
+    // semantics for malformed session frames instead of reporting them as
+    // handler failures.
+    final RpcFrame request;
+    try {
+      request = RpcFrame.fromJson(message);
+    } on Object {
       _runtimeMetrics.incrementCounter('validationFailed');
       await connection.close(4002, 'Invalid session message');
+      return;
     }
+    if (request is! RpcRequest) return;
+    try {
+      final response = await router.dispatch(connection, request);
+      connection.sendJson({'type': 'session', 'message': response.toJson()});
+    } on Object catch (error) {
+      _reportV2SessionHandlerError(connection, message, error);
+      return;
+    }
+    if (requestType is String) {
+      _runtimeMetrics.recordRequestLatency(
+        requestType,
+        startedAt.elapsedMicroseconds / 1000,
+      );
+    }
+  }
+
+  void _reportV2SessionHandlerError(
+    Connection connection,
+    Map<String, Object?> message,
+    Object error,
+  ) {
+    _recordV2SessionHandlerFailure(connection, message, error);
+    final requestId = message['requestId'];
+    final requestType = message['type'];
+    final detail = '$error';
+
+    final errorMessage = requestId is String && requestId.isNotEmpty
+        ? <String, Object?>{
+            'type': 'session',
+            'message': {
+              'type': 'rpc_error',
+              'payload': {
+                'requestId': requestId,
+                'requestType': requestType is String ? requestType : '',
+                'error': 'Request failed: $detail',
+                'code': 'handler_error',
+              },
+            },
+          }
+        : <String, Object?>{
+            'type': 'session',
+            'message': {
+              'type': 'status',
+              'payload': {
+                'status': 'error',
+                'message': 'Invalid message: $detail',
+              },
+            },
+          };
+    try {
+      connection.sendJson(errorMessage);
+    } on Object catch (sendError) {
+      log?.call(
+        'failed to send v2 session handler error '
+        '(connection=${connection.id}): $sendError',
+      );
+    }
+  }
+
+  void _recordV2SessionHandlerFailure(
+    Connection connection,
+    Map<String, Object?> message,
+    Object error,
+  ) {
+    final requestId = message['requestId'];
+    final requestType = message['type'];
+    final detail = '$error';
+    _runtimeMetrics.incrementCounter('sessionHandlerFailed');
+    log?.call(
+      'v2 session handler failed '
+      '(connection=${connection.id}, requestId=${requestId ?? ''}, '
+      'requestType=${requestType ?? ''}): $detail',
+    );
   }
 
   bool _scopeAllows(List<String> scopes, Object? requestType) {

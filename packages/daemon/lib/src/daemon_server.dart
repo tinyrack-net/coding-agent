@@ -986,6 +986,7 @@ Future<DaemonServerHandle> startDaemonServer({
     allowedOrigins: allowedOrigins,
     hostnames: hostnames,
     desktopManaged: desktopManaged,
+    log: log,
     terminalActivityHandler: TerminalActivityRoute(terminals).call,
     publicStaticHandler: PublicStaticHandler(staticDir).call,
     fileDownloadHandler: FileDownloadHandler(downloadTokens).call,

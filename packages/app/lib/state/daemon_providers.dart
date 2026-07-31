@@ -133,14 +133,62 @@ final hostConnectionStateProvider = StreamProvider.autoDispose
         return Stream.value(DaemonConnectionState.disconnected);
       }
       return (() async* {
-        yield client.currentState;
+        // A connected client may have completed its handshake before the
+        // provider subscribed (for example while the host registry hydrates),
+        // so replay that terminal state. For a newly-created disconnected or
+        // connecting client, wait for the real stream instead: emitting the
+        // current snapshot would prematurely resolve consumers of
+        // `connectionStateProvider.future` and prevent their connected fetch.
+        if (client.currentState == DaemonConnectionState.connected) {
+          yield client.currentState;
+        }
         yield* client.connectionState;
       })();
     });
 
+/// The registry identity of the daemon process owned by this desktop app.
+///
+/// A loopback transport is not sufficient evidence: users may register
+/// multiple standalone daemons on localhost. Pairing is therefore exposed only
+/// after the lifecycle supervisor confirms its managed daemon is running and a
+/// connected runtime reports the same authoritative server id with
+/// `desktopManaged`.
+final desktopManagedDaemonServerIdProvider = Provider<String?>((ref) {
+  final lifecycle = ref.watch(daemonLifecycleProvider);
+  if (lifecycle.isLoading || lifecycle.hasError) return null;
+  final status = lifecycle.value;
+  if (status == null ||
+      !status.isRunning ||
+      status.hello?.desktopManaged != true) {
+    return null;
+  }
+
+  String? resolved;
+  for (final host in ref.watch(hostRegistryProvider).hosts) {
+    final connection = ref.watch(hostConnectionStateProvider(host.serverId));
+    if (connection.value != DaemonConnectionState.connected) continue;
+    final info = ref.watch(hostDaemonClientProvider(host.serverId))?.serverInfo;
+    if (info == null ||
+        !info.desktopManaged ||
+        info.serverId != host.serverId) {
+      continue;
+    }
+    // More than one claimed desktop-owned daemon is ambiguous. Do not offer
+    // pairing until the runtime registry reconciles to one identity.
+    if (resolved != null && resolved != host.serverId) return null;
+    resolved = host.serverId;
+  }
+  return resolved;
+});
+
 final connectionStateProvider = StreamProvider<DaemonConnectionState>((ref) {
   final client = ref.watch(daemonClientProvider);
-  return client.connectionState;
+  return (() async* {
+    if (client.currentState == DaemonConnectionState.connected) {
+      yield client.currentState;
+    }
+    yield* client.connectionState;
+  })();
 });
 
 final providerListProvider = FutureProvider<List<ProviderInfo>>((ref) async {

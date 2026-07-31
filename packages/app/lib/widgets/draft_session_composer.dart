@@ -128,11 +128,14 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
   CommandCenterRegistrationOwner? _commandCenterOwner;
   String? _commandCenterSignature;
 
-  String get _draftKey => buildComposerDraftKey(
-    serverId: widget.serverId,
-    agentId: widget.tabId,
-    draftId: widget.tabId,
-  );
+  String _draftKeyFor(String draftId, {String? serverId}) =>
+      buildComposerDraftKey(
+        serverId: serverId ?? widget.serverId,
+        agentId: draftId,
+        draftId: draftId,
+      );
+
+  String get _draftKey => _draftKeyFor(widget.tabId);
 
   @override
   void initState() {
@@ -403,7 +406,9 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
     _scheduleAttachmentGc();
   }
 
-  void _persistDraft() {
+  void _persistDraft({String? draftId}) {
+    final effectiveDraftId = draftId ?? widget.tabId;
+    final draftKey = _draftKeyFor(effectiveDraftId);
     final draft = ComposerDraft(
       text: _promptController.text,
       images: _images
@@ -412,7 +417,7 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
           .toList(growable: false),
       workspaceFiles: [
         for (final attachment in ref.read(
-          workspaceAttachmentsProvider(_draftKey),
+          workspaceAttachmentsProvider(draftKey),
         ))
           if (attachment.kind == 'file')
             ComposerWorkspaceFileAttachment(path: attachment.id),
@@ -422,10 +427,10 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
     _draftWrite = _draftWrite
         .then((_) async {
           if (draft.hasContent) {
-            await _draftStore.save(_draftKey, draft);
+            await _draftStore.save(draftKey, draft);
           } else {
             await _draftStore.clear(
-              _draftKey,
+              draftKey,
               lifecycle: ComposerDraftLifecycle.abandoned,
             );
           }
@@ -575,8 +580,14 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
     required String? thinkingOptionId,
     required Map<String, Object?> featureValues,
     required List<PendingComposerImage> images,
+    String? storageDraftId,
   }) async {
     final flow = ref.read(createFlowProvider.notifier);
+    final flowDraftId = attempt.draftId;
+    final draftKey = _draftKeyFor(
+      storageDraftId ?? flowDraftId,
+      serverId: attempt.serverId,
+    );
     final tabs = ref.read(worktreeTabsProvider(widget.worktreePath).notifier);
     final actions = ref.read(agentActionsProvider);
     setState(() {
@@ -606,7 +617,7 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
         attachments: attempt.attachments,
       );
 
-      flow.updateAgentId(draftId: widget.tabId, agentId: agent.agentId);
+      flow.updateAgentId(draftId: flowDraftId, agentId: agent.agentId);
       ref
           .read(timelineProvider(agent.agentId).notifier)
           .handoffCreatedUserMessage(
@@ -619,14 +630,14 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
             ),
           );
       flow.markLifecycle(
-        draftId: widget.tabId,
+        draftId: flowDraftId,
         lifecycle: CreateFlowLifecycle.sent,
       );
       tabs.retarget(widget.tabId, agent.agentId);
-      ref.read(workspaceAttachmentsProvider(_draftKey).notifier).clear();
+      ref.read(workspaceAttachmentsProvider(draftKey).notifier).clear();
       try {
         await _draftStore.clear(
-          _draftKey,
+          draftKey,
           lifecycle: ComposerDraftLifecycle.sent,
         );
         await _garbageCollectDraftAttachments();
@@ -639,11 +650,11 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
       }
     } catch (e) {
       flow.markLifecycle(
-        draftId: widget.tabId,
+        draftId: flowDraftId,
         lifecycle: CreateFlowLifecycle.abandoned,
       );
-      flow.clear(widget.tabId);
-      _persistDraft();
+      flow.clear(flowDraftId);
+      _persistDraft(draftId: flowDraftId);
       if (!mounted) return;
       setState(() {
         _submitting = false;
@@ -660,22 +671,106 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
     });
   }
 
+  String _normalizedWorkspaceDirectory(String path) {
+    var normalized = path.trim().replaceAll('\\', '/');
+    while (normalized.length > 1 && normalized.endsWith('/')) {
+      normalized = normalized.substring(0, normalized.length - 1);
+    }
+    return normalized.toLowerCase();
+  }
+
+  bool _matchesPendingSubmission(PendingWorkspaceDraftSubmission submission) =>
+      submission.serverId == widget.serverId &&
+      submission.workspaceId == widget.workspaceId &&
+      _normalizedWorkspaceDirectory(submission.workspaceDirectory) ==
+          _normalizedWorkspaceDirectory(widget.worktreePath);
+
+  PendingWorkspaceDraftSubmission? _resolvePendingAutoSubmit(
+    Map<String, PendingWorkspaceDraftSubmission> submissions,
+  ) {
+    final exact = submissions[widget.tabId];
+    if (exact != null && _matchesPendingSubmission(exact)) return exact;
+    final matches = submissions.values
+        .where(_matchesPendingSubmission)
+        .toList(growable: false);
+    if (matches.length == 1) return matches.single;
+    // Host activation can briefly render the workspace with the transport's
+    // server id while the route still carries the registry id. The workspace
+    // id and directory are authoritative for this mounted composer; if there
+    // is exactly one candidate, keep the handoff alive across that identity
+    // transition rather than leaving the draft in a permanent pending state.
+    final relaxed = submissions.values
+        .where((submission) => submission.workspaceId == widget.workspaceId)
+        .toList(growable: false);
+    return relaxed.length == 1 ? relaxed.single : null;
+  }
+
   Future<void> _consumePendingAutoSubmit(
     PendingWorkspaceDraftSubmission expected,
   ) async {
     await _draftHydration;
     if (!mounted) return;
-    final attempt = ref.read(createFlowProvider)[widget.tabId];
-    if (!isActiveCreateFlowForDraft(
-          pending: attempt,
-          serverId: expected.serverId,
-          draftId: expected.draftId,
-        ) ||
-        attempt?.workspaceId != expected.workspaceId ||
-        attempt?.clientMessageId != expected.clientMessageId) {
+    final flowState = ref.read(createFlowProvider);
+    var attempt = flowState[widget.tabId];
+    var attemptKey = widget.tabId;
+    bool matches(PendingCreateAttempt? candidate) =>
+        candidate != null &&
+        candidate.serverId == expected.serverId &&
+        candidate.workspaceId == expected.workspaceId &&
+        candidate.clientMessageId == expected.clientMessageId &&
+        candidate.lifecycle == CreateFlowLifecycle.active;
+
+    if (!matches(attempt)) {
+      final expectedAttempt = flowState[expected.draftId];
+      if (matches(expectedAttempt)) {
+        attempt = expectedAttempt;
+        attemptKey = expected.draftId;
+      } else {
+        final candidates = flowState.entries
+            .where((entry) => matches(entry.value))
+            .toList(growable: false);
+        if (candidates.length == 1) {
+          attempt = candidates.single.value;
+          attemptKey = candidates.single.key;
+        }
+      }
+    }
+    if (!matches(attempt)) {
       _autoSubmitScheduled = false;
       return;
     }
+
+    // NewWorkspaceScreen can navigate before the draft tab has hydrated. If
+    // the handoff was keyed by the old draft id, move the active attempt to
+    // the tab that is actually rendering this composer. Never overwrite a
+    // different active attempt already owned by that tab.
+    final attemptDraftId = attempt!.draftId;
+    if (attemptDraftId != widget.tabId || attemptKey != widget.tabId) {
+      final destination = flowState[widget.tabId];
+      if (destination != null &&
+          destination.clientMessageId != attempt.clientMessageId) {
+        _autoSubmitScheduled = false;
+        return;
+      }
+      if (attemptKey != widget.tabId &&
+          ref.read(createFlowProvider)[attemptKey] != null) {
+        ref
+            .read(createFlowProvider.notifier)
+            .rekeyDraft(fromDraftId: attemptKey, toDraftId: widget.tabId);
+      } else if (attemptDraftId != widget.tabId) {
+        // Keep the provider map and the value's draftId in sync even if a
+        // legacy caller inserted the value under the tab key.
+        ref
+            .read(createFlowProvider.notifier)
+            .setPending(attempt.copyWith(draftId: widget.tabId));
+      }
+      attempt = ref.read(createFlowProvider)[widget.tabId];
+      if (!matches(attempt)) {
+        _autoSubmitScheduled = false;
+        return;
+      }
+    }
+    final activeAttempt = attempt!;
     final submission = ref
         .read(workspaceDraftSubmissionProvider.notifier)
         .consume(
@@ -683,22 +778,39 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
           workspaceId: expected.workspaceId,
           draftId: expected.draftId,
         );
-    if (submission == null) return;
+    if (submission == null) {
+      _autoSubmitScheduled = false;
+      return;
+    }
     _suspendDraftPersistence = true;
     _promptController.text = '';
     _suspendDraftPersistence = false;
-    final images = List<PendingComposerImage>.of(_images);
+    var images = List<PendingComposerImage>.of(_images);
+    // The workspace screen persists image metadata under the handoff draft
+    // id. If tab hydration raced and this composer was mounted with another
+    // tab id, rebuild the payload from the attempt instead of silently
+    // dropping those attachments.
+    if (activeAttempt.images.isNotEmpty &&
+        (expected.draftId != widget.tabId || images.isEmpty)) {
+      final restored = await _imageAttachmentService.restore(
+        activeAttempt.images,
+      );
+      if (!mounted) return;
+      if (restored.isNotEmpty) images = restored;
+    }
     setState(() => _images.clear());
     await _runCreateAttempt(
-      attempt: attempt!,
+      attempt: activeAttempt,
       provider: submission.provider,
       model: submission.model,
       modeId: submission.modeId,
       thinkingOptionId: submission.thinkingOptionId,
       featureValues: submission.featureValues,
       images: images,
+      storageDraftId: expected.draftId,
     );
-    if (mounted && ref.read(createFlowProvider)[widget.tabId] == null) {
+    if (mounted &&
+        ref.read(createFlowProvider)[activeAttempt.draftId] == null) {
       _suspendDraftPersistence = true;
       _promptController.text = submission.text;
       _suspendDraftPersistence = false;
@@ -909,12 +1021,10 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
     );
     final snapshot = ref.watch(providersSnapshotProvider(snapshotScope));
     final pendingAttempt = ref.watch(createFlowProvider)[widget.tabId];
-    final pendingAutoSubmit = ref.watch(
-      workspaceDraftSubmissionProvider,
-    )[widget.tabId];
-    if (pendingAutoSubmit != null &&
-        pendingAutoSubmit.workspaceDirectory == widget.worktreePath &&
-        pendingAutoSubmit.workspaceId == widget.workspaceId) {
+    final pendingAutoSubmit = _resolvePendingAutoSubmit(
+      ref.watch(workspaceDraftSubmissionProvider),
+    );
+    if (pendingAutoSubmit != null) {
       _selectionTouched = true;
       _provider = pendingAutoSubmit.provider;
       _model = pendingAutoSubmit.model;

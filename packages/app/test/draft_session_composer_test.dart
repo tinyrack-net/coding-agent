@@ -619,6 +619,97 @@ void main() {
     },
   );
 
+  testWidgets(
+    'stale workspace submission key is resolved and rekeyed to the rendered tab',
+    (tester) async {
+      final createCompleter = Completer<Map<String, Object?>>();
+      final client = FakeDaemonClient()
+        ..onRequest = (type, payload) {
+          if (type == MessageTypes.agentCreateRequest) {
+            return createCompleter.future;
+          }
+          return const {};
+        };
+      const staleDraftId = 'stale-draft-id';
+      const clientMessageId = 'stale-client-message';
+      final draftStore = _MemoryDraftStore()
+        ..drafts['draft:local:$staleDraftId'] = const ComposerDraft(
+          text: 'stale prompt',
+          images: [],
+          updatedAt: 1,
+        );
+      String? tabId;
+      final container = await pumpComposer(
+        tester,
+        client,
+        workspaceId: 'wks_test',
+        draftStore: draftStore,
+        settle: false,
+        onContainerReady: (current, id) {
+          tabId = id;
+          current
+              .read(createFlowProvider.notifier)
+              .setPending(
+                const PendingCreateAttempt(
+                  draftId: staleDraftId,
+                  serverId: 'local',
+                  workspaceId: 'wks_test',
+                  agentId: null,
+                  clientMessageId: clientMessageId,
+                  text: 'stale prompt',
+                  timestamp: 123,
+                  lifecycle: CreateFlowLifecycle.active,
+                ),
+              );
+          current
+              .read(workspaceDraftSubmissionProvider.notifier)
+              .setPending(
+                const PendingWorkspaceDraftSubmission(
+                  serverId: 'local',
+                  workspaceId: 'wks_test',
+                  workspaceDirectory: _worktreePath,
+                  draftId: staleDraftId,
+                  text: 'stale prompt',
+                  images: [],
+                  cwd: _worktreePath,
+                  provider: 'claude',
+                  model: 'sonnet',
+                  modeId: 'auto',
+                  clientMessageId: clientMessageId,
+                  timestamp: 123,
+                  allowEmptyText: true,
+                ),
+              );
+        },
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(tabId, isNotNull);
+      final requests = client.requests.where(
+        (request) => request.$1 == MessageTypes.agentCreateRequest,
+      );
+      expect(requests, hasLength(1));
+      expect(requests.single.$2['clientMessageId'], clientMessageId);
+      expect(
+        container.read(workspaceDraftSubmissionProvider),
+        isNot(contains(staleDraftId)),
+      );
+      expect(
+        container.read(createFlowProvider),
+        containsPair(tabId!, isA<PendingCreateAttempt>()),
+      );
+
+      createCompleter.complete({'agent': _createdAgent.toJson()});
+      await tester.pumpAndSettle();
+
+      final pending = container.read(createFlowProvider)[tabId!]!;
+      expect(draftStore.drafts, isNot(contains('draft:local:$staleDraftId')));
+      expect(pending.draftId, tabId);
+      expect(pending.lifecycle, CreateFlowLifecycle.sent);
+      expect(pending.agentId, 'new-1');
+    },
+  );
+
   testWidgets('a create failure surfaces an inline error and leaves the '
       'draft tab untouched', (tester) async {
     final client = FakeDaemonClient()

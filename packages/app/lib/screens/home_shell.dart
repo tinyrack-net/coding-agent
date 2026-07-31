@@ -684,9 +684,14 @@ class _HomeContentDeck extends ConsumerWidget {
 /// Retained workspace root shared by the legacy `/` selection surface and the
 /// canonical `/h/:serverId/workspace/:workspaceId` route.
 class WorkspaceDeckPane extends ConsumerWidget {
-  const WorkspaceDeckPane({super.key, required this.worktreePath});
+  const WorkspaceDeckPane({
+    super.key,
+    required this.worktreePath,
+    this.workspaceId,
+  });
 
   final String worktreePath;
+  final String? workspaceId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -695,7 +700,7 @@ class WorkspaceDeckPane extends ConsumerWidget {
     final controller = ref.watch(workspaceDeckControllerProvider);
     final activeSelection = controller.selectionFor(
       serverId: client.serverInfo?.serverId ?? client.uri.toString(),
-      workspaceId: agentContext.workspaceId ?? worktreePath,
+      workspaceId: workspaceId ?? agentContext.workspaceId ?? worktreePath,
       worktreePath: worktreePath,
     );
     final inventory = ref.watch(_workspaceInventoryProvider);
@@ -750,7 +755,7 @@ class _WorkspaceDeckEntry extends ConsumerWidget {
               projectPath: agentContext.projectPath,
               branch: agentContext.branch,
               isWorktree: agentContext.isWorktree,
-              workspaceId: agentContext.workspaceId,
+              workspaceId: selection.workspaceId,
             ),
           ),
         ),

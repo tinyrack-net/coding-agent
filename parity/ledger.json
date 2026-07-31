@@ -88,9 +88,10 @@
         "packages/app/test/projects_screen_test.dart",
         "packages/app/test/add_project_flow_host_test.dart",
         "packages/app/test/workspace_providers_test.dart",
-        "packages/daemon/test/daemon_project_conversation_vertical_e2e_test.dart"
+        "packages/daemon/test/daemon_project_conversation_vertical_e2e_test.dart",
+        "packages/app/integration_test/project_conversation_smoke_test.dart"
       ],
-      "notes": "The canonical route now exposes an always-visible Add Project CTA, scopes the flow to the active host, shows Git and non-Git projects, and reloads durable v2 project registry data after provider/app restart. Remaining parity is the frozen four-tile Open Project composition, Pair Device/Setup Providers tiles, and exact visual evidence."
+      "notes": "The canonical route now exposes the Paseo four-tile Open Project composition, scopes the flow to the active host, shows Git and non-Git projects, and reloads durable v2 project registry data after provider/app restart. The Windows external-daemon smoke proves Add Project -> workspace -> provider selection -> first prompt -> assistant response. Remaining parity is Pair Device/Setup Providers interaction detail and exact visual/accessibility evidence."
     },
     {
       "id": "app-route:/pair-scan",
@@ -4430,9 +4431,10 @@
         "packages/app/test/create_flow_provider_test.dart",
         "packages/app/test/agent_chat_screen_test.dart",
         "packages/app/test/agents_provider_test.dart",
-        "packages/daemon/test/daemon_agent_continuation_e2e_test.dart"
+        "packages/daemon/test/daemon_agent_continuation_e2e_test.dart",
+        "packages/app/integration_test/project_conversation_smoke_test.dart"
       ],
-      "notes": "Draft creation records the frozen pending attempt identity and lifecycle before RPC, prevents workspace auto-submit duplication with exact one-shot consumption, preserves failed drafts, hands the same clientMessageId into atomic agent.create, and retargets only after success. The created user message is handed into the shared timeline: it enriches the first canonical user row when already present or appends optimistically otherwise, retains text/timestamp/images/attachments across acknowledgement, renders its restored images, and owns them for GC. New-workspace messages prepare a draft-tab auto-submit after workspace creation while empty submissions open only the workspace. Worktree bootstrap and configured terminals still precede the prompt. Exact paginated tail/head partitioning, multi-host timeline ownership, provider features/thinking, heterogeneous attachments, and every readiness branch remain."
+      "notes": "Draft creation records the frozen pending attempt identity and lifecycle before RPC, prevents workspace auto-submit duplication with exact one-shot consumption, preserves failed drafts, hands the same clientMessageId into atomic agent.create, and retargets only after success. The created user message is handed into the shared timeline: it enriches the first canonical user row when already present or appends optimistically otherwise, retains text/timestamp/images/attachments across acknowledgement, renders its restored images, and owns them for GC. New-workspace messages prepare a draft-tab auto-submit after workspace creation while empty submissions open only the workspace; the canonical route now propagates workspace identity into the retained deck so this handoff survives hydration. The external Windows smoke proves the first assistant response through a real daemon and ACP process. Worktree bootstrap and configured terminals still precede the prompt. Exact paginated tail/head partitioning, multi-host timeline ownership, provider features/thinking, heterogeneous attachments, and every readiness branch remain."
     },
     {
       "id": "source-unit:packages/app/src/composer/draft/import-pill.tsx",

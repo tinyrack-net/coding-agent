@@ -201,6 +201,20 @@ void main() {
   });
 
   group('connectionStateProvider', () {
+    test('seeds a connection completed before the provider listens', () async {
+      final fake = FakeDaemonClient(initial: DaemonConnectionState.connected);
+      final container = ProviderContainer(
+        overrides: [daemonClientProvider.overrideWithValue(fake)],
+      );
+      addTearDown(container.dispose);
+
+      final sub = container.listen(connectionStateProvider, (_, _) {});
+      addTearDown(sub.close);
+      await container.pump();
+
+      expect(sub.read().value, DaemonConnectionState.connected);
+    });
+
     test('mirrors the client connectionState stream', () async {
       final fake = FakeDaemonClient();
       final container = ProviderContainer(
@@ -241,9 +255,15 @@ void main() {
 
       final sub = container.listen(providerListProvider, (_, _) {});
       addTearDown(sub.close);
-      // Emit the (disconnected) initial state so connectionStateProvider's
-      // future resolves; providerListProvider should then settle on `[]`
-      // without ever calling provider.list.request.
+      // A newly-created client has no terminal snapshot to replay. The
+      // provider must remain pending until the transport publishes a real
+      // state, otherwise a transient disconnected snapshot would resolve the
+      // future and suppress the later provider-list fetch.
+      await container.pump();
+      expect(sub.read().isLoading, isTrue);
+      // Emit the (disconnected) state from the transport so the future
+      // resolves to `[]` without ever calling provider.list.request.
+      fake.setState(DaemonConnectionState.connecting);
       fake.setState(DaemonConnectionState.disconnected);
       await Future<void>.delayed(Duration.zero);
       await Future<void>.delayed(Duration.zero);

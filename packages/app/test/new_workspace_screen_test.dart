@@ -6,10 +6,12 @@ import 'package:coding_agent_app/composer/composer_draft_store.dart';
 import 'package:coding_agent_app/composer/composer_image_attachment_service.dart';
 import 'package:coding_agent_app/composer/create_agent_preferences.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
+import 'package:coding_agent_app/core/host_routes.dart';
 import 'package:coding_agent_app/screens/new_workspace_screen.dart';
 import 'package:coding_agent_app/state/agents_provider.dart';
 import 'package:coding_agent_app/state/create_flow_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
+import 'package:coding_agent_app/state/workspace_catalog_provider.dart';
 import 'package:coding_agent_app/state/workspace_providers.dart';
 import 'package:coding_agent_app/state/worktree_tabs_provider.dart';
 import 'package:coding_agent_app/widgets/add_project_flow_host.dart';
@@ -17,6 +19,7 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'support/legacy_agent_list_fetch_mixin.dart';
 
 const _codex = ProviderInfo(
@@ -668,6 +671,146 @@ void main() {
       isFalse,
     );
   });
+
+  testWidgets(
+    'router entry replaces New workspace with the canonical created workspace',
+    (tester) async {
+      final client = FakeDaemonClient()
+        ..onRequest = (type, payload) {
+          if (type == MessageTypes.projectListRequest) {
+            return {
+              'projects': [_gitProject.toJson()],
+            };
+          }
+          return const {};
+        };
+      String? createdWorkspaceRoute;
+      var setupCompleteWhenNavigated = false;
+      late final ProviderContainer container;
+      late final GoRouter router;
+      router = GoRouter(
+        initialLocation: '/new',
+        routes: [
+          GoRoute(
+            path: '/new',
+            builder: (_, _) => NewWorkspaceScreen(
+              initialProjectPath: _gitProject.path,
+              imageAttachmentService: ComposerImageAttachmentService(
+                store: () async => MemoryAttachmentStore(),
+              ),
+              draftStore: _MemoryDraftStore(),
+              preferencesService: CreateAgentPreferencesService(
+                _MemoryPreferenceStorage(),
+              ),
+              navigateToCreatedWorkspace: (route) {
+                setupCompleteWhenNavigated =
+                    container
+                        .read(workspaceCatalogCacheProvider.notifier)
+                        .read('fake')
+                        .any((workspace) => workspace.id == 'wks_test') &&
+                    container
+                        .read(workspaceDraftSubmissionProvider)
+                        .values
+                        .any(
+                          (submission) =>
+                              submission.workspaceId == 'wks_test' &&
+                              submission.text == 'route the draft',
+                        );
+                createdWorkspaceRoute = route;
+              },
+            ),
+          ),
+          GoRoute(
+            path: '/h/:serverId/workspace/:workspaceId',
+            builder: (_, state) => Text(
+              'workspace:${state.pathParameters['serverId']}:'
+              '${state.pathParameters['workspaceId']}',
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      container = ProviderContainer(
+        overrides: [daemonClientProvider.overrideWithValue(client)],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: FluentApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final promptInput = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextBox &&
+            widget.placeholder == 'What do you want to do? (optional)',
+      );
+      expect(promptInput, findsOneWidget);
+      await tester.enterText(promptInput, 'route the draft');
+      await tester.pump();
+      expect(
+        tester.widget<TextBox>(promptInput).controller?.text,
+        'route the draft',
+      );
+      final createButton = find.widgetWithText(FilledButton, 'Create');
+      expect(
+        tester.widget<FilledButton>(createButton).onPressed,
+        isNotNull,
+        reason: 'the router regression must exercise an enabled submission',
+      );
+      await tester.tap(createButton);
+      for (var attempt = 0; attempt < 500; attempt++) {
+        await tester.pump(const Duration(milliseconds: 20));
+        if (createdWorkspaceRoute != null) break;
+      }
+
+      expect(
+        find.textContaining('Failed to create worktree'),
+        findsNothing,
+        reason: find
+            .textContaining('Failed to create worktree')
+            .evaluate()
+            .map((element) => (element.widget as Text).data)
+            .join(),
+      );
+      final createdUri = Uri.parse(createdWorkspaceRoute!);
+      expect(
+        createdUri.path,
+        Uri.parse(buildHostWorkspaceRoute('fake', 'wks_test')).path,
+        reason:
+            'requests=${client.requests.map((request) => request.$1).toList()} '
+            'cache=${container.read(workspaceCatalogCacheProvider)} '
+            'pending=${container.read(workspaceDraftSubmissionProvider)}',
+      );
+      final pendingDraftId = container
+          .read(workspaceDraftSubmissionProvider)
+          .values
+          .single
+          .draftId;
+      expect(
+        createdUri.queryParameters['open'],
+        'draft:$pendingDraftId',
+        reason: 'the canonical workspace route must focus the pending draft',
+      );
+      expect(
+        setupCompleteWhenNavigated,
+        isTrue,
+        reason: 'catalog and pending draft must be ready before navigation',
+      );
+      expect(
+        container
+            .read(workspaceCatalogCacheProvider.notifier)
+            .read('fake')
+            .single
+            .id,
+        'wks_test',
+      );
+      expect(find.byType(NewWorkspaceScreen), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 150));
+    },
+  );
 
   testWidgets(
     'restores provider form preferences and submits changed feature values',
