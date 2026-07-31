@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/daemon_client.dart';
+import '../git/paseo_git_queries.dart'
+    show canFetchCheckoutCommits, checkoutCommitsQueryEnabled;
 import 'workspace_checkout_status_provider.dart';
 
 typedef CheckoutCommitsKey = ({String serverId, String cwd});
@@ -78,13 +80,21 @@ final checkoutCommitsProvider = FutureProvider.autoDispose
       final connection = ref
           .watch(checkoutStatusConnectionProvider(key.serverId))
           .value;
-      // Paseo gates on `Boolean(cwd)`, so only an empty string is rejected.
-      // A whitespace-only cwd is sent and surfaces the daemon's error rather
-      // than sitting idle, which is what the frozen UI shows.
-      if (!supportsCheckoutCommits(client) ||
-          key.cwd.isEmpty ||
-          (connection ?? client?.currentState) !=
-              DaemonConnectionState.connected) {
+      // The gate lives in paseo_git_queries.dart, which ports it with the
+      // upstream test suite. An inline copy here already drifted once — it
+      // trimmed `cwd` where upstream uses plain JS truthiness, so a
+      // whitespace-only cwd sat idle instead of surfacing the daemon's error.
+      if (!checkoutCommitsQueryEnabled(
+        enabled: true,
+        capabilityPresent: supportsCheckoutCommits(client),
+        canFetch: canFetchCheckoutCommits(
+          cwd: key.cwd,
+          hasClient: client != null,
+          isConnected:
+              (connection ?? client?.currentState) ==
+              DaemonConnectionState.connected,
+        ),
+      )) {
         return null;
       }
       final requestId = const Uuid().v4();
@@ -100,9 +110,7 @@ final checkoutCommitsProvider = FutureProvider.autoDispose
         throw const FormatException('Checkout commits response mismatch');
       }
       if (response.commits.any((commit) => commit.isOnBase == null)) {
-        throw const FormatException(
-          'Host omitted commit base classification',
-        );
+        throw const FormatException('Host omitted commit base classification');
       }
       ref
           .read(checkoutCommitsCacheProvider.notifier)
@@ -121,13 +129,21 @@ final checkoutCommitFileDiffProvider = FutureProvider.autoDispose
       final connection = ref
           .watch(checkoutStatusConnectionProvider(key.serverId))
           .value;
-      // As above: upstream's gate is `Boolean(cwd) && Boolean(sha)`.
+      // Upstream's `commitFileDiffsEnabled` additionally requires the commits
+      // query to have loaded, because without a commit's file list there is
+      // nothing to fetch a diff for. Here the caller supplies `path`, so that
+      // precondition is already met by construction and the non-empty `path`
+      // check stands in for it; the rest of the gate is the shared one.
       if (!supportsCheckoutCommits(client) ||
-          key.cwd.isEmpty ||
           key.sha.isEmpty ||
           key.path.isEmpty ||
-          (connection ?? client?.currentState) !=
-              DaemonConnectionState.connected) {
+          !canFetchCheckoutCommits(
+            cwd: key.cwd,
+            hasClient: client != null,
+            isConnected:
+                (connection ?? client?.currentState) ==
+                DaemonConnectionState.connected,
+          )) {
         return null;
       }
       final requestId = const Uuid().v4();

@@ -26,15 +26,15 @@ import 'dart:math' as math;
 
 import 'package:agent_protocol/agent_protocol.dart';
 
-// `SidebarProjectHost` is the exact Dart analogue of upstream's
-// `WorkspaceStructureHostPlacement` (serverId / iconWorkingDir /
-// canCreateWorktree) and is already ported, so it is reused rather than
-// redeclared.
-import 'package:coding_agent_app/sidebar/sidebar_project_row_model.dart'
-    show SidebarProjectHost;
+// The sidebar row/group shapes live in `sidebar/sidebar_models.dart` so this
+// library and the view models can share them without importing each other,
+// and the pin-splitting and status-grouping passes are the public ports in
+// `sidebar/paseo_sidebar_view_models.dart` rather than private copies here.
+import 'package:coding_agent_app/sidebar/paseo_sidebar_view_models.dart'
+    show buildStatusGroups, splitPinnedSidebarGroups;
+import 'package:coding_agent_app/sidebar/sidebar_models.dart';
 
-export 'package:coding_agent_app/sidebar/sidebar_project_row_model.dart'
-    show SidebarProjectHost;
+export 'package:coding_agent_app/sidebar/sidebar_models.dart';
 
 // ---------------------------------------------------------------------------
 // Shared identity normalization (utils/workspace-identity.ts)
@@ -356,307 +356,6 @@ Map<String, WorkspaceDescriptor> reconcileWorkspaceDirectory({
 // sidebar-projection.ts (and the three helpers it composes)
 // ---------------------------------------------------------------------------
 
-/// Sort that keeps equal elements in their original relative order.
-///
-/// JavaScript's `Array.prototype.sort` has been stable since ES2019 and every
-/// comparator below leans on that (pinned chats with no `pinnedAt` must keep
-/// project order). Dart's `List.sort` makes no stability promise, so the index
-/// is folded in as a final tiebreak.
-List<T> _stableSorted<T>(Iterable<T> items, int Function(T a, T b) compare) {
-  final indexed = items.toList(growable: false).asMap().entries.toList();
-  indexed.sort((a, b) {
-    final result = compare(a.value, b.value);
-    return result != 0 ? result : a.key.compareTo(b.key);
-  });
-  return [for (final entry in indexed) entry.value];
-}
-
-/// Where a workspace row sits in the sidebar tree, independent of anything it
-/// renders. This is the unit the shortcut numbering walks.
-final class SidebarWorkspacePlacement {
-  const SidebarWorkspacePlacement({
-    required this.workspaceKey,
-    required this.serverId,
-    required this.workspaceId,
-    required this.projectKey,
-    required this.projectName,
-    required this.projectKind,
-    required this.workspaceKind,
-    required this.name,
-  });
-
-  /// Sidebar-wide unique key (`serverId:workspaceId` upstream). Distinct from
-  /// [workspaceId], which is only unique within one host.
-  final String workspaceKey;
-  final String serverId;
-  final String workspaceId;
-  final String projectKey;
-  final String projectName;
-  final WorkspaceProjectKind projectKind;
-  final WorkspaceKind workspaceKind;
-  final String name;
-}
-
-/// A placement plus the status facts the status-grouped sidebar sorts on.
-///
-/// Upstream's `SidebarWorkspaceEntry` also carries purely presentational fields
-/// (`title`, `currentBranch`, `diffStat`, `prHint`, `scripts`, the archive
-/// warning counters). None are read by any rule in this library, so they are
-/// left out until the row-rendering port needs them; adding them here would
-/// force this library to depend on types it never inspects.
-final class SidebarWorkspaceEntry extends SidebarWorkspacePlacement {
-  const SidebarWorkspaceEntry({
-    required super.workspaceKey,
-    required super.serverId,
-    required super.workspaceId,
-    required super.projectKey,
-    required super.projectName,
-    required super.projectKind,
-    required super.workspaceKind,
-    required super.name,
-    required this.statusBucket,
-    this.statusEnteredAt,
-  });
-
-  final WorkspaceStateBucket statusBucket;
-
-  /// When the workspace entered [statusBucket]; null when the daemon never told
-  /// us, which sorts *after* everything that has a timestamp.
-  final DateTime? statusEnteredAt;
-}
-
-/// One project section of the sidebar, holding the placements beneath it.
-///
-/// Named to avoid colliding with the unrelated `SidebarProjectEntry` in
-/// `sidebar/sidebar_project_row_model.dart`, which models the project *row*
-/// (chevron, trailing action) rather than the project's workspace list.
-final class SidebarWorkspaceProjectEntry {
-  const SidebarWorkspaceProjectEntry({
-    required this.projectKey,
-    required this.projectName,
-    required this.projectKind,
-    required this.iconWorkingDir,
-    required this.hosts,
-    required this.workspaces,
-  });
-
-  final String projectKey;
-  final String projectName;
-  final WorkspaceProjectKind projectKind;
-  final String iconWorkingDir;
-  final List<SidebarProjectHost> hosts;
-  final List<SidebarWorkspacePlacement> workspaces;
-
-  /// Upstream's `{ ...project, workspaces }` spread.
-  SidebarWorkspaceProjectEntry _withWorkspaces(
-    List<SidebarWorkspacePlacement> nextWorkspaces,
-  ) => SidebarWorkspaceProjectEntry(
-    projectKey: projectKey,
-    projectName: projectName,
-    projectKind: projectKind,
-    iconWorkingDir: iconWorkingDir,
-    hosts: hosts,
-    workspaces: nextWorkspaces,
-  );
-}
-
-/// The persisted pin state, as keys rather than descriptors so it survives a
-/// workspace briefly disappearing from the directory.
-final class PinnedSidebarKeys {
-  const PinnedSidebarKeys({
-    required this.pinnedWorkspaceKeys,
-    required this.pinnedAtByKey,
-  });
-
-  final List<String> pinnedWorkspaceKeys;
-
-  /// `workspaceKey` -> ISO-8601 pin timestamp, used to order by recency.
-  final Map<String, String> pinnedAtByKey;
-}
-
-/// The sidebar split into its dedicated Pinned section and everything below it.
-final class PinnedSidebarGroups {
-  const PinnedSidebarGroups({
-    required this.pinnedChats,
-    required this.unpinnedProjects,
-  });
-
-  /// Individually pinned chats, hoisted out of their project. Most recently
-  /// pinned first.
-  final List<SidebarWorkspacePlacement> pinnedChats;
-
-  /// Everything else, with the pinned chats removed.
-  final List<SidebarWorkspaceProjectEntry> unpinnedProjects;
-}
-
-/// Splits pinned chats out of the project list.
-///
-/// Private because `hooks/use-sidebar-pins.ts` is not in this port's cluster —
-/// only [buildSidebarProjection] needs it, and publishing it here would stake a
-/// claim on a module that deserves its own port.
-///
-/// A project whose chats were *all* hoisted is dropped rather than left as an
-/// empty duplicate header; a project that was already empty is kept, because its
-/// "new workspace" row is the only way to add to it.
-PinnedSidebarGroups _splitPinnedSidebarGroups({
-  required List<SidebarWorkspaceProjectEntry> projects,
-  required PinnedSidebarKeys keys,
-}) {
-  if (keys.pinnedWorkspaceKeys.isEmpty) {
-    // Upstream hands the caller the very same array; preserved here so
-    // `identical()` still short-circuits downstream rebuilds.
-    return PinnedSidebarGroups(
-      pinnedChats: const [],
-      unpinnedProjects: projects,
-    );
-  }
-  final pinnedWorkspaceKeySet = keys.pinnedWorkspaceKeys.toSet();
-  final pinnedChats = <SidebarWorkspacePlacement>[];
-  final unpinnedProjects = <SidebarWorkspaceProjectEntry>[];
-
-  for (final project in projects) {
-    final remainingWorkspaces = <SidebarWorkspacePlacement>[];
-    for (final workspace in project.workspaces) {
-      if (pinnedWorkspaceKeySet.contains(workspace.workspaceKey)) {
-        pinnedChats.add(workspace);
-      } else {
-        remainingWorkspaces.add(workspace);
-      }
-    }
-    if (remainingWorkspaces.isEmpty && project.workspaces.isNotEmpty) {
-      continue;
-    }
-    unpinnedProjects.add(
-      remainingWorkspaces.length == project.workspaces.length
-          ? project
-          : project._withWorkspaces(remainingWorkspaces),
-    );
-  }
-
-  // Descending by pin time. Upstream compares the raw ISO strings with
-  // `localeCompare`; `compareTo` is used instead (Dart has no locale-aware
-  // string compare in core) and agrees for ISO-8601, which is lexicographically
-  // ordered. Keys with no recorded timestamp compare as "" and sink to the
-  // bottom in their original order.
-  return PinnedSidebarGroups(
-    pinnedChats: _stableSorted(
-      pinnedChats,
-      (a, b) => (keys.pinnedAtByKey[b.workspaceKey] ?? '').compareTo(
-        keys.pinnedAtByKey[a.workspaceKey] ?? '',
-      ),
-    ),
-    unpinnedProjects: unpinnedProjects,
-  );
-}
-
-/// The order status groups are rendered in: most demanding of the user first.
-///
-/// Spelled out explicitly rather than reusing [WorkspaceStateBucket]'s
-/// declaration order, which puts `running` before `attention` and would silently
-/// reorder the sidebar.
-const List<WorkspaceStateBucket> statusBucketOrder = [
-  WorkspaceStateBucket.needsInput,
-  WorkspaceStateBucket.failed,
-  WorkspaceStateBucket.attention,
-  WorkspaceStateBucket.running,
-  WorkspaceStateBucket.done,
-];
-
-/// User-facing group headers. `attention` reads as "Ready to review" and
-/// `running` as "Working" because the wire names describe the daemon's view, not
-/// the user's.
-const Map<WorkspaceStateBucket, String> statusBucketLabels = {
-  WorkspaceStateBucket.needsInput: 'Needs input',
-  WorkspaceStateBucket.failed: 'Failed',
-  WorkspaceStateBucket.attention: 'Ready to review',
-  WorkspaceStateBucket.running: 'Working',
-  WorkspaceStateBucket.done: 'Done',
-};
-
-/// One rendered status section. Empty buckets are never materialized, so a
-/// group in this list always has rows.
-final class StatusGroup {
-  const StatusGroup({
-    required this.bucket,
-    required this.label,
-    required this.rows,
-  });
-
-  final WorkspaceStateBucket bucket;
-  final String label;
-  final List<SidebarWorkspaceEntry> rows;
-}
-
-/// Buckets workspaces by status and orders each bucket.
-///
-/// Private for the same reason as [_splitPinnedSidebarGroups]:
-/// `hooks/sidebar-status-view-model.ts` is a separate module awaiting its own port.
-///
-/// Rows sort newest-transition-first so the thing that just changed is at the
-/// top of its group; rows with no transition timestamp fall to the bottom and
-/// are then ordered by project name, workspace name, and finally key, so the
-/// list never reshuffles between rebuilds.
-List<StatusGroup> _buildStatusGroups(
-  List<SidebarWorkspaceEntry> workspaces,
-  Map<String, String> projectNamesByKey,
-) {
-  final bucketRows = <WorkspaceStateBucket, List<SidebarWorkspaceEntry>>{};
-  for (final ws in workspaces) {
-    bucketRows.putIfAbsent(ws.statusBucket, () => []).add(ws);
-  }
-
-  final groups = <StatusGroup>[];
-  for (final bucket in statusBucketOrder) {
-    final rows = bucketRows[bucket];
-    if (rows == null || rows.isEmpty) continue;
-    groups.add(
-      StatusGroup(
-        bucket: bucket,
-        label: statusBucketLabels[bucket]!,
-        rows: _stableSorted(
-          rows,
-          (a, b) => _compareStatusRows(a, b, projectNamesByKey),
-        ),
-      ),
-    );
-  }
-  return groups;
-}
-
-int _compareStatusRows(
-  SidebarWorkspaceEntry a,
-  SidebarWorkspaceEntry b,
-  Map<String, String> projectNamesByKey,
-) {
-  final aTime = a.statusEnteredAt;
-  final bTime = b.statusEnteredAt;
-
-  if (aTime != null && bTime != null) {
-    // Upstream returns `bTime - aTime`; only the sign matters, and `compareTo`
-    // on the reversed operands has the same sign.
-    final timeCmp = bTime.compareTo(aTime);
-    if (timeCmp != 0) return timeCmp;
-  } else if (aTime != null) {
-    return -1;
-  } else if (bTime != null) {
-    return 1;
-  }
-
-  // `localeCompare` -> `compareTo`: Dart core has no locale-aware comparison, so
-  // names differing only by locale collation (accents, case) may order
-  // differently from upstream. ASCII names, the overwhelming case for repo and
-  // branch names, order identically.
-  final aProject = projectNamesByKey[a.projectKey] ?? '';
-  final bProject = projectNamesByKey[b.projectKey] ?? '';
-  final projectCmp = aProject.compareTo(bProject);
-  if (projectCmp != 0) return projectCmp;
-
-  final nameCmp = a.name.compareTo(b.name);
-  if (nameCmp != 0) return nameCmp;
-
-  return a.workspaceKey.compareTo(b.workspaceKey);
-}
-
 /// A workspace reachable by a numeric keyboard shortcut.
 final class SidebarShortcutWorkspaceTarget {
   const SidebarShortcutWorkspaceTarget({
@@ -793,13 +492,13 @@ SidebarProjection buildSidebarProjection({
   required Set<String> collapsedProjectKeys,
   required Set<String> collapsedStatusGroupKeys,
 }) {
-  final pinnedGroups = _splitPinnedSidebarGroups(
+  final pinnedGroups = splitPinnedSidebarGroups(
     projects: projects,
     keys: pinnedKeys,
   );
   final pinnedWorkspaceKeys = pinnedKeys.pinnedWorkspaceKeys.toSet();
   final statusGroups = groupMode == SidebarGroupMode.status
-      ? _buildStatusGroups([
+      ? buildStatusGroups([
           // Insertion-ordered, matching JS `Map.values()`.
           for (final workspace in workspaceEntriesByKey.values)
             if (!pinnedWorkspaceKeys.contains(workspace.workspaceKey))

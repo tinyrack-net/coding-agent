@@ -45,7 +45,7 @@ library;
 import 'package:agent_protocol/agent_protocol.dart'
     show WorkspaceDescriptor, WorkspaceStateBucket;
 import 'package:coding_agent_app/composer/create_agent_preferences.dart';
-import 'package:coding_agent_app/core/paseo_session_projection.dart'
+import 'package:coding_agent_app/sidebar/sidebar_models.dart'
     show
         PinnedSidebarGroups,
         PinnedSidebarKeys,
@@ -61,7 +61,7 @@ import 'package:coding_agent_app/sidebar/workspace_agent_activity.dart'
 // The row/group value types are already ported and public. Re-exported so a
 // caller of this library never has to reach into `core/` for the types its own
 // functions return.
-export 'package:coding_agent_app/core/paseo_session_projection.dart'
+export 'package:coding_agent_app/sidebar/sidebar_models.dart'
     show
         PinnedSidebarGroups,
         PinnedSidebarKeys,
