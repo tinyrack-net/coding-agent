@@ -61,6 +61,37 @@ void main() {
     );
   });
 
+  test('blank commit messages use Paseo metadata-generator fallback', () async {
+    final runner = _FakeGitRunner();
+    final generatedFor = <String>[];
+    final service = LegacyCheckoutService(
+      git: GitService(dataDir: 'test-data', runner: runner),
+      generateCommitMessage: (cwd) {
+        generatedFor.add(cwd);
+        return 'Generated change';
+      },
+    );
+
+    final response = await service.handle({
+      'type': CheckoutCommitRequest.type,
+      'cwd': '/repo',
+      'message': '  ',
+      'requestId': 'generated-commit',
+    });
+
+    final parsed = CheckoutCommitResponse.fromJson(response!);
+    expect(parsed.success, isTrue);
+    expect(generatedFor, ['/repo']);
+    expect(
+      runner.commands,
+      contains(
+        predicate<List<String>>(
+          (command) => command.join('|') == 'commit|-m|Generated change',
+        ),
+      ),
+    );
+  });
+
   test('branch validation and suggestions normalize origin refs', () async {
     final runner = _FakeGitRunner(
       responses: <String, GitResult>{

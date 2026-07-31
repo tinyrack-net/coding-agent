@@ -198,7 +198,9 @@ class _ComposerState extends ConsumerState<Composer> {
       workspaceAttachmentsProvider(_draftKey).notifier,
     );
     for (final file in draft.workspaceFiles) {
-      attachmentNotifier.add(workspaceFileContextAttachment(file.path));
+      attachmentNotifier.add(
+        workspaceFileContextAttachment(file.path, selection: file.selection),
+      );
     }
     _suspendDraftPersistence = true;
     _controller.text = draft.text;
@@ -219,8 +221,13 @@ class _ComposerState extends ConsumerState<Composer> {
         for (final attachment in ref.read(
           workspaceAttachmentsProvider(_draftKey),
         ))
-          if (attachment.kind == 'file')
-            ComposerWorkspaceFileAttachment(path: attachment.id),
+          if (attachment.isWorkspaceFile)
+            ComposerWorkspaceFileAttachment(
+              path: attachment.workspaceFile?.path ?? attachment.id,
+              selection:
+                  attachment.workspaceFile?.selection ??
+                  ComposerWorkspaceFileSelection.wholeFileSelection,
+            ),
       ],
       updatedAt: DateTime.now().millisecondsSinceEpoch,
     );
@@ -576,7 +583,7 @@ class _ComposerState extends ConsumerState<Composer> {
         ..addAll(message.images);
     });
     for (final attachment in message.attachments) {
-      final scope = attachment.kind == 'file' ? _draftKey : cwd;
+      final scope = attachment.isWorkspaceFile ? _draftKey : cwd;
       if (scope != null) {
         ref.read(workspaceAttachmentsProvider(scope).notifier).add(attachment);
       }
@@ -1042,7 +1049,7 @@ class _ComposerState extends ConsumerState<Composer> {
                           ContextAttachmentPill(
                             attachment: attachment,
                             onRemove: () {
-                              final scope = attachment.kind == 'file'
+                              final scope = attachment.isWorkspaceFile
                                   ? _draftKey
                                   : cwd;
                               if (scope == null) return;
@@ -1052,7 +1059,7 @@ class _ComposerState extends ConsumerState<Composer> {
                                       scope,
                                     ).notifier,
                                   )
-                                  .remove(attachment.kind, attachment.id);
+                                  .removeAttachment(attachment);
                               _persistDraft();
                             },
                           ),

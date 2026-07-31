@@ -13,14 +13,21 @@ import '../git/git_runner.dart';
 import '../git/git_service.dart';
 
 typedef LegacyGitMutation = FutureOr<void> Function(String cwd, String action);
+typedef LegacyCommitMessageGenerator = FutureOr<String> Function(String cwd);
 
 final class LegacyCheckoutService {
-  LegacyCheckoutService({required GitService git, this.onMutation})
-    : _git = git;
+  LegacyCheckoutService({
+    required GitService git,
+    this.onMutation,
+    LegacyCommitMessageGenerator? generateCommitMessage,
+  }) : _git = git,
+       _generateCommitMessage =
+           generateCommitMessage ?? _defaultCommitMessageGenerator;
 
   static const _paseoStashPrefix = 'paseo-auto-stash:';
   final GitService _git;
   final LegacyGitMutation? onMutation;
+  final LegacyCommitMessageGenerator _generateCommitMessage;
 
   Future<Map<String, Object?>?> handle(Map<String, Object?> message) async {
     return switch (message['type']) {
@@ -42,7 +49,15 @@ final class LegacyCheckoutService {
 
   Future<Map<String, Object?>> _commit(CheckoutCommitRequest request) async {
     try {
-      final message = request.message?.trim() ?? '';
+      var message = request.message?.trim() ?? '';
+      // Paseo asks its metadata generator whenever the desktop client leaves
+      // the commit message blank.  The native Dart daemon does not yet expose
+      // the provider-backed structured generator, so the compatibility
+      // adapter supplies Paseo's deterministic fallback while retaining an
+      // injectable hook for a provider-backed implementation.
+      if (message.isEmpty) {
+        message = (await _generateCommitMessage(request.cwd)).trim();
+      }
       if (message.isEmpty) {
         throw StateError('Commit message is required');
       }
@@ -297,6 +312,8 @@ final class LegacyCheckoutService {
     return refs;
   }
 }
+
+FutureOr<String> _defaultCommitMessageGenerator(String _) => 'Update files';
 
 /// Desktop editor launching is intentionally owned by the Flutter shell.  A
 /// legacy daemon client still receives a typed response so the request cannot

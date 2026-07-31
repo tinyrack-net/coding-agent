@@ -64,6 +64,73 @@ void main() {
   });
 
   test(
+    'workspace file selections preserve Paseo whole-file and line-range semantics',
+    () {
+      const whole = ComposerWorkspaceFileSelection.wholeFileSelection;
+      final range = ComposerWorkspaceFileSelection.lineRange(
+        startLine: 12,
+        endLine: 24,
+      );
+      final wholeAttachment = ComposerWorkspaceFileAttachment(
+        path: 'src/app.ts',
+      );
+      final rangeAttachment = ComposerWorkspaceFileAttachment(
+        path: r'.\src\app.ts',
+        selection: range,
+      );
+
+      expect(whole.toJson(), {'kind': 'whole_file'});
+      expect(range.toJson(), {
+        'kind': 'line_range',
+        'startLine': 12,
+        'endLine': 24,
+      });
+      expect(wholeAttachment.path, 'src/app.ts');
+      expect(rangeAttachment.path, 'src/app.ts');
+      expect(wholeAttachment, isNot(rangeAttachment));
+      expect(
+        ComposerWorkspaceFileAttachment.fromJson({
+          'path': 'src/app.ts',
+          'selection': 'whole_file',
+        }).selection,
+        whole,
+      );
+    },
+  );
+
+  test(
+    'workspace file line ranges survive draft persistence and dedupe',
+    () async {
+      final store = PreferencesComposerDraftStore();
+      final range = ComposerWorkspaceFileSelection.lineRange(
+        startLine: 2,
+        endLine: 5,
+      );
+      await Future.wait([
+        store.attachWorkspaceFile(
+          'agent:host:a1',
+          ComposerWorkspaceFileAttachment(
+            path: r'.\lib\example.dart',
+            selection: range,
+          ),
+        ),
+        store.attachWorkspaceFile(
+          'agent:host:a1',
+          ComposerWorkspaceFileAttachment(
+            path: 'lib/example.dart',
+            selection: range,
+          ),
+        ),
+      ]);
+
+      final restored = await store.load('agent:host:a1');
+      expect(restored?.workspaceFiles, hasLength(1));
+      expect(restored?.workspaceFiles.single.path, 'lib/example.dart');
+      expect(restored?.workspaceFiles.single.selection, range);
+    },
+  );
+
+  test(
     'attaches normalized workspace files atomically and deduplicates',
     () async {
       final store = PreferencesComposerDraftStore();

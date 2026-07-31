@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:agent_daemon/src/agent/create_agent_mode.dart';
@@ -546,4 +547,121 @@ void main() {
       ]);
     },
   );
+
+  test(
+    'returns loading entries immediately and publishes asynchronous readiness',
+    () async {
+      final gate = Completer<AcpProviderCatalog>();
+      final updates = <List<ProviderSnapshotEntry>>[];
+      final catalog = PaseoProviderCatalogRegistry(
+        definitions: const [ready],
+        commandResolver: (_) async => '/bin/ready',
+        catalogProbe: (_, _) => gate.future,
+        onSnapshotChanged: (_, entries) => updates.add(entries),
+      );
+
+      final initial = await catalog.snapshot(
+        cwd: '/repo',
+        wait: false,
+        emitUpdates: true,
+      );
+      expect(initial.single.status, ProviderCatalogStatus.loading);
+      expect(updates, isEmpty);
+
+      gate.complete(
+        AcpProviderCatalog(
+          models: [
+            const ProviderModelDefinition(
+              provider: 'ready',
+              id: 'model',
+              label: 'Model',
+            ),
+          ],
+          modes: const [],
+          currentModelId: 'model',
+          currentModeId: null,
+          currentThinkingOptionId: null,
+          configOptions: const [],
+          hasExplicitModels: true,
+          hasExplicitModes: true,
+        ),
+      );
+      final loaded = await catalog.snapshot(cwd: '/repo');
+      expect(loaded.single.status, ProviderCatalogStatus.ready);
+      expect(loaded.single.models?.single.id, 'model');
+      expect(updates, hasLength(1));
+      expect(updates.single.single.status, ProviderCatalogStatus.ready);
+    },
+  );
+
+  test('forced refresh suppresses a stale in-flight provider load', () async {
+    final gates = <Completer<AcpProviderCatalog>>[];
+    final updates = <List<ProviderSnapshotEntry>>[];
+    final catalog = PaseoProviderCatalogRegistry(
+      definitions: const [ready],
+      commandResolver: (_) async => '/bin/ready',
+      catalogProbe: (_, _) {
+        final gate = Completer<AcpProviderCatalog>();
+        gates.add(gate);
+        return gate.future;
+      },
+      onSnapshotChanged: (_, entries) => updates.add(entries),
+    );
+
+    await catalog.snapshot(cwd: '/repo', wait: false, emitUpdates: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(gates, hasLength(1));
+
+    await catalog.snapshot(
+      cwd: '/repo',
+      force: true,
+      wait: false,
+      emitUpdates: true,
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(gates, hasLength(2));
+
+    gates[1].complete(
+      AcpProviderCatalog(
+        models: [
+          const ProviderModelDefinition(
+            provider: 'ready',
+            id: 'new-model',
+            label: 'New model',
+          ),
+        ],
+        modes: const [],
+        currentModelId: 'new-model',
+        currentModeId: null,
+        currentThinkingOptionId: null,
+        configOptions: const [],
+        hasExplicitModels: true,
+        hasExplicitModes: true,
+      ),
+    );
+    final refreshed = catalog.snapshot(cwd: '/repo');
+    gates[0].complete(
+      AcpProviderCatalog(
+        models: [
+          const ProviderModelDefinition(
+            provider: 'ready',
+            id: 'stale-model',
+            label: 'Stale model',
+          ),
+        ],
+        modes: const [],
+        currentModelId: 'stale-model',
+        currentModeId: null,
+        currentThinkingOptionId: null,
+        configOptions: const [],
+        hasExplicitModels: true,
+        hasExplicitModes: true,
+      ),
+    );
+
+    final entries = await refreshed;
+    expect(entries.single.models?.single.id, 'new-model');
+    expect(updates, hasLength(1));
+    expect(updates.single.single.models?.single.id, 'new-model');
+  });
 }

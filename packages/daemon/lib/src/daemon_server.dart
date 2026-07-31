@@ -245,6 +245,7 @@ Future<DaemonServerHandle> startDaemonServer({
       entry.id: OpenAiCompatibleBackend(catalogEntry: entry),
   };
   final registry = ProviderRegistry(credentials, nativeBackends);
+  late final WsServer server;
   late final PaseoProviderCatalogRegistry paseoProviderCatalog;
   final resolvedAgentClients =
       agentClients ??
@@ -286,6 +287,13 @@ Future<DaemonServerHandle> startDaemonServer({
     configResolver: () => configStore.config,
     catalogProbe: (definition, cwd) async =>
         genericAcpClient(definition)?.fetchCatalog(cwd: cwd),
+    onSnapshotChanged: (cwd, entries) => server.broadcastV2(
+      ProvidersSnapshotUpdate(
+        cwd: cwd,
+        entries: entries,
+        generatedAt: DateTime.now().toUtc().toIso8601String(),
+      ).toJson(),
+    ),
     modeCatalogResolver: (definition, cwd) async {
       final client = resolvedAgentClients[definition.id];
       if (client is! DefaultModeResolvingAgentClient) return null;
@@ -308,7 +316,6 @@ Future<DaemonServerHandle> startDaemonServer({
     },
   );
 
-  late final WsServer server;
   late final WorkspaceV2Service workspaceV2;
   late final CreateAgentLifecycleDispatch createAgentLifecycle;
   late final WorkspaceRegistries workspaceRegistries;
@@ -1239,6 +1246,7 @@ Future<DaemonServerHandle> startDaemonServer({
     registry: paseoProviderCatalog,
     featureResolver: manager.listFeatures,
     onSnapshotChanged: (update) => server.broadcastV2(update.toJson()),
+    nonBlockingSnapshotReads: true,
   );
   final voiceSessions = VoiceSessionV2Service(
     createHost: (connection) =>

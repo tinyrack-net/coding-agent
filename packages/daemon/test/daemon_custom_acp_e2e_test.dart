@@ -97,6 +97,21 @@ void main() {
             (frame['message'] as Map?)?['type'] ==
                 'get_providers_snapshot_response',
       );
+      final snapshotUpdateFrame = frames.firstWhere((frame) {
+        if (frame['type'] != 'session') return false;
+        final message = (frame['message'] as Map?)?.cast<String, Object?>();
+        if (message?['type'] != ProvidersSnapshotUpdate.type) return false;
+        try {
+          final update = ProvidersSnapshotUpdate.fromJson(message!);
+          return update.entries.any(
+            (entry) =>
+                entry.provider == 'fixture-acp' &&
+                entry.status == ProviderCatalogStatus.ready,
+          );
+        } on Object {
+          return false;
+        }
+      });
       channel.sink.add(
         jsonEncode({
           'type': 'session',
@@ -109,9 +124,15 @@ void main() {
       final snapshot = GetProvidersSnapshotResponse.fromJson(
         ((await snapshotFrame)['message'] as Map).cast<String, Object?>(),
       );
-      final provider = snapshot.entries.firstWhere(
+      final initialProvider = snapshot.entries.firstWhere(
         (entry) => entry.provider == 'fixture-acp',
       );
+      final provider = initialProvider.status == ProviderCatalogStatus.ready
+          ? initialProvider
+          : ProvidersSnapshotUpdate.fromJson(
+              ((await snapshotUpdateFrame)['message'] as Map)
+                  .cast<String, Object?>(),
+            ).entries.firstWhere((entry) => entry.provider == 'fixture-acp');
       expect(provider.status, ProviderCatalogStatus.ready);
       expect(provider.models?.map((model) => model.id), [
         'fixture-model',

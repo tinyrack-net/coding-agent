@@ -17,6 +17,7 @@ final class WorkspaceContextAttachment {
     this.screenshot,
     this.semanticAttachment,
     this.reviewDraftKey,
+    this.workspaceFile,
   });
 
   final String kind;
@@ -29,25 +30,68 @@ final class WorkspaceContextAttachment {
   final AgentAttachment? semanticAttachment;
   final String? reviewDraftKey;
 
+  /// Original workspace-file metadata, retained so line-range selections can
+  /// survive draft hydration and remain distinct from the whole-file pill.
+  final ComposerWorkspaceFileAttachment? workspaceFile;
+
+  bool get isWorkspaceFile => workspaceFile != null || kind == 'file';
+
   AgentAttachment toAgentAttachment() =>
-      semanticAttachment ?? TextAgentAttachment(title: title, text: text);
+      semanticAttachment ??
+      (workspaceFile == null
+          ? TextAgentAttachment(title: title, text: text)
+          : workspaceFileAttachmentToAgentAttachment(workspaceFile!));
 }
 
-WorkspaceContextAttachment workspaceFileContextAttachment(String path) {
-  final attachment = ComposerWorkspaceFileAttachment(path: path);
+WorkspaceContextAttachment workspaceFileContextAttachment(
+  String path, {
+  ComposerWorkspaceFileSelection selection =
+      ComposerWorkspaceFileSelection.wholeFileSelection,
+}) {
+  final attachment = ComposerWorkspaceFileAttachment(
+    path: path,
+    selection: selection,
+  );
   final title = attachment.path.split('/').last;
   return WorkspaceContextAttachment(
-    kind: 'file',
+    // Paseo calls this composer attachment kind `workspace_file`.  `file` is
+    // still accepted by isWorkspaceFile for drafts created by the MVP.
+    kind: 'workspace_file',
     id: attachment.path,
     title: title,
-    subtitle: attachment.path,
-    text: 'Workspace file: ${attachment.path}',
+    subtitle: workspaceFileAttachmentSubtitle(attachment),
+    text: workspaceFileAttachmentToAgentAttachment(attachment).text,
     url: null,
-    semanticAttachment: TextAgentAttachment(
-      title: title,
-      text: 'Workspace file: ${attachment.path}',
-    ),
+    semanticAttachment: workspaceFileAttachmentToAgentAttachment(attachment),
+    workspaceFile: attachment,
   );
+}
+
+String workspaceFileAttachmentKey(ComposerWorkspaceFileAttachment attachment) =>
+    '${attachment.path}:${attachment.selection.key}';
+
+TextAgentAttachment workspaceFileAttachmentToAgentAttachment(
+  ComposerWorkspaceFileAttachment attachment,
+) {
+  final fileName = attachment.path.split('/').last;
+  final selection = attachment.selection;
+  final lines = selection.kind == ComposerWorkspaceFileSelectionKind.lineRange
+      ? '\nLines: ${selection.startLine}-${selection.endLine}'
+      : '';
+  return TextAgentAttachment(
+    title: fileName,
+    text: 'Workspace file: ${attachment.path}$lines',
+  );
+}
+
+String workspaceFileAttachmentSubtitle(
+  ComposerWorkspaceFileAttachment attachment,
+) {
+  final selection = attachment.selection;
+  if (selection.kind == ComposerWorkspaceFileSelectionKind.wholeFile) {
+    return attachment.path;
+  }
+  return '${attachment.path} · ${selection.startLine}-${selection.endLine}';
 }
 
 List<WorkspaceContextAttachment> mergeWorkspaceContextAttachments(
@@ -57,7 +101,7 @@ List<WorkspaceContextAttachment> mergeWorkspaceContextAttachments(
   final result = <WorkspaceContextAttachment>[];
   final indices = <String, int>{};
   for (final attachment in [...first, ...second]) {
-    final key = '${attachment.kind}\u0000${attachment.id}';
+    final key = _workspaceAttachmentKey(attachment);
     final existing = indices[key];
     if (existing == null) {
       indices[key] = result.length;
@@ -79,11 +123,9 @@ class WorkspaceAttachmentsNotifier
   List<WorkspaceContextAttachment> build() => const [];
 
   void add(WorkspaceContextAttachment attachment) {
+    final attachmentKey = _workspaceAttachmentKey(attachment);
     final existing = state
-        .where(
-          (current) =>
-              current.kind == attachment.kind && current.id == attachment.id,
-        )
+        .where((current) => _workspaceAttachmentKey(current) == attachmentKey)
         .firstOrNull;
     if (existing != null &&
         existing.title == attachment.title &&
@@ -96,9 +138,17 @@ class WorkspaceAttachmentsNotifier
     }
     state = [
       for (final current in state)
-        if (current.kind != attachment.kind || current.id != attachment.id)
-          current,
+        if (_workspaceAttachmentKey(current) != attachmentKey) current,
       attachment,
+    ];
+    _syncScreenshotOwners();
+  }
+
+  void removeAttachment(WorkspaceContextAttachment attachment) {
+    final key = _workspaceAttachmentKey(attachment);
+    state = [
+      for (final current in state)
+        if (_workspaceAttachmentKey(current) != key) current,
     ];
     _syncScreenshotOwners();
   }
@@ -121,6 +171,14 @@ class WorkspaceAttachmentsNotifier
         .read(workspaceScreenshotOwnersProvider.notifier)
         .replaceScope(cwd, state);
   }
+}
+
+String _workspaceAttachmentKey(WorkspaceContextAttachment attachment) {
+  final workspaceFile = attachment.workspaceFile;
+  if (workspaceFile != null) {
+    return '${attachment.kind}\u0000${workspaceFileAttachmentKey(workspaceFile)}';
+  }
+  return '${attachment.kind}\u0000${attachment.id}';
 }
 
 final workspaceAttachmentsProvider =

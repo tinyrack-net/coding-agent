@@ -9,10 +9,100 @@ const composerDraftStoreVersion = 1;
 const composerFinalizedDraftTtl = Duration(minutes: 5);
 const newWorkspaceComposerDraftKey = 'new-workspace';
 
-final class ComposerWorkspaceFileAttachment {
-  const ComposerWorkspaceFileAttachment._({required this.path});
+enum ComposerWorkspaceFileSelectionKind { wholeFile, lineRange }
 
-  factory ComposerWorkspaceFileAttachment({required String path}) {
+/// The selection attached to a workspace file in Paseo's composer.
+///
+/// A whole file and a line range are intentionally different attachments.  A
+/// user can therefore add the same file once for broad context and once for a
+/// focused review without one pill silently replacing the other.
+final class ComposerWorkspaceFileSelection {
+  const ComposerWorkspaceFileSelection.wholeFile()
+    : kind = ComposerWorkspaceFileSelectionKind.wholeFile,
+      startLine = null,
+      endLine = null;
+
+  const ComposerWorkspaceFileSelection._lineRange({
+    required this.startLine,
+    required this.endLine,
+  }) : kind = ComposerWorkspaceFileSelectionKind.lineRange;
+
+  factory ComposerWorkspaceFileSelection.lineRange({
+    required int startLine,
+    required int endLine,
+  }) {
+    if (startLine <= 0 || endLine < startLine) {
+      throw ArgumentError('Workspace file line range is invalid');
+    }
+    return ComposerWorkspaceFileSelection._lineRange(
+      startLine: startLine,
+      endLine: endLine,
+    );
+  }
+
+  final ComposerWorkspaceFileSelectionKind kind;
+  final int? startLine;
+  final int? endLine;
+
+  static const wholeFileSelection = ComposerWorkspaceFileSelection.wholeFile();
+
+  String get wireKind => kind == ComposerWorkspaceFileSelectionKind.wholeFile
+      ? 'whole_file'
+      : 'line_range';
+
+  String get key => kind == ComposerWorkspaceFileSelectionKind.wholeFile
+      ? 'whole_file'
+      : 'line_range:$startLine-$endLine';
+
+  Map<String, Object?> toJson() =>
+      kind == ComposerWorkspaceFileSelectionKind.wholeFile
+      ? const {'kind': 'whole_file'}
+      : {'kind': 'line_range', 'startLine': startLine, 'endLine': endLine};
+
+  factory ComposerWorkspaceFileSelection.fromJson(Object? value) {
+    // Drafts written by the MVP used a string. Keep reading those records so
+    // an upgrade does not drop a user's pending prompt.
+    if (value == null || value == 'whole_file') return wholeFileSelection;
+    if (value is! Map || value['kind'] is! String) {
+      throw const FormatException('Invalid workspace file selection');
+    }
+    switch (value['kind']) {
+      case 'whole_file':
+        return wholeFileSelection;
+      case 'line_range':
+        final start = value['startLine'];
+        final end = value['endLine'];
+        if (start is! int || end is! int) {
+          throw const FormatException('Invalid workspace file line range');
+        }
+        return ComposerWorkspaceFileSelection.lineRange(
+          startLine: start,
+          endLine: end,
+        );
+      default:
+        throw const FormatException('Unknown workspace file selection');
+    }
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is ComposerWorkspaceFileSelection && other.key == key;
+
+  @override
+  int get hashCode => key.hashCode;
+}
+
+final class ComposerWorkspaceFileAttachment {
+  const ComposerWorkspaceFileAttachment._({
+    required this.path,
+    required this.selection,
+  });
+
+  factory ComposerWorkspaceFileAttachment({
+    required String path,
+    ComposerWorkspaceFileSelection selection =
+        ComposerWorkspaceFileSelection.wholeFileSelection,
+  }) {
     final normalized = path
         .trim()
         .replaceAll(r'\', '/')
@@ -20,22 +110,34 @@ final class ComposerWorkspaceFileAttachment {
     if (normalized.isEmpty) {
       throw ArgumentError.value(path, 'path', 'must not be empty');
     }
-    return ComposerWorkspaceFileAttachment._(path: normalized);
+    return ComposerWorkspaceFileAttachment._(
+      path: normalized,
+      selection: selection,
+    );
   }
 
   final String path;
+  final ComposerWorkspaceFileSelection selection;
 
-  Map<String, Object?> toJson() => {'path': path, 'selection': 'whole_file'};
+  Map<String, Object?> toJson() => {
+    'path': path,
+    'selection': selection.toJson(),
+  };
 
   factory ComposerWorkspaceFileAttachment.fromJson(Map<String, Object?> json) =>
-      ComposerWorkspaceFileAttachment(path: json['path'] as String);
+      ComposerWorkspaceFileAttachment(
+        path: json['path'] as String,
+        selection: ComposerWorkspaceFileSelection.fromJson(json['selection']),
+      );
 
   @override
   bool operator ==(Object other) =>
-      other is ComposerWorkspaceFileAttachment && other.path == path;
+      other is ComposerWorkspaceFileAttachment &&
+      other.path == path &&
+      other.selection == selection;
 
   @override
-  int get hashCode => path.hashCode;
+  int get hashCode => Object.hash(path, selection);
 }
 
 List<ComposerWorkspaceFileAttachment> appendComposerWorkspaceFile(

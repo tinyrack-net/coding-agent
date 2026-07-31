@@ -397,7 +397,9 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
       workspaceAttachmentsProvider(_draftKey).notifier,
     );
     for (final file in draft.workspaceFiles) {
-      attachmentNotifier.add(workspaceFileContextAttachment(file.path));
+      attachmentNotifier.add(
+        workspaceFileContextAttachment(file.path, selection: file.selection),
+      );
     }
     _suspendDraftPersistence = true;
     _promptController.text = draft.text;
@@ -419,8 +421,13 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
         for (final attachment in ref.read(
           workspaceAttachmentsProvider(draftKey),
         ))
-          if (attachment.kind == 'file')
-            ComposerWorkspaceFileAttachment(path: attachment.id),
+          if (attachment.isWorkspaceFile)
+            ComposerWorkspaceFileAttachment(
+              path: attachment.workspaceFile?.path ?? attachment.id,
+              selection:
+                  attachment.workspaceFile?.selection ??
+                  ComposerWorkspaceFileSelection.wholeFileSelection,
+            ),
       ],
       updatedAt: DateTime.now().millisecondsSinceEpoch,
     );
@@ -1397,7 +1404,7 @@ class _DraftSessionComposerState extends ConsumerState<DraftSessionComposer> {
                                           _draftKey,
                                         ).notifier,
                                       )
-                                      .remove(attachment.kind, attachment.id);
+                                      .removeAttachment(attachment);
                                   _persistDraft();
                                 },
                         ),

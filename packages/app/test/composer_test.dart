@@ -1106,6 +1106,40 @@ void main() {
     },
   );
 
+  testWidgets('workspace file line-range attachments submit exact context', (
+    tester,
+  ) async {
+    final client = FakeDaemonClient();
+    final container = await pumpComposer(tester, client);
+    const draftKey = 'agent:local:a1';
+    container
+        .read(workspaceAttachmentsProvider(draftKey).notifier)
+        .add(
+          workspaceFileContextAttachment(
+            r'.\lib\example.dart',
+            selection: ComposerWorkspaceFileSelection.lineRange(
+              startLine: 12,
+              endLine: 24,
+            ),
+          ),
+        );
+    await tester.pump();
+
+    expect(find.text('example.dart'), findsOneWidget);
+    await tester.tap(find.byIcon(FluentIcons.send));
+    await tester.pump(const Duration(milliseconds: 150));
+
+    final (_, payload) = client.requests.single;
+    expect(payload['attachments'], [
+      {
+        'type': 'text',
+        'mimeType': 'text/plain',
+        'title': 'example.dart',
+        'text': 'Workspace file: lib/example.dart\nLines: 12-24',
+      },
+    ]);
+  });
+
   testWidgets('review attachments keep wire semantics and clear sent drafts', (
     tester,
   ) async {

@@ -12,16 +12,19 @@ final class ProviderCatalogV2Service {
     ProviderDraftFeatureResolver? featureResolver,
     DateTime Function()? now,
     void Function(ProvidersSnapshotUpdate update)? onSnapshotChanged,
+    bool nonBlockingSnapshotReads = false,
   }) : _now = now ?? DateTime.now,
        _featureResolver =
            featureResolver ??
            ((config) async => paseoProviderDraftFeatures(config)),
-       _onSnapshotChanged = onSnapshotChanged;
+       _onSnapshotChanged = onSnapshotChanged,
+       _nonBlockingSnapshotReads = nonBlockingSnapshotReads;
 
   final PaseoProviderCatalogRegistry registry;
   final DateTime Function() _now;
   final ProviderDraftFeatureResolver _featureResolver;
   final void Function(ProvidersSnapshotUpdate update)? _onSnapshotChanged;
+  final bool _nonBlockingSnapshotReads;
 
   Future<Map<String, Object?>?> handle(Map<String, Object?> message) async {
     return switch (message['type']) {
@@ -200,7 +203,11 @@ final class ProviderCatalogV2Service {
   Future<Map<String, Object?>> _getSnapshot(
     GetProvidersSnapshotRequest request,
   ) async => GetProvidersSnapshotResponse(
-    entries: await registry.snapshot(cwd: request.cwd),
+    entries: await registry.snapshot(
+      cwd: request.cwd,
+      wait: !_nonBlockingSnapshotReads,
+      emitUpdates: _nonBlockingSnapshotReads,
+    ),
     generatedAt: _timestamp(),
     requestId: request.requestId,
   ).toJson();

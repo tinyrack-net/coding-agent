@@ -23,11 +23,26 @@ typedef ProviderModeCatalogResolver =
       String cwd,
     );
 
+/// Emitted after a provider finishes loading an asynchronous snapshot.
+///
+/// The callback mirrors Paseo's `ProviderSnapshotManager` change event.  The
+/// global snapshot is represented by a null cwd; workspace snapshots contain
+/// the normalized absolute cwd used for the probe.
+typedef ProviderSnapshotChangeListener =
+    void Function(String? cwd, List<ProviderSnapshotEntry> entries);
+
 final class _CatalogLoad {
   const _CatalogLoad({required this.fingerprint, required this.result});
 
   final String fingerprint;
   final Future<AcpProviderCatalog?> result;
+}
+
+final class _ProviderLoad {
+  _ProviderLoad({required this.generation});
+
+  final int generation;
+  late final Future<void> result;
 }
 
 final class PaseoProviderCatalogRegistry {
@@ -39,13 +54,15 @@ final class PaseoProviderCatalogRegistry {
     ProviderCatalogProbe? catalogProbe,
     ProviderModeCatalogResolver? modeCatalogResolver,
     DateTime Function()? now,
+    ProviderSnapshotChangeListener? onSnapshotChanged,
   }) : _resolver = executableResolver ?? ExecutableResolver(),
        _commandResolver = commandResolver,
        _baseDefinitions = definitions ?? PaseoProviderManifest.definitions,
        _configResolver = configResolver,
        _catalogProbe = catalogProbe,
        _modeCatalogResolver = modeCatalogResolver,
-       _now = now ?? DateTime.now;
+       _now = now ?? DateTime.now,
+       _onSnapshotChanged = onSnapshotChanged;
 
   final ExecutableResolver _resolver;
   final ProviderCommandResolver? _commandResolver;
@@ -53,8 +70,13 @@ final class PaseoProviderCatalogRegistry {
   final ProviderCatalogProbe? _catalogProbe;
   final ProviderModeCatalogResolver? _modeCatalogResolver;
   final DateTime Function() _now;
+  final ProviderSnapshotChangeListener? _onSnapshotChanged;
   final List<PaseoProviderDefinition> _baseDefinitions;
   final Map<String, _CatalogLoad> _catalogLoads = {};
+  final Map<String, Map<String, ProviderSnapshotEntry>> _snapshots = {};
+  final Map<String, Map<String, _ProviderLoad>> _providerLoads = {};
+  String? _definitionsFingerprint;
+  int _generation = 0;
 
   List<PaseoProviderDefinition> get definitions {
     final config = _configResolver?.call();
@@ -115,18 +137,40 @@ final class PaseoProviderCatalogRegistry {
     Iterable<String>? providers,
     String? cwd,
     bool force = false,
+    bool wait = true,
+    bool emitUpdates = false,
   }) async {
+    final currentDefinitions = definitions;
+    _syncDefinitionGeneration(currentDefinitions);
     final filter = providers == null ? null : providers.toSet();
     final selected = [
-      for (final definition in definitions)
+      for (final definition in currentDefinitions)
         if (filter == null || filter.contains(definition.id)) definition,
     ];
+    final snapshotKey = _snapshotKey(cwd);
+    final snapshot = _ensureSnapshot(snapshotKey, currentDefinitions);
     final probeCwd = _resolveProbeCwd(cwd);
-    return Future.wait(
-      selected.map(
-        (definition) => _snapshotEntry(definition, cwd: probeCwd, force: force),
-      ),
-    );
+    final loads = <Future<void>>[];
+    for (final definition in selected) {
+      loads.add(
+        _loadProvider(
+          snapshotKey: snapshotKey,
+          wireCwd: cwd,
+          probeCwd: probeCwd,
+          definition: definition,
+          force: force,
+          emitUpdates: emitUpdates,
+        ),
+      );
+    }
+    if (wait && loads.isNotEmpty) {
+      await Future.wait(loads);
+    }
+    final entries = [
+      for (final definition in selected)
+        if (snapshot[definition.id] case final entry?) _cloneEntry(entry),
+    ];
+    return entries;
   }
 
   Future<String> diagnostic(String provider) async {
@@ -342,6 +386,234 @@ final class PaseoProviderCatalogRegistry {
       );
     }
   }
+
+  Future<void> _loadProvider({
+    required String snapshotKey,
+    required String? wireCwd,
+    required String probeCwd,
+    required PaseoProviderDefinition definition,
+    required bool force,
+    required bool emitUpdates,
+  }) {
+    final loads = _providerLoads.putIfAbsent(snapshotKey, () => {});
+    final existing = loads[definition.id];
+    if (!force && existing != null) return existing.result;
+
+    final snapshot = _snapshots.putIfAbsent(snapshotKey, () => {});
+    final existingEntry = snapshot[definition.id];
+    if (!force &&
+        existing == null &&
+        existingEntry != null &&
+        existingEntry.status != ProviderCatalogStatus.loading) {
+      return Future<void>.value();
+    }
+    if (force ||
+        snapshot[definition.id]?.status == ProviderCatalogStatus.loading) {
+      snapshot[definition.id] = _loadingEntry(definition);
+    }
+    final load = _ProviderLoad(generation: _generation);
+    loads[definition.id] = load;
+    load.result = Future<void>(() async {
+      try {
+        final entry = await _snapshotEntry(
+          definition,
+          cwd: probeCwd,
+          force: force,
+        );
+        if (!_isCurrentLoad(snapshotKey, definition.id, load)) return;
+        snapshot[definition.id] = entry;
+        if (emitUpdates) _emitSnapshotChanged(wireCwd, snapshot);
+      } catch (error) {
+        if (!_isCurrentLoad(snapshotKey, definition.id, load)) return;
+        snapshot[definition.id] = _errorEntry(definition, error);
+        if (emitUpdates) _emitSnapshotChanged(wireCwd, snapshot);
+      } finally {
+        if (_isCurrentLoad(snapshotKey, definition.id, load)) {
+          loads.remove(definition.id);
+          if (loads.isEmpty) _providerLoads.remove(snapshotKey);
+        }
+      }
+    });
+    return load.result;
+  }
+
+  ProviderSnapshotEntry _loadingEntry(PaseoProviderDefinition definition) =>
+      ProviderSnapshotEntry(
+        provider: definition.id,
+        status: ProviderCatalogStatus.loading,
+        enabled: definition.enabledByDefault,
+        source: definition.source,
+        label: definition.label,
+        description: definition.description,
+        defaultModeId: definition.defaultModeId,
+      );
+
+  ProviderSnapshotEntry _errorEntry(
+    PaseoProviderDefinition definition,
+    Object error,
+  ) => ProviderSnapshotEntry(
+    provider: definition.id,
+    status: ProviderCatalogStatus.error,
+    enabled: definition.enabledByDefault,
+    source: definition.source,
+    error: error.toString(),
+    label: definition.label,
+    description: definition.description,
+    defaultModeId: definition.defaultModeId,
+  );
+
+  bool _isCurrentLoad(
+    String snapshotKey,
+    String provider,
+    _ProviderLoad load,
+  ) =>
+      _generation == load.generation &&
+      _providerLoads[snapshotKey]?[provider] == load;
+
+  Map<String, ProviderSnapshotEntry> _ensureSnapshot(
+    String snapshotKey,
+    List<PaseoProviderDefinition> currentDefinitions,
+  ) {
+    final existing = _snapshots[snapshotKey];
+    if (existing == null) {
+      final created = <String, ProviderSnapshotEntry>{
+        for (final definition in currentDefinitions)
+          definition.id: _loadingEntry(definition),
+      };
+      _snapshots[snapshotKey] = created;
+      return created;
+    }
+    final known = {for (final definition in currentDefinitions) definition.id};
+    existing.removeWhere((provider, _) => !known.contains(provider));
+    for (final definition in currentDefinitions) {
+      final current = existing[definition.id];
+      if (current == null) {
+        existing[definition.id] = _loadingEntry(definition);
+      } else if (!definition.enabledByDefault &&
+          current.status != ProviderCatalogStatus.unavailable) {
+        existing[definition.id] = _snapshotEntryMetadata(
+          definition,
+          ProviderCatalogStatus.unavailable,
+          enabled: false,
+        );
+      }
+    }
+    return existing;
+  }
+
+  ProviderSnapshotEntry _snapshotEntryMetadata(
+    PaseoProviderDefinition definition,
+    ProviderCatalogStatus status, {
+    bool? enabled,
+    String? error,
+  }) => ProviderSnapshotEntry(
+    provider: definition.id,
+    status: status,
+    enabled: enabled ?? definition.enabledByDefault,
+    source: definition.source,
+    error: error,
+    label: definition.label,
+    description: definition.description,
+    defaultModeId: definition.defaultModeId,
+  );
+
+  void _syncDefinitionGeneration(
+    List<PaseoProviderDefinition> currentDefinitions,
+  ) {
+    final fingerprint = jsonEncode([
+      for (final definition in currentDefinitions)
+        [definition.id, _definitionFingerprint(definition)],
+    ]);
+    if (fingerprint == _definitionsFingerprint) return;
+    _definitionsFingerprint = fingerprint;
+    _generation++;
+    // Existing in-flight loads must not publish results against a changed
+    // provider registry.  Their identity check observes the new generation.
+    _providerLoads.clear();
+    for (final snapshot in _snapshots.values) {
+      final known = {
+        for (final definition in currentDefinitions) definition.id,
+      };
+      snapshot.removeWhere((provider, _) => !known.contains(provider));
+      for (final definition in currentDefinitions) {
+        snapshot[definition.id] = definition.enabledByDefault
+            ? _loadingEntry(definition)
+            : _snapshotEntryMetadata(
+                definition,
+                ProviderCatalogStatus.unavailable,
+                enabled: false,
+              );
+      }
+    }
+  }
+
+  String _snapshotKey(String? cwd) {
+    final trimmed = cwd?.trim();
+    return trimmed == null || trimmed.isEmpty
+        ? r'__paseo_global_provider_snapshot__'
+        : _resolveProbeCwd(trimmed);
+  }
+
+  void _emitSnapshotChanged(
+    String? wireCwd,
+    Map<String, ProviderSnapshotEntry> snapshot,
+  ) {
+    _onSnapshotChanged?.call(wireCwd, [
+      for (final entry in snapshot.values) _cloneEntry(entry),
+    ]);
+  }
+
+  ProviderSnapshotEntry _cloneEntry(ProviderSnapshotEntry entry) =>
+      ProviderSnapshotEntry(
+        provider: entry.provider,
+        status: entry.status,
+        enabled: entry.enabled,
+        source: entry.source,
+        error: entry.error,
+        models: entry.models == null
+            ? null
+            : [for (final model in entry.models!) _cloneModel(model)],
+        modes: entry.modes == null
+            ? null
+            : [for (final mode in entry.modes!) _cloneMode(mode)],
+        fetchedAt: entry.fetchedAt,
+        label: entry.label,
+        description: entry.description,
+        defaultModeId: entry.defaultModeId,
+      );
+
+  ProviderModelDefinition _cloneModel(
+    ProviderModelDefinition model,
+  ) => ProviderModelDefinition(
+    provider: model.provider,
+    id: model.id,
+    label: model.label,
+    description: model.description,
+    isDefault: model.isDefault,
+    metadata: model.metadata == null ? null : Map.of(model.metadata!),
+    contextWindowMaxTokens: model.contextWindowMaxTokens,
+    thinkingOptions: model.thinkingOptions == null
+        ? null
+        : [for (final option in model.thinkingOptions!) _cloneOption(option)],
+    defaultThinkingOptionId: model.defaultThinkingOptionId,
+  );
+
+  ProviderSelectOption _cloneOption(ProviderSelectOption option) =>
+      ProviderSelectOption(
+        id: option.id,
+        label: option.label,
+        description: option.description,
+        isDefault: option.isDefault,
+        metadata: option.metadata == null ? null : Map.of(option.metadata!),
+      );
+
+  ProviderMode _cloneMode(ProviderMode mode) => ProviderMode(
+    id: mode.id,
+    label: mode.label,
+    description: mode.description,
+    icon: mode.icon,
+    colorTier: mode.colorTier,
+  );
 
   ProviderSnapshotEntry _entry(
     PaseoProviderDefinition definition,
