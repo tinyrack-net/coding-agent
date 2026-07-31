@@ -4433,17 +4433,21 @@
     },
     {
       "id": "source-unit:packages/app/src/composer/agent-controls/mode.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/composer/agent_controls_mode.dart",
+      "evidence": [
+        "packages/app/test/composer/agent_controls_mode_test.dart"
+      ],
+      "notes": "resolveNextAgentModeId cycles modes, wraps at the end, treats an empty or stale selection as the visible first mode, and returns null below two options. resolveAgentControlsMode distinguishes the draft and ready composers. Upstream's mode.test.ts is ported 1:1."
     },
     {
       "id": "source-unit:packages/app/src/composer/agent-controls/model-loading.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/composer/agent_controls_mode.dart",
+      "evidence": [
+        "packages/app/test/composer/agent_controls_mode_test.dart"
+      ],
+      "notes": "isProviderModelsQueryLoading treats an initial load or a background refetch as loading, so the picker does not flash a stale list mid-refresh."
     },
     {
       "id": "source-unit:packages/app/src/composer/agent-controls/model-sheet.tsx",
@@ -4627,17 +4631,21 @@
     },
     {
       "id": "source-unit:packages/app/src/composer/input/labels.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/composer/composer_input_labels.dart",
+      "evidence": [
+        "packages/app/test/composer/composer_input_labels_test.dart"
+      ],
+      "notes": "Ports the submit, voice, and send-tooltip label precedence. The app has no localization layer yet (i18n/* is tracked separately), so these take the translator as a parameter and resolve the frozen message keys; wiring a real translator later is mechanical."
     },
     {
       "id": "source-unit:packages/app/src/composer/input/state.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/composer/composer_input_state.dart",
+      "evidence": [
+        "packages/app/test/composer/composer_input_state_test.dart"
+      ],
+      "notes": "Ports the composer surface cross-fade, dictation availability (socket, host readiness with socket fallback, disabled, unavailability message), the default/alternate send actions across both send behaviors, the message-input keyboard action table including send and cancel only being claimed while recording, and stopRealtimeVoice cancelling a running turn before stopping voice. Upstream's state.test.ts is ported 1:1."
     },
     {
       "id": "source-unit:packages/app/src/composer/keyboard-scope.tsx",
