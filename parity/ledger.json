@@ -2438,10 +2438,12 @@
     },
     {
       "id": "source-unit:packages/app/src/attachments/file-types.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/attachments/paseo_attachment_rules.dart",
+      "evidence": [
+        "packages/app/test/attachments/paseo_attachment_rules_test.dart"
+      ],
+      "notes": "Extension/MIME classification, re-exporting the already-ported raster MIME table from composer_image_attachments.dart so the app keeps one table. Upstream's last-dot slice quirk (a.png/inner) is pinned rather than fixed."
     },
     {
       "id": "source-unit:packages/app/src/attachments/local-file-attachment-store.ts",
@@ -2528,10 +2530,12 @@
     },
     {
       "id": "source-unit:packages/app/src/attachments/utils.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/attachments/paseo_attachment_rules.dart",
+      "evidence": [
+        "packages/app/test/attachments/paseo_attachment_rules_test.dart"
+      ],
+      "notes": "Id generation (injectable clock/random), MIME normalization, data-URL parsing, cache keys, and path/file-URI conversion, with an exact FNV-1a using a 16-bit-split multiply so the hash stays correct under dart2js."
     },
     {
       "id": "source-unit:packages/app/src/attachments/web/indexeddb-attachment-store.ts",
@@ -2542,10 +2546,12 @@
     },
     {
       "id": "source-unit:packages/app/src/attachments/workspace-attachment-utils.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/attachments/paseo_attachment_rules.dart",
+      "evidence": [
+        "packages/app/test/attachments/paseo_attachment_rules_test.dart"
+      ],
+      "notes": "Attachment-kind sets and userAttachmentsOnly. workspaceAttachmentToSubmitAttachment was already ported as WorkspaceContextAttachment.toAgentAttachment, so the upstream case is pinned against that rather than duplicated."
     },
     {
       "id": "source-unit:packages/app/src/attachments/workspace-attachments-store.ts",
@@ -3417,10 +3423,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/markdown-text-style.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_render_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_render_rules_test.dart"
+      ],
+      "notes": "resolvePlainMarkdownTextStyle plus a StyleSheet.flatten analogue. Kept map-shaped rather than converted to a Flutter TextStyle, because the module's whole job is deleting unistyles_* keys a typed style cannot hold."
     },
     {
       "id": "source-unit:packages/app/src/components/markdown-text.android.tsx",
@@ -3466,10 +3474,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/markdown/part-groups.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_render_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_render_rules_test.dart"
+      ],
+      "notes": "groupMarkdownParts with lookahead run collection and the frozen lead-paragraph split regexes; whitespace-only markdown is swallowed on the success path and re-emitted on fallback."
     },
     {
       "id": "source-unit:packages/app/src/components/markdown/renderer.tsx",
@@ -3710,10 +3720,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/rewind/use-rewind-capabilities.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/navigation/paseo_route_rules.dart",
+      "evidence": [
+        "packages/app/test/navigation/paseo_route_rules_test.dart"
+      ],
+      "notes": "resolveRewindMenuItems with per-key label overrides. The useMemo wrapper is dropped as React-only with no observable behaviour."
     },
     {
       "id": "source-unit:packages/app/src/components/root-error-boundary.tsx",
@@ -3724,10 +3736,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/root-error-details.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_render_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_render_rules_test.dart"
+      ],
+      "notes": "formatCaughtValue including a reimplementation of JSON.stringify's pretty printing, circular marking, and undefined/non-finite handling. A jsUndefined sentinel distinguishes absent from null, which Dart's single null cannot."
     },
     {
       "id": "source-unit:packages/app/src/components/schedules/cadence-editor.tsx",
@@ -3904,10 +3918,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar/sidebar-projection.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/paseo_session_projection.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_session_projection_test.dart"
+      ],
+      "notes": "buildSidebarProjection ported end to end. Remaining: its three upstream dependencies (use-sidebar-pins, sidebar-status-view-model, sidebar-shortcuts) are inlined as private helpers pending their own ports, and SidebarWorkspaceEntry omits presentational fields no rule here reads."
     },
     {
       "id": "source-unit:packages/app/src/components/sidebar/sidebar-separator.tsx",
@@ -4156,10 +4172,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/ui/autocomplete-utils.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/ui/paseo_control_geometry.dart",
+      "evidence": [
+        "packages/app/test/ui/paseo_control_geometry_test.dart"
+      ],
+      "notes": "Ordering, fallback/next index, and scroll offset; next-index delegates to the already-ported getNextActiveIndex rather than duplicating it."
     },
     {
       "id": "source-unit:packages/app/src/components/ui/autocomplete.tsx",
@@ -4177,10 +4195,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/ui/combobox-frame-style.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/ui/paseo_control_geometry.dart",
+      "evidence": [
+        "packages/app/test/ui/paseo_control_geometry_test.dart"
+      ],
+      "notes": "buildDesktopFrameStyle with the frozen 200/400 floor and ceiling and the last-wins merge order, flattened from RN's style array into one value class."
     },
     {
       "id": "source-unit:packages/app/src/components/ui/combobox-keyboard.ts",
@@ -4193,10 +4213,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/ui/combobox-options.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/ui/paseo_control_geometry.dart",
+      "evidence": [
+        "packages/app/test/ui/paseo_control_geometry_test.dart"
+      ],
+      "notes": "Filtering, ranking, and visible-option assembly, including a port of the score-match tiers and the 99-point description penalty. Dart's List.sort is unstable, so an original-index tiebreak restores Array.sort's stability."
     },
     {
       "id": "source-unit:packages/app/src/components/ui/combobox-trigger.tsx",
@@ -4221,10 +4243,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/ui/control-geometry.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/ui/paseo_control_geometry.dart",
+      "evidence": [
+        "packages/app/test/ui/paseo_control_geometry_test.dart"
+      ],
+      "notes": "All 28 geometry entries and the interaction-phase style resolver, with the frozen heights/insets/ring widths exact and spacing reusing PaseoSpacing."
     },
     {
       "id": "source-unit:packages/app/src/components/ui/dropdown-menu.tsx",
@@ -4388,10 +4412,12 @@
     },
     {
       "id": "source-unit:packages/app/src/components/worktree-setup-callout-policy.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_render_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_render_rules_test.dart"
+      ],
+      "notes": "Active git workspace selection, callout gating, and policy assembly; the settings route reuses core/host_routes.dart."
     },
     {
       "id": "source-unit:packages/app/src/components/worktree-setup-callout-source.tsx",
@@ -4752,10 +4778,12 @@
     },
     {
       "id": "source-unit:packages/app/src/contexts/session-status-tracking.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_session_projection.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_session_projection_test.dart"
+      ],
+      "notes": "reconcilePreviousAgentStatuses. Stale keys are collected before removal because Dart throws on delete-during-iteration; survivor order is identical."
     },
     {
       "id": "source-unit:packages/app/src/contexts/session-workspace-scripts.ts",
@@ -4766,10 +4794,12 @@
     },
     {
       "id": "source-unit:packages/app/src/contexts/session-workspace-upserts.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_session_projection.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_session_projection_test.dart"
+      ],
+      "notes": "Archive-pending registry over the same process-global two-level map and serverId::workspaceId composite key, with the same trimming, blank-id rejection, and empty-bucket cleanup."
     },
     {
       "id": "source-unit:packages/app/src/contexts/sidebar-callout-context.tsx",
@@ -4807,10 +4837,12 @@
     },
     {
       "id": "source-unit:packages/app/src/contexts/workspace-directory-reconciliation.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_session_projection.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_session_projection_test.dart"
+      ],
+      "notes": "reconcileWorkspaceDirectory replays deltas in arrival order and lets a suppressed upsert evict rather than skip."
     },
     {
       "id": "source-unit:packages/app/src/create-agent-preferences/preferences.ts",
@@ -5351,10 +5383,12 @@
     },
     {
       "id": "source-unit:packages/app/src/git/branch-switcher-operations.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/git/paseo_pr_rules.dart",
+      "evidence": [
+        "packages/app/test/git/paseo_pr_rules_test.dart"
+      ],
+      "notes": "Operations ported against a narrow BranchSwitcherGitClient interface. Remaining: DaemonClient has no checkoutSwitchBranch and the protocol package has no checkout_switch_branch message, so production wiring needs that message plus a thin adapter."
     },
     {
       "id": "source-unit:packages/app/src/git/checkout-status-cache.ts",
@@ -5628,17 +5662,21 @@
     },
     {
       "id": "source-unit:packages/app/src/git/pr-hint.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/git/paseo_pr_rules.dart",
+      "evidence": [
+        "packages/app/test/git/paseo_pr_rules_test.dart"
+      ],
+      "notes": "selectPrHintFromStatus over the frozen state machine. PR number parses via int then double, so a >2^53 id degrades to a lossy double exactly as Number.parseInt does; URL parsing guards hasScheme to restore new URL()'s absolute-only precondition."
     },
     {
       "id": "source-unit:packages/app/src/git/pr-status.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/git/paseo_pr_rules.dart",
+      "evidence": [
+        "packages/app/test/git/paseo_pr_rules_test.dart"
+      ],
+      "notes": "normalizeCheckoutPrStatusPayload including the COMPAT(forgeAuthState) fallback. checksStatus/reviewDecision stay String? so an unknown value from a newer daemon reaches the UI verbatim, as upstream's unchecked cast does."
     },
     {
       "id": "source-unit:packages/app/src/git/pull-request-panel/activity-location.ts",
@@ -5929,10 +5967,12 @@
     },
     {
       "id": "source-unit:packages/app/src/git/worktree-archive-warning.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/git/paseo_pr_rules.dart",
+      "evidence": [
+        "packages/app/test/git/paseo_pr_rules_test.dart"
+      ],
+      "notes": "Risk classification, reason list, confirmation message, and the confirm gate with an injected prompt. Labels default to the frozen English copy (asserted equal to assets/i18n/en.json) because Dart's Translations loads asynchronously where i18next binds at import."
     },
     {
       "id": "source-unit:packages/app/src/hooks/agent-commands-query.ts",
@@ -5952,10 +5992,12 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/client-activity-tracker.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/hooks/paseo_activity_rules.dart",
+      "evidence": [
+        "packages/app/test/hooks/paseo_activity_rules_test.dart"
+      ],
+      "notes": "Throttled immediate heartbeats, unthrottled focus changes with the identity guard, monotonic lastActivityAt, and away-duration reporting. Clock is injected; the intervals are exported but caller-scheduled. Upstream's epoch-seeded throttle (which swallows the first heartbeat under a near-epoch clock) is reproduced deliberately."
     },
     {
       "id": "source-unit:packages/app/src/hooks/feature-preferences.ts",
@@ -5968,17 +6010,21 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/hardware-keyboard-submit-controller.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/hooks/paseo_activity_rules.dart",
+      "evidence": [
+        "packages/app/test/hooks/paseo_activity_rules_test.dart"
+      ],
+      "notes": "Subscribe/arm latch and dispatch. Boundary with composer_submit.dart is documented: that file owns the submit decision, this owns the subscription."
     },
     {
       "id": "source-unit:packages/app/src/hooks/hover-safe-zone-tracker.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/hooks/paseo_activity_rules.dart",
+      "evidence": [
+        "packages/app/test/hooks/paseo_activity_rules_test.dart"
+      ],
+      "notes": "Bridge geometry and once-per-transition leave. Containment is hand-written because dart:ui Rect.contains is half-open while upstream's comparisons are inclusive on all four edges."
     },
     {
       "id": "source-unit:packages/app/src/hooks/image-attachment-picker.native.ts",
@@ -6015,10 +6061,12 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/picked-image-normalizer.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/attachments/paseo_attachment_rules.dart",
+      "evidence": [
+        "packages/app/test/attachments/paseo_attachment_rules_test.dart"
+      ],
+      "notes": "normalizePickedImageAssetsWith over a sealed file-uri/bytes source; the web Blob variant becomes Uint8List and the unused File field is dropped."
     },
     {
       "id": "source-unit:packages/app/src/hooks/sidebar-status-view-model.ts",
@@ -6253,10 +6301,12 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-container-width.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/hooks/paseo_activity_rules.dart",
+      "evidence": [
+        "packages/app/test/hooks/paseo_activity_rules_test.dart"
+      ],
+      "notes": "Width and below-threshold trackers as ChangeNotifiers; React's identical-state bail-out is reproduced as an explicit no-op on an unchanged width."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-daemon-config.ts",
@@ -6622,12 +6672,12 @@
     },
     {
       "id": "source-unit:packages/app/src/i18n/i18next.ts",
-      "status": "partial",
+      "status": "verified",
       "implementation": "packages/app/lib/i18n/translations.dart",
       "evidence": [
-        "packages/app/test/i18n/i18n_test.dart"
+        "packages/app/test/i18n/language_provider_test.dart"
       ],
-      "notes": "Minimal translator reproducing the i18next behaviour the app uses (dotted lookup, {{name}} interpolation, English fallback, missing key returns the key). Remaining: no provider wiring, so no UI string renders through it yet (see i18n/provider.tsx)."
+      "notes": "Minimal translator reproducing i18next's whole observable surface here: the eight resources, fallbackLng en, unescaped {{name}} interpolation, dotted keys, and missing-key-returns-the-key. The frozen resources use no plural or context suffixes, so those i18next features are unimplemented and unreachable; a future key needing them would have to add support."
     },
     {
       "id": "source-unit:packages/app/src/i18n/init.ts",
@@ -6649,10 +6699,12 @@
     },
     {
       "id": "source-unit:packages/app/src/i18n/provider.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/state/language_provider.dart",
+      "evidence": [
+        "packages/app/test/i18n/language_provider_test.dart"
+      ],
+      "notes": "Settings language + OS locale list resolve to one locale, and the translator follows it. Riverpod derives (translationsProvider watches resolvedLocaleProvider) where upstream must imperatively push at the mutable i18next singleton; PlatformDispatcher.locales replaces both navigator.languages and expo-localization."
     },
     {
       "id": "source-unit:packages/app/src/i18n/resources/ar.ts",
@@ -6751,10 +6803,12 @@
     },
     {
       "id": "source-unit:packages/app/src/keyboard/focus-scope.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/navigation/paseo_route_rules.dart",
+      "evidence": [
+        "packages/app/test/navigation/paseo_route_rules_test.dart"
+      ],
+      "notes": "resolveKeyboardFocusScope ported with the full candidate collection and priority order; the DOM is replaced by explicit target/activeElement parameters. Remaining: keyboard/shortcut_engine.dart already owns a narrower KeyboardFocusScope enum (4 of 6 values), so the full union lives under PaseoKeyboardFocusScope and the two need unifying."
     },
     {
       "id": "source-unit:packages/app/src/keyboard/keyboard-action-dispatcher.ts",
@@ -6869,10 +6923,12 @@
     },
     {
       "id": "source-unit:packages/app/src/navigation/agent-route-resolution.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/navigation/paseo_route_rules.dart",
+      "evidence": [
+        "packages/app/test/navigation/paseo_route_rules_test.dart"
+      ],
+      "notes": "resolveAgentRoute with upstream's precedence: invalid, then cached, then offline-host hold, then found/failed, then fetching. Validity uses isEmpty rather than trim, reproducing JS falsiness so a whitespace-only id stays valid."
     },
     {
       "id": "source-unit:packages/app/src/navigation/host-route-context.tsx",
@@ -6897,10 +6953,12 @@
     },
     {
       "id": "source-unit:packages/app/src/navigation/workspace-route-navigation.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/navigation/paseo_route_rules.dart",
+      "evidence": [
+        "packages/app/test/navigation/paseo_route_rules_test.dart"
+      ],
+      "notes": "Nav-state walk, open-param extraction, the pure pop/dismiss decision, and the identity-guarded navigator registration. Route parsing reuses core/host_routes.dart; the POP_TO payload shape is asserted literally."
     },
     {
       "id": "source-unit:packages/app/src/panels/agent-panel-load-state.ts",
@@ -7412,31 +7470,39 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/new-workspace-empty.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_new_workspace_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_new_workspace_rules_test.dart"
+      ],
+      "notes": "isEmptyWorkspaceSubmission plus runCreateEmptyWorkspace, which ensures the workspace with an empty prompt and withInitialAgent false, keeping only the draft's cwd."
     },
     {
       "id": "source-unit:packages/app/src/screens/new-workspace-fork-context.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_new_workspace_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_new_workspace_rules_test.dart"
+      ],
+      "notes": "Naming attachments drop the chat_history text attachment; remapDraftCwdToWorkspace normalizes separators, folds case on Windows only, preserves the subpath's own case, and joins with backslashes only for pure-backslash workspace paths."
     },
     {
       "id": "source-unit:packages/app/src/screens/new-workspace-initial-context.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_new_workspace_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_new_workspace_rules_test.dart"
+      ],
+      "notes": "resolveNewWorkspaceInitialServerId and resolveNewWorkspaceAutomaticServerId with the online/known-unreachable predicates and last-active-project fallback."
     },
     {
       "id": "source-unit:packages/app/src/screens/new-workspace-picker-item.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_new_workspace_rules.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_new_workspace_rules_test.dart"
+      ],
+      "notes": "pickerItemToCheckoutRequest over a sealed branch/change-request hierarchy, preserving field absence (upstream's conditional spread) including the COMPAT githubPrNumber, asserted through toJson."
     },
     {
       "id": "source-unit:packages/app/src/screens/new-workspace-picker-state.ts",

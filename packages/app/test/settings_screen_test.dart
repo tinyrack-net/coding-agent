@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:agent_protocol/agent_protocol.dart';
 import 'package:coding_agent_app/core/daemon_client.dart';
+import 'package:coding_agent_app/i18n/locales.dart';
 import 'package:coding_agent_app/screens/settings_screen.dart';
+import 'package:coding_agent_app/state/language_provider.dart';
 import 'package:coding_agent_app/state/connection_settings_provider.dart';
 import 'package:coding_agent_app/state/code_appearance_provider.dart';
 import 'package:coding_agent_app/state/daemon_providers.dart';
@@ -196,6 +198,50 @@ void main() {
       preferences.getString(ToolCallDetailLevelNotifier.preferenceKey),
       'overview',
     );
+  });
+
+  testWidgets('appearance settings pick and persist the app language', (
+    tester,
+  ) async {
+    final container = await pumpSettingsScreen(
+      tester,
+      FakeDaemonClient(),
+      section: 'appearance',
+    );
+
+    // The test platform reports en-US, so "System" resolves to English and
+    // every option is labelled in English alongside its native name.
+    expect(find.text('Language'), findsOneWidget);
+    expect(find.text('App language'), findsOneWidget);
+    expect(container.read(resolvedLocaleProvider), SupportedLocale.en);
+    expect(find.text('System'), findsOneWidget);
+
+    await tester.tap(find.text('System'));
+    await tester.pumpAndSettle();
+    expect(find.text('日本語 - Japanese'), findsWidgets);
+    await tester.tap(find.text('日本語 - Japanese').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      container.read(appLanguageProvider),
+      AppLanguage.of(SupportedLocale.ja),
+    );
+    expect(container.read(resolvedLocaleProvider), SupportedLocale.ja);
+    expect(
+      (await SharedPreferences.getInstance()).getString('settings.language'),
+      'ja',
+    );
+
+    // The trigger re-labels itself in the newly active locale, collapsing to
+    // the single native name because Japanese named in Japanese is the same
+    // string twice.
+    expect(find.text('日本語'), findsOneWidget);
+
+    // Reopening names every other language in Japanese too.
+    await tester.tap(find.text('日本語'));
+    await tester.pumpAndSettle();
+    expect(find.text('English - 英語'), findsWidgets);
+    expect(find.text('العربية - アラビア語'), findsWidgets);
   });
 
   testWidgets('keyboard section exposes shortcut rebinding', (tester) async {

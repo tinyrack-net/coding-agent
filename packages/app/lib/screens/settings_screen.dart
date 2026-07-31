@@ -11,6 +11,7 @@ import '../core/daemon_client.dart';
 import '../core/desktop/desktop_shell.dart';
 import '../core/provider_display.dart';
 import '../core/theme.dart';
+import '../i18n/locales.dart';
 import '../state/agents_provider.dart';
 import '../state/appearance_provider.dart';
 import '../state/code_appearance_provider.dart';
@@ -18,6 +19,7 @@ import '../state/connection_settings_provider.dart';
 import '../state/daemon_providers.dart';
 import '../state/desktop_settings_provider.dart';
 import '../state/host_registry_provider.dart';
+import '../state/language_provider.dart';
 import '../state/tool_call_detail_level_provider.dart';
 import '../tool_calls/detail_level/tool_call_projection.dart';
 import '../widgets/fluent/toast.dart';
@@ -210,6 +212,15 @@ class _AppearanceSettingsSection extends ConsumerWidget {
     final theme = ref.watch(appearanceProvider);
     final codeAppearance = ref.watch(codeAppearanceProvider);
     final detailLevel = ref.watch(toolCallDetailLevelProvider);
+    final language = ref.watch(appLanguageProvider);
+    // The active locale, not the setting: with "System" chosen the picker
+    // still has to name languages in whichever locale actually resolved.
+    final activeLocale = ref.watch(resolvedLocaleProvider);
+    final translations = ref.watch(translationsProvider).value;
+
+    String translate(String key, String fallback) =>
+        translations == null ? fallback : translations.t(key);
+
     return ScaffoldPage(
       header: const PageHeader(title: Text('Appearance')),
       content: Center(
@@ -218,6 +229,36 @@ class _AppearanceSettingsSection extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.all(24),
             children: [
+              _SelectSettingsRow<AppLanguage>(
+                title: translate('settings.general.language.label', 'Language'),
+                subtitle: translate(
+                  'settings.general.language.description',
+                  'App language',
+                ),
+                value: language,
+                controlWidth: 260,
+                isExpanded: true,
+                items: [
+                  for (final option in languageOptions)
+                    ComboBoxItem(
+                      value: option.value,
+                      child: Text(
+                        formatLanguageOptionLabel(
+                          option,
+                          activeLocale,
+                          // Only the System option consults this; every
+                          // other option names itself from the frozen
+                          // native/active-language tables.
+                          translate(option.labelKey, 'System'),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+                onChanged: (value) =>
+                    ref.read(appLanguageProvider.notifier).setLanguage(value),
+              ),
+              const SizedBox(height: 12),
               _SelectSettingsRow<AppThemeName>(
                 title: 'Theme',
                 subtitle: 'Choose the color theme used throughout the app.',
@@ -367,6 +408,8 @@ class _SelectSettingsRow<T> extends StatelessWidget {
     required this.value,
     required this.items,
     required this.onChanged,
+    this.controlWidth = 160,
+    this.isExpanded = false,
   });
 
   final String title;
@@ -374,6 +417,11 @@ class _SelectSettingsRow<T> extends StatelessWidget {
   final T value;
   final List<ComboBoxItem<T>> items;
   final ValueChanged<T> onChanged;
+  final double controlWidth;
+
+  /// Makes the selected label fill the control so it can ellipsize instead
+  /// of overflowing. Only rows with open-ended labels need it.
+  final bool isExpanded;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -390,10 +438,11 @@ class _SelectSettingsRow<T> extends StatelessWidget {
       ),
       const SizedBox(width: 16),
       SizedBox(
-        width: 160,
+        width: controlWidth,
         child: ComboBox<T>(
           value: value,
           items: items,
+          isExpanded: isExpanded,
           onChanged: (next) {
             if (next != null) onChanged(next);
           },

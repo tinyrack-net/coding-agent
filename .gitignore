@@ -44,3 +44,6 @@ packages/*/coverage_*/
 .env
 paseo.json
 .tinyrack-agent/
+
+# Screenshots flutter_test writes next to the package on a failed widget test.
+flutter_*.png
