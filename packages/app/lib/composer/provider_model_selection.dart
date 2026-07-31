@@ -1,6 +1,8 @@
 import 'package:agent_protocol/agent_protocol.dart';
 
 import 'create_agent_preferences.dart';
+import '../core/paseo_ui_utils.dart'
+    show MatchScore, compareMatchScores, scoreTextFields;
 
 sealed class ProviderModelSelection {
   const ProviderModelSelection();
@@ -221,9 +223,9 @@ List<ProviderSelectionModelRow> filterAndRankModelRows(
 ) {
   final normalized = query.trim().toLowerCase();
   if (normalized.isEmpty) return rows;
-  final scored = <({ProviderSelectionModelRow row, _MatchScore score})>[];
+  final scored = <({ProviderSelectionModelRow row, MatchScore score})>[];
   for (final row in rows) {
-    final score = _scoreTextFields(normalized, [
+    final score = scoreTextFields(normalized, [
       row.modelLabel,
       row.modelId,
       row.providerLabel,
@@ -232,7 +234,7 @@ List<ProviderSelectionModelRow> filterAndRankModelRows(
     if (score != null) scored.add((row: row, score: score));
   }
   scored.sort((left, right) {
-    final result = _compareScores(left.score, right.score);
+    final result = compareMatchScores(left.score, right.score);
     return result != 0
         ? result
         : left.row.modelLabel.compareTo(right.row.modelLabel);
@@ -295,103 +297,6 @@ ProviderSelectionReadiness resolveSubmissionReadiness({
     );
   }
   return const ProviderSelectionReadiness(ok: true);
-}
-
-final class _MatchScore {
-  const _MatchScore(this.tier, this.offset, [this.spread = 0]);
-
-  final int tier;
-  final int offset;
-  final int spread;
-
-  _MatchScore operator +(_MatchScore other) => _MatchScore(
-    tier + other.tier,
-    offset + other.offset,
-    spread + other.spread,
-  );
-}
-
-bool _isWordBoundary(String? character) =>
-    character == null || !RegExp(r'[a-z0-9]').hasMatch(character);
-
-_MatchScore? _scoreMatch(String query, String text) {
-  if (query.isEmpty) return const _MatchScore(0, 0);
-  final normalizedText = text.toLowerCase();
-  if (normalizedText == query) return const _MatchScore(0, 0);
-
-  _MatchScore? best;
-  var position = 0;
-  while (position <= normalizedText.length - query.length) {
-    final found = normalizedText.indexOf(query, position);
-    if (found == -1) break;
-    final before = found > 0 ? normalizedText[found - 1] : null;
-    final after = found + query.length < normalizedText.length
-        ? normalizedText[found + query.length]
-        : null;
-    final startsAtBoundary = found == 0 || _isWordBoundary(before);
-    final endsAtBoundary = _isWordBoundary(after);
-    final tier = startsAtBoundary && endsAtBoundary
-        ? 1
-        : found == 0
-        ? 2
-        : startsAtBoundary
-        ? 3
-        : 4;
-    final candidate = _MatchScore(tier, found);
-    if (best == null || _compareScores(candidate, best) < 0) {
-      best = candidate;
-    }
-    position = found + 1;
-  }
-  if (best != null) return best;
-
-  var queryIndex = 0;
-  var firstIndex = -1;
-  var lastIndex = -1;
-  for (
-    var textIndex = 0;
-    textIndex < normalizedText.length && queryIndex < query.length;
-    textIndex++
-  ) {
-    if (normalizedText[textIndex] != query[queryIndex]) continue;
-    if (firstIndex == -1) firstIndex = textIndex;
-    lastIndex = textIndex;
-    queryIndex++;
-  }
-  if (queryIndex != query.length || firstIndex == -1) return null;
-  return _MatchScore(5, firstIndex, lastIndex - firstIndex + 1);
-}
-
-_MatchScore? _scoreTextFields(String query, List<String> fields) {
-  final tokens = query
-      .trim()
-      .toLowerCase()
-      .split(RegExp(r'\s+'))
-      .where((token) => token.isNotEmpty);
-  var aggregate = const _MatchScore(0, 0);
-  for (final token in tokens) {
-    _MatchScore? best;
-    for (final field in fields) {
-      final score = _scoreMatch(token, field);
-      if (score != null && (best == null || _compareScores(score, best) < 0)) {
-        best = score;
-      }
-    }
-    if (best == null) return null;
-    aggregate += _MatchScore(
-      best.tier,
-      best.offset,
-      best.spread == 0 ? token.length : best.spread,
-    );
-  }
-  return aggregate;
-}
-
-int _compareScores(_MatchScore left, _MatchScore right) {
-  var result = left.tier.compareTo(right.tier);
-  if (result != 0) return result;
-  result = left.offset.compareTo(right.offset);
-  return result != 0 ? result : left.spread.compareTo(right.spread);
 }
 
 extension<T> on Iterable<T> {

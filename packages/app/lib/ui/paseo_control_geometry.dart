@@ -41,6 +41,8 @@ library;
 import 'package:flutter/widgets.dart' show Color, MainAxisAlignment;
 
 import '../core/theme.dart' show PaseoSpacing;
+import '../core/paseo_ui_utils.dart'
+    show MatchScore, compareMatchScores, scoreTextFields;
 import '../keyboard/paseo_shortcut_routing.dart'
     show ComboboxArrowKey, getNextActiveIndex;
 
@@ -469,7 +471,7 @@ List<ComboboxOptionModel> filterAndRankComboboxOptions(
 ) {
   if (search.isEmpty) return options;
 
-  final scored = <({ComboboxOptionModel opt, _MatchScore score, int index})>[];
+  final scored = <({ComboboxOptionModel opt, MatchScore score, int index})>[];
   for (var index = 0; index < options.length; index += 1) {
     final opt = options[index];
     final score = _scoreOption(opt, search);
@@ -477,7 +479,7 @@ List<ComboboxOptionModel> filterAndRankComboboxOptions(
   }
 
   scored.sort((a, b) {
-    final cmp = _compareMatchScores(a.score, b.score);
+    final cmp = compareMatchScores(a.score, b.score);
     if (cmp != 0) return cmp;
     final byLabel = _compareLabels(a.opt.label, b.opt.label);
     if (byLabel != 0) return byLabel;
@@ -574,160 +576,20 @@ int getComboboxFallbackIndex(
       : 0;
 }
 
-// ---------------------------------------------------------------------------
-// utils/score-match.ts (private dependency of combobox-options.ts)
-// ---------------------------------------------------------------------------
-//
-// Upstream `combobox-options.ts` imports `scoreTextFields`/`compareMatchScores`
-// from `utils/score-match.ts`. That module has no shared public Dart port yet —
-// `composer/agent_command_autocomplete.dart` and
-// `composer/provider_model_selection.dart` each carry their own private copy —
-// so this library carries a third private copy rather than editing either of
-// those files to expose theirs.
-
-/// How well a query matched, lower being better.
-///
-/// `tier` is the match class (0 exact, 1 whole-word, ... 5 fuzzy subsequence),
-/// `offset` how far into the text the match started, and `spread` how many
-/// characters a fuzzy match had to span.
-final class _MatchScore {
-  const _MatchScore({required this.tier, required this.offset, this.spread});
-
-  final int tier;
-  final int offset;
-  final int? spread;
-}
-
-final RegExp _wordCharacter = RegExp(r'[a-z0-9]');
-
-/// Whether [ch] terminates a word. A `null` [ch] means "past the end of the
-/// text", which counts as a boundary — upstream passes `undefined` there.
-bool _isWordBoundaryChar(String? ch) {
-  if (ch == null) return true;
-  return !_wordCharacter.hasMatch(ch);
-}
-
-_MatchScore? _scoreSubstringMatch(String query, String text) {
-  _MatchScore? best;
-  var pos = 0;
-  while (pos <= text.length - query.length) {
-    final found = text.indexOf(query, pos);
-    if (found == -1) break;
-    final before = found > 0 ? text[found - 1] : null;
-    final afterIndex = found + query.length;
-    final after = afterIndex < text.length ? text[afterIndex] : null;
-    final startsAtBoundary = found == 0 || _isWordBoundaryChar(before);
-    final endsAtBoundary = _isWordBoundaryChar(after);
-    final int tier;
-    if (startsAtBoundary && endsAtBoundary) {
-      tier = 1;
-    } else if (found == 0) {
-      tier = 2;
-    } else if (startsAtBoundary) {
-      tier = 3;
-    } else {
-      tier = 4;
-    }
-    if (best == null ||
-        tier < best.tier ||
-        (tier == best.tier && found < best.offset)) {
-      best = _MatchScore(tier: tier, offset: found);
-    }
-    pos = found + 1;
-  }
-  return best;
-}
-
-_MatchScore? _scoreSubsequenceMatch(String query, String text) {
-  var queryIndex = 0;
-  var firstIndex = -1;
-  var lastIndex = -1;
-  for (
-    var textIndex = 0;
-    textIndex < text.length && queryIndex < query.length;
-    textIndex += 1
-  ) {
-    if (text[textIndex] != query[queryIndex]) continue;
-    if (firstIndex == -1) firstIndex = textIndex;
-    lastIndex = textIndex;
-    queryIndex += 1;
-  }
-
-  if (queryIndex != query.length || firstIndex == -1) return null;
-  return _MatchScore(
-    tier: 5,
-    offset: firstIndex,
-    spread: lastIndex - firstIndex + 1,
-  );
-}
-
-_MatchScore? _scoreMatch(String query, String text) {
-  if (query.isEmpty) return const _MatchScore(tier: 0, offset: 0);
-  final q = query.toLowerCase();
-  final t = text.toLowerCase();
-  if (t == q) return const _MatchScore(tier: 0, offset: 0);
-
-  return _scoreSubstringMatch(q, t) ?? _scoreSubsequenceMatch(q, t);
-}
-
-int _compareMatchScores(_MatchScore a, _MatchScore b) {
-  if (a.tier != b.tier) return a.tier - b.tier;
-  if (a.offset != b.offset) return a.offset - b.offset;
-  return (a.spread ?? 0) - (b.spread ?? 0);
-}
-
-final RegExp _whitespaceRun = RegExp(r'\s+');
-
-/// Best combined score for [query] across [fields], or `null` if any whitespace
-/// separated token failed to match every field. Every token must land somewhere,
-/// which is what makes multi-word queries narrow instead of widen the result.
-_MatchScore? _scoreTextFields(String query, List<String> fields) {
-  final tokens = query
-      .trim()
-      .toLowerCase()
-      .split(_whitespaceRun)
-      .where((token) => token.isNotEmpty)
-      .toList();
-  if (tokens.isEmpty) {
-    return const _MatchScore(tier: 0, offset: 0, spread: 0);
-  }
-
-  var tier = 0;
-  var offset = 0;
-  var spread = 0;
-  for (final token in tokens) {
-    _MatchScore? best;
-    for (final field in fields) {
-      final score = _scoreMatch(token, field);
-      if (score != null &&
-          (best == null || _compareMatchScores(score, best) < 0)) {
-        best = score;
-      }
-    }
-    if (best == null) return null;
-    tier += best.tier;
-    offset += best.offset;
-    // A substring match has no spread of its own; upstream charges it the token
-    // length so it stays comparable with a fuzzy match of the same query.
-    spread += best.spread ?? token.length;
-  }
-  return _MatchScore(tier: tier, offset: offset, spread: spread);
-}
-
 /// Scores one option, falling back to its description only when neither the
 /// label nor the id matched.
 ///
 /// Deviation: upstream's `if (!opt.description) return null` is JS falsiness, so
 /// an empty-string description is skipped exactly like a missing one. The Dart
 /// null-or-empty check reproduces that.
-_MatchScore? _scoreOption(ComboboxOptionModel opt, String search) {
-  final best = _scoreTextFields(search, [opt.label, opt.id]);
+MatchScore? _scoreOption(ComboboxOptionModel opt, String search) {
+  final best = scoreTextFields(search, [opt.label, opt.id]);
   if (best != null) return best;
   final description = opt.description;
   if (description == null || description.isEmpty) return null;
-  final descriptionScore = _scoreTextFields(search, [description]);
+  final descriptionScore = scoreTextFields(search, [description]);
   if (descriptionScore == null) return null;
-  return _MatchScore(
+  return MatchScore(
     tier: descriptionScore.tier + _descriptionFallbackTier,
     offset: descriptionScore.offset,
     spread: descriptionScore.spread,
