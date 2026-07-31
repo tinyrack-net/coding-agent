@@ -13033,10 +13033,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/claude/project-dir.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_claude_rules.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_claude_rules_test.dart"
+      ],
+      "notes": "Config-dir resolution and project-path encoding, including the base-36 JS string hash taken over the pre-substitution canonical path. Hash literals are pinned against the real JavaScript run under Node plus a second independently formulated in-test oracle, and against the daemon's own pre-existing encoder as a parity check. NFC runs after canonicalization, never before, because macOS filesystems are normalization-insensitive but form-preserving."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/claude/query.ts",
@@ -13049,10 +13051,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/claude/rewind.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_claude_rules.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_claude_rules_test.dart"
+      ],
+      "notes": "All three revert legs are ported with their ordering (files before conversation), per-leg message-id resolution, session rebind before completion, and provider error text winning over the generated fallback. A test drives all three modes through the sibling invokeRewindCapability, pinning that the two libraries compose. Remaining: upstream binds forkSession and rewindFiles from the Claude Agent SDK, which this native-harness daemon never loads, so only the interfaces are portable."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/claude/sidechain-tracker.ts",
@@ -13163,10 +13167,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/cursor-acp-agent.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_claude_rules.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_claude_rules_test.dart"
+      ],
+      "notes": "The fast-feature option, the 10s initial-commands timeout, and the parameterized-model-picker capability are ported as an overrides value object, together with ACP feature derivation so the descriptor is exercisable. Remaining: upstream's class is a subclass whose whole body is four constructor arguments, and GenericAcpAgentClient here exposes none of those knobs, so wiring them would mean editing an existing file."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/diagnostic-utils.ts",
@@ -13546,10 +13552,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/provider-runner.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_claude_rules.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_claude_rules_test.dart"
+      ],
+      "notes": "runProviderTurn with subscribe-before-start, pre-start buffering and replay, turn-id filtering, settle gating, finally-unsubscribe, and both assistant-message reducers. An empty turn id disabling filtering and permanently arming the buffer is upstream behaviour, preserved and tested rather than fixed. Remaining: the daemon's AgentSession streams events with no turn ids, so nothing calls this yet."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/test-utils/session-stream-adapter.ts",
