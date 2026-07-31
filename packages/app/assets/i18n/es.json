@@ -707,7 +707,7 @@
           "updateDirty": "La actualización no está disponible mientras tenga cambios locales, así que confírmelos o guárdelos primero",
           "updateCurrent": "La actualización no está disponible porque esta rama ya está actualizada con{{baseRef}}",
           "mergePrNoGithub": "FusionarPRno está disponible en este momento porqueGitHubno está conectado",
-          "archiveNotWorktree": "El archivo no está disponible aquí porque este espacio de trabajo no se creó como un árbol de trabajoPaseo",
+          "archiveNotWorktree": "El archivo no está disponible aquí porque este espacio de trabajo no se creó como un árbol de trabajoTinyrack",
           "mergePrNoForge": "Fusionar {{noun}} no está disponible en este momento porque {{brand}} no está conectado",
           "mergePrMissing": "FusionarPRno está disponible porque aún no hay una solicitud de extracción",
           "mergePrDraft": "FusionarPRno está disponible porque la solicitud de extracción aún es un borrador",
@@ -876,7 +876,7 @@
       "discord": "Discord",
       "github": "Crear incidencia en GitHub",
       "whatsNew": "Novedades",
-      "version": "Paseo {{version}}"
+      "version": "Tinyrack {{version}}"
     },
     "sections": {
       "sessions": "Historial",
@@ -987,7 +987,7 @@
   },
   "desktop": {
     "quitting": {
-      "title": "Saliendo dePaseo...",
+      "title": "Saliendo deTinyrack...",
       "detail": "Deteniendo el demonio local."
     },
     "daemon": {
@@ -1001,17 +1001,17 @@
       },
       "management": {
         "title": "Administrar demonio incorporado",
-        "hint": "Deje quePaseoinicie y detenga el demonio incorporado",
+        "hint": "Deje queTinyrackinicie y detenga el demonio incorporado",
         "pauseTitle": "Pausar el demonio incorporado",
         "pauseMessage": "Esto detendrá el demonio incorporado inmediatamente. Se detendrán los agentes en ejecución y los terminales conectados al demonio integrado.",
         "pauseAndStop": "Pausa y para",
-        "registrationFailed": "Built-in daemon started, but Paseo could not save the localhost connection. Toggle daemon management off and on again, or add localhost manually.",
-        "pausedStopFailed": "La gestión del demonio integrado se pausó, peroPaseono pudo detener el demonio.",
+        "registrationFailed": "Built-in daemon started, but Tinyrack could not save the localhost connection. Toggle daemon management off and on again, or add localhost manually.",
+        "pausedStopFailed": "La gestión del demonio integrado se pausó, peroTinyrackno pudo detener el demonio.",
         "updateFailed": "No se puede actualizar la gestión de demonios integrada."
       },
       "keepRunning": {
         "title": "Mantener el demonio en ejecución después de salir",
-        "hint": "Daemonsigue ejecutándose cuando sales dePaseo"
+        "hint": "Daemonsigue ejecutándose cuando sales deTinyrack"
       },
       "logs": {
         "title": "Archivo de registro",
@@ -1026,7 +1026,7 @@
       "fullStatus": {
         "title": "Estado completo",
         "modalTitle": "EstadoDaemon",
-        "hint": "Ejecuta`paseo daemon status`y muestra la salida.",
+        "hint": "Ejecuta`coding-agent daemon status`y muestra la salida.",
         "view": "Ver estado",
         "copied": "Estado copiado al portapapeles.",
         "fetchFailed": "No se pudo recuperar el estado del demonio:{{message}}"
@@ -1075,7 +1075,7 @@
     },
     "rosetta": {
       "title": "Descargue la compilaciónApple Silicon",
-      "runningIntel": "Estás ejecutando la compilaciónInteldePaseoenRosettaenApple Silicon.",
+      "runningIntel": "Estás ejecutando la compilaciónInteldeTinyrackenRosettaenApple Silicon.",
       "highCpu": "Esto provoca un uso elevado de la CPU. Descargue la compilaciónApple Siliconpara solucionarlo.",
       "download": "Descargar"
     },
@@ -1115,7 +1115,7 @@
         "microphone": "El estado del micrófono aún no se ha comprobado."
       },
       "testNotification": {
-        "title": "Prueba de notificaciónPaseo",
+        "title": "Prueba de notificaciónTinyrack",
         "body": "Si puede ver esto, las notificaciones de escritorio funcionan.",
         "notDelivered": "La notificación no fue entregada. Verifique Configuración del sistema> Notificaciones.",
         "failed": "No se pudo enviar la notificación."
@@ -1124,7 +1124,7 @@
     "integrations": {
       "cli": {
         "statusFailed": "No se puede verificar el estado de instalación deCLI.",
-        "installFailed": "No se puede instalar elPaseoCLI."
+        "installFailed": "No se puede instalar elTinyrackCLI."
       },
       "skills": {
         "statusFailed": "No se puede comprobar el estado de las habilidades de orquestación.",
@@ -1136,7 +1136,7 @@
   },
   "rootError": {
     "kicker": "Algo salió mal",
-    "title": "Paseo tuvo un problema.",
+    "title": "Tinyrack tuvo un problema.",
     "body": "Vuelve a intentarlo para recargar la app. Si sigue ocurriendo, incluye los detalles de abajo al reportarlo.",
     "details": "Detalles"
   },
@@ -1228,7 +1228,7 @@
     }
   },
   "onboarding": {
-    "title": "Bienvenido aPaseo",
+    "title": "Bienvenido aTinyrack",
     "subtitle": "Conecte su computadora para comenzar",
     "actions": {
       "settings": "Ajustes"
@@ -1304,7 +1304,7 @@
     },
     "direct": {
       "title": "Conexión directa",
-      "helper": "Ingrese la dirección de un servidorPaseo.",
+      "helper": "Ingrese la dirección de un servidorTinyrack.",
       "fields": {
         "host": "Host",
         "port": "Puerto",
@@ -1380,7 +1380,7 @@
       "failedToLoadOffer": "No se pudo cargar la oferta de emparejamiento.",
       "relayDisabled": "El relé no está habilitado. Habilite el relé para emparejar un dispositivo.",
       "unavailable": "Oferta de maridaje no disponible.",
-      "hint": "Escanee este códigoQRconPaseoen su teléfono o copie el enlace a continuación.",
+      "hint": "Escanee este códigoQRconTinyracken su teléfono o copie el enlace a continuación.",
       "qrUnavailable": "CódigoQRno disponible.",
       "retry": "Rever",
       "copy": "Copiar",
@@ -1412,7 +1412,7 @@
   "serviceUrl": {
     "title": "Servicio abiertoURL",
     "message": "¿Abrir{{url}}?",
-    "inPaseo": "EnPaseo",
+    "inPaseo": "EnTinyrack",
     "externalBrowser": "Navegador externo",
     "dontAskAgain": "no vuelvas a preguntar"
   },
@@ -1508,8 +1508,8 @@
       "other": "usó {{count}} herramientas adicionales"
     },
     "paseoCalls": {
-      "one": "llamó a Paseo {{count}} vez",
-      "other": "llamó a Paseo {{count}} veces"
+      "one": "llamó a Tinyrack {{count}} vez",
+      "other": "llamó a Tinyrack {{count}} veces"
     },
     "and": "y"
   },
@@ -1589,7 +1589,7 @@
       "browserData": {
         "title": "Datos del navegador",
         "siteData": "Cookies y datos de sitios",
-        "description": "Las pestañas del navegador comparten inicios de sesión y datos de sitios en Paseo.",
+        "description": "Las pestañas del navegador comparten inicios de sesión y datos de sitios en Tinyrack.",
         "clear": "Borrar datos del navegador",
         "clearing": "Borrando...",
         "confirmTitle": "¿Borrar los datos del navegador?",
@@ -1613,7 +1613,7 @@
         "description": "Dónde abrir URL desde scripts en ejecución",
         "options": {
           "ask": "Preguntar",
-          "inApp": "EnPaseo",
+          "inApp": "EnTinyrack",
           "external": "Navegador externo"
         }
       },
@@ -1691,7 +1691,7 @@
         "label": "Actualizaciones de aplicaciones",
         "readyToInstall": "Listo para instalar:{{version}}",
         "installTitle": "Instalar actualización de escritorio",
-        "installMessage": "Esto actualizaPaseoen esta computadora.",
+        "installMessage": "Esto actualizaTinyracken esta computadora.",
         "installConfirm": "Instalar actualización",
         "update": "Actualizar",
         "updateTo": "Actualización a{{version}}",
@@ -1822,10 +1822,10 @@
         "title": "Habilidades de orquestación",
         "description": "Enseñe a sus agentes a orquestar a través delCLI",
         "updateAvailable": "Actualización disponible",
-        "updateTitle": "¿Actualizar las habilidades dePaseo?",
+        "updateTitle": "¿Actualizar las habilidades deTinyrack?",
         "updateFallback": "Sincronice las habilidades incluidas con su máquina.",
-        "uninstallTitle": "¿Desinstalar las habilidadesPaseo?",
-        "uninstallMessage": "Elimina todas las habilidades de orquestaciónPaseode ~/.agents, ~/.claude, ~/.codex."
+        "uninstallTitle": "¿Desinstalar las habilidadesTinyrack?",
+        "uninstallMessage": "Elimina todas las habilidades de orquestaciónTinyrackde ~/.agents, ~/.claude, ~/.codex."
       },
       "actions": {
         "install": "Instalar",
@@ -1880,9 +1880,9 @@
         "title": "Orquestación",
         "unavailable": "Conéctese a este host para administrar la orquestación",
         "enableTools": {
-          "title": "Habilitar herramientasPaseo",
+          "title": "Habilitar herramientasTinyrack",
           "hint": "Los agentes podrán gestionar árboles de trabajo, agentes y horarios.",
-          "accessibilityLabel": "Inyectar herramientasPaseo"
+          "accessibilityLabel": "Inyectar herramientasTinyrack"
         },
         "systemPrompt": {
           "title": "Aviso del sistema",
@@ -1945,13 +1945,13 @@
           "unavailableTitle": "Hostno disponible",
           "unavailableMessage": "Este host no está conectado. Espere a que se conecte antes de reiniciar.",
           "offlineTitle": "Hostfuera de línea",
-          "offlineMessage": "Este anfitrión está desconectado.Paseose vuelve a conectar automáticamente; espere hasta que vuelva a estar en línea antes de reiniciar.",
+          "offlineMessage": "Este anfitrión está desconectado.Tinyrackse vuelve a conectar automáticamente; espere hasta que vuelva a estar en línea antes de reiniciar.",
           "requestFailedTitle": "Error",
-          "requestFailedMessage": "No se pudo enviar la solicitud de reinicio.Paseose vuelve a conectar automáticamente; inténtelo nuevamente una vez que el host se muestre en línea.",
+          "requestFailedMessage": "No se pudo enviar la solicitud de reinicio.Tinyrackse vuelve a conectar automáticamente; inténtelo nuevamente una vez que el host se muestre en línea.",
           "dialogFailedMessage": "No se puede abrir el cuadro de diálogo de confirmación de reinicio."
         },
         "update": {
-          "desktopManagedHint": "Este daemon está administrado por Paseo Desktop. Actualiza Paseo Desktop en el host.",
+          "desktopManagedHint": "Este daemon está administrado por Tinyrack Desktop. Actualiza Tinyrack Desktop en el host.",
           "title": "Update daemon",
           "hint": "Update the daemon to the latest version and restart it",
           "confirm": "Update",
@@ -2066,14 +2066,14 @@
         "reset": "Reiniciar"
       },
       "readFailures": {
-        "invalidTitle": "paseo.json no se pudo analizar",
+        "invalidTitle": "tinyrack.json no se pudo analizar",
         "invalidDescription": "Fije el archivo en el disco y luego vuelva a cargarlo.",
         "missingTitle": "Este anfitrión no tiene este proyecto",
         "missingWithHosts": "Cambie a otro host de arriba o vuelva a cargar.",
         "missingSingleHost": "El anfitrión seleccionado no tiene registro de este proyecto.",
-        "transportTitle": "No se pudo cargar paseo.json",
+        "transportTitle": "No se pudo cargar tinyrack.json",
         "transportFallback": "El anfitrión no respondió.",
-        "failedTitle": "No se pudo cargar paseo.json",
+        "failedTitle": "No se pudo cargar tinyrack.json",
         "failedDescription": "Vuelva a cargar para intentarlo de nuevo."
       },
       "worktree": {
@@ -2105,7 +2105,7 @@
         "newScript": "Nuevo guión",
         "editScript": "Editar{{name}}",
         "runAsService": "Ejecutar como servicio",
-        "serviceHint": "Paseosupervisa el proceso y asigna un puerto vía $PASEO_PORT",
+        "serviceHint": "Tinyracksupervisa el proceso y asigna un puerto vía $PASEO_PORT",
         "actions": {
           "add": "Agregar guión",
           "edit": "Editar",
@@ -2114,7 +2114,7 @@
       },
       "metadata": {
         "title": "Generación de metadatos",
-        "info": "Instrucciones específicas del proyecto inyectadas en los mensajes de IA quePaseoutiliza para generar metadatos; úselas para hacer cumplir las convenciones de su equipo, como la denominación de ramas, el estilo de confirmación o el formatoPR.",
+        "info": "Instrucciones específicas del proyecto inyectadas en los mensajes de IA queTinyrackutiliza para generar metadatos; úselas para hacer cumplir las convenciones de su equipo, como la denominación de ramas, el estilo de confirmación o el formatoPR.",
         "branchName": "Nombres de sucursales",
         "branchNamePlaceholder": "Prefijo ramas con feat/ o fix/, mb/ para ramas personales",
         "commitMessage": "Confirmar mensajes",
@@ -2124,8 +2124,8 @@
       },
       "writeFailures": {
         "staleTitle": "Configuración cambiada en el disco",
-        "staleDescription": "Vuelva a cargar para obtener el último paseo.json antes de guardar.",
-        "failedTitle": "No se pudo guardar paseo.json",
+        "staleDescription": "Vuelva a cargar para obtener el último tinyrack.json antes de guardar.",
+        "failedTitle": "No se pudo guardar tinyrack.json",
         "failedDescription": "Inténtelo de nuevo o vuelva a cargar la última versión desde el disco."
       },
       "actions": {

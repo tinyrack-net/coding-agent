@@ -144,23 +144,19 @@ void main() {
       );
     });
 
-    test(
-      'pins the known agent_protocol gap: ssh.github.com is not a GitHub host',
-      () {
-        // Upstream derives its GitHub host set from the forge manifest, which
-        // lists both `github.com` and `ssh.github.com`. The already-ported
-        // `agent_protocol` `isGitHubHost` only knows `github.com`, so this
-        // remote resolves to null here and to `claude-code` upstream. Pinned
-        // rather than worked around, because the fix belongs in the protocol
-        // package, not in this module.
-        expect(
-          parseGitHubRepoNameFromRemote(
-            'git@ssh.github.com:anthropics/claude-code.git',
-          ),
-          isNull,
-        );
-      },
-    );
+    test('accepts ssh.github.com, the port-443 SSH alias', () {
+      // Upstream derives its GitHub host set from the forge manifest, which
+      // lists both `github.com` and `ssh.github.com`. `agent_protocol`'s
+      // `isGitHubHost` originally knew only `github.com`; porting this
+      // module surfaced the gap and it was fixed in the protocol package
+      // rather than worked around here.
+      expect(
+        parseGitHubRepoNameFromRemote(
+          'git@ssh.github.com:anthropics/claude-code.git',
+        ),
+        'claude-code',
+      );
+    });
   });
 
   group('deriveProjectSlug', () {

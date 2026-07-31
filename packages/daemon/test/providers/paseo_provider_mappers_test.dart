@@ -588,6 +588,27 @@ void main() {
       expect(parseOmpToolResult(const {'output': null}), isNull);
       expect(parseOmpToolResult(const {'exitCode': 'zero'}), isNull);
       expect(parseOmpToolResult(const {'details': 'nope'}), isNull);
+      // `OmpToolResultDetailsSchema` types `diff` as an optional *string*, so
+      // a non-string one rejects the whole result rather than riding through
+      // on passthrough.
+      expect(
+        parseOmpToolResult(const {
+          'details': {'diff': 42},
+        }),
+        isNull,
+      );
+      expect(
+        parseOmpToolResult(const {
+          'details': {'diff': null},
+        }),
+        isNull,
+      );
+      expect(
+        parseOmpToolResult(const {
+          'details': {'other': 42},
+        }),
+        isA<Map<String, Object?>>(),
+      );
       expect(parseOmpToolResult(const {'content': 'nope'}), isNull);
       expect(
         parseOmpToolResult(const {

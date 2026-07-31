@@ -5068,10 +5068,12 @@
     },
     {
       "id": "source-unit:packages/app/src/desktop/daemon/desktop-daemon-transport.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/keyboard/paseo_browser_shortcuts.dart",
+      "evidence": [
+        "packages/app/test/keyboard/paseo_browser_shortcuts_test.dart"
+      ],
+      "notes": "URL build/parse and the factory, whose point is the open race: session-open and event subscription start concurrently, open fires once from whichever lands second. URL handling is hand-rolled because the scheme is WHATWG non-special and Dart's Uri normalizes it differently. Remaining: daemon_client.dart builds its WebSocket inline and has no pluggable transport."
     },
     {
       "id": "source-unit:packages/app/src/desktop/daemon/desktop-daemon.ts",
@@ -6519,10 +6521,12 @@
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-keyboard-shift-style.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/keyboard/paseo_browser_shortcuts.dart",
+      "evidence": [
+        "packages/app/test/keyboard/paseo_browser_shortcuts_test.dart"
+      ],
+      "notes": "The keyboard-shift policy with its dual closed-keyboard signals — progress for stale Android heights, height threshold for the iOS accessory bar — plus the style resolvers. Upstream's !(x > 0) guards are kept verbatim as the NaN-catching form."
     },
     {
       "id": "source-unit:packages/app/src/hooks/use-keyboard-shortcut-overrides.ts",
@@ -6866,10 +6870,12 @@
     },
     {
       "id": "source-unit:packages/app/src/keyboard/browser-shortcuts.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/keyboard/paseo_browser_shortcuts.dart",
+      "evidence": [
+        "packages/app/test/keyboard/paseo_browser_shortcuts_test.dart"
+      ],
+      "notes": "Policy building over the existing shortcut engine: chord bindings are all-or-nothing, macOS Cmd-bracket is dropped as native back/forward, prefixes narrow mid-chord while menu prefixes stay idle and append the non-mac Ctrl+W guard."
     },
     {
       "id": "source-unit:packages/app/src/keyboard/focus-scope.ts",
@@ -7592,10 +7598,12 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/new-workspace-picker-state.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_actions.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_actions_test.dart"
+      ],
+      "notes": "The one-shot pr-detected to pr-added auto-selection window and the single picker-owned attachment, dropped first and appended last, never duplicating a user-attached PR under either kind."
     },
     {
       "id": "source-unit:packages/app/src/screens/new-workspace-screen.tsx",
@@ -7617,10 +7625,12 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/new-workspace/project-selection.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_actions.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_actions_test.dart"
+      ],
+      "notes": "Context-key staleness against the coarser manual key so a capability change does not discard a user's pick, the lastActive-only fallback reset, and the four-step resolution cascade."
     },
     {
       "id": "source-unit:packages/app/src/screens/open-project-screen.tsx",
@@ -7706,10 +7716,12 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/settings/appearance/apply-appearance.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_actions.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_actions_test.dart"
+      ],
+      "notes": "All six theme keys patched in upstream order with the ramp always rebuilt from the canonical base so it cannot compound, and the syntax palette resolved against each theme's own colour scheme."
     },
     {
       "id": "source-unit:packages/app/src/screens/settings/appearance/apply-root-font.ts",
@@ -7905,10 +7917,12 @@
     },
     {
       "id": "source-unit:packages/app/src/screens/workspace/workspace-bulk-close.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_actions.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_actions_test.dart"
+      ],
+      "notes": "Three-way classification, the seven-branch confirmation copy with its branch order preserved, and a genuinely fire-and-forget close so tabs empty in one frame and an RPC failure only warns."
     },
     {
       "id": "source-unit:packages/app/src/screens/workspace/workspace-deck-retention.ts",
@@ -8096,10 +8110,12 @@
     },
     {
       "id": "source-unit:packages/app/src/stores/browser-store/state.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/state/paseo_ui_stores.dart",
+      "evidence": [
+        "packages/app/test/state/paseo_ui_stores_test.dart"
+      ],
+      "notes": "URL normalization, record creation, identity-preserving patch and removal, persist sanitizing, and the index store over injected storage, id generation and clock."
     },
     {
       "id": "source-unit:packages/app/src/stores/create-flow-store.ts",
@@ -8147,10 +8163,12 @@
     },
     {
       "id": "source-unit:packages/app/src/stores/draft-store/migration.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/paseo_ui_stores.dart",
+      "evidence": [
+        "packages/app/test/state/paseo_ui_stores_test.dart"
+      ],
+      "notes": "The attachment union, per-kind parsing, and both migrations, idempotent. Remaining: composer_draft_store.dart persists a pre-union MVP shape under different keys, so adopting this means migrating those blobs and retiring ComposerDraft.images."
     },
     {
       "id": "source-unit:packages/app/src/stores/draft-store/persistence.ts",
@@ -8216,10 +8234,12 @@
     },
     {
       "id": "source-unit:packages/app/src/stores/navigation-active-workspace-store/navigation.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/paseo_ui_stores.dart",
+      "evidence": [
+        "packages/app/test/state/paseo_ui_stores_test.dart"
+      ],
+      "notes": "Selection parsing where the pathname is authoritative and params only count at the root, plus navigation with its explicit-target-beats-attention-agent rule and the deferred open intent for an unknown workspace. Remaining: last_workspace_route_selection.dart already duplicates rememberLastWorkspace, and two screens call prepareWorkspaceTab directly rather than through this layer."
     },
     {
       "id": "source-unit:packages/app/src/stores/panel-store/index.ts",
@@ -8300,10 +8320,12 @@
     },
     {
       "id": "source-unit:packages/app/src/stores/sidebar-collapsed-sections-store/state.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/paseo_ui_stores.dart",
+      "evidence": [
+        "packages/app/test/state/paseo_ui_stores_test.dart"
+      ],
+      "notes": "The three independent collapse axes, transitions, serialization and identity-preserving merge are ported. Remaining: buildSidebarProjection already consumes a collapsedProjectKeys set that has no owner today, and sidebar_pins_provider.dart hand-rolls its own prefs access on a neighbouring axis."
     },
     {
       "id": "source-unit:packages/app/src/stores/sidebar-order-store.ts",
@@ -8318,10 +8340,12 @@
     },
     {
       "id": "source-unit:packages/app/src/stores/sidebar-view-store.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/state/paseo_ui_stores.dart",
+      "evidence": [
+        "packages/app/test/state/paseo_ui_stores_test.dart"
+      ],
+      "notes": "Both migrations (per-server group mode to global, single host filter to a set), the read-through legacy fallback that never writes back, and the store. Remaining: home_shell.dart holds an equivalent private enum in ephemeral widget state with no persistence at all, and has no host-filter axis."
     },
     {
       "id": "source-unit:packages/app/src/stores/workspace-draft-submission-store.ts",
@@ -9008,10 +9032,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/assistant-message-height-estimate.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_more_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_more_utils_test.dart"
+      ],
+      "notes": "The 1000-entry LRU keyed on rounded width, length and an FNV-1a hash, with an all-or-nothing estimate across the split blocks. The image fallback is injected because assistant-image-metadata.ts is unported."
     },
     {
       "id": "source-unit:packages/app/src/utils/attempt-guard.ts",
@@ -9047,10 +9073,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/confirm-dialog.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_more_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_more_utils_test.dart"
+      ],
+      "notes": "The native-then-desktop-then-browser ladder, throwing rather than returning false when no backend exists, because a missing confirmation is not a decline."
     },
     {
       "id": "source-unit:packages/app/src/utils/connection-selection.ts",
@@ -9317,10 +9345,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/markdown-list.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_more_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_more_utils_test.dart"
+      ],
+      "notes": "Bullet versus ordered marker construction and the four margin cases, with JS parseInt semantics reimplemented for a textual list start."
     },
     {
       "id": "source-unit:packages/app/src/utils/navigate-to-agent/index.ts",
@@ -9372,10 +9402,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/os-notifications.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_more_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_more_utils_test.dart"
+      ],
+      "notes": "Native never posts, the desktop bridge is preferred, web posts only with permission behind one coalesced prompt, and a click gives the app first refusal before any hard navigation. terminalId is deliberately excluded from the click-target check, matching upstream rather than widening it."
     },
     {
       "id": "source-unit:packages/app/src/utils/path.ts",
@@ -9517,10 +9549,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/schedule-format.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_more_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_more_utils_test.dart"
+      ],
+      "notes": "Coarsest-unit interval splitting with its hour and minute floors, and cron humanization for the fixed-time family. Reuses the existing schedule row and form models rather than re-porting cadence validation."
     },
     {
       "id": "source-unit:packages/app/src/utils/score-match.ts",
@@ -9598,10 +9632,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/sidebar-shortcuts.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_more_utils.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_more_utils_test.dart"
+      ],
+      "notes": "Row numbering across sections where the limit is a total rather than per-section, collapsed sections skipped whole, and wrapping relative traversal. This is the public home for the private _buildSidebarShortcutSections in paseo_session_projection.dart, whose own comment reserved the name."
     },
     {
       "id": "source-unit:packages/app/src/utils/sidebar-workspace-archive-redirect.ts",
@@ -10020,10 +10056,12 @@
     },
     {
       "id": "source-unit:packages/app/src/workspace/open-target-planner.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_actions.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_actions_test.dart"
+      ],
+      "notes": "Desktop targets all-or-nothing on the bridge and local-execution pair, the forge entry always appended last and independent of them, and blob-versus-branch-tree URL selection. Reuses the existing forge URL builders so the URLs stay byte-identical."
     },
     {
       "id": "source-unit:packages/app/src/workspace/project-workspace-archive.ts",
@@ -10043,10 +10081,12 @@
     },
     {
       "id": "source-unit:packages/app/src/workspace/workspace-archive.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/workspace/paseo_workspace_actions.dart",
+      "evidence": [
+        "packages/app/test/workspace/paseo_workspace_actions_test.dart"
+      ],
+      "notes": "Optimistic archive that hides the row synchronously before the first suspension and restores on failure, plus the batch form where every hide runs before any daemon call resolves and failures return in input order."
     },
     {
       "id": "source-unit:packages/cli/src/classify.ts",
@@ -11509,10 +11549,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/features/attachments.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_browser.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_browser_test.dart"
+      ],
+      "notes": "The managed attachment operations and the containment check. Base64 decoding reproduces Node's leniency and path stem parsing reproduces its dot carve-outs — a mismatch there would delete live attachments."
     },
     {
       "id": "source-unit:packages/desktop/src/features/auto-updater.ts",
@@ -11572,10 +11614,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/features/browser-automation/trusted-input.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_browser.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_browser_test.dart"
+      ],
+      "notes": "All six trusted-input dispatchers with their CDP button and modifier masks."
     },
     {
       "id": "source-unit:packages/desktop/src/features/browser-keyboard/guest-preload.ts",
@@ -11593,10 +11637,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/features/browser-keyboard/policy.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_browser.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_browser_test.dart"
+      ],
+      "notes": "Policy and input parsing, prefix and policy matching, and reserved-shortcut classification. Absent versus explicit null is distinguished with containsKey, and the parser rejects the opposite literal rather than normalizing it."
     },
     {
       "id": "source-unit:packages/desktop/src/features/browser-profile.ts",
@@ -11623,10 +11669,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/features/browser-webviews/window-open.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/desktop/desktop_browser_window_open.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_browser_test.dart"
+      ],
+      "notes": "Was already ported despite the ledger saying otherwise; the new library re-exports it rather than duplicating, and all thirteen upstream cases plus the pending cap now run against it, so the reuse is verified rather than assumed."
     },
     {
       "id": "source-unit:packages/desktop/src/features/dialogs.ts",
@@ -11888,10 +11936,12 @@
     },
     {
       "id": "source-unit:packages/desktop/src/integrations/skills/operations.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/desktop/paseo_desktop_browser.dart",
+      "evidence": [
+        "packages/app/test/desktop/paseo_desktop_browser_test.dart"
+      ],
+      "notes": "Status, install, update, auto-update and uninstall with the sealed operation hierarchy and add-beats-update precedence. Remaining: targets are required rather than defaulted from the packaged flag and home directory, sync and remove live behind an injected gateway because they belong to an unported module, and SHA-256 is injected since this package has no crypto dependency."
     },
     {
       "id": "source-unit:packages/desktop/src/integrations/skills/paths.ts",
@@ -12589,10 +12639,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-loading.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/server/paseo_server_services.dart",
+      "evidence": [
+        "packages/daemon/test/server/paseo_server_services_test.dart"
+      ],
+      "notes": "Load and unarchived-load with the module-level dedupe map preserved, plus a read-only pending count so the drain invariant is assertable."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/agent-manager.ts",
@@ -13320,10 +13372,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/runtime.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_omp_runtime.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_omp_runtime_test.dart"
+      ],
+      "notes": "buildOmpLaunch and the events-to-progress downgrade are ported, the latter being the only rule upstream's runtime suite pins. Remaining: OmpRuntime is a 25-method facade over a spawned omp rpc process, which this native-harness daemon has nothing to bind to."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/session-descriptor.ts",
@@ -13341,10 +13395,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/subagent-index.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_omp_runtime.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_omp_runtime_test.dart"
+      ],
+      "notes": "Merges lifecycle, progress and event frames into one descriptor per child, keyed on an opaque parent through an Expando — Dart's WeakMap analogue — plus terminalization and title formatting."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/subagent-title.ts",
@@ -13355,10 +13411,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/system-notice.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_omp_runtime.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_omp_runtime_test.dart"
+      ],
+      "notes": "The timeline projection of a system notice. Reuses the existing omp_system_notice.dart, which already ports every parsing rule including typographic quotes and the sha1 call id."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/test-utils/fake-omp.ts",
@@ -13401,10 +13459,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/tool-call-mapper.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_omp_runtime.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_omp_runtime_test.dart"
+      ],
+      "notes": "Per-tool detail mapping: todo yields null because it renders as a dedicated timeline item, task builds a sub-agent detail with the four-alias lookups and child-transcript regex, edit and read prefer their structured fields with raw-args fallbacks. Carries a supporting port of omp/tool-call-detail.ts, which paseo_provider_mappers.dart explicitly left out of scope."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/usage-mapper.ts",
@@ -13754,10 +13814,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/auto-archive-on-merge/archive-if-safe.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/server/paseo_server_services.dart",
+      "evidence": [
+        "packages/daemon/test/server/paseo_server_services_test.dart"
+      ],
+      "notes": "All eight guards in upstream order. Remaining: archiveByScope, killTerminalsForWorkspace, resolveWorkspaceIdAtPath and the ownership check do not exist in this daemon — workspace archiving lives in workspace_v2_service.dart and is not scope-shaped — so they stay injected seams as upstream also injects them, and upstream's two real-outcome cases are substituted by a real-git test proving the ownership refusal leaves the checkout on disk."
     },
     {
       "id": "source-unit:packages/server/src/server/auto-archive-on-merge/index.ts",
@@ -14030,10 +14092,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/hub/execution-controller.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/server/paseo_self_update.dart",
+      "evidence": [
+        "packages/daemon/test/server/paseo_self_update_test.dart"
+      ],
+      "notes": "The shutdown fence (idempotent cleanup awaiting in-flight creates, with closed re-checked after every await), blank-field and absolute-cwd validation, and owned update/stream forwarding. Remaining: the hub execution wire types are declared locally because this repo's protocol package knows hub.execution only as an enrolment scope string."
     },
     {
       "id": "source-unit:packages/server/src/server/hub/relationship-controller.ts",
@@ -14087,10 +14151,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/logger.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/server/paseo_server_services.dart",
+      "evidence": [
+        "packages/daemon/test/server/paseo_server_services_test.dart"
+      ],
+      "notes": "Level gating, the exact redaction path set with remove semantics, pino's JSON record shape, child binding merge, and file-versus-stdout destination with parent creation — ported onto a new logger rather than adding a dependency. Remaining: the daemon has no structured logger at all today (only void callbacks and an unconsumed level/format pair on the runtime config), so nothing emits through this yet; transports and pretty-print colour are deliberately not ported."
     },
     {
       "id": "source-unit:packages/server/src/server/loop-service.ts",
@@ -14220,10 +14286,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/persistence-hooks.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/server/paseo_server_services.dart",
+      "evidence": [
+        "packages/daemon/test/server/paseo_server_services_test.dart"
+      ],
+      "notes": "Config-override and session-config building, timestamp extraction, handle projection, provider availability and registration checks, and the storage attachment."
     },
     {
       "id": "source-unit:packages/server/src/server/pid-lock.ts",
@@ -14491,17 +14559,21 @@
     },
     {
       "id": "source-unit:packages/server/src/server/session/daemon/daemon-self-update-session-controller.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/server/paseo_self_update.dart",
+      "evidence": [
+        "packages/daemon/test/server/paseo_self_update_test.dart"
+      ],
+      "notes": "Synchronous null for foreign messages, progress plus exactly one terminal message, restart intent only on success, and the already_updating rpc error. Remaining: unwired for the same reason as the updater."
     },
     {
       "id": "source-unit:packages/server/src/server/session/daemon/daemon-self-updater.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/server/paseo_self_update.dart",
+      "evidence": [
+        "packages/daemon/test/server/paseo_self_update_test.dart"
+      ],
+      "notes": "Desktop-managed refusal before any I/O, the synchronous in-progress fence, all four phases, the stderr-then-stdout-then-exit-code error chain, and a post-install re-probe whose failure warns without failing the update. Includes a full port of the install-origin containment check (symlink resolution, Windows case folding, extended-length and UNC namespace stripping), which this repo had no equivalent for. Remaining: the daemon has no handler for daemon.update.request — protocol and app sides exist, the daemon side never did — so this supplies the logic but is not yet served."
     },
     {
       "id": "source-unit:packages/server/src/server/session/daemon/daemon-session.ts",
@@ -14532,10 +14604,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/session/daemon/npm-global-cli.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/server/paseo_self_update.dart",
+      "evidence": [
+        "packages/daemon/test/server/paseo_self_update_test.dart"
+      ],
+      "notes": "Probe, parse and install with their timeouts and buffer caps, preserving that a non-zero probe with usable stdout still parses and that install returns a non-zero exit as data rather than throwing. Branding mapped: this repo publishes to no registry (every package is publish_to none and the daemon ships as a compiled exe), so npm global becomes pub global, which shares the one distinction the port depends on — a developer link must never be overwritten, a registry install may. Remaining: not wired, since there is no registry today."
     },
     {
       "id": "source-unit:packages/server/src/server/session/files/workspace-files-session.ts",
@@ -14552,10 +14626,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/session/git-mutation/git-mutation-service.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/server/paseo_server_services.dart",
+      "evidence": [
+        "packages/daemon/test/server/paseo_server_services_test.dart"
+      ],
+      "notes": "Branch checkout and creation with ref-safety assertion and the sealed resolution, plus mutation notification with all fifteen refresh reasons pinned. Uses the existing GitRunner as the only git invoker and real temp repos in tests."
     },
     {
       "id": "source-unit:packages/server/src/server/session/project-config/project-config-session.ts",
@@ -15796,10 +15872,12 @@
     },
     {
       "id": "source-unit:packages/server/src/utils/git-command-runtime-metrics.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/server/paseo_server_services.dart",
+      "evidence": [
+        "packages/daemon/test/server/paseo_server_services_test.dart"
+      ],
+      "notes": "The rolling window and duration summary, with the percentile index arithmetic exposed so it is directly pinned rather than only observed through the summary."
     },
     {
       "id": "source-unit:packages/server/src/utils/git-rev-parse-path.ts",

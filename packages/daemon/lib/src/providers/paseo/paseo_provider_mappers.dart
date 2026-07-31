@@ -295,8 +295,12 @@ Object? parseOmpToolResult(Object? rawResult) {
   for (final key in const ['exitCode', 'code']) {
     if (!_optionalNumberOk(record, key)) return null;
   }
-  if (record.containsKey('details') && _record(record['details']) == null) {
-    return null;
+  if (record.containsKey('details')) {
+    final details = _record(record['details']);
+    // `OmpToolResultDetailsSchema` is `{diff: z.string().optional()}` with
+    // passthrough, so a non-string `diff` rejects the whole result — every
+    // other key rides through untouched.
+    if (details == null || !_optionalStringOk(details, 'diff')) return null;
   }
   if (record.containsKey('content')) {
     final content = record['content'];
