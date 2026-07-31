@@ -13242,10 +13242,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/commands.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_provider_mappers.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_provider_mappers_test.dart"
+      ],
+      "notes": "Built-ins seed the map and keep menu position when overridden, overrides inherit the built-in argument hint, and new commands append. The runtime path drops an empty-string description where the event path preserves it — a JS truthiness asymmetry reproduced and pinned."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/custom-message.ts",
@@ -13368,10 +13370,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/todo-mapper.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_provider_mappers.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_provider_mappers_test.dart"
+      ],
+      "notes": "All four todo mappers collapsing OMP's four-state status onto the timeline's completed boolean, with abandoned counting as not completed. Deliberately does NOT reuse PaseoTodoStatus from paseo_process_utils.dart: that models Claude's three-state union, so reusing it would make OMP reject an abandoned task instead of rendering it."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/tool-call-detail.ts",
@@ -13382,10 +13386,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/tool-call-id.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_provider_mappers.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_provider_mappers_test.dart"
+      ],
+      "notes": "Poll-target reading with whole-list rejection on any blank or non-string entry, code-unit sorting to match toSorted, and the synthetic poll id emitted only for subagent poll calls."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/tool-call-mapper.ts",
@@ -13396,10 +13402,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/omp/usage-mapper.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_provider_mappers.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_provider_mappers_test.dart"
+      ],
+      "notes": "Returns the base usage untouched when neither context number was reported, otherwise overrides only the reported half. NaN and infinities count as unreported while zero counts as reported."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/opencode-agent.ts",
@@ -13422,10 +13430,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/opencode/rewind.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_provider_mappers.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_provider_mappers_test.dart"
+      ],
+      "notes": "Conversation and file revert over an injected client, emitting OpenCode's sessionID/messageID wire casing. Upstream's if (response.error) truthiness is preserved, so an empty string counts as success."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/opencode/server-manager.ts",
@@ -13457,10 +13467,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/opencode/tool-call-mapper.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/providers/paseo/paseo_provider_mappers.dart",
+      "evidence": [
+        "packages/daemon/test/providers/paseo_provider_mappers_test.dart"
+      ],
+      "notes": "The mapper is ported: blank tool names and callIds drop the call, both are trimmed, error outranks the status word, unknown words mean running, and output presence is the fallback. Remaining: detail derivation lives in tool-call-detail-parser.ts and tool-call-detail-primitives.ts (about 1050 lines, separate units), so it is an injected deriver whose default is upstream's terminal fallback branch; roughly twelve upstream cases assert on that detail content and belong to those units."
     },
     {
       "id": "source-unit:packages/server/src/server/agent/providers/pi/agent.ts",
