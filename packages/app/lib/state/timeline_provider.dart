@@ -92,6 +92,14 @@ final class TimelineDisplayItem {
   final StreamTimelinePosition? timelineCursor;
 }
 
+/// How long the replica batches inbound `agent_stream` events before
+/// applying them. Paseo coalesces roughly three frames' worth of events into
+/// one commit so a fast-streaming turn does not rebuild the stream per token.
+/// Overridable so tests can apply events without waiting on a real timer.
+final agentStreamFlushDelayProvider = Provider<Duration>(
+  (_) => const Duration(milliseconds: 48),
+);
+
 enum TimelineCatchUpPhase { idle, syncing, error }
 
 /// Paseo keeps the authoritative tail page separate from the active stream
@@ -298,6 +306,14 @@ class TimelineNotifier extends Notifier<TimelineState> {
   TimelineNotifier(this.agentId);
 
   final String agentId;
+  final _pendingStreamEvents = <AgentStreamPayload>[];
+  Timer? _flushTimer;
+  bool _flushScheduled = false;
+
+  /// Working state while a flush is applying a batch. Reads go through
+  /// [_current] so each event in the batch sees its predecessors, while the
+  /// notifier itself is written once at the end of the flush.
+  TimelineState? _batch;
   bool _fetching = false;
   bool _refetchQueued = false;
   bool _refetchQueuedFull = false;
@@ -307,6 +323,8 @@ class TimelineNotifier extends Notifier<TimelineState> {
   TimelineReplicaKey get _replicaKey =>
       TimelineReplicaKey(serverId: _serverId, agentId: agentId);
 
+  TimelineState get _current => _batch ?? state;
+
   @override
   TimelineState build() {
     _generation++;
@@ -315,8 +333,12 @@ class TimelineNotifier extends Notifier<TimelineState> {
     _refetchQueuedFull = false;
     _serverId = ref.watch(activeHostProvider)?.serverId ?? 'legacy';
     final client = ref.watch(daemonClientProvider);
+    _pendingStreamEvents.clear();
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    _flushScheduled = false;
     final eventSub = client.events.listen(_onEvent);
-    final nativeEventSub = client.agentStreamEvents.listen(_onAgentStream);
+    final nativeEventSub = client.agentStreamEvents.listen(_enqueueStreamEvent);
     final connSub = client.connectionState.listen((connection) {
       if (connection == DaemonConnectionState.connected) _fetch();
     });
@@ -324,6 +346,10 @@ class TimelineNotifier extends Notifier<TimelineState> {
       eventSub.cancel();
       nativeEventSub.cancel();
       connSub.cancel();
+      _flushTimer?.cancel();
+      _flushTimer = null;
+      _flushScheduled = false;
+      _pendingStreamEvents.clear();
     });
     if (client.currentState == DaemonConnectionState.connected) {
       Future.microtask(_fetch);
@@ -340,13 +366,50 @@ class TimelineNotifier extends Notifier<TimelineState> {
     } catch (_) {
       return;
     }
-    _onAgentStream(payload);
+    _enqueueStreamEvent(payload);
+  }
+
+  /// Buffers a live event and arms the shared flush timer. Events are always
+  /// applied in arrival order when the window closes.
+  void _enqueueStreamEvent(AgentStreamPayload payload) {
+    if (payload.agentId != agentId) return;
+    _pendingStreamEvents.add(payload);
+    if (_flushScheduled) return;
+    _flushScheduled = true;
+    final delay = ref.read(agentStreamFlushDelayProvider);
+    // A zero window still coalesces, but within the current microtask drain
+    // rather than a later timer turn, so an immediate-mode consumer sees the
+    // event as soon as delivery settles.
+    if (delay == Duration.zero) {
+      scheduleMicrotask(_flushStreamEvents);
+      return;
+    }
+    _flushTimer = Timer(delay, _flushStreamEvents);
+  }
+
+  /// Applies every buffered event, then publishes once.
+  void _flushStreamEvents() {
+    _flushTimer = null;
+    _flushScheduled = false;
+    if (!ref.mounted || _pendingStreamEvents.isEmpty) return;
+    final events = List<AgentStreamPayload>.of(_pendingStreamEvents);
+    _pendingStreamEvents.clear();
+    _batch = state;
+    try {
+      for (final payload in events) {
+        _onAgentStream(payload);
+      }
+    } finally {
+      final next = _batch;
+      _batch = null;
+      if (next != null && !identical(next, state)) _publish(next);
+    }
   }
 
   void _onAgentStream(AgentStreamPayload payload) {
     if (payload.agentId != agentId) return;
     final eventEpoch = payload.epoch.toString();
-    final knownEpoch = state.epoch;
+    final knownEpoch = _current.epoch;
     final decision = classifySessionTimelineSeq(
       // Only a replica with no established epoch is uninitialized. An empty
       // authoritative page establishes the epoch without a cursor range, and
@@ -354,7 +417,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
       // uninitialized.
       cursor: knownEpoch == null
           ? null
-          : state.cursor ??
+          : _current.cursor ??
                 AgentTimelineCursorRange(
                   epoch: knownEpoch,
                   startSeq: 0,
@@ -383,7 +446,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
       case SessionTimelineSeqDecision.accept:
         _applyLiveUpsert(
           _mergeResolvedPermission(payload.item),
-          math.max(state.lastSeq, payload.seq),
+          math.max(_current.lastSeq, payload.seq),
           _payloadTimestamp(payload),
         );
     }
@@ -392,8 +455,8 @@ class TimelineNotifier extends Notifier<TimelineState> {
   void _startLiveEpoch(AgentStreamPayload payload, String eventEpoch) {
     _publish(
       TimelineState(
-        pendingTailUserMessages: state.pendingTailUserMessages,
-        pendingHeadUserMessages: state.pendingHeadUserMessages,
+        pendingTailUserMessages: _current.pendingTailUserMessages,
+        pendingHeadUserMessages: _current.pendingHeadUserMessages,
         epoch: eventEpoch,
         cursor: AgentTimelineCursorRange(
           epoch: eventEpoch,
@@ -423,7 +486,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
       :final status,
       toolName: '',
     )) {
-      final existing = state.items
+      final existing = _current.items
           .whereType<PermissionItem>()
           .where((candidate) => candidate.id == id)
           .firstOrNull;
@@ -441,16 +504,17 @@ class TimelineNotifier extends Notifier<TimelineState> {
   }
 
   void _applyLiveUpsert(TimelineItem item, int endSeq, DateTime timestamp) {
+    final current = _current;
     final pendingTail = List<OptimisticUserMessage>.of(
-      state.pendingTailUserMessages,
+      current.pendingTailUserMessages,
     );
     final pendingHead = List<OptimisticUserMessage>.of(
-      state.pendingHeadUserMessages,
+      current.pendingHeadUserMessages,
     );
     final presentations = Map<String, OptimisticUserMessage>.of(
-      state.userMessagePresentations,
+      current.userMessagePresentations,
     );
-    final itemTimestamps = Map<String, DateTime>.of(state.itemTimestamps)
+    final itemTimestamps = Map<String, DateTime>.of(current.itemTimestamps)
       ..[item.id] = timestamp;
     final matchedSegment = _reconcileUserMessage(
       item,
@@ -459,16 +523,16 @@ class TimelineNotifier extends Notifier<TimelineState> {
       presentations,
       matchFirstOptimistic: true,
     );
-    final tail = List<TimelineItem>.of(state.tailItems);
-    final head = List<TimelineItem>.of(state.headItems);
+    final tail = List<TimelineItem>.of(current.tailItems);
+    final head = List<TimelineItem>.of(current.headItems);
     final existingSegment = _replaceExisting(item, tail, head);
     if (existingSegment == null) {
       final target = matchedSegment ?? _TimelineSegment.head;
       (target == _TimelineSegment.head ? head : tail).add(item);
     }
-    final cursor = state.cursor;
+    final cursor = current.cursor;
     _publish(
-      state.copyWith(
+      current.copyWith(
         tailItems: List.unmodifiable(tail),
         headItems: List.unmodifiable(head),
         pendingTailUserMessages: List.unmodifiable(pendingTail),
@@ -477,7 +541,7 @@ class TimelineNotifier extends Notifier<TimelineState> {
         itemTimestamps: Map.unmodifiable(itemTimestamps),
         cursor: cursor == null
             ? AgentTimelineCursorRange(
-                epoch: state.epoch!,
+                epoch: current.epoch!,
                 startSeq: endSeq,
                 endSeq: endSeq,
               )
@@ -950,6 +1014,10 @@ class TimelineNotifier extends Notifier<TimelineState> {
   }
 
   void _publish(TimelineState next) {
+    if (_batch != null) {
+      _batch = next;
+      return;
+    }
     state = next;
     ref.read(timelineReplicaStoreProvider.notifier).write(_replicaKey, next);
     ref

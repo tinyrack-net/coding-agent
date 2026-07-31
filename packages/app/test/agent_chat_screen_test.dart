@@ -778,7 +778,9 @@ void main() {
         ).toJson(),
       ),
     );
-    await tester.pump();
+    // The replica batches inbound stream events, so advance past the flush
+    // window before asserting the reconciled row.
+    await tester.pump(const Duration(milliseconds: 60));
     await tester.pump();
 
     expect(find.text('optimistic prompt'), findsOneWidget);

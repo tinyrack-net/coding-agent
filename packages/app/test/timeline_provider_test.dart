@@ -156,9 +156,18 @@ OptimisticUserMessage optimistic({
   ],
 );
 
-ProviderContainer makeContainer(DaemonClient client) {
+ProviderContainer makeContainer(
+  DaemonClient client, {
+  // These tests drive the replica directly and assert on the next event-loop
+  // turn, so collapse the stream flush window unless a test is specifically
+  // about batching.
+  Duration flushDelay = Duration.zero,
+}) {
   final container = ProviderContainer(
-    overrides: [daemonClientProvider.overrideWithValue(client)],
+    overrides: [
+      daemonClientProvider.overrideWithValue(client),
+      agentStreamFlushDelayProvider.overrideWithValue(flushDelay),
+    ],
   );
   addTearDown(container.dispose);
   return container;
@@ -1257,6 +1266,110 @@ void main() {
       expect(container.read(timelineProvider('a1')).displayItems, hasLength(1));
     },
   );
+
+  group('stream flush batching', () {
+    test('holds events until the flush window closes', () async {
+      final client = FakeDaemonClient()
+        ..fetchResponses.add(
+          const TimelineFetchResponse(epoch: 0, lastSeq: 1, items: [_msg1]),
+        );
+      final container = makeContainer(
+        client,
+        flushDelay: const Duration(milliseconds: 48),
+      );
+      container.read(timelineProvider('a1'));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      client.nativeEventsController.add(
+        const AgentStreamPayload(agentId: 'a1', epoch: 0, seq: 2, item: _msg2),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      // Still buffered: the window has not elapsed.
+      expect(container.read(timelineProvider('a1')).items.map((i) => i.id), [
+        'm1',
+      ]);
+
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+
+      expect(container.read(timelineProvider('a1')).items.map((i) => i.id), [
+        'm1',
+        'm2',
+      ]);
+    });
+
+    test('applies a burst in arrival order as one commit', () async {
+      final client = FakeDaemonClient()
+        ..fetchResponses.add(
+          const TimelineFetchResponse(epoch: 0, lastSeq: 1, items: [_msg1]),
+        );
+      final container = makeContainer(
+        client,
+        flushDelay: const Duration(milliseconds: 48),
+      );
+      container.read(timelineProvider('a1'));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      var publishes = 0;
+      container.listen(
+        timelineProvider('a1'),
+        (_, _) => publishes += 1,
+        fireImmediately: false,
+      );
+
+      for (var seq = 2; seq <= 4; seq += 1) {
+        client.nativeEventsController.add(
+          AgentStreamPayload(
+            agentId: 'a1',
+            epoch: 0,
+            seq: seq,
+            item: AssistantMessageItem(
+              id: 'm$seq',
+              text: 'text $seq',
+              complete: true,
+            ),
+          ),
+        );
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+
+      final state = container.read(timelineProvider('a1'));
+      expect(state.items.map((i) => i.id), ['m1', 'm2', 'm3', 'm4']);
+      expect(state.lastSeq, 4);
+      // The whole burst lands in a single flush rather than one per event.
+      expect(publishes, 1);
+    });
+
+    test('events for other agents never arm the window', () async {
+      final client = FakeDaemonClient()
+        ..fetchResponses.add(
+          const TimelineFetchResponse(epoch: 0, lastSeq: 1, items: [_msg1]),
+        );
+      final container = makeContainer(
+        client,
+        flushDelay: const Duration(milliseconds: 48),
+      );
+      container.read(timelineProvider('a1'));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      client.nativeEventsController.add(
+        const AgentStreamPayload(
+          agentId: 'other',
+          epoch: 0,
+          seq: 2,
+          item: _msg2,
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+
+      expect(container.read(timelineProvider('a1')).items.map((i) => i.id), [
+        'm1',
+      ]);
+    });
+  });
 
   group('item timestamps', () {
     test('tail page entries populate each display item timestamp', () async {
