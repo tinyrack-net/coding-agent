@@ -5313,10 +5313,12 @@
     },
     {
       "id": "source-unit:packages/app/src/dictation/dictation-stream-sender.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/app/lib/core/paseo_session_selectors.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_session_selectors_test.dart"
+      ],
+      "notes": "The buffer, start, replay, finish and cancel state machine with the per-turn chunk cap and a generation guard so a superseded start cannot mark a newer stream ready. Upstream's disconnect guard in the drain wait is unreachable through flush alone and is reproduced rather than fixed; the test reaches it through the path that actually occurs, audio arriving during the turn yield after a drop. Remaining: DaemonClient has no dictation RPCs, so the transport is an injected interface with no production implementation."
     },
     {
       "id": "source-unit:packages/app/src/fdroid/expo-camera.tsx",
@@ -8312,10 +8314,12 @@
     },
     {
       "id": "source-unit:packages/app/src/stores/session-store-hooks/selectors.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_session_selectors.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_session_selectors_test.dart"
+      ],
+      "notes": "Workspace lookup by identity, hydration gating, the cross-host structure build, sidebar ordering, badge statuses, and the positional reorder. Deep equality is hand-written because Dart has no reflective property walk, with an explicit arm for the structure project type whose home declares no equality — without it the sidebar would rebuild on every status-only update."
     },
     {
       "id": "source-unit:packages/app/src/stores/session-store.ts",
@@ -8870,10 +8874,12 @@
     },
     {
       "id": "source-unit:packages/app/src/types/agent-activity.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_session_selectors.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_session_selectors_test.dart"
+      ],
+      "notes": "The session-update union and grouping: adjacent same-author text merges, tool calls merge by id and render at first sight through reserved slots, everything else passes through in order. Renamed the tool-call status enum because the protocol already exports that name with a different member set — the analyzer caught the ambiguity."
     },
     {
       "id": "source-unit:packages/app/src/types/agent-directory.ts",
@@ -9040,10 +9046,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/assistant-image-metadata.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_session_selectors.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_session_selectors_test.dart"
+      ],
+      "notes": "The two 500-entry LRU caches with a measurement filed under both a resolution key and a raw alias, which is what lets a height estimate with no workspace context still hit, plus the memoized markdown parse (skipped for inline data payloads) and the height formula. This closes the seam paseo_more_utils.dart left open: it declared an image-fallback parameter precisely because this module was unported, and a test now wires the two together and asserts the fallback fires."
     },
     {
       "id": "source-unit:packages/app/src/utils/assistant-image-source.ts",
@@ -9739,10 +9747,12 @@
     },
     {
       "id": "source-unit:packages/app/src/utils/test-daemon-connection.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/paseo_session_selectors.dart",
+      "evidence": [
+        "packages/app/test/core/paseo_session_selectors_test.dart"
+      ],
+      "notes": "Probe config per connection arm with probe-safe defaults, a single connect-read-close cycle that closes on every failure path, and the failure-reason preference that defers a generic thrown reason to a specific last error. The incorrect-password classification only fires when a password was actually supplied."
     },
     {
       "id": "source-unit:packages/app/src/utils/thinking-tone.native-pcm.ts",
