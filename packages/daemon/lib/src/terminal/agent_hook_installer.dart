@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import '../providers/paseo/paseo_claude_rules.dart'
+    show ClaudeConfigDirEnvironment, resolveClaudeConfigDir;
 
 enum AgentHookProvider { claude, codex, opencode }
 
@@ -161,8 +163,18 @@ String resolveAgentHookConfigPath(
     return p.join(explicit, _configFile(provider));
   }
   return switch (provider) {
+    // The CLAUDE_CONFIG_DIR rule itself lives in `paseo_claude_rules.dart`;
+    // this passes its own `home` so the caller-supplied `options.homeDir`
+    // still wins.
+    //
+    // Note the home order here is USERPROFILE-then-HOME, where the other
+    // Claude config-dir callers use HOME-then-USERPROFILE. They agree on a
+    // plain Windows or POSIX shell, but disagree under Git Bash for Windows,
+    // which sets both to different spellings of the same directory.
     AgentHookProvider.claude => p.join(
-      env['CLAUDE_CONFIG_DIR'] ?? p.join(home, '.claude'),
+      resolveClaudeConfigDir(
+        ClaudeConfigDirEnvironment(variables: env, homeDirectory: home),
+      ),
       'settings.json',
     ),
     AgentHookProvider.codex => p.join(

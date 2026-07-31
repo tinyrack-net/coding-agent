@@ -14,6 +14,8 @@ import 'executable_resolver.dart';
 import 'jsonl_rpc_process.dart';
 import 'provider_launch_config.dart';
 import 'provider_manifest.dart';
+import 'paseo_claude_rules.dart'
+    show ClaudeConfigDirEnvironment, resolveClaudeConfigDir;
 
 typedef ClaudeExecutableResolver = Future<String?> Function();
 typedef ClaudeConnectionFactory =
@@ -71,14 +73,9 @@ final class ClaudeAgentClient
     ListImportableSessionsOptions? options,
   ]) async {
     final environment = _providerEnvironment(_runtimeSettingsResolver());
-    final configDir =
-        environment['CLAUDE_CONFIG_DIR'] ??
-        p.join(
-          environment['HOME'] ??
-              environment['USERPROFILE'] ??
-              Directory.current.path,
-          '.claude',
-        );
+    final configDir = resolveClaudeConfigDir(
+      ClaudeConfigDirEnvironment.fromPlatform(environment),
+    );
     final root = options?.cwd == null
         ? p.join(configDir, 'projects')
         : claudeProjectDir(options!.cwd!, configDir: configDir);

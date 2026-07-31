@@ -6,6 +6,8 @@ import 'package:path/path.dart' as p;
 
 import '../agent_session.dart';
 import 'claude_image_output.dart';
+import 'paseo_claude_rules.dart'
+    show ClaudeConfigDirEnvironment, resolveClaudeConfigDir;
 
 const _projectDirLengthCap = 200;
 
@@ -34,13 +36,9 @@ Future<ClaudeHistorySnapshot?> loadClaudeHistorySnapshot({
   required String sessionId,
   Map<String, String>? environment,
 }) async {
-  final env = environment ?? Platform.environment;
-  final configDir =
-      env['CLAUDE_CONFIG_DIR'] ??
-      p.join(
-        env['HOME'] ?? env['USERPROFILE'] ?? Directory.current.path,
-        '.claude',
-      );
+  final configDir = resolveClaudeConfigDir(
+    ClaudeConfigDirEnvironment.fromPlatform(environment),
+  );
   final historyPath = p.join(
     claudeProjectDir(cwd, configDir: configDir),
     '$sessionId.jsonl',
