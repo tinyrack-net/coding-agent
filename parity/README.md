@@ -245,17 +245,59 @@ Never hand-edit `upstream_inventory.json`. `ledger.json` is merge-preserved by
   where JS rejects both; and electron-updater's rollout hash reads UUIDs
   through an unvalidated fixed-offset table with lowercase-only hex, so
   uppercase digits read as zero and malformed input buckets at 0.
-- Ledger status: 951 verified, 278 partial, and 691 not-started out of 1920.
+- The component surface has begun: headers, file drop, icons and the
+  draggable list. Components mostly have no upstream `.test.ts`, so
+  `verified` there rests on a self-authored suite pinning the frozen visual
+  contract — exact heights, paddings, icon sizes, weights and the
+  conditional-render rules, every number carried from the upstream styles
+  rather than re-derived. That is weaker evidence than a ported test suite,
+  and the ledger notes say so per unit.
+- Two icons this app already shipped were **not** the frozen artwork. The
+  `github` path had been re-derived — 1922 characters against the frozen
+  2894, with curve segments collapsed — and `gitlab` was missing a separator
+  space. Regenerating the pull-request goldens showed a 49px difference, so
+  the GitHub icon was genuinely drawing a different shape while passing
+  every test it had. This is the clearest evidence in the project that a
+  green suite does not establish UI parity.
+- Following that, the rest of the design system was audited the same way:
+  the 13-step spacing scale, the font-size ramp, and all 16 light / 15 dark
+  palette tokens already match the frozen theme exactly. The icon drift was
+  isolated, not systemic. `test/frozen_icon_paths_test.dart` and
+  `test/frozen_theme_tokens_test.dart` now pin both surfaces.
+- Ledger status: 1036 verified, 304 partial, and 580 not-started out of 1920.
 - Validation: `dart run tool/parity.dart --check` passes against the frozen
-  inventory; `dart analyze` is clean and packages/app runs 4917 tests green.
-  packages/daemon runs 2190 (one pre-existing CLI
-  connection-fallback timeout, reproducible on a clean tree). The Windows
-  debug build succeeds and the app launches against a local daemon on 6868.
-  Package coverage for app is below the 95% gate — that shortfall predates
-  this work (93.28% at 3d14816) and is concentrated in files these slices do
-  not touch; closing it is tracked separately.
-- Not yet verified for this slice: a driven visual smoke of the chat surface
-  (streaming stick-to-bottom, scroll-away detach and jump-to-latest, turn
-  footer elapsed/duration). The widget suite exercises these paths, but the
-  frozen cross-platform visual conformance still needs eyes on the running
-  app, which is why `view.tsx` and `strategy-web.tsx` remain partial.
+  inventory; `dart analyze` is clean across app, daemon and protocol;
+  packages/app runs 6029 tests green, packages/protocol 498, and
+  packages/daemon ~2700 with one pre-existing CLI connection-fallback
+  timeout that reproduces on a clean tree. Package coverage for app remains
+  below the 95% gate — a shortfall that predates this work (93.28% at
+  3d14816) and is concentrated in files these slices do not touch.
+
+## Known gaps
+
+The three things standing between this state and the goal, in order of how
+much they matter:
+
+1. **No side-by-side visual comparison has been run.** Nobody has put this
+   app next to Paseo 0.2.0 and compared screens. Every component marked
+   `verified` is verified against numbers lifted from the frozen styles, not
+   against the rendered result. The GitHub icon shows exactly how that
+   fails: it satisfied its whole suite while drawing the wrong shape. This
+   is the single highest-value outstanding check.
+2. **304 units are `partial`** — faithful ports the product does not run
+   yet. Four seams dominate: the two attachment-store contracts, the
+   settings document (upstream keeps fourteen fields in one blob; this app
+   persists a subset under individual keys and nine fields have no storage
+   or UI at all), the replica-cache and viewed-timeline wiring against
+   `TimelineNotifier`'s own paging, and the startup route policy — the
+   router still has no splash, no give-up timer, and `/welcome` renders the
+   chat pane.
+3. **580 units are not-started**, now mostly `.tsx` components and screens
+   that need real widgets rather than logic translation.
+
+Nine production bugs were found by this porting work and fixed, none caused
+by the ports themselves. The two worth knowing about: four private copies of
+a tree kill signalled only the direct child on POSIX, leaking every
+grandchild a timed-out shell or killed provider had spawned; and quitting the
+app stopped a daemon it did not manage. Both were found because porting a
+module forces a line-by-line read of the code that already exists.
