@@ -14413,10 +14413,12 @@
     },
     {
       "id": "source-unit:packages/server/src/server/pid-lock.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon_lifecycle/lib/src/pid_lock.dart",
+      "evidence": [
+        "packages/daemon/test/daemon_lock_test.dart"
+      ],
+      "notes": "Ledger correction: this was recorded not-started, but daemon_lifecycle's PidLock already covers acquire, update, startHeartbeat and release with the same lock-held semantics. Remaining: upstream's refreshPidLock has no counterpart, and the zod pidLockInfoSchema validation is replaced by a nullable fromJson that defaults missing fields rather than rejecting the record."
     },
     {
       "id": "source-unit:packages/server/src/server/private-files.ts",
@@ -16046,10 +16048,12 @@
     },
     {
       "id": "source-unit:packages/server/src/utils/run-git-command.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "partial",
+      "implementation": "packages/daemon/lib/src/git/git_runner.dart",
+      "evidence": [
+        "packages/daemon/test/git/git_runner_test.dart"
+      ],
+      "notes": "Ledger correction: recorded not-started, but GitRunner already covers runGitCommand including the check-and-throw path, and the metrics half of this module is ported separately as GitCommandRuntimeMetricsWindow in paseo_server_services.dart. Remaining: the two are not connected — GitRunner does not submit durations to the metrics window, so startGitCommandMetrics and snapshotGitCommandRuntimeMetrics observe nothing from real git calls."
     },
     {
       "id": "source-unit:packages/server/src/utils/script-hostname.ts",

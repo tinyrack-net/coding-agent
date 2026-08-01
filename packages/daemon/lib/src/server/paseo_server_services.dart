@@ -399,6 +399,13 @@ class GitCommandRuntimeMetricsWindow {
     _queueWaitSamples.add(math.max(0, now - metric.queuedAtMs));
   }
 
+  /// Adapts this window to the observer [GitRunner] accepts.
+  ///
+  /// Upstream records telemetry inside `runGitCommand` itself. Here the runner
+  /// and the window are separate ports, so this is the join: without it the
+  /// window is live but observes nothing that real git does.
+  GitCommandObserver asGitCommandObserver() => _WindowGitCommandObserver(this);
+
   /// Records that [metric] finished.
   ///
   /// A handle that never started is ignored, so a command cancelled while
@@ -2716,5 +2723,32 @@ Future<void> archiveIfSafe({
     }
   } finally {
     inFlight.remove(cwd);
+  }
+}
+
+/// Bridges [GitCommandRuntimeMetricsWindow] onto [GitCommandObserver].
+///
+/// `GitRunner` has no queue of its own — it starts the process immediately —
+/// so submit and start collapse into one call and every queue-wait sample is
+/// zero. That is accurate rather than a shortcut: the wait upstream measures
+/// is limiter backpressure, and this runner has no limiter.
+final class _WindowGitCommandObserver implements GitCommandObserver {
+  _WindowGitCommandObserver(this._window);
+
+  final GitCommandRuntimeMetricsWindow _window;
+
+  @override
+  Object? begin(String operation) {
+    final metric = _window.submit(operation);
+    _window.start(metric);
+    return metric;
+  }
+
+  @override
+  void end(Object? handle, {required bool success}) {
+    if (handle is! GitCommandRuntimeMetric) return;
+    // `timedOut` is always false: this runner imposes no deadline, so a hang
+    // shows up as a never-completed command rather than a timeout.
+    _window.finish(handle, success: success, timedOut: false);
   }
 }

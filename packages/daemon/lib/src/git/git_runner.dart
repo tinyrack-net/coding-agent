@@ -60,11 +60,31 @@ final class GitResult {
   bool get ok => exitCode == 0;
 }
 
+/// Watches git commands so telemetry can be recorded around them.
+///
+/// Declared here rather than beside the metrics window because
+/// `paseo_server_services.dart` already imports this file; pointing the
+/// dependency the other way would be circular. The handle is opaque so this
+/// file stays unaware of what the observer records.
+abstract interface class GitCommandObserver {
+  /// Called before the process starts. The returned handle is passed back to
+  /// [end]; return null if the observer keeps no per-command state.
+  Object? begin(String operation);
+
+  /// Called once the process has exited, or thrown.
+  void end(Object? handle, {required bool success});
+}
+
 /// Runs git commands with UTF-8 output and `core.quotepath=false` always set.
 class GitRunner {
-  const GitRunner({this.executable = 'git'});
+  const GitRunner({this.executable = 'git', this.observer});
 
   final String executable;
+
+  /// Optional telemetry sink. Upstream's `runGitCommand` records every
+  /// command centrally; without this the ported metrics window would observe
+  /// nothing from real git calls.
+  final GitCommandObserver? observer;
 
   /// Run `git <args>` in [cwd]. When [check] is true (default), a nonzero
   /// exit throws [GitException]; pass false for probes where nonzero is an
@@ -75,18 +95,32 @@ class GitRunner {
     bool check = true,
   }) async {
     final fullArgs = ['-c', 'core.quotepath=false', ...args];
-    final result = await Process.run(
-      executable,
-      fullArgs,
-      workingDirectory: cwd,
-      stdoutEncoding: utf8,
-      stderrEncoding: utf8,
-    );
-    final gitResult = GitResult(
-      exitCode: result.exitCode,
-      stdout: result.stdout as String,
-      stderr: result.stderr as String,
-    );
+    // The subcommand, not the whole line — the metrics window counts commands
+    // by operation, and arguments would shatter that into unique buckets.
+    final handle = observer?.begin(args.isEmpty ? 'git' : args.first);
+    late final GitResult gitResult;
+    try {
+      final result = await Process.run(
+        executable,
+        fullArgs,
+        workingDirectory: cwd,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
+      gitResult = GitResult(
+        exitCode: result.exitCode,
+        stdout: result.stdout as String,
+        stderr: result.stderr as String,
+      );
+    } catch (_) {
+      // A spawn failure is a failed command, not an absent one; leaving the
+      // handle open would leak it into the next window's pending set.
+      observer?.end(handle, success: false);
+      rethrow;
+    }
+    // Reported before the `check` throw, so a nonzero exit is recorded once
+    // whether or not the caller asked for it to raise.
+    observer?.end(handle, success: gitResult.ok);
     if (check && !gitResult.ok) {
       throw GitException(
         args: args,
