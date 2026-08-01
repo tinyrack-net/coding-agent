@@ -3049,31 +3049,39 @@
     },
     {
       "id": "source-unit:packages/app/src/components/draggable-list.native.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_draggable_list.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_draggable_list_test.dart"
+      ],
+      "notes": "Frozen constants carried over (6/180/8 activation, 0.9 opacity, 1.02 scale). The native refresh-control visibility rule is ported as a pure predicate and fully tested; pull-to-refresh itself is best-effort overscroll, since no Material indicator is allowed and fluent ships none."
     },
     {
       "id": "source-unit:packages/app/src/components/draggable-list.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_draggable_list.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_draggable_list_test.dart"
+      ],
+      "notes": "The web and native variants collapse into one widget since Flutter has a single runtime. Reuses the whole drag_reorder logic layer rather than re-deriving arrayMove. The 180ms touch hold is honoured via a private recognizer subclass because Flutter's delayed listener hard-codes 500ms; the 6px activation distance is exported as data but not enforceable, since Flutter's multi-drag recognizer claims at kTouchSlop with no knob."
     },
     {
       "id": "source-unit:packages/app/src/components/draggable-list.types.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_draggable_list.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_draggable_list_test.dart"
+      ],
+      "notes": "Frozen constants carried over (6/180/8 activation, 0.9 opacity, 1.02 scale). The native refresh-control visibility rule is ported as a pure predicate and fully tested; pull-to-refresh itself is best-effort overscroll, since no Material indicator is allowed and fluent ships none."
     },
     {
       "id": "source-unit:packages/app/src/components/draggable-list.web.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_draggable_list.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_draggable_list_test.dart"
+      ],
+      "notes": "Frozen constants carried over (6/180/8 activation, 0.9 opacity, 1.02 scale). The native refresh-control visibility rule is ported as a pure predicate and fully tested; pull-to-refresh itself is best-effort overscroll, since no Material indicator is allowed and fluent ships none."
     },
     {
       "id": "source-unit:packages/app/src/components/explorer-sidebar.tsx",
@@ -3294,122 +3302,156 @@
     },
     {
       "id": "source-unit:packages/app/src/components/icons/claude-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/provider_icon.dart",
+      "evidence": [
+        "packages/app/test/frozen_icon_paths_test.dart"
+      ],
+      "notes": "Already shipping in provider_icon.dart, and verified character-for-character against the frozen path data by the new drift guard rather than assumed."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/codeberg-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge.dart",
+      "evidence": [
+        "packages/app/test/frozen_icon_paths_test.dart"
+      ],
+      "notes": "Already shipping in forge.dart. This slice restored two that had drifted: github had been re-derived at 1922 characters against the frozen 2894 with curve segments collapsed, and gitlab was missing a separator space. A drift guard now pins both maps to the frozen path data."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/codex-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/provider_icon.dart",
+      "evidence": [
+        "packages/app/test/frozen_icon_paths_test.dart"
+      ],
+      "notes": "Already shipping in provider_icon.dart, and verified character-for-character against the frozen path data by the new drift guard rather than assumed."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/copilot-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/provider_icon.dart",
+      "evidence": [
+        "packages/app/test/frozen_icon_paths_test.dart"
+      ],
+      "notes": "Already shipping in provider_icon.dart, and verified character-for-character against the frozen path data by the new drift guard rather than assumed."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/discord-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_icons.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_icons_test.dart"
+      ],
+      "notes": "Ported with path data pulled programmatically from the frozen source; colour defaults to the palette foreground, this repo's port of upstream's currentColor token."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/editor-target-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_icons.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_icons_test.dart"
+      ],
+      "notes": "Ported with path data pulled programmatically from the frozen source; colour defaults to the palette foreground, this repo's port of upstream's currentColor token."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/forgejo-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge.dart",
+      "evidence": [
+        "packages/app/test/frozen_icon_paths_test.dart"
+      ],
+      "notes": "Already shipping in forge.dart. This slice restored two that had drifted: github had been re-derived at 1922 characters against the frozen 2894 with curve segments collapsed, and gitlab was missing a separator space. A drift guard now pins both maps to the frozen path data."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/gitea-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge.dart",
+      "evidence": [
+        "packages/app/test/frozen_icon_paths_test.dart"
+      ],
+      "notes": "Already shipping in forge.dart. This slice restored two that had drifted: github had been re-derived at 1922 characters against the frozen 2894 with curve segments collapsed, and gitlab was missing a separator space. A drift guard now pins both maps to the frozen path data."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/github-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge.dart",
+      "evidence": [
+        "packages/app/test/frozen_icon_paths_test.dart"
+      ],
+      "notes": "Already shipping in forge.dart. This slice restored two that had drifted: github had been re-derived at 1922 characters against the frozen 2894 with curve segments collapsed, and gitlab was missing a separator space. A drift guard now pins both maps to the frozen path data."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/gitlab-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/core/forge.dart",
+      "evidence": [
+        "packages/app/test/frozen_icon_paths_test.dart"
+      ],
+      "notes": "Already shipping in forge.dart. This slice restored two that had drifted: github had been re-derived at 1922 characters against the frozen 2894 with curve segments collapsed, and gitlab was missing a separator space. A drift guard now pins both maps to the frozen path data."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/minimax-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/provider_icon.dart",
+      "evidence": [
+        "packages/app/test/frozen_icon_paths_test.dart"
+      ],
+      "notes": "Already shipping in provider_icon.dart, and verified character-for-character against the frozen path data by the new drift guard rather than assumed."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/omp-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/provider_icon.dart",
+      "evidence": [
+        "packages/app/test/frozen_icon_paths_test.dart"
+      ],
+      "notes": "Already shipping in provider_icon.dart, and verified character-for-character against the frozen path data by the new drift guard rather than assumed."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/opencode-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/provider_icon.dart",
+      "evidence": [
+        "packages/app/test/frozen_icon_paths_test.dart"
+      ],
+      "notes": "Already shipping in provider_icon.dart, and verified character-for-character against the frozen path data by the new drift guard rather than assumed."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/paseo-logo.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_icons.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_icons_test.dart"
+      ],
+      "notes": "Path data extracted programmatically from the frozen tsx rather than transcribed, with the test holding an independent second transcription. Twelve of the seventeen upstream icon files were already shipping in forge.dart and provider_icon.dart and are reused rather than re-added."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/pi-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/provider_icon.dart",
+      "evidence": [
+        "packages/app/test/frozen_icon_paths_test.dart"
+      ],
+      "notes": "Already shipping in provider_icon.dart, and verified character-for-character against the frozen path data by the new drift guard rather than assumed."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/source-control-panel-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_icons.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_icons_test.dart"
+      ],
+      "notes": "Ported with path data pulled programmatically from the frozen source; colour defaults to the palette foreground, this repo's port of upstream's currentColor token."
     },
     {
       "id": "source-unit:packages/app/src/components/icons/svg-path-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_icons.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_icons_test.dart"
+      ],
+      "notes": "Ported with path data pulled programmatically from the frozen source; colour defaults to the palette foreground, this repo's port of upstream's currentColor token."
     },
     {
       "id": "source-unit:packages/app/src/components/import-session-sheet-view-model.ts",
@@ -3528,17 +3570,21 @@
     },
     {
       "id": "source-unit:packages/app/src/components/material-file-icon.tsx",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_draggable_list.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_draggable_list_test.dart"
+      ],
+      "notes": "Both tables carried entry-for-entry — 54 glyphs and 65 extension mappings — with the full extension map compared against a literal transcription, plus cross-checks that every mapped glyph exists and no glyph but the default is unreachable."
     },
     {
       "id": "source-unit:packages/app/src/components/material-file-icons.ts",
-      "status": "not-started",
-      "implementation": null,
-      "evidence": [],
-      "notes": null
+      "status": "verified",
+      "implementation": "packages/app/lib/widgets/paseo_draggable_list.dart",
+      "evidence": [
+        "packages/app/test/widgets/paseo_draggable_list_test.dart"
+      ],
+      "notes": "Both tables carried entry-for-entry — 54 glyphs and 65 extension mappings — with the full extension map compared against a literal transcription, plus cross-checks that every mapped glyph exists and no glyph but the default is unreachable."
     },
     {
       "id": "source-unit:packages/app/src/components/message-compaction-label.ts",
