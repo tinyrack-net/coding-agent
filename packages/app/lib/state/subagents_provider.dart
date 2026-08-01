@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'agents_provider.dart';
 import 'provider_subagents_provider.dart';
+import 'package:coding_agent_app/workspace/paseo_workspace_paths.dart'
+    show normalizeWorkspaceOpaqueId;
 
 sealed class SubagentRow {
   const SubagentRow();
@@ -90,15 +92,10 @@ CloseAgentTabPolicy resolveCloseAgentTabPolicy(AgentSummary? agent) =>
     ? CloseAgentTabPolicy.layoutOnly
     : CloseAgentTabPolicy.archiveOnClose;
 
-String? _normalizeWorkspaceOpaqueId(String? value) {
-  final normalized = value?.trim();
-  return normalized == null || normalized.isEmpty ? null : normalized;
-}
-
 bool isWorkspaceRootAgent(AgentSummary agent, AgentSummary? parentAgent) {
   if (agent.parentAgentId == null || agent.parentAgentId!.isEmpty) return true;
-  final workspaceId = _normalizeWorkspaceOpaqueId(agent.workspaceId);
-  final parentWorkspaceId = _normalizeWorkspaceOpaqueId(
+  final workspaceId = normalizeWorkspaceOpaqueId(agent.workspaceId);
+  final parentWorkspaceId = normalizeWorkspaceOpaqueId(
     parentAgent?.workspaceId,
   );
   return workspaceId != null &&

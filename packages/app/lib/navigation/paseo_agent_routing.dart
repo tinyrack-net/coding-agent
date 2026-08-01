@@ -37,6 +37,8 @@ import 'package:agent_protocol/agent_protocol.dart';
 
 import '../core/host_routes.dart';
 import '../workspace/workspace_tab_model.dart';
+import 'package:coding_agent_app/workspace/paseo_workspace_paths.dart'
+    show normalizeWorkspaceOpaqueId;
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -49,10 +51,6 @@ import '../workspace/workspace_tab_model.dart';
 /// rules need from it is "trim, and treat blank as absent". Kept private so
 /// the eventual full port of workspace-identity owns the public name — the
 /// same choice `navigation/paseo_route_rules.dart` already made.
-String? _normalizeWorkspaceOpaqueId(String? value) {
-  final trimmed = value?.trim();
-  return trimmed == null || trimmed.isEmpty ? null : trimmed;
-}
 
 /// JS string truthiness: `null` and `''` are falsy, everything else is truthy.
 ///
@@ -162,7 +160,7 @@ String resolveNavigateToAgent(
       dependencies
           .readAgentNavTarget(serverId: input.serverId, agentId: input.agentId)
           .agentWorkspaceId;
-  final workspaceId = _normalizeWorkspaceOpaqueId(agentWorkspaceId);
+  final workspaceId = normalizeWorkspaceOpaqueId(agentWorkspaceId);
 
   if (workspaceId == null) {
     final route = buildHostAgentDetailRoute(input.serverId, input.agentId);

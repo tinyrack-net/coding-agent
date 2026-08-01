@@ -23,6 +23,8 @@ library;
 
 import '../core/host_routes.dart';
 import '../core/paseo_session_rules.dart';
+import 'package:coding_agent_app/workspace/paseo_workspace_paths.dart'
+    show normalizeWorkspaceOpaqueId;
 
 // ---------------------------------------------------------------------------
 // agent-route-resolution.ts
@@ -33,10 +35,6 @@ import '../core/paseo_session_rules.dart';
 /// That module is outside this cluster, and the only behaviour these rules
 /// need from it is "trim, and treat blank as absent". Kept private so the
 /// eventual full port of workspace-identity owns the public name.
-String? _normalizeWorkspaceOpaqueId(String? value) {
-  final trimmed = value?.trim();
-  return trimmed == null || trimmed.isEmpty ? null : trimmed;
-}
 
 /// The state of the "which workspace does this agent live in?" query that the
 /// agent route screen runs against its host.
@@ -207,7 +205,7 @@ AgentRouteResolution resolveAgentRoute({
     return const InvalidAgentRoute();
   }
 
-  final cached = _normalizeWorkspaceOpaqueId(cachedWorkspaceId);
+  final cached = normalizeWorkspaceOpaqueId(cachedWorkspaceId);
   if (cached != null) {
     return ResolvedAgentRoute(cached);
   }
@@ -218,7 +216,7 @@ AgentRouteResolution resolveAgentRoute({
 
   switch (lookup) {
     case FoundAgentRouteLookup(:final workspaceId):
-      final fetched = _normalizeWorkspaceOpaqueId(workspaceId);
+      final fetched = normalizeWorkspaceOpaqueId(workspaceId);
       return fetched != null
           ? ResolvedAgentRoute(fetched)
           : const AgentRouteNotFound();
